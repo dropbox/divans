@@ -2,11 +2,8 @@
 name = "divans"
 version = "0.0.1"
 authors = ["Daniel Reiter Horn <danielrh@dropbox.com>"]
-description = "An divANS decoder"
-license = "BSD-3-Clause/MIT"
+license = "BSD-3-Clause/MIT or Apache"
 documentation = "tbd"
-homepage = "https://github.com/dropbox/rust-divans"
-repository = "https://github.com/dropbox/rust-divans"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
 

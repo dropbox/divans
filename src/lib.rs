@@ -2,8 +2,6 @@ extern crate alloc_no_stdlib as alloc;
 
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
-#[cfg(not(feature="no-stdlib"))]
-pub use alloc::HeapAlloc;
 #[derive(Debug)]
 pub struct CopyCommand {
     pub distance: usize,
@@ -20,13 +18,13 @@ pub struct DictCommand {
 }
 
 #[derive(Debug)]
-pub struct LiteralCommand {
-    pub data: Vec<u8>,
+pub struct LiteralCommand<SliceType:alloc::SliceWrapper<u8>> {
+    pub data: SliceType,
 }
 
 #[derive(Debug)]
-pub enum Command {
+pub enum Command<SliceType:alloc::SliceWrapper<u8> > {
     Copy(CopyCommand),
     Dict(DictCommand),
-    Literal(LiteralCommand),
+    Literal(LiteralCommand<SliceType>),
 }

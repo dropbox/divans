@@ -1,5 +1,9 @@
 extern crate core;
 extern crate divans;
+extern crate alloc_no_stdlib as alloc;
+
+pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
+
 use std::io;
 use std::error::Error;
 use core::convert::From;
@@ -44,7 +48,15 @@ fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
     }
     Ok(output)
 }
-fn command_parse(s : String) -> Result<Command, io::Error> {
+#[derive(Debug)]
+pub struct ByteVec(Vec<u8>);
+
+impl alloc::SliceWrapper<u8> for ByteVec {
+    fn slice(&self) -> &[u8] {
+        return &self.0[..];
+    }
+}
+fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
     let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
@@ -130,7 +142,7 @@ fn command_parse(s : String) -> Result<Command, io::Error> {
     } else if cmd == "insert"{
         if command_vec.len() != 3 {
             if command_vec.len() == 2 && command_vec[1] == "0" {
-                return Ok(Command::Literal(LiteralCommand{data:Vec::new()}));
+                return Ok(Command::Literal(LiteralCommand{data:ByteVec(Vec::new())}));
             }
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           String::from("insert needs 3 arguments, not (") + &s + ")"));
@@ -148,7 +160,7 @@ fn command_parse(s : String) -> Result<Command, io::Error> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        return Ok(Command::Literal(LiteralCommand{data:data}));
+        return Ok(Command::Literal(LiteralCommand{data:ByteVec(data)}));
     }
     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                               String::from("Unknown ") + &s))
