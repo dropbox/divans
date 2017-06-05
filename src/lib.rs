@@ -9,8 +9,8 @@ use brotli_decompressor::transform::{TransformDictionaryWord};
 
 #[derive(Debug)]
 pub struct CopyCommand {
-    pub distance: usize,
-    pub num_bytes: usize,
+    pub distance: u32,
+    pub num_bytes: u32,
 }
 
 #[derive(Debug)]
@@ -40,7 +40,7 @@ pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> 
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
 }
-const REPEAT_BUFFER_MAX_SIZE: usize = 64;
+const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
    fn default() -> Self {
@@ -89,43 +89,75 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         }
         BrotliResult::ResultSuccess
     }
-    fn decode_space_left_in_ring_buffer(&self) -> usize {
+    fn decode_space_left_in_ring_buffer(&self) -> u32 {
         if self.ring_buffer_output_index < self.ring_buffer_decode_index {
-            return self.ring_buffer_output_index as usize + self.ring_buffer.slice().len() - 1 - self.ring_buffer_decode_index as usize;
+            return self.ring_buffer_output_index + self.ring_buffer.slice().len() as u32 - 1 - self.ring_buffer_decode_index;
         }
-        return self.ring_buffer_output_index as usize - 1 - self.ring_buffer_decode_index as usize;
+        return self.ring_buffer_output_index - 1 - self.ring_buffer_decode_index;
     }
-    fn copy_decoded_from_ring_buffer(&self, mut output: &mut[u8], mut distance: usize, mut amount_to_copy: u32) {
-        if distance > self.ring_buffer_decode_index as usize {
+    fn copy_decoded_from_ring_buffer(&self, mut output: &mut[u8], mut distance: u32, mut amount_to_copy: u32) {
+        if distance > self.ring_buffer_decode_index {
             // we need to copy this in two segments...starting with the segment far past the end
-            let far_distance = distance - self.ring_buffer_decode_index as usize;
-            let far_start_index = self.ring_buffer.slice().len() - far_distance;
-            let local_ring = self.ring_buffer.slice().split_at(far_start_index).1;
+            let far_distance = distance - self.ring_buffer_decode_index;
+            let far_start_index = self.ring_buffer.slice().len() as u32 - far_distance;
+            let local_ring = self.ring_buffer.slice().split_at(far_start_index as usize).1;
             let far_amount = core::cmp::min(far_distance,
-                                            amount_to_copy as usize);
-            let (output_far, output_near) = core::mem::replace(&mut output, &mut[]).split_at_mut(far_amount);
-            output_far.clone_from_slice(local_ring.split_at(far_amount).0);
+                                            amount_to_copy);
+            let (output_far, output_near) = core::mem::replace(&mut output, &mut[]).split_at_mut(far_amount as usize);
+            output_far.clone_from_slice(local_ring.split_at(far_amount as usize).0);
             output = output_near;
-            distance = self.ring_buffer_decode_index as usize;
+            distance = self.ring_buffer_decode_index;
             amount_to_copy -= far_amount as u32;
         }
         if output.len() != 0 {
-            let start = self.ring_buffer_decode_index as usize - distance;
+            let start = self.ring_buffer_decode_index - distance;
             output.split_at_mut(amount_to_copy
-                                as usize).0.clone_from_slice(self.ring_buffer.slice().split_at(start).1.split_at(amount_to_copy
+                                as usize).0.clone_from_slice(self.ring_buffer.slice().split_at(start as usize).1.split_at(amount_to_copy
                                                                                                                  as usize).0);
         }
     }
+
+    //precondition: that there is sufficient room for amount_to_copy in buffer
+    fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> u32 {
+        desired_amount_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer() as u32,
+                                                desired_amount_to_copy);
+        let left_dst_before_wrap = self.ring_buffer.slice().len() as u32 - self.ring_buffer_decode_index;
+        let src_distance_index :u32;
+        if self.ring_buffer_decode_index as u32 >= distance {
+            src_distance_index = self.ring_buffer_decode_index - distance;
+        } else {
+            src_distance_index = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32 - distance;
+        }
+        let left_src_before_wrap = self.ring_buffer.slice().len() as u32 - src_distance_index;
+        let trunc_amount_to_copy = core::cmp::min(core::cmp::min(left_dst_before_wrap,
+                                                                 left_src_before_wrap),
+                                                  desired_amount_to_copy);
+        if src_distance_index < self.ring_buffer_decode_index {
+            let (_unused, src_and_dst) = self.ring_buffer.slice_mut().split_at_mut(src_distance_index as usize);
+            let (src, dst) = src_and_dst.split_at_mut((self.ring_buffer_decode_index - src_distance_index) as usize);
+            dst.split_at_mut(trunc_amount_to_copy as usize).0.clone_from_slice(src.split_at_mut(trunc_amount_to_copy as usize).0);
+        } else {
+            let (_unused, dst_and_src) = self.ring_buffer.slice_mut().split_at_mut(self.ring_buffer_decode_index as usize);
+            let (dst, src) = dst_and_src.split_at_mut((src_distance_index - self.ring_buffer_decode_index) as usize);
+            dst.split_at_mut(trunc_amount_to_copy as usize).0.clone_from_slice(src.split_at_mut(trunc_amount_to_copy as usize).0);            
+        }
+        self.ring_buffer_decode_index += trunc_amount_to_copy;
+        if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
+            self.ring_buffer_decode_index =0;
+        }
+        return trunc_amount_to_copy;
+    }
+
     // takes in a buffer of data to copy to the ring buffer--returns the number of bytes persisted
     fn copy_to_ring_buffer(&mut self, mut data: &[u8]) -> usize {
-        data = data.split_at(core::cmp::min(data.len(), self.decode_space_left_in_ring_buffer())).0;
+        data = data.split_at(core::cmp::min(data.len() as u32, self.decode_space_left_in_ring_buffer()) as usize).0;
         let mut retval = 0usize;
-        let first_section = self.ring_buffer.slice_mut().len() - self.ring_buffer_decode_index as usize;
-        let amount_to_copy = core::cmp::min(data.len(), first_section);
-        let (data_first, data_second) = data.split_at(amount_to_copy);
-        self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index as usize + amount_to_copy)].clone_from_slice(data_first);
+        let first_section = self.ring_buffer.slice_mut().len() as u32 - self.ring_buffer_decode_index;
+        let amount_to_copy = core::cmp::min(data.len() as u32, first_section);
+        let (data_first, data_second) = data.split_at(amount_to_copy as usize);
+        self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index + amount_to_copy) as usize].clone_from_slice(data_first);
         self.ring_buffer_decode_index += amount_to_copy as u32;
-        retval += amount_to_copy;
+        retval += amount_to_copy as usize;
         if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.ring_buffer_decode_index = 0;
             let second_amount_to_copy = data_second.len();
@@ -144,20 +176,20 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
        let remainder = data.split_at(self.input_sub_offset).1;
        let bytes_copied = self.copy_to_ring_buffer(remainder);
        if bytes_copied != remainder.len() {
-          self.input_sub_offset += bytes_copied;
+          self.input_sub_offset += bytes_copied as usize;
           return BrotliResult::NeedsMoreOutput;
        }
        self.input_sub_offset = 0;
        BrotliResult::ResultSuccess
     }
     fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
-        let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset;
+        let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset as u32;
         if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
             let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,
-                                                   self.decode_space_left_in_ring_buffer());                                               
-            let mut repeat_alloc_buffer = [0u8;REPEAT_BUFFER_MAX_SIZE];
-            let mut repeat_buffer = repeat_alloc_buffer.split_at_mut(copy.distance).0;
-            self.copy_decoded_from_ring_buffer(repeat_buffer, copy.distance, copy.distance as u32);
+                                                   self.decode_space_left_in_ring_buffer());
+            let mut repeat_alloc_buffer = [0u8;REPEAT_BUFFER_MAX_SIZE as usize];
+            let mut repeat_buffer = repeat_alloc_buffer.split_at_mut(copy.distance as usize).0;
+            self.copy_decoded_from_ring_buffer(repeat_buffer, copy.distance, copy.distance);
             let num_repeat_iter = num_bytes_to_copy / copy.distance;
             let rem_bytes = num_bytes_to_copy - num_repeat_iter * copy.distance;
             for _i in 0..num_repeat_iter {
@@ -167,20 +199,21 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
                     return BrotliResult::NeedsMoreOutput;
                 }
             }
-            let ret = self.copy_to_ring_buffer(repeat_buffer.split_at(rem_bytes).0);
-            self.input_sub_offset += ret;
+            let ret = self.copy_to_ring_buffer(repeat_buffer.split_at(rem_bytes as usize).0) as u32;
+            self.input_sub_offset += ret as usize;
             if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
                 return BrotliResult::NeedsMoreOutput;
             }
             self.input_sub_offset = 0; // we're done
             return BrotliResult::ResultSuccess;
         }
-        let num_bytes_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer(),
-                                               core::cmp::min(num_bytes_left_in_cmd,
-                                                              copy.distance));
+        let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd, copy.distance);
+        let copy_count = self.copy_some_decoded_from_ring_buffer_to_decoded(copy.distance,
+                                                                            num_bytes_to_copy);
+        self.input_sub_offset += copy_count as usize;
         // by taking the min of copy.distance and items to copy, we are nonoverlapping
         // this means we can use split_at_mut to cut the array into nonoverlapping segments
-        if num_bytes_to_copy != num_bytes_left_in_cmd {
+        if copy_count != num_bytes_left_in_cmd {
             return BrotliResult::NeedsMoreOutput;
         }
         self.input_sub_offset = 0; // we're done
@@ -192,7 +225,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             // error: dictionary should never allow for partial words, since they fit in a small amount of space
             return BrotliResult::ResultFailure;
         }
-        if self.decode_space_left_in_ring_buffer() < kBrotliMaxDictionaryWordLength as usize + 13 {
+        if self.decode_space_left_in_ring_buffer() < kBrotliMaxDictionaryWordLength as u32 + 13 {
             return BrotliResult::NeedsMoreOutput;
         }
         let copy_len = dict_cmd.word_size as u32;

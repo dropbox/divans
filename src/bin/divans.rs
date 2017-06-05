@@ -67,7 +67,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "copy needs 4 arguments"));                
         }
-        let expected_len = match command_vec[1].parse::<usize>() {
+        let expected_len = match command_vec[1].parse::<u32>() {
             Ok(el) => el,
             Err(msg) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -78,7 +78,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       s + "needs a from statement in the 2nd arg"));
         }
-        let distance = match command_vec[3].parse::<usize>() {
+        let distance = match command_vec[3].parse::<u32>() {
             Ok(el) => el,
             Err(msg) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
