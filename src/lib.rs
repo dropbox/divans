@@ -35,11 +35,13 @@ pub enum Command<SliceType:alloc::SliceWrapper<u8> > {
 }
 
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default>{
-    input_sub_offset :usize,
+    input_sub_offset: usize,
     ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
 }
+const REPEAT_BUFFER_MAX_SIZE: usize = 64;
+
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
    fn default() -> Self {
       DivansRecodeState::<RingBuffer>::new()
@@ -54,6 +56,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             input_sub_offset: 0,
         }
     }
+    // this copies as much data as possible from the RingBuffer
+    // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
     pub fn flush(&mut self, output :&mut[u8], output_offset: &mut usize) -> BrotliResult {
         if self.ring_buffer_decode_index < self.ring_buffer_output_index { // we wrap around
             let bytes_until_wrap = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
@@ -91,7 +95,27 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         }
         return self.ring_buffer_output_index as usize - 1 - self.ring_buffer_decode_index as usize;
     }
-
+    fn copy_decoded_from_ring_buffer(&self, mut output: &mut[u8], mut distance: usize, mut amount_to_copy: u32) {
+        if distance > self.ring_buffer_decode_index as usize {
+            // we need to copy this in two segments...starting with the segment far past the end
+            let far_distance = distance - self.ring_buffer_decode_index as usize;
+            let far_start_index = self.ring_buffer.slice().len() - far_distance;
+            let local_ring = self.ring_buffer.slice().split_at(far_start_index).1;
+            let far_amount = core::cmp::min(far_distance,
+                                            amount_to_copy as usize);
+            let (output_far, output_near) = core::mem::replace(&mut output, &mut[]).split_at_mut(far_amount);
+            output_far.clone_from_slice(local_ring.split_at(far_amount).0);
+            output = output_near;
+            distance = self.ring_buffer_decode_index as usize;
+            amount_to_copy -= far_amount as u32;
+        }
+        if output.len() != 0 {
+            let start = self.ring_buffer_decode_index as usize - distance;
+            output.split_at_mut(amount_to_copy
+                                as usize).0.clone_from_slice(self.ring_buffer.slice().split_at(start).1.split_at(amount_to_copy
+                                                                                                                 as usize).0);
+        }
+    }
     // takes in a buffer of data to copy to the ring buffer--returns the number of bytes persisted
     fn copy_to_ring_buffer(&mut self, mut data: &[u8]) -> usize {
         data = data.split_at(core::cmp::min(data.len(), self.decode_space_left_in_ring_buffer())).0;
@@ -127,7 +151,39 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
        BrotliResult::ResultSuccess
     }
     fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
-        panic!("unimplemented");
+        let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset;
+        if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
+            let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,
+                                                   self.decode_space_left_in_ring_buffer());                                               
+            let mut repeat_alloc_buffer = [0u8;REPEAT_BUFFER_MAX_SIZE];
+            let mut repeat_buffer = repeat_alloc_buffer.split_at_mut(copy.distance).0;
+            self.copy_decoded_from_ring_buffer(repeat_buffer, copy.distance, copy.distance as u32);
+            let num_repeat_iter = num_bytes_to_copy / copy.distance;
+            let rem_bytes = num_bytes_to_copy - num_repeat_iter * copy.distance;
+            for _i in 0..num_repeat_iter {
+                let ret = self.copy_to_ring_buffer(repeat_buffer);
+                self.input_sub_offset += ret;
+                if ret != repeat_buffer.len() {
+                    return BrotliResult::NeedsMoreOutput;
+                }
+            }
+            let ret = self.copy_to_ring_buffer(repeat_buffer.split_at(rem_bytes).0);
+            self.input_sub_offset += ret;
+            if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
+                return BrotliResult::NeedsMoreOutput;
+            }
+            self.input_sub_offset = 0; // we're done
+            return BrotliResult::ResultSuccess;
+        }
+        let num_bytes_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer(),
+                                               core::cmp::min(num_bytes_left_in_cmd,
+                                                              copy.distance));
+        // by taking the min of copy.distance and items to copy, we are nonoverlapping
+        // this means we can use split_at_mut to cut the array into nonoverlapping segments
+        if num_bytes_to_copy != num_bytes_left_in_cmd {
+            return BrotliResult::NeedsMoreOutput;
+        }
+        self.input_sub_offset = 0; // we're done
         BrotliResult::ResultSuccess
     }
     fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> BrotliResult {
@@ -181,7 +237,10 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
                  }
                  res = self.parse_command(cmd);
                  match res {
-                    BrotliResult::ResultSuccess => break, // move on to the next command
+                    BrotliResult::ResultSuccess => {
+                        assert_eq!(self.input_sub_offset, 0); // done w/this command, no partial work
+                        break;
+                    }, // move on to the next command
                     BrotliResult::NeedsMoreOutput => continue, // flush, and try again
                     _ => return res,
                  }
