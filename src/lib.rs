@@ -40,6 +40,139 @@ pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> 
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
 }
+mod test {
+    use super::BrotliResult;
+    const TEST_RING_SIZE: usize = 1<<7;
+    struct ExRingBuffer([u8;TEST_RING_SIZE]);
+    impl Default for ExRingBuffer {
+        fn default() -> Self {
+            ExRingBuffer([0u8;TEST_RING_SIZE])
+        }
+    }
+    impl super::SliceWrapperMut<u8> for ExRingBuffer {
+        fn slice_mut(&mut self) -> &mut [u8] {
+            return &mut self.0[..];
+        }
+    }
+    impl super::SliceWrapper<u8> for ExRingBuffer {
+        fn slice(&self) -> &[u8] {
+            return &self.0[..];
+        }
+    }
+    #[allow(unused)]
+    fn make_ring_buffer_state() -> super::DivansRecodeState<ExRingBuffer>{
+        super::DivansRecodeState{
+            input_sub_offset: 0,
+            ring_buffer: ExRingBuffer::default(),
+            ring_buffer_decode_index:0,
+            ring_buffer_output_index:0,
+        }
+    }
+    #[allow(unused)]
+    fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> super::DivansRecodeState<ExRingBuffer>{
+        for index in 0..6 {
+            let ret = state.parse_dictionary(&super::DictCommand{
+                word_size:22,
+                transform:1,
+                final_size:23,
+                _empty:0,
+                word_id:index
+            });
+            match ret {
+                BrotliResult::ResultSuccess => assert!(index < 5),
+                BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
+                _ => panic!("Unexpected code from dict parsing"),
+            }
+        }
+        let mut flush_buffer = [0u8; 31];
+        let mut oindex = 0;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(flush_buffer,
+                   [100, 101, 115, 99, 114, 105, 112, 116,
+                    105, 111, 110, 34, 32, 99, 111, 110,
+                    116, 101, 110, 116, 61, 34, 32, 100,
+                    111, 99, 117, 109, 101, 110, 116]);
+        assert_eq!(oindex, flush_buffer.len());
+        oindex = 0;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, flush_buffer.len());
+        assert_eq!(flush_buffer,
+                   [46, 108, 111, 99, 97, 116, 105, 111,
+                    110, 46, 112, 114, 111, 116, 32, 46,
+                    103, 101, 116, 69, 108, 101, 109, 101,
+                    110, 116, 115, 66, 121, 84, 97]);
+        oindex = 3;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, flush_buffer.len());
+        assert_eq!(flush_buffer,
+                   [46, 108, 111, 103, 78, 97, 109, 101,
+                    40, 32, 60, 33, 68, 79, 67, 84,
+                    89, 80, 69, 32, 104, 116, 109, 108,
+                    62, 10, 60, 104, 116, 109, 108]);
+        oindex = 0;
+        for item in flush_buffer.iter_mut() {*item = 0;}
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, 25); // only wrote 31 * 3 - 3 + 25 bytes
+        assert_eq!(flush_buffer,
+                   [32, 32, 60, 109, 101, 116, 97, 32,
+                    99, 104, 97, 114, 115, 101, 116,61,
+                    34, 117, 116, 102, 45, 56, 34, 62,
+                    32, 0, 0, 0, 0, 0, 0]);
+        for index in 0..6 {
+            let ret = state.parse_dictionary(&super::DictCommand{
+                word_size:22,
+                transform:4,
+                final_size:23,
+                _empty:0,
+                word_id:index
+            });
+            match ret {
+                BrotliResult::ResultSuccess => assert!(index < 5),
+                BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
+                _ => panic!("Unexpected code from dict parsing"),
+            }
+        }
+        for item in flush_buffer.iter_mut() {*item = 0;}
+        let mut oindex = 0;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(flush_buffer,
+                   [68, 101, 115, 99, 114, 105, 112, 116,
+                    105, 111, 110, 34, 32, 99, 111, 110,
+                    116, 101, 110, 116, 61, 34, 32, 68,
+                    111, 99, 117, 109, 101, 110, 116]);
+        assert_eq!(oindex, flush_buffer.len());
+        oindex = 0;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, flush_buffer.len());
+        assert_eq!(flush_buffer,
+                   [46, 108, 111, 99, 97, 116, 105, 111,
+                    110, 46, 112, 114, 111, 116, 32, 46,
+                    103, 101, 116, 69, 108, 101, 109, 101,
+                    110, 116, 115, 66, 121, 84, 97]);
+        oindex = 3;
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, flush_buffer.len());
+        assert_eq!(flush_buffer,
+                   [46, 108, 111, 103, 78, 97, 109, 101,
+                    40, 32, 60, 33, 68, 79, 67, 84,
+                    89, 80, 69, 32, 104, 116, 109, 108,
+                    62, 10, 60, 104, 116, 109, 108]);
+        oindex = 0;
+        for item in flush_buffer.iter_mut() {*item = 0;}
+        state.flush(&mut flush_buffer[..], &mut oindex);
+        assert_eq!(oindex, 25); // only wrote 31 * 3 - 3 + 25 bytes
+        assert_eq!(flush_buffer,
+                   [32, 32, 60, 109, 101, 116, 97, 32,
+                    99, 104, 97, 114, 115, 101, 116,61,
+                    34, 117, 116, 102, 45, 56, 34, 62,
+                    32, 0, 0, 0, 0, 0, 0]);        
+        state
+    }
+    #[test]
+    fn test_ring_buffer_dict() {
+        help_ring_buffer_dict(make_ring_buffer_state());
+    }
+}
 const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
@@ -90,7 +223,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         BrotliResult::ResultSuccess
     }
     fn decode_space_left_in_ring_buffer(&self) -> u32 {
-        if self.ring_buffer_output_index < self.ring_buffer_decode_index {
+        if self.ring_buffer_output_index <= self.ring_buffer_decode_index {
             return self.ring_buffer_output_index + self.ring_buffer.slice().len() as u32 - 1 - self.ring_buffer_decode_index;
         }
         return self.ring_buffer_output_index - 1 - self.ring_buffer_decode_index;
@@ -225,9 +358,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             // error: dictionary should never allow for partial words, since they fit in a small amount of space
             return BrotliResult::ResultFailure;
         }
-        if self.decode_space_left_in_ring_buffer() < kBrotliMaxDictionaryWordLength as u32 + 13 {
-            return BrotliResult::NeedsMoreOutput;
-        }
         let copy_len = dict_cmd.word_size as u32;
         let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
         let word_index = (dict_cmd.word_id * copy_len) + word_len_category_index;
@@ -238,6 +368,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
                                                 &word[..],
                                                 copy_len as i32,
                                                 dict_cmd.transform as i32);
+        if self.decode_space_left_in_ring_buffer() < final_len as u32 {
+            return BrotliResult::NeedsMoreOutput;
+        }
         if dict_cmd.final_size != 0 && final_len as usize != dict_cmd.final_size as usize {
             return BrotliResult::ResultFailure;
         }
