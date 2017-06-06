@@ -203,7 +203,7 @@ mod test {
     }
     #[allow(unused)]
     fn assert_state_equals_history_buffer(state: &super::DivansRecodeState<ExRingBuffer>,
-                                          buffer: &mut [u8]) {
+                                          buffer: &[u8]) {
         for i in 0..TEST_RING_SIZE {
             let ring_index = if (state.ring_buffer_decode_index as usize) <= i {
                 state.ring_buffer_decode_index as usize + state.ring_buffer.slice().len() - i - 1
@@ -216,7 +216,7 @@ mod test {
     }
     #[allow(unused)]
     fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
-                 mut buffer: &mut [u8]) {
+                 buffer: &[u8]) {
         assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
         assert_state_equals_history_buffer(&state, buffer);
         let mut scratch_buffer = [0u8; TEST_RING_SIZE];
