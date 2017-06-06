@@ -245,6 +245,64 @@ mod test {
         assert_eq!(first_readout[60..64], first_copy_data[0..4]);
         assert_eq!(first_readout[64], 0);
     }
+    #[allow(unused)]
+    fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
+                 buffer: &[u8]) {
+        assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+        assert_state_equals_history_buffer(&state, buffer);
+        let mut scratch_buffer = [0u8; TEST_RING_SIZE];
+        let mut count = 0;
+        for _i in 0..16 {
+            count += 1;
+            match state.parse_copy(&super::CopyCommand{distance:125,
+                                                       num_bytes:258}) {
+                BrotliResult::NeedsMoreOutput=>{},
+                BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
+                res => panic!(res),
+            }
+        }
+        assert_eq!(count, 1); // this is not necessary for correctness
+        // this just asserts that the algorithm did the job in one go
+        let mut first_copy_data = [0u8;125];
+        first_copy_data.clone_from_slice(&buffer[(TEST_RING_SIZE - 125)..TEST_RING_SIZE]);
+        let mut first_readout = [0u8;128];
+        let mut first_index = 0;
+        state.flush(&mut first_readout, &mut first_index);
+        for _i in 0..16 {
+            count += 1;
+            match state.parse_copy(&super::CopyCommand{distance:125,
+                                                       num_bytes:258}) {
+                BrotliResult::NeedsMoreOutput=>{},
+                BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
+                res => panic!(res),
+            }
+        }
+        let mut sec_readout = [0u8;128];
+        let mut sec_index = 0;
+        state.flush(&mut sec_readout, &mut sec_index);
+        assert_eq!(first_index, 127);
+
+        assert_eq!(first_readout[..125], first_copy_data);
+        assert_eq!(first_readout[125..127], first_copy_data[..2]);
+
+        assert_eq!(sec_index, 127);
+        assert_eq!(sec_readout[0..123], first_copy_data[..123]);
+        assert_eq!(sec_readout[123..127], first_copy_data[..4]);
+        for _i in 0..16 {
+            count += 1;
+            match state.parse_copy(&super::CopyCommand{distance:125,
+                                                       num_bytes:258}) {
+                BrotliResult::NeedsMoreOutput=>{},
+                BrotliResult::ResultSuccess=>break,
+                res => panic!(res),
+            }
+        }
+        let mut last_readout = [0u8;128];
+        let mut last_index = 0;
+        state.flush(&mut last_readout, &mut last_index);
+        assert_eq!(last_index, 4);
+        assert_eq!(last_readout[0..4], first_copy_data[4..8]);
+    }
     #[test]
     fn test_ring_buffer_dict() {
         help_ring_buffer_dict(make_ring_buffer_state());
@@ -283,6 +341,13 @@ mod test {
         let mut prev_buffer = [0u8; TEST_RING_SIZE];
         prev_buffer.clone_from_slice(&HISTORY_OF_DICT_TEST[..]);
         help_copy_near_overlap(state, &mut prev_buffer[..]);
+    }
+    #[test]
+    fn test_copy_big_overlap() {
+        let state = help_ring_buffer_dict(make_ring_buffer_state());
+        let mut prev_buffer = [0u8; TEST_RING_SIZE];
+        prev_buffer.clone_from_slice(&HISTORY_OF_DICT_TEST[..]);
+        help_copy_big_overlap(state, &mut prev_buffer[..]);
     }
     
 }
