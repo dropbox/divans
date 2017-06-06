@@ -252,7 +252,7 @@ mod test {
         assert_state_equals_history_buffer(&state, buffer);
         let mut scratch_buffer = [0u8; TEST_RING_SIZE];
         let mut count = 0;
-        for _i in 0..16 {
+        for _i in 0..256 {
             count += 1;
             match state.parse_copy(&super::CopyCommand{distance:125,
                                                        num_bytes:258}) {
@@ -261,14 +261,14 @@ mod test {
                 res => panic!(res),
             }
         }
-        assert_eq!(count, 1); // this is not necessary for correctness
+        assert_eq!(count, 256); // this is not necessary for correctness
         // this just asserts that the algorithm did the job in one go
         let mut first_copy_data = [0u8;125];
         first_copy_data.clone_from_slice(&buffer[(TEST_RING_SIZE - 125)..TEST_RING_SIZE]);
         let mut first_readout = [0u8;128];
         let mut first_index = 0;
         state.flush(&mut first_readout, &mut first_index);
-        for _i in 0..16 {
+        for _i in 0..64 {
             count += 1;
             match state.parse_copy(&super::CopyCommand{distance:125,
                                                        num_bytes:258}) {
@@ -282,12 +282,16 @@ mod test {
         state.flush(&mut sec_readout, &mut sec_index);
         assert_eq!(first_index, 127);
 
-        assert_eq!(first_readout[..125], first_copy_data);
+        assert_eq!(first_readout[..64], first_copy_data[..64]);
+        assert_eq!(first_readout[64..125], first_copy_data[64..]);
+        assert_eq!(first_readout[125..127], first_copy_data[..2]);
+        assert_eq!(first_readout[..64], first_copy_data[..64]);
+        assert_eq!(first_readout[64..125], first_copy_data[64..]);
         assert_eq!(first_readout[125..127], first_copy_data[..2]);
 
         assert_eq!(sec_index, 127);
-        assert_eq!(sec_readout[0..123], first_copy_data[..123]);
-        assert_eq!(sec_readout[123..127], first_copy_data[..4]);
+        assert_eq!(sec_readout[0..123], first_copy_data[2..125]);
+        assert_eq!(sec_readout[123..127], first_copy_data[0..4]);
         for _i in 0..16 {
             count += 1;
             match state.parse_copy(&super::CopyCommand{distance:125,
@@ -440,7 +444,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             src_distance_index = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32 - distance;
         }
         let left_src_before_wrap = self.ring_buffer.slice().len() as u32 - src_distance_index;
-        let trunc_amount_to_copy = core::cmp::min(core::cmp::min(left_dst_before_wrap,
+        let mut trunc_amount_to_copy = core::cmp::min(core::cmp::min(left_dst_before_wrap,
                                                                  left_src_before_wrap),
                                                   desired_amount_to_copy);
         if src_distance_index < self.ring_buffer_decode_index {
@@ -450,6 +454,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         } else {
             let (_unused, dst_and_src) = self.ring_buffer.slice_mut().split_at_mut(self.ring_buffer_decode_index as usize);
             let (dst, src) = dst_and_src.split_at_mut((src_distance_index - self.ring_buffer_decode_index) as usize);
+            trunc_amount_to_copy = core::cmp::min(trunc_amount_to_copy, core::cmp::min(dst.len(),
+                                                                                       src.len()) as u32);
             dst.split_at_mut(trunc_amount_to_copy as usize).0.clone_from_slice(src.split_at_mut(trunc_amount_to_copy as usize).0);            
         }
         self.ring_buffer_decode_index += trunc_amount_to_copy;
