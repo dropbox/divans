@@ -41,6 +41,7 @@ pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> 
     ring_buffer_output_index: u32,
 }
 mod test {
+    use alloc::SliceWrapper;
     use super::BrotliResult;
     const TEST_RING_SIZE: usize = 1<<7;
     struct ExRingBuffer([u8;TEST_RING_SIZE]);
@@ -168,10 +169,122 @@ mod test {
                     32, 0, 0, 0, 0, 0, 0]);        
         state
     }
+    #[allow(unused)]
+    fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
+                 mut buffer: &mut [u8]) -> super::DivansRecodeState<ExRingBuffer> {
+        assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+        assert_state_equals_history_buffer(&state, buffer);
+        let mut scratch_buffer = [0u8; TEST_RING_SIZE];
+        let mut count = 0;
+        for _i in 0..4 {
+            count += 1;
+            match state.parse_copy(&super::CopyCommand{distance:112,
+                                                      num_bytes:29}) {
+                BrotliResult::NeedsMoreOutput=>{},
+                BrotliResult::ResultSuccess=>break,
+                res => panic!(res),
+            }
+        }
+        assert_eq!(count, 3); // this is not necessary for correctness
+        // this just asserts that the algorithm broke the job into 3 pieces... the piece
+        // that copied the first chunk of data (wrapping around the ring by 10),
+        // the piece that copied the second chunk and the rest.
+        let mut first_copy_data = [0u8;29];
+        let mut first_readout = [0u8;29];
+        first_copy_data.clone_from_slice(&buffer[(TEST_RING_SIZE - 112)..(TEST_RING_SIZE - 112 + 29)]);
+
+        scratch_buffer[..(TEST_RING_SIZE - 29)].clone_from_slice(&buffer[29..]);
+        scratch_buffer[(TEST_RING_SIZE - 29)..].clone_from_slice(&first_copy_data[..]);
+        let mut first_index = 0;
+        state.flush(&mut first_readout, &mut first_index);
+        assert_eq!(first_index, 29);
+        assert_eq!(first_readout, first_copy_data);
+        state
+    }
+    #[allow(unused)]
+    fn assert_state_equals_history_buffer(state: &super::DivansRecodeState<ExRingBuffer>,
+                                          buffer: &mut [u8]) {
+        for i in 0..TEST_RING_SIZE {
+            let ring_index = if (state.ring_buffer_decode_index as usize) <= i {
+                state.ring_buffer_decode_index as usize + state.ring_buffer.slice().len() - i - 1
+            } else {
+                state.ring_buffer_decode_index as usize - i - 1
+            };
+            let flat_index = TEST_RING_SIZE - 1 - i;
+            assert_eq!(buffer[flat_index], state.ring_buffer.slice()[ring_index]);
+        }
+    }
+    #[allow(unused)]
+    fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
+                 mut buffer: &mut [u8]) {
+        assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+        assert_state_equals_history_buffer(&state, buffer);
+        let mut scratch_buffer = [0u8; TEST_RING_SIZE];
+        let mut count = 0;
+        for _i in 0..4 {
+            count += 1;
+            match state.parse_copy(&super::CopyCommand{distance:15,
+                                                       num_bytes:64}) {
+                BrotliResult::NeedsMoreOutput=>{},
+                BrotliResult::ResultSuccess=>break,
+                res => panic!(res),
+            }
+        }
+        assert_eq!(count, 1); // this is not necessary for correctness
+        // this just asserts that the algorithm did the job in one go
+        let mut first_copy_data = [0u8;15];
+        let mut first_readout = [0u8;65];
+        first_copy_data.clone_from_slice(&buffer[(TEST_RING_SIZE - 15)..TEST_RING_SIZE]);
+        
+        let mut first_index = 0;
+        state.flush(&mut first_readout, &mut first_index);
+        assert_eq!(first_index, 64);
+        assert_eq!(first_readout[..15], first_copy_data);
+        assert_eq!(first_readout[15..30], first_copy_data);
+        assert_eq!(first_readout[45..60], first_copy_data);
+        assert_eq!(first_readout[60..64], first_copy_data[0..4]);
+        assert_eq!(first_readout[64], 0);
+    }
     #[test]
     fn test_ring_buffer_dict() {
         help_ring_buffer_dict(make_ring_buffer_state());
     }
+    #[allow(unused)]
+    static HISTORY_OF_DICT_TEST:[u8; TEST_RING_SIZE] = [
+            115, 101, 116,61,
+            34, 117, 116, 102, 45, 56, 34, 62,
+            32,
+            68, 101, 115, 99, 114, 105, 112, 116,
+            105, 111, 110, 34, 32, 99, 111, 110,
+            116, 101, 110, 116, 61, 34, 32, 68,
+            111, 99, 117, 109, 101, 110, 116,
+            46, 108, 111, 99, 97, 116, 105, 111,
+            110, 46, 112, 114, 111, 116, 32, 46,
+            103, 101, 116, 69, 108, 101, 109, 101,
+            110, 116, 115, 66, 121, 84, 97,
+            /* oindex was 3 on this line above */103, 78, 97, 109, 101,
+            40, 32, 60, 33, 68, 79, 67, 84,
+            89, 80, 69, 32, 104, 116, 109, 108,
+            62, 10, 60, 104, 116, 109, 108,
+            32, 32, 60, 109, 101, 116, 97, 32,
+            99, 104, 97, 114, 115, 101, 116,61,
+            34, 117, 116, 102, 45, 56, 34, 62,
+            32];
+    #[test]
+    fn test_copy_far() {
+        let state = help_ring_buffer_dict(make_ring_buffer_state());
+        let mut prev_buffer = [0u8; TEST_RING_SIZE];
+        prev_buffer.clone_from_slice(&HISTORY_OF_DICT_TEST[..]);
+        help_copy_far(state, &mut prev_buffer[..]);
+    }
+    #[test]
+    fn test_copy_near_overlap() {
+        let state = help_ring_buffer_dict(make_ring_buffer_state());
+        let mut prev_buffer = [0u8; TEST_RING_SIZE];
+        prev_buffer.clone_from_slice(&HISTORY_OF_DICT_TEST[..]);
+        help_copy_near_overlap(state, &mut prev_buffer[..]);
+    }
+    
 }
 const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
