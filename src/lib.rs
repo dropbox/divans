@@ -41,6 +41,8 @@ pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> 
     ring_buffer_output_index: u32,
 }
 mod test {
+
+    use core;
     use alloc::SliceWrapper;
     use super::BrotliResult;
     const TEST_RING_SIZE: usize = 1<<7;
@@ -332,6 +334,36 @@ mod test {
             99, 104, 97, 114, 115, 101, 116,61,
             34, 117, 116, 102, 45, 56, 34, 62,
             32];
+    #[allow(unused)]
+    struct SimpleSliceWrapper<'a> (&'a [u8]);
+    impl<'a> super::alloc::SliceWrapper<u8> for SimpleSliceWrapper<'a> {
+      fn slice(&self) -> &[u8] {
+         self.0
+      }
+    }
+    #[allow(unused)]
+    fn help_test_insert(mut state: super::DivansRecodeState<ExRingBuffer>,
+                        values_to_insert: &[u8]) -> super::DivansRecodeState<ExRingBuffer> {
+        let mut values_to_read = values_to_insert;
+        let mut last_readout = [0u8;64];
+        let mut last_index = 0;
+        let mut done = false;
+        while !done {
+            state.flush(&mut last_readout, &mut last_index);
+            if last_index == 0 {
+                match state.parse_literal(&super::LiteralCommand{data:SimpleSliceWrapper(values_to_insert)}) {
+                    BrotliResult::NeedsMoreOutput=>{},
+                    BrotliResult::ResultSuccess=>{done=true;},
+                    res => panic!(res),
+                }               
+                state.flush(&mut last_readout, &mut last_index);
+            }
+            assert_eq!(&last_readout[0..last_index], &values_to_read[..last_index]);
+            values_to_read = values_to_read.split_at(last_index).1;
+            last_index = 0;
+        }
+        state
+    }
     #[test]
     fn test_copy_far() {
         let state = help_ring_buffer_dict(make_ring_buffer_state());
@@ -352,6 +384,24 @@ mod test {
         let mut prev_buffer = [0u8; TEST_RING_SIZE];
         prev_buffer.clone_from_slice(&HISTORY_OF_DICT_TEST[..]);
         help_copy_big_overlap(state, &mut prev_buffer[..]);
+    }
+    #[test]
+    fn test_insert_medium() {
+        let state = help_ring_buffer_dict(make_ring_buffer_state());
+        let values: [u8;31] = [254,255,1,2,3,4,5,6,
+                               2,4,6,8,10,12,14,16,
+                               3,1,4,1,5,9,2,6,
+                               5,3,6,121,122,96,97];
+        help_test_insert(state, &values[..]);
+    }
+    #[test]
+    fn test_insert_huge() {
+        let state = help_ring_buffer_dict(make_ring_buffer_state());
+        let mut values: [u8;512] = [0;512];
+        for i in 0..512 {
+            values[i] = ((i * 2) & 255) as u8;
+        }
+        help_test_insert(state, &values[..]);
     }
     
 }
