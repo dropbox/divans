@@ -35,6 +35,12 @@ pub enum Command<SliceType:alloc::SliceWrapper<u8> > {
     Literal(LiteralCommand<SliceType>),
 }
 
+impl<SliceType:alloc::SliceWrapper<u8> > Command<SliceType> {
+    pub fn nop() -> Command<SliceType> {
+        Command::Copy(CopyCommand{distance:1, num_bytes:0})
+    }
+}
+
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default>{
     input_sub_offset: usize,
     ring_buffer: RingBuffer,
@@ -257,8 +263,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
               &Command::Literal(ref literal) => self.parse_literal(literal),
         }
     }
-    pub fn encode<SliceType:alloc::SliceWrapper<u8>>(&mut self,
-                  input:&[&Command<SliceType>],
+    pub fn recode<SliceType:alloc::SliceWrapper<u8>>(&mut self,
+                  input:&[Command<SliceType>],
                   input_offset : &mut usize,
                   output :&mut[u8],
                   output_offset: &mut usize) -> BrotliResult {
