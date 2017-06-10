@@ -32,20 +32,21 @@ impl SliceWrapperMut<u8> for DynBuffer {
 
 macro_rules! define_static_heap_buffer {
     ($name : ident, $size: expr) => {
-        pub struct $name<T:Sized+Default+Copy>(Box<[T;$size]>);
-        impl<T:Sized+Default+Copy> core::default::Default for $name<T> {
+        pub struct $name(Box<[u8;$size]>);
+        impl core::default::Default for $name {
             fn default() -> Self {
-                $name::<T>(Box::<[T;$size]>::new([T::default();$size]))
+                static DEFAULT_VALUE: [u8;$size] = [0u8;$size];
+                $name(Box::<[u8;$size]>::new(DEFAULT_VALUE))
             }
         }
-        impl<T:Sized+Default+Copy> SliceWrapper<T> for $name<T> {
-            fn slice(&self) -> &[T] {
+        impl SliceWrapper<u8> for $name {
+            fn slice(&self) -> &[u8] {
                 &*self.0
             }
         }
 
-        impl<T:Sized+Default+Copy> SliceWrapperMut<T> for $name<T> {
-            fn slice_mut(&mut self) -> &mut [T] {
+        impl SliceWrapperMut<u8> for $name {
+            fn slice_mut(&mut self) -> &mut [u8] {
                 &mut *self.0
             }
         }
