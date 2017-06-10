@@ -1,6 +1,10 @@
 extern crate core;
 extern crate divans;
 extern crate alloc_no_stdlib as alloc;
+#[cfg(test)]
+extern crate brotli_decompressor;
+
+mod integration_test;
 mod util;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
@@ -235,11 +239,11 @@ fn recode_cmd_buffer<Writer:std::io::Write,
     Ok(ret)
 }
 
-fn recode<Reader:std::io::BufRead,
-          Writer:std::io::Write,
-          RingBuffer:core::default::Default+SliceWrapper<u8>+SliceWrapperMut<u8>>(
+fn recode_inner<Reader:std::io::BufRead,
+                Writer:std::io::Write,
+                RingBuffer:core::default::Default+SliceWrapper<u8>+SliceWrapperMut<u8>>(
     mut r:&mut Reader,
-    mut w:&mut Writer) {
+    mut w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer = [Command::<ByteVec>::nop(),
@@ -266,7 +270,7 @@ fn recode<Reader:std::io::BufRead,
                 if e.kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                panic!(e);
+                return Err(e)
             },
             Ok(count) => {
                 if i_read_index == ibuffer.len() || count == 0 {
@@ -283,19 +287,22 @@ fn recode<Reader:std::io::BufRead,
             }
         }
     }
-    
+    Ok(())
 }
                 
-fn main() {
+fn recode<Reader:std::io::BufRead,
+          Writer:std::io::Write>(
+    mut r:&mut Reader,
+    mut w:&mut Writer) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
-        match io::stdin().read_line(&mut buffer) {
+        match r.read_line(&mut buffer) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                panic!(e);
+                return Err(e);
             },
             Ok(_) => {
                 let line = buffer.trim().to_string();
@@ -304,69 +311,73 @@ fn main() {
             }
         }
     }
-    let stdin = std::io::stdin();
-    let mut stdin = stdin.lock();
     match window_size {
-        10 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer10>(&mut stdin,
-                                               &mut std::io::stdout()),
-        11 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer11>(&mut stdin,
-                                               &mut std::io::stdout()),
-        12 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer12>(&mut stdin,
-                                         &mut std::io::stdout()),
-        13 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer13>(&mut stdin,
-                                         &mut std::io::stdout()),
-        14 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer14>(&mut stdin,
-                                         &mut std::io::stdout()),
-        15 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer15>(&mut stdin,
-                                         &mut std::io::stdout()),
-        16 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer16>(&mut stdin,
-                                         &mut std::io::stdout()),
-        17 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer17>(&mut stdin,
-                                         &mut std::io::stdout()),
-        18 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer18>(&mut stdin,
-                                         &mut std::io::stdout()),
-        19 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer19>(&mut stdin,
-                                         &mut std::io::stdout()),
-        20 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer20>(&mut stdin,
-                                         &mut std::io::stdout()),
-        21 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer21>(&mut stdin,
-                                         &mut std::io::stdout()),
-        22 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer22>(&mut stdin,
-                                         &mut std::io::stdout()),
-        23 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer23>(&mut stdin,
-                                         &mut std::io::stdout()),
-        24 => recode::<std::io::StdinLock,
-                     std::io::Stdout,
-                     util::StaticHeapBuffer24>(&mut stdin,
-                                         &mut std::io::stdout()),
-        _ => panic!(window_size),
-    };
+        10 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer10>(&mut r,
+                                               &mut w),
+        11 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer11>(&mut r,
+                                               &mut w),
+        12 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer12>(&mut r,
+                                         &mut w),
+        13 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer13>(&mut r,
+                                         &mut w),
+        14 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer14>(&mut r,
+                                         &mut w),
+        15 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer15>(&mut r,
+                                         &mut w),
+        16 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer16>(&mut r,
+                                         &mut w),
+        17 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer17>(&mut r,
+                                         &mut w),
+        18 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer18>(&mut r,
+                                         &mut w),
+        19 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer19>(&mut r,
+                                         &mut w),
+        20 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer20>(&mut r,
+                                         &mut w),
+        21 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer21>(&mut r,
+                                         &mut w),
+        22 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer22>(&mut r,
+                                         &mut w),
+        23 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer23>(&mut r,
+                                         &mut w),
+        24 => recode_inner::<Reader,
+                     Writer,
+                     util::StaticHeapBuffer24>(&mut r,
+                                         &mut w),
+        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Window size must be <=24 >= 10")),
+    }
+}
+fn main() {
+   let stdin = std::io::stdin();
+   let mut stdin = stdin.lock();
+   recode(&mut stdin,
+          &mut std::io::stdout()).unwrap()
 }

@@ -1,0 +1,7 @@
+window 22 len 22
+insert 0 
+dict 5 word 5,100 6f6674656e func 0 6f6674656e ctx 3
+insert 1 20
+dict 7 word 8,98 7265666572726572 func 12 72656665727265 ctx 3
+insert 9 6420746f2061732020
+window 22 len 22
