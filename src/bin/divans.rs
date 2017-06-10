@@ -58,7 +58,7 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     if window_vec.len() == 0 {
         panic!("Unexpected");
     }
-    if window_vec.len() != 2 {
+    if window_vec.len() < 2 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
                        "window needs 1 argument"));
     }
