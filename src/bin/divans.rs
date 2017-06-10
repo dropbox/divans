@@ -31,10 +31,7 @@ fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
         } else if byte == b'\n'|| byte == b'\t'|| byte == b'\r' {
                 continue;
             } else {
-                let err = [byte;1];
-                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          String::from("Invalid hex character ")
-                                          + &String::from(String::from_utf8_lossy(&err[..]))));
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, s.clone()));
         }        
         rem += 1;
         if rem == 2 {
@@ -84,8 +81,11 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
         panic!("Unexpected");
     }
     let cmd = &command_vec[0];
-    if cmd == "copy" {
-        if command_vec.len() != 4 {
+    if cmd == "window" {
+            // FIXME validate
+            return Ok(Command::Copy(CopyCommand{distance:1,num_bytes:0}));
+    } else if cmd == "copy" {
+        if command_vec.len() < 4 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "copy needs 4 arguments"));                
         }
@@ -208,7 +208,7 @@ fn recode_cmd_buffer<Writer:std::io::Write,
                 break;
             },
             BrotliResult::NeedsMoreOutput => {
-                assert_ne!(o_processed_index, 0);
+                assert!(o_processed_index != 0);
                 match w.write_all(output_scratch.split_at(o_processed_index).0) {
                     Err(x) => return Err(x),
                     Ok(_) => {},
@@ -226,7 +226,7 @@ fn recode_cmd_buffer<Writer:std::io::Write,
             }
         }
     }
-    assert_ne!(o_processed_index, 0);
+    assert!(o_processed_index != 0);
     match w.write_all(output_scratch.split_at(o_processed_index).0) {
         Err(x) => return Err(x),
         Ok(_) => {},
@@ -260,6 +260,7 @@ fn recode<Reader:std::io::BufRead,
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
     loop {
+        buffer.clear();
         match r.read_line(&mut buffer) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
@@ -271,6 +272,7 @@ fn recode<Reader:std::io::BufRead,
                 if i_read_index == ibuffer.len() || count == 0 {
                     recode_cmd_buffer(&mut state, &ibuffer.split_at(i_read_index).0, w,
                                       &mut obuffer[..]).unwrap();
+                    i_read_index = 0
                 }
                 if count == 0 {
                     break;
