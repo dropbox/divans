@@ -46,19 +46,22 @@ pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> 
     ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
-    pub mb_bytes_remaining: u32,
 }
 
 const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
+impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
+   fn default() -> Self {
+      DivansRecodeState::<RingBuffer>::new()
+   }
+}
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeState<RingBuffer> {
-    pub fn new(mb_size : u32) -> Self {
+    fn new() -> Self {
         DivansRecodeState {
             ring_buffer: RingBuffer::default(),
             ring_buffer_decode_index: 0,
             ring_buffer_output_index: 0,
             input_sub_offset: 0,
-            mb_bytes_remaining: mb_size,
         }
     }
     // this copies as much data as possible from the RingBuffer
@@ -125,8 +128,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
     //precondition: that there is sufficient room for amount_to_copy in buffer
     fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> u32 {
         desired_amount_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer() as u32,
-                                                core::cmp::min(desired_amount_to_copy,
-                                                self.mb_bytes_remaining));
+                                                desired_amount_to_copy);
         let left_dst_before_wrap = self.ring_buffer.slice().len() as u32 - self.ring_buffer_decode_index;
         let src_distance_index :u32;
         if self.ring_buffer_decode_index as u32 >= distance {
@@ -150,7 +152,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             dst.split_at_mut(trunc_amount_to_copy as usize).0.clone_from_slice(src.split_at_mut(trunc_amount_to_copy as usize).0);            
         }
         self.ring_buffer_decode_index += trunc_amount_to_copy;
-        self.mb_bytes_remaining -= trunc_amount_to_copy;
         if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.ring_buffer_decode_index =0;
         }
@@ -159,23 +160,19 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
 
     // takes in a buffer of data to copy to the ring buffer--returns the number of bytes persisted
     fn copy_to_ring_buffer(&mut self, mut data: &[u8]) -> usize {
-        data = data.split_at(core::cmp::min(core::cmp::min(data.len() as u32,
-                                                           self.mb_bytes_remaining),
-                                            self.decode_space_left_in_ring_buffer()) as usize).0;
+        data = data.split_at(core::cmp::min(data.len() as u32, self.decode_space_left_in_ring_buffer()) as usize).0;
         let mut retval = 0usize;
         let first_section = self.ring_buffer.slice_mut().len() as u32 - self.ring_buffer_decode_index;
         let amount_to_copy = core::cmp::min(data.len() as u32, first_section);
         let (data_first, data_second) = data.split_at(amount_to_copy as usize);
         self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index + amount_to_copy) as usize].clone_from_slice(data_first);
-        self.ring_buffer_decode_index += amount_to_copy;
-        self.mb_bytes_remaining -= amount_to_copy;
+        self.ring_buffer_decode_index += amount_to_copy as u32;
         retval += amount_to_copy as usize;
         if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.ring_buffer_decode_index = 0;
             let second_amount_to_copy = data_second.len();
             self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index as usize + second_amount_to_copy)].clone_from_slice(data_second.split_at(second_amount_to_copy).0);
             self.ring_buffer_decode_index += second_amount_to_copy as u32;
-            self.mb_bytes_remaining -= second_amount_to_copy as u32;
             retval += second_amount_to_copy;
         }
         retval
@@ -203,12 +200,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             let mut src = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32 - copy.distance;
             src &= self.ring_buffer.slice().len() as u32 - 1;
             let src_val = self.ring_buffer.slice()[src as usize];
-            if self.mb_bytes_remaining == 0 {
-                continue; // avoid copying off end of buffer
-            }
             self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize] = src_val;
             self.ring_buffer_decode_index += 1;
-            self.mb_bytes_remaining -= 1;
             if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
                self.ring_buffer_decode_index = 0;
             }

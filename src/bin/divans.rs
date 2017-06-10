@@ -53,22 +53,18 @@ impl alloc::SliceWrapper<u8> for ByteVec {
         return &self.0[..];
     }
 }
-fn window_parse(s : String, mut mb_len: &mut u32) -> Result<i32, io::Error> {
+fn window_parse(s : String) -> Result<i32, io::Error> {
     let window_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if window_vec.len() == 0 {
         panic!("Unexpected");
     }
-    if window_vec.len() != 4 {
+    if window_vec.len() != 2 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
                        "window needs 1 argument"));
     }
     if window_vec[0] != "window" {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
                        "first arg must be window followed by log window size"));
-    }
-    if window_vec[2] != "len" {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                       "second arg must be len"));
     }
     let expected_window_size = match window_vec[1].parse::<i32>() {
         Ok(el) => el,
@@ -77,38 +73,17 @@ fn window_parse(s : String, mut mb_len: &mut u32) -> Result<i32, io::Error> {
                                       msg.description()));
         }
     };
-    *mb_len = match window_vec[3].parse::<u32>() {
-        Ok(el) => el,
-        Err(msg) => {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      msg.description()));
-        }
-    };
     return Ok(expected_window_size)
 }
-fn command_parse(s : String, mut bytes_remaining: &mut u32) -> Result<Command<ByteVec>, io::Error> {
+fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
     let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
     }
     let cmd = &command_vec[0];
     if cmd == "window" {
-        if command_vec.len() != 4 {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "window needs 3 arguments (<window_size> len <mb_size>"));
-        }
-        if command_vec[2] != "len" {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "window second arg needs to be len: <window_size> len <mb_size>"));
-        }
-        *bytes_remaining = match command_vec[3].parse::<u32>() {
-            Ok(mb_len) => mb_len,
-            Err(msg) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          msg.description()));
-            }
-        };
-        return Ok(Command::Copy(CopyCommand{distance:1,num_bytes:0}));
+            // FIXME validate
+            return Ok(Command::Copy(CopyCommand{distance:1,num_bytes:0}));
     } else if cmd == "copy" {
         if command_vec.len() < 4 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -264,8 +239,7 @@ fn recode<Reader:std::io::BufRead,
           Writer:std::io::Write,
           RingBuffer:core::default::Default+SliceWrapper<u8>+SliceWrapperMut<u8>>(
     mut r:&mut Reader,
-    mut w:&mut Writer,
-    first_mb_size: u32) {
+    mut w:&mut Writer) {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer = [Command::<ByteVec>::nop(),
@@ -284,7 +258,7 @@ fn recode<Reader:std::io::BufRead,
                        Command::<ByteVec>::nop(),
                        Command::<ByteVec>::nop()];
     let mut i_read_index = 0usize;
-    let mut state = divans::DivansRecodeState::<RingBuffer>::new(first_mb_size);
+    let mut state = divans::DivansRecodeState::<RingBuffer>::default();
     loop {
         buffer.clear();
         match r.read_line(&mut buffer) {
@@ -304,16 +278,8 @@ fn recode<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                let mut bytes_rem : u32 = 0;
-                ibuffer[i_read_index] = command_parse(line,
-                                                      &mut bytes_rem).unwrap();
+                ibuffer[i_read_index] = command_parse(line).unwrap();
                 i_read_index += 1;
-                if bytes_rem != 0 {
-                    recode_cmd_buffer(&mut state, &ibuffer.split_at(i_read_index).0, w,
-                                      &mut obuffer[..]).unwrap();
-                    i_read_index = 0;
-                    state.mb_bytes_remaining = bytes_rem;
-                }
             }
         }
     }
@@ -322,7 +288,6 @@ fn recode<Reader:std::io::BufRead,
                 
 fn main() {
     let window_size : i32;
-    let mut mb_len : u32 = 0;
     let mut buffer = String::new();
     loop {
         match io::stdin().read_line(&mut buffer) {
@@ -334,8 +299,7 @@ fn main() {
             },
             Ok(_) => {
                 let line = buffer.trim().to_string();
-                window_size = window_parse(line,
-                                           &mut mb_len).unwrap();
+                window_size = window_parse(line).unwrap();
                 break;
             }
         }
@@ -346,78 +310,63 @@ fn main() {
         10 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer10>(&mut stdin,
-                                               &mut std::io::stdout(),
-                                               mb_len),
+                                               &mut std::io::stdout()),
         11 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer11>(&mut stdin,
-                                               &mut std::io::stdout(),
-                                               mb_len),
+                                               &mut std::io::stdout()),
         12 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer12>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         13 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer13>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         14 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer14>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         15 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer15>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         16 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer16>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         17 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer17>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         18 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer18>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         19 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer19>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         20 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer20>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         21 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer21>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         22 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer22>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         23 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer23>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         24 => recode::<std::io::StdinLock,
                      std::io::Stdout,
                      util::StaticHeapBuffer24>(&mut stdin,
-                                         &mut std::io::stdout(),
-                                               mb_len),
+                                         &mut std::io::stdout()),
         _ => panic!(window_size),
     };
 }
