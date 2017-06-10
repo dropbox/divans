@@ -192,7 +192,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
        self.input_sub_offset = 0;
        BrotliResult::ResultSuccess
     }
-    fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
+    #[allow(unused)]
+    fn parse_copy_simplified(&mut self, copy:&CopyCommand) -> BrotliResult {
         for _i in (self.input_sub_offset as usize)..(copy.num_bytes as usize){
             if (self.ring_buffer_decode_index + 1 & (self.ring_buffer.slice().len() as u32 - 1)) == self.ring_buffer_output_index {
                return BrotliResult::NeedsMoreOutput;
@@ -207,6 +208,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
             }
         }
         return BrotliResult::ResultSuccess;
+    }
+    fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
         let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset as u32;
         if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
             let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,

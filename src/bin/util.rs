@@ -30,6 +30,7 @@ impl SliceWrapperMut<u8> for DynBuffer {
   }
 }
 
+#[cfg(feature="inplace-new")]
 macro_rules! define_static_heap_buffer {
     ($name : ident, $size: expr) => {
         pub struct $name(Box<[u8;$size]>);
@@ -48,6 +49,29 @@ macro_rules! define_static_heap_buffer {
         impl SliceWrapperMut<u8> for $name {
             fn slice_mut(&mut self) -> &mut [u8] {
                 &mut *self.0
+            }
+        }
+    }
+}
+
+#[cfg(not(feature="inplace-new"))]
+macro_rules! define_static_heap_buffer {
+    ($name : ident, $size: expr) => {
+        pub struct $name(DynBuffer);
+        impl core::default::Default for $name {
+            fn default() -> Self {
+                $name(DynBuffer((vec![0u8;$size]).into_boxed_slice()))
+            }
+        }
+        impl SliceWrapper<u8> for $name {
+            fn slice(&self) -> &[u8] {
+                (&*(self.0).0).split_at($size).0
+            }
+        }
+
+        impl SliceWrapperMut<u8> for $name {
+            fn slice_mut(&mut self) -> &mut [u8] {
+                (&mut *(self.0).0).split_at_mut($size).0
             }
         }
     }
