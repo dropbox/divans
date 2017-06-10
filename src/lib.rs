@@ -1,4 +1,5 @@
-extern crate core;
+#![no_std]
+
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 mod test;

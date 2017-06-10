@@ -1,7 +1,7 @@
 #![cfg(test)]
 extern crate core;
 use std::io;
-#[cfg(not(feature="no-stdlib"))]
+
 use std::io::Write;
 use core::cmp;
 use super::brotli_decompressor::BrotliResult;

@@ -141,7 +141,7 @@ fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
                                                   num_bytes:29}) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
-            res => panic!(res),
+            res => panic!("UH OH"),
         }
     }
     assert_eq!(count, 3); // this is not necessary for correctness
@@ -186,7 +186,7 @@ fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
                                                    num_bytes:64}) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
-            res => panic!(res),
+            res => panic!("UH OH"),
         }
     }
     assert_eq!(count, 1); // this is not necessary for correctness
@@ -217,7 +217,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
                                                    num_bytes:258}) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
-            res => panic!(res),
+            res => panic!("uh oh"),
         }
     }
     assert_eq!(count, 256); // this is not necessary for correctness
@@ -233,7 +233,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
                                                    num_bytes:258}) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
-            res => panic!(res),
+            res => panic!("uh oh"),
         }
     }
     let mut sec_readout = [0u8;128];
@@ -257,7 +257,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
                                                    num_bytes:258}) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
-            res => panic!(res),
+            res => panic!("uh oh"),
         }
     }
     let mut last_readout = [0u8;128];
@@ -311,7 +311,7 @@ fn help_test_insert(mut state: super::DivansRecodeState<ExRingBuffer>,
             match state.parse_literal(&super::LiteralCommand{data:SimpleSliceWrapper(values_to_insert)}) {
                 BrotliResult::NeedsMoreOutput=>{},
                 BrotliResult::ResultSuccess=>{done=true;},
-                res => panic!(res),
+                res => panic!("uh oh"),
             }               
             state.flush(&mut last_readout, &mut last_index);
         }
