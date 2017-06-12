@@ -16,23 +16,21 @@ const CDF_MAX : Prob = 32767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 impl CDF16 {
     pub fn valid(&self) -> bool { // nonzero everywhere
-        let prev = self.0[0];
-        if prev != 0 {
-            return false;
-        }
-        for item in self.0[1..].iter() {
+        let prev = 0;
+        for item in self.0[..15].iter() {
             if *item <= prev || !(*item <= CDF_MAX) {
                 return false;
             }
         }
+        assert_eq!(self.0[15], CDF_LIMIT as Prob);
         return true;
     }
     pub fn float_array(&self) -> [f32; 16]{
         let mut ret = [0.0f32; 16];
-        for i in 0..15 {
-            ret[i] = ((self.0[i+1] - self.0[i]) as f32) / CDF_LIMIT as f32;
+        for i in 1..16 {
+            ret[i] = ((self.0[i+1].wrapping_sub(self.0[i])) as f32) / CDF_LIMIT as f32;
         }
-        ret[15] = ((CDF_LIMIT - self.0[15] as i64) as f32) / CDF_LIMIT as f32;
+        ret[0] = self.0[0] as f32 / CDF_LIMIT as f32;
         for i in 0..16 {
             ret[i] *= 16.0f32;
         }
@@ -42,7 +40,7 @@ impl CDF16 {
 impl Default for CDF16 {
     fn default() -> CDF16 {
         const DEFAULT : CDF16 =
-            CDF16([0,
+            CDF16([
              (1 * CDF_LIMIT / 16) as Prob,
              (2 * CDF_LIMIT / 16) as Prob,
              (3 * CDF_LIMIT / 16) as Prob,
@@ -57,7 +55,8 @@ impl Default for CDF16 {
              (12 * CDF_LIMIT / 16) as Prob,
              (13 * CDF_LIMIT / 16) as Prob,
              (14 * CDF_LIMIT / 16) as Prob,
-             (15 * CDF_LIMIT / 16) as Prob]);
+             (15 * CDF_LIMIT / 16) as Prob,
+             CDF_LIMIT as Prob]);
         DEFAULT 
     }
 }
@@ -95,14 +94,19 @@ macro_rules! each16bin {
            $func($src0[15], $src1[15])])
     }
 }
+#[allow(unused)]
 fn gt(a:Prob, b:Prob) -> Prob {
     (-((a > b) as i64)) as Prob
+}
+#[allow(unused)]
+fn gte(a:Prob, b:Prob) -> Prob {
+    (-((a >= b) as i64)) as Prob
 }
 fn and(a:Prob, b:Prob) -> Prob {
     a & b
 }
 fn add(a:Prob, b:Prob) -> Prob {
-    a + b
+    a.wrapping_add(b)
 }
 
 const BLEND_FIXED_POINT_PRECISION : i8 = 15;
@@ -136,51 +140,53 @@ pub fn blend(baseline :CDF16, symbol: u8, blend : i32, bias : i32) ->CDF16 {
                                 epi32[7] as i16,
                                 0,0,0,0,0,0,0,0]);
     let mut epi32:[i32;8] = [to_blend.0[8] as i32,
-                        to_blend.0[9] as i32,
-                        to_blend.0[10] as i32,
-                        to_blend.0[11] as i32,
-                        to_blend.0[12] as i32,
-                        to_blend.0[13] as i32,
-                        to_blend.0[14] as i32,
-                        to_blend.0[15] as i32];
+                             to_blend.0[9] as i32,
+                             to_blend.0[10] as i32,
+                             to_blend.0[11] as i32,
+                             to_blend.0[12] as i32,
+                             to_blend.0[13] as i32,
+                             to_blend.0[14] as i32,
+                             to_blend.0[15] as i32];
     for i in 8..16 {
         epi32[i - 8] *= blend;
         epi32[i - 8] += baseline.0[i] as i32 * scale_minus_blend + bias;
         retval.0[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as i16;
     }
+    retval.0[15] = CDF_LIMIT as Prob;
     retval
 }
 
 fn to_blend(symbol: u8) -> CDF16 {
     let delta: Prob = CDF_MAX - 15;
     const CDF_INDEX : CDF16 = CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+    const BASELINE : CDF16 = CDF16([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]);
     let symbol16 = CDF16([symbol as i16; 16]);
     let delta16 = CDF16([delta; 16]);
-    let mask_symbol = each16bin!(CDF_INDEX.0, symbol16.0, gt);
+    let mask_symbol = each16bin!(CDF_INDEX.0, symbol16.0, gte);
     let add_mask = each16bin!(delta16.0, mask_symbol.0, and);
-    let to_blend = each16bin!(CDF_INDEX.0, add_mask.0, add);
+    let to_blend = each16bin!(BASELINE.0, add_mask.0, add);
     to_blend
 }
 
 fn to_blend_lut(symbol: u8) -> CDF16 {
     const DEL: Prob = CDF_MAX - 15;
     static CDF_SELECTOR : [CDF16;16] = [
-        CDF16([0,1+DEL,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12+DEL,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12,13+DEL,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14+DEL,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15+DEL]),
-        CDF16([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])];
+        CDF16([1+DEL,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11,12,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11,12,13,14+DEL,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15+DEL, CDF_LIMIT as Prob]),
+        CDF16([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15, CDF_LIMIT as Prob])];
     CDF_SELECTOR[symbol as usize].clone()
 }
 
@@ -245,7 +251,7 @@ mod test {
                            1000000,
                            128,
                            0,
-                           super::CDF16([0,1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071]));
+                           super::CDF16([1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,-32768]));
                             
     }
 }
