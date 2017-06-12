@@ -2,13 +2,13 @@
 
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
+mod probability;
 mod test;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
 use brotli_decompressor::transform::{TransformDictionaryWord};
-
 #[derive(Debug)]
 pub struct CopyCommand {
     pub distance: u32,
