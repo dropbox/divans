@@ -1,197 +1,91 @@
-use super::probability::{CDFUpdater, CDF16};
-use super::alloc::{SliceWrapperMut, SliceWrapper};
-mod OptionA {
-    use probability::{CDFUpdater, CDF16};
-    trait Encoder {
-        fn put_bit(&mut self,
-                   bit: bool,
-                   true_probability: u8,
-                   offset: &mut usize,
-                   output: &mut[u8]) -> Result<(),()>;
-        fn put_nibble<U:CDFUpdater> (&mut self,
-                                   nibble: u8,
-                                   prob: CDF16<U>,
-                                   offset: &mut usize,
-                                   output: &mut[u8]) -> Result<(),()>;
-        // no further calls to put after flush. Err return value indicates
-        // need to call flush again until Ok
-        fn flush(offset: &mut usize,
-                 output: &mut[u8]) -> Result<(), ()>;
-    }
-
-    trait Decoder {
-        fn get_bit(&mut self,
-                   true_probability: u8,
-                   offset: &mut usize,
-                   input: &[u8]) -> Result<bool, ()>;
-        fn get_nibble<U:CDFUpdater> (&mut self,
-                                   prob: CDF16<U>,
-                                   offset: &mut usize,
-                                   input: &[u8],
-                                   is_eof: bool) -> Result<u8, ()>;
-       
-    }
-}
-mod OptionB {
-    use probability::{CDFUpdater, CDF16};
-
-    trait Encoder {
-        // output must have at least 16 bits of free space remaining for this function
-        fn put_bit(&mut self,
-                   bit: bool,
-                   true_probability: u8,
-                   offset: &mut usize,
-                   output: &mut[u8]);
-        // output must have at least 64 bits of free space remaining for this function
-        fn put_nibble<U:CDFUpdater> (&mut self,
-                                   nibble: u8,
-                                   prob: CDF16<U>,
-                                   offset: &mut usize,
-                                   output: &mut[u8]);
-        // output must have at least 64 bits of free space remaining for this function
-        fn flush(offset: &mut usize, output: &mut[u8]);
-    }
-
-    trait Decoder {
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_bit(&mut self,
-                   true_probability: u8,
-                   offset: &mut usize,
-                   input: &[u8]) -> bool;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_nibble<U:CDFUpdater> (&mut self,
-                                   prob: CDF16<U>,
-                                   offset: &mut usize,
-                                   input: &[u8]) -> u8;
-    }
-}
-mod OptionC {
-    use probability::{CDFUpdater, CDF16};
-
-    trait Encoder {
-        fn need_buffer_space(&mut self) -> Option<usize>;
-        fn prepare_buffer(&mut self,
-                          offset: &mut usize,
-                          output: &mut [u8]) -> Result<(),()>;
-        fn put_bit(&mut self,
-                   bit: bool,
-                   true_probability: u8);
-        // output must have at least 64 bits of free space remaining for this function
-        fn put_nibble<U:CDFUpdater> (&mut self,
-                                   nibble: u8,
-                                   prob: CDF16<U>);
-        // output must have at least 64 bits of free space remaining for this function
-        fn flush(&mut self, offset: &mut usize, output: &mut[u8]);
-    }
-
-    trait Decoder {
-        // check this function before every call to get_nibble (or 4 calls to get_bit)
-        fn need_buffer_space(&mut self) -> Option<usize>;
-        fn prepare_buffer(&mut self,
-                          offset: &mut usize,
-                          input: &mut [u8]);
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_bit(&mut self, true_probability: u8) -> bool;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_nibble<U:CDFUpdater> (&mut self, prob: CDF16<U>) -> u8;
-    }
-}
+use core::default::Default;
+use probability::{CDFUpdater, CDF16, Prob};
 
 
-trait FixedSizeByteQueue {
+trait FixedSizeByteQueue : Copy + Sized + Default {
       fn num_push_bytes_avail(&self) -> usize;
       fn num_pop_bytes_avail(&self) -> usize;
       fn push_data(&mut self, &[u8]) -> usize;
       fn pop_data(&mut self, &mut [u8]) -> usize;
 }
 
-mod OptionD {
-    use probability::{CDFUpdater, CDF16};
-    use super::FixedSizeByteQueue;
-    use alloc::{SliceWrapper,SliceWrapperMut};
-    //use super::{CDFUpdater, CDF16, SliceWrapperMut, SliceWrapper};
 
-    trait Encoder<Queue: FixedSizeByteQueue> {
-        fn get_buffer(&mut self) -> &mut Queue;
-        fn put_bit(&mut self,
-                   bit: bool,
-                   true_probability: &mut u8);
-        // output must have at least 64 bits of free space remaining for this function
-        fn put_nibble<U:CDFUpdater> (&mut self,
-                                   nibble: u8,
-                                   prob: &mut CDF16<U>);
-           
-        fn put_nibbles<T:SliceWrapper<u8>,
-                       U:CDFUpdater,
-                       V:SliceWrapperMut<CDF16<U>>> (&mut self,
-                                                     nibbles: T,
-                                                     probs: V);
-        // output must have at least 8 * bits.len() bits of free space remaining for this function
-        fn put_bits<T:SliceWrapper<bool>,
-                    U:SliceWrapperMut<u8>> (&mut self,
-                                            bits: T,
-                                            true_probs: U);
-        // output must have at least 64 bits of free space remaining for this function
-        fn flush(&mut self);
+trait Encoder<Queue: FixedSizeByteQueue> {
+    // if it's a register, should have a get and a set and pass by value and clobber?
+    fn get_internal_buffer(&mut self) -> &mut Queue;
+    fn put_bit(&mut self,
+               bit: bool,
+               false_probability: &mut u8);
+    fn put_nibble<U:CDFUpdater> (&mut self,
+                                 nibble: u8,
+                                 prob: &mut CDF16<U>) {
+        let high_bit_prob = prob.cdf[7];
+        let mut normalized_high_bit_prob = match prob.log_max() {
+            None => ((high_bit_prob as i64) << 8) / prob.max(),
+            Some(lmax) => ((high_bit_prob as i64)<< 8) >> lmax,
+        } as u8;
+        let high_bit = nibble & 8;
+        self.put_bit(high_bit != 0, &mut normalized_high_bit_prob);
+        let mid_max = if high_bit != 0 {prob.max()} else {high_bit_prob as i64};
+        let mid_min = if high_bit != 0 {high_bit_prob} else {0};
+        let tri_bit_probs : [Prob; 8] = [
+            prob.cdf[(nibble & 8) as usize] - mid_min,
+            prob.cdf[(nibble & 8) as usize + 1] - prob.cdf[(nibble as usize & 8) as usize],
+            prob.cdf[(nibble & 8) as usize + 2] - prob.cdf[(nibble as usize & 8) + 1],
+            prob.cdf[(nibble & 8) as usize + 3] - prob.cdf[(nibble as usize & 8) + 2],
+            prob.cdf[(nibble & 8) as usize + 4] - prob.cdf[(nibble as usize & 8) + 3],
+            prob.cdf[(nibble & 8) as usize + 5] - prob.cdf[(nibble as usize & 8) + 4],
+            prob.cdf[(nibble & 8) as usize + 6] - prob.cdf[(nibble as usize & 8) + 5],
+            (mid_max - prob.cdf[(nibble&8) as usize + 6] as i64) as Prob];
+        let mid_prob = prob.cdf[(nibble & 8) as usize + 3];
+        let mid_bit = nibble & 4;
+        let mut normalized_mid_prob = (((mid_prob as i64) << 8) / mid_max) as u8;
+        self.put_bit(mid_bit != 0, &mut normalized_mid_prob);
+        let bi_bit_probs = &tri_bit_probs[((nibble as usize & 4) as usize)..(((nibble as usize & 4) + 4) as usize)];
+        let mut low_mid_bit_prob = (((bi_bit_probs[0] as u32 + bi_bit_probs[1] as u32) << 8)
+            / (bi_bit_probs[0] as u32 + bi_bit_probs[1] as u32 + bi_bit_probs[2] as u32 + bi_bit_probs[3] as u32 + 1)) as u8;
+        self.put_bit(((nibble as usize) & 4) != 0, &mut low_mid_bit_prob);
+        let low_bit_prob = &bi_bit_probs[((nibble & 2) as usize )..(((nibble & 2) + 2) as usize)];
+        let mut normalized_low_bit_prob = (((low_bit_prob[0] as u32) << 8) / (low_bit_prob[0] as u32 + low_bit_prob[1] as u32 + 1)) as u8;
+        self.put_bit((nibble & 1) != 0, &mut normalized_low_bit_prob);
+        prob.blend(nibble);
     }
-
-    trait Decoder<Queue:FixedSizeByteQueue> {
-        fn get_buffer(&mut self) -> &mut Queue;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_bit(&mut self, true_probability: &mut u8) -> bool;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_nibble<U:CDFUpdater> (&mut self, prob: &mut CDF16<U>) -> u8;
-        fn get_nibbles<T:SliceWrapperMut<u8>,
-                       U:CDFUpdater,
-                       V:SliceWrapperMut<CDF16<U>>> (&mut self,
-                                                     out_nibbles:T,
-                                                     probs: V);
-        // output must have at least 8 * bits.len() bits of free space remaining for this function
-        fn get_bits<T:SliceWrapperMut<bool>,
-                    U:SliceWrapperMut<u8>> (&mut self,
-                                            out_bits: T,
-                                            true_probs: U);
+    fn put_8bit(&mut self,
+                bits: [bool;8], // should we make this a u8 and pull out the bits?
+                true_probabilities: &mut [u8;8]) {
+        for i in 0..true_probabilities.len() {
+            self.put_bit(bits[i], &mut true_probabilities[i]);
+        }
     }
+    fn put_4nibble<U:CDFUpdater> (&mut self,
+                                  nibbles: [u8;4],
+                                  prob: &mut [CDF16<U>;4]){
+        for i in 0..prob.len() {
+            self.put_nibble(nibbles[i], &mut prob[i]);
+        }
+    }
+    // output must have at least 64 bits of free space remaining for this function
+    fn flush(&mut self);
 }
 
-mod OptionE {
-    use probability::{CDFUpdater, CDF16};
-    use super::FixedSizeByteQueue;
-    use alloc::{SliceWrapper,SliceWrapperMut};
-
-   // use super::{CDFUpdater, CDF16, SliceWrapperMut, SliceWrapper};
-
-    trait Encoder<Queue: FixedSizeByteQueue> {
-        // if it's a register, should have a get and a set and pass by value and clobber?
-        fn get_internal_buffer(&mut self) -> &mut Queue;
-        fn put_bit(&mut self,
-                   bit: bool,
-                   true_probability: u8);
-        // output must have at least 64 bits of free space remaining for this function
-        fn put_nibble<U:CDFUpdater> (&mut self,
-                                   nibble: u8,
-                                   prob: CDF16<U>);
-        fn put_8bit(&mut self,
-                   bits: [bool;8], // should we make this a u8 and pull out the bits?
-                   true_probabilities: &mut [u8;8]);
-        // output must have at least 64 bits of free space remaining for this function
-        fn put_4nibble<U:CDFUpdater> (&mut self,
-                                      nibbles: [u8;4],
-                                      prob: &mut [CDF16<U>;4]);
-        // output must have at least 64 bits of free space remaining for this function
-        fn flush(&mut self);
+trait Decoder<Queue:FixedSizeByteQueue> {
+    // if it's a register, should have a get and a set and pass by value and clobber?
+    fn get_internal_buffer(&mut self) -> &mut Queue;
+    fn get_bit(&mut self, false_probability: &mut u8) -> bool;
+    fn get_nibble<U:CDFUpdater> (&mut self, prob: &mut CDF16<U>) -> u8;
+    fn get_8bit(&mut self, true_probabilities: &mut [u8;8]) -> [bool;8] {
+        let mut ret = [false; 8];
+        for i in 0..true_probabilities.len() {
+            ret[i] = self.get_bit(&mut true_probabilities[i]);
+        }
+        ret
     }
-
-    trait Decoder<Queue:FixedSizeByteQueue> {
-        // if it's a register, should have a get and a set and pass by value and clobber?
-        fn get_buffer(&mut self) -> &mut Queue;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_bit(&mut self, true_probability: &mut u8) -> bool;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_nibble<U:CDFUpdater> (&mut self, prob: &mut CDF16<U>) -> u8;
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_8bit(&mut self, true_probability: &mut [u8;8]) -> [bool;8];
-        // input must have at least 64 bits inside unless we have reached the end
-        fn get_4nibble<U:CDFUpdater> (&mut self, prob: &mut [CDF16<U>;4]) -> [u8;4];
+    // input must have at least 64 bits inside unless we have reached the end
+    fn get_4nibble<U:CDFUpdater> (&mut self, prob: &mut [CDF16<U>;4]) -> [u8;4] {
+        let mut ret = [0u8; 4];
+        for i in 0..prob.len() {
+            ret[i] = self.get_nibble(&mut prob[i]);
+        }
+        ret
     }
 }

@@ -11,7 +11,7 @@ pub trait CDFUpdater {
 }
 
 pub struct CDF16<T:CDFUpdater>{
-    cdf:[Prob;16],
+    pub cdf:[Prob;16],
     updater:T,
 }
 impl<T:CDFUpdater+Default> Default for CDF16<T> {
@@ -40,11 +40,17 @@ impl<T:CDFUpdater> CDF16<T> {
         }
         ret
     }
-    fn valid(&self) -> bool {
+    pub fn valid(&self) -> bool {
         self.updater.valid(&self.cdf)
     }
-    fn blend (&mut self, symbol: u8){
+    pub fn blend (&mut self, symbol: u8){
         self.updater.blend(&mut self.cdf, symbol)
+    }
+    pub fn max(&self) -> i64 {
+        return self.updater.max(&self.cdf);
+    }
+    pub fn log_max(&self) -> Option<i8> {
+        return self.updater.log_max(&self.cdf);
     }
 }
 
