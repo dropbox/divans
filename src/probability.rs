@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-type Prob = i16; // can be i32
+pub type Prob = i16; // can be i32
 
 pub trait CDFUpdater {
     fn blend(&self, data:&mut [Prob;16], symbol: u8);
