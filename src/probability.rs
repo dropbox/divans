@@ -1,5 +1,5 @@
 #![allow(unused)]
-
+use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
 pub trait CDFUpdater {
@@ -10,6 +10,55 @@ pub trait CDFUpdater {
     fn valid(&self, data:&[Prob;16])->bool;
 }
 
+#[derive(Clone)]
+pub struct CDF2 {
+    counts: [u8; 2],
+    pub prob: u8,
+}
+impl Default for CDF2 {
+    fn default() -> CDF2 {
+        CDF2{
+            counts: [1,1],
+            prob: 128,
+        }
+    }
+}
+
+impl CDF2 {
+    fn blend(&mut self, symbol: bool) {
+        let fcount = self.counts[0];
+        let tcount = self.counts[1];
+        debug_assert!(fcount != 0);
+        debug_assert!(tcount != 0);
+
+        let obs = if symbol == true {1} else {0};
+        let overflow = self.counts[obs] == 0xff;
+        self.counts[obs] = self.counts[obs].wrapping_add(1);
+        if overflow {
+            let not_obs = if symbol == true {0} else {1};
+            let neverseen = self.counts[not_obs] == 1;
+            if neverseen {
+                self.counts[obs] = 0xff;
+                self.prob = if symbol {0} else {0xff};
+            } else {
+                self.counts[0] = ((1 + (fcount as u16)) >> 1) as u8;
+                self.counts[1] = ((1 + (tcount as u16)) >> 1) as u8;
+                self.counts[obs] = 129;
+                self.prob = (((self.counts[0] as u16) << 8) / (self.counts[0] as u16 + self.counts[1] as u16)) as u8;
+            }
+        } else {
+            self.prob = (((self.counts[0] as u16) << 8) / (fcount as u16 + tcount as u16 + 1)) as u8;
+        }
+    }
+    pub fn max(&self) -> i64 {
+        return 256;
+    }
+    pub fn log_max(&self) -> Option<i8> {
+        return Some(8);
+    }
+}
+
+#[derive(Clone)]
 pub struct CDF16<T:CDFUpdater>{
     pub cdf:[Prob;16],
     updater:T,
@@ -105,6 +154,7 @@ macro_rules! each16bin {
     }
 }
 
+#[derive(Clone)]
 struct BlendCDFUpdater {
 }
 
@@ -156,7 +206,7 @@ fn srl(a:Prob) -> Prob {
     a >> 1
 }
 
-
+#[derive(Clone)]
 struct FrequentistCDFUpdater {}
 impl Default for FrequentistCDFUpdater {
     fn default() -> FrequentistCDFUpdater {FrequentistCDFUpdater{}}
