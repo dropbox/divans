@@ -155,7 +155,7 @@ macro_rules! each16bin {
 }
 
 #[derive(Clone)]
-struct BlendCDFUpdater {
+pub struct BlendCDFUpdater {
 }
 
 impl CDFUpdater for BlendCDFUpdater {
@@ -207,7 +207,7 @@ fn srl(a:Prob) -> Prob {
 }
 
 #[derive(Clone)]
-struct FrequentistCDFUpdater {}
+pub struct FrequentistCDFUpdater {}
 impl Default for FrequentistCDFUpdater {
     fn default() -> FrequentistCDFUpdater {FrequentistCDFUpdater{}}
 }

@@ -1,5 +1,7 @@
 #![no_std]
-
+#[cfg(test)]
+#[macro_use]
+extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 mod probability;
