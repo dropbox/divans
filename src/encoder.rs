@@ -1,6 +1,6 @@
 #[allow(unused)]
 use core::default::Default;
-use probability::{CDFUpdater, CDF16, Prob};
+use probability::{CDFUpdater, CDF16};
 
 
 trait ByteQueue {
@@ -21,35 +21,30 @@ trait Encoder<Queue: ByteQueue> {
                                  nibble: u8,
                                  prob: &CDF16<U>) {
         let high_bit_prob = prob.cdf[7];
+        let cdf_max = prob.max() as i32;
         let normalized_high_bit_prob = match prob.log_max() {
-            None => ((high_bit_prob as i64) << 8) / prob.max(),
-            Some(lmax) => ((high_bit_prob as i64)<< 8) >> lmax,
+            None => ((high_bit_prob as i32) << 8) / cdf_max,
+            Some(lmax) => ((high_bit_prob as i32)<< 8) >> lmax,
         } as u8;
         let high_bit = nibble & 8;
-        let high_bit_mask = if high_bit == 0 { 0u8 } else { 255u8 };
-        self.put_bit(high_bit != 0, high_bit_mask ^ normalized_high_bit_prob);
-        let mid_max = if high_bit != 0 {prob.max()} else {high_bit_prob as i64};
-        let mid_min = if high_bit != 0 {high_bit_prob} else {0};
-        let tri_bit_probs : [Prob; 8] = [
-            prob.cdf[(nibble & 8) as usize] - mid_min,
-            prob.cdf[(nibble & 8) as usize + 1] - prob.cdf[(nibble as usize & 8) as usize],
-            prob.cdf[(nibble & 8) as usize + 2] - prob.cdf[(nibble as usize & 8) + 1],
-            prob.cdf[(nibble & 8) as usize + 3] - prob.cdf[(nibble as usize & 8) + 2],
-            prob.cdf[(nibble & 8) as usize + 4] - prob.cdf[(nibble as usize & 8) + 3],
-            prob.cdf[(nibble & 8) as usize + 5] - prob.cdf[(nibble as usize & 8) + 4],
-            prob.cdf[(nibble & 8) as usize + 6] - prob.cdf[(nibble as usize & 8) + 5],
-            (mid_max - prob.cdf[(nibble&8) as usize + 6] as i64) as Prob];
-        let mid_prob = prob.cdf[(nibble & 8) as usize + 3];
+        self.put_bit(high_bit != 0, normalized_high_bit_prob);
+        let mid_max = if high_bit != 0 {cdf_max} else {high_bit_prob as i32};
+        let mid_min = if high_bit != 0 {high_bit_prob as i32} else {0};
+        let mid_prob = prob.cdf[(nibble & 8) as usize + 3] as i32;
         let mid_bit = nibble & 4;
-        let normalized_mid_prob = (((mid_prob as i64) << 8) / mid_max) as u8;
+        let normalized_mid_prob = (((mid_prob -  mid_min) << 8) / (mid_max - mid_min as i32)) as u8;
         self.put_bit(mid_bit != 0, normalized_mid_prob);
-        let bi_bit_probs = &tri_bit_probs[((nibble as usize & 4) as usize)..(((nibble as usize & 4) + 4) as usize)];
-        let low_mid_bit_prob = (((bi_bit_probs[0] as u32 + bi_bit_probs[1] as u32) << 8)
-            / (bi_bit_probs[0] as u32 + bi_bit_probs[1] as u32 + bi_bit_probs[2] as u32 + bi_bit_probs[3] as u32 + 1)) as u8;
-        self.put_bit(((nibble as usize) & 2) != 0, low_mid_bit_prob);
-        let low_bit_prob = &bi_bit_probs[((nibble & 2) as usize )..(((nibble & 2) + 2) as usize)];
-        let normalized_low_bit_prob = (((low_bit_prob[0] as u32) << 8) / (low_bit_prob[0] as u32 + low_bit_prob[1] as u32 + 1)) as u8;
-        self.put_bit((nibble & 1) != 0, normalized_low_bit_prob);
+        let lomid_min = if mid_bit != 0 {mid_prob} else {mid_min};
+        let lomid_max = if mid_bit != 0 {mid_max} else {mid_prob};
+        let lomid_prob = prob.cdf[(nibble & 12) as usize + 1] as i32;
+        let normalized_lomid_prob =((((lomid_prob -  lomid_min) as i32) << 8) / (lomid_max - lomid_min as i32)) as u8;
+        let lomid_bit = (nibble as usize) & 2;
+        self.put_bit(lomid_bit != 0, normalized_lomid_prob);
+        let lo_min = if lomid_bit != 0 {lomid_prob} else {lomid_min};
+        let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
+        let lo_prob = prob.cdf[(nibble & 14) as usize] as i32;
+        let normalized_lo_prob =((((lo_prob -  lo_min) as i32) << 8) / (lo_max - lo_min as i32)) as u8;
+        self.put_bit((nibble & 1) != 0, normalized_lo_prob);
     }
     fn put_8bit(&mut self,
                 bits: [bool;8], // should we make this a u8 and pull out the bits?
@@ -73,7 +68,33 @@ trait Decoder<Queue:ByteQueue> {
     // if it's a register, should have a get and a set and pass by value and clobber?
     fn get_internal_buffer(&mut self) -> &mut Queue;
     fn get_bit(&mut self, prob_of_false: u8) -> bool;
-    fn get_nibble<U:CDFUpdater> (&mut self, prob: &CDF16<U>) -> u8;
+    fn get_nibble<U:CDFUpdater> (&mut self, prob: &CDF16<U>) -> u8 {
+        let high_bit_prob = prob.cdf[7];
+        let cdf_max = prob.max() as i32;
+        let normalized_high_bit_prob = match prob.log_max() {
+            None => ((high_bit_prob as i32) << 8) / cdf_max,
+            Some(lmax) => ((high_bit_prob as i32)<< 8) >> lmax,
+        } as u8;
+        let high_bit = (self.get_bit(normalized_high_bit_prob) as i32) << 3;
+        let mut nibble = high_bit as u8;
+        let mid_max = if high_bit != 0 {cdf_max} else {high_bit_prob as i32};
+        let mid_min = if high_bit != 0 {high_bit_prob as i32} else {0};
+        let mid_prob = prob.cdf[(nibble & 8) as usize + 3] as i32;
+        let normalized_mid_prob = (((mid_prob -  mid_min) << 8) / (mid_max - mid_min as i32)) as u8;
+        let mid_bit = (self.get_bit(normalized_mid_prob) as i32) << 2;
+        nibble |= mid_bit as u8;
+        let lomid_min = if mid_bit != 0 {mid_prob} else {mid_min};
+        let lomid_max = if mid_bit != 0 {mid_max} else {mid_prob};
+        let lomid_prob = prob.cdf[(nibble & 12) as usize + 1] as i32;
+        let normalized_lomid_prob =((((lomid_prob -  lomid_min) as i32) << 8) / (lomid_max - lomid_min as i32)) as u8;
+        let lomid_bit = (self.get_bit(normalized_lomid_prob) as i32) << 1;
+        nibble |= lomid_bit as u8;
+        let lo_min = if lomid_bit != 0 {lomid_prob} else {lomid_min};
+        let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
+        let lo_prob = prob.cdf[(nibble & 14) as usize] as i32;
+        let normalized_lo_prob = ((((lo_prob -  lo_min) as i32) << 8) / (lo_max - lo_min as i32)) as u8;
+        nibble | self.get_bit(normalized_lo_prob) as u8
+    }
     fn get_8bit(&mut self, true_probabilities: [u8;8]) -> [bool;8] {
         let mut ret = [false; 8];
         for i in 0..true_probabilities.len() {
@@ -125,6 +146,7 @@ mod test {
     #[allow(unused)]
     fn test_get_prob<T:CDFUpdater>(cdf: &CDF16<T>,
                                    prob_start:u8,
+                                   prob_mid:u8,
                                    prob_end:u8) -> u8 {
         let hi;
         if prob_end == 16 {
@@ -138,11 +160,12 @@ mod test {
         } else {
             lo = cdf.cdf[prob_start as usize - 1] as i64;
         }
-        match cdf.log_max() {
-            None => (((hi - lo) << 8) / cdf.max()) as u8,
-            Some(lmax) => (((hi - lo) << 8) >> lmax) as u8 ,
-        }
-        
+        let mid = cdf.cdf[prob_mid as usize - 1] as i64;
+        //println!("Test get prob MID : {:} [{:}] HIGH {:} LO: {:} NORM {:}",
+        //          mid,    ((prob_start as usize + prob_end as usize - 1)>>1),
+        //          hi, lo,         (((mid - lo) << 8) / (cdf.max() - lo)) as u8);
+
+        (((mid - lo) << 8) / (hi - lo)) as u8
     }
     #[allow(unused)]
     fn validate_call_to_put<T:CDFUpdater>(calls: [(bool, u8);4],
@@ -155,14 +178,14 @@ mod test {
                 assert_eq!(sym & (1 << (3 - i)), 0);
             }
         }
-        let hi_prob = test_get_prob(cdf, sym & 8,(sym & 8) + 8);
-        let himed_prob = test_get_prob(cdf, sym & 12,(sym & 12) + 4);
-        let lomed_prob = test_get_prob(cdf, sym & 14,(sym & 14) + 2);
-        let lo_prob = test_get_prob(cdf, sym & 15,(sym & 15) + 1);
+        let hi_prob = test_get_prob(cdf, 0, 8, 16);
+        let himed_prob = test_get_prob(cdf, sym & 8, (sym & 8) + 4,(sym&8) + 8);
+        let lomed_prob = test_get_prob(cdf, sym & 12,(sym & 12) + 2, (sym & 12) + 4);
+        let lo_prob = test_get_prob(cdf, sym & 14,(sym & 14) + 1, (sym&14) + 2);
         assert_eq!(calls[0].1, hi_prob);
-        //assert_eq!(calls[1].1, himed_prob); //FIXME: make these compares operate
-        //assert_eq!(calls[2].1, lomed_prob);
-        //assert_eq!(calls[3].1, lo_prob);
+        assert_eq!(calls[1].1, himed_prob); //FIXME: make these compares operate
+        assert_eq!(calls[2].1, lomed_prob);
+        assert_eq!(calls[3].1, lo_prob);
     }
     #[cfg(test)]
     #[test]
