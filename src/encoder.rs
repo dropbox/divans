@@ -116,7 +116,7 @@ trait Decoder<Queue:ByteQueue> {
 
 mod test {
     use super::ByteQueue;
-    use super::Encoder;
+    use super::{Encoder, Decoder};
     #[allow(unused_imports)]
     use probability::{CDF16, FrequentistCDFUpdater, BlendCDFUpdater, CDFUpdater};
     #[allow(unused)]
@@ -128,12 +128,12 @@ mod test {
         fn pop_data(&mut self, _b:&mut [u8]) -> usize {0}
     }
     #[allow(unused)]
-    struct MockBitEncoder {
+    struct MockBitCoder {
         calls_to_put_bit: [[(bool, u8);4]; 16],
         num_calls: usize,
         queue: MockByteQueue,
     }
-    impl Encoder<MockByteQueue> for MockBitEncoder {
+    impl Encoder<MockByteQueue> for MockBitCoder {
         fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
             &mut self.queue
         }
@@ -142,6 +142,17 @@ mod test {
             self.num_calls += 1;
         }
         fn flush(&mut self){}
+    }
+    impl Decoder<MockByteQueue> for MockBitCoder {
+        fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
+            &mut self.queue
+        }
+        fn get_bit(&mut self, prob_of_false: u8) -> bool {
+            let bit = self.calls_to_put_bit[self.num_calls >> 2][self.num_calls&3].0;
+            self.calls_to_put_bit[self.num_calls >> 2][self.num_calls&3] = (bit, prob_of_false);
+            self.num_calls += 1;
+            bit
+        }
     }
     #[allow(unused)]
     fn test_get_prob<T:CDFUpdater>(cdf: &CDF16<T>,
@@ -199,7 +210,7 @@ mod test {
             }
         }
         println!("{:?}", cdf.float_array());
-        let mut mock_encoder = MockBitEncoder{
+        let mut mock_encoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,
             queue:MockByteQueue{},
@@ -213,7 +224,7 @@ mod test {
                                  &cdf,
                                  i as u8);
         }
-        mock_encoder = MockBitEncoder{
+        mock_encoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,
             queue:MockByteQueue{},
@@ -223,6 +234,60 @@ mod test {
         }
         for i in 0..16 {
             validate_call_to_put(mock_encoder.calls_to_put_bit[i],
+                                 &bcdf,
+                                 i as u8);
+        }
+    }
+    #[cfg(test)]
+    #[test]
+    fn test_get_nibble() {
+        let mut cdf = CDF16::<FrequentistCDFUpdater>::default();
+        let mut bcdf = CDF16::<BlendCDFUpdater>::default();
+        for i in 0..16 {
+            for j in 0..i {
+                cdf.blend(j as u8);
+                bcdf.blend(j as u8);
+            }
+        }
+        println!("{:?}", cdf.float_array());
+        let mut mock_decoder = MockBitCoder{
+            calls_to_put_bit: [[(false,0);4];16],
+            num_calls:0,
+            queue:MockByteQueue{},
+        };
+        for i in 0..16 {
+            mock_decoder.calls_to_put_bit[i][0].0 = (i & 8) != 0;
+            mock_decoder.calls_to_put_bit[i][1].0 = (i & 4) != 0;
+            mock_decoder.calls_to_put_bit[i][2].0 = (i & 2) != 0;
+            mock_decoder.calls_to_put_bit[i][3].0 = (i & 1) != 0;
+        }
+        for i in 0..16 {
+            let nib = mock_decoder.get_nibble(&cdf);
+            assert_eq!(nib, i as u8);
+        }
+        for i in 0..16 {
+            println!("Validating {:}", i);
+            validate_call_to_put(mock_decoder.calls_to_put_bit[i],
+                                 &cdf,
+                                 i as u8);
+        }
+        mock_decoder = MockBitCoder{
+            calls_to_put_bit: [[(false,0);4];16],
+            num_calls:0,
+            queue:MockByteQueue{},
+        };
+        for i in 0..16 {
+            mock_decoder.calls_to_put_bit[i][0].0 = (i & 8) != 0;
+            mock_decoder.calls_to_put_bit[i][1].0 = (i & 4) != 0;
+            mock_decoder.calls_to_put_bit[i][2].0 = (i & 2) != 0;
+            mock_decoder.calls_to_put_bit[i][3].0 = (i & 1) != 0;
+        }
+        for i in 0..16 {
+            let nib = mock_decoder.get_nibble(&bcdf);
+            assert_eq!(nib, i as u8)
+        }
+        for i in 0..16 {
+            validate_call_to_put(mock_decoder.calls_to_put_bit[i],
                                  &bcdf,
                                  i as u8);
         }
