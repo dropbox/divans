@@ -1,9 +1,10 @@
 #[allow(unused)]
+use core;
 use core::default::Default;
 use probability::{CDFUpdater, CDF16};
 
 
-trait ByteQueue {
+pub trait ByteQueue {
       fn num_push_bytes_avail(&self) -> usize;
       fn num_pop_bytes_avail(&self) -> usize;
       fn push_data(&mut self, &[u8]) -> usize;
@@ -11,9 +12,56 @@ trait ByteQueue {
 }
 
 
-trait Encoder<Queue: ByteQueue> {
+pub type FixedRegister = u64;
+pub struct RegisterQueue {
+    data : FixedRegister,
+    count : u8,
+}
+impl Default for RegisterQueue {
+    fn default() -> Self {
+        RegisterQueue{
+            data:0,
+            count:0,
+        }
+    }
+}
+impl ByteQueue for RegisterQueue {
+    fn num_push_bytes_avail(&self) -> usize {
+        core::mem::size_of::<FixedRegister>() - self.count as usize
+    }
+    fn num_pop_bytes_avail(&self) -> usize {
+        self.count as usize
+    }
+    fn push_data(&mut self, data:&[u8]) -> usize {
+        let byte_count_to_push = core::cmp::min(self.num_push_bytes_avail(),
+                                                data.len());
+        let offset = 1 << (8 * self.count);
+        self.count += byte_count_to_push as u8;
+        let mut reg = self.data;
+        for i in 0..byte_count_to_push {
+            reg |= (data[i] << (offset + i)) as FixedRegister;
+        }
+        self.data = reg;
+        byte_count_to_push
+    }
+    fn pop_data(&mut self, data:&mut [u8]) -> usize {
+        let byte_count_to_pop = core::cmp::min(self.num_pop_bytes_avail(),
+                                               data.len());
+        let mut local = [0u8;16];
+        for i in 0..core::mem::size_of::<FixedRegister>() {
+            local[i] = ((self.data >> (i << 3)) & 0xff) as u8;
+        }
+        data.split_at_mut(byte_count_to_pop).0.clone_from_slice(
+            local.split_at(byte_count_to_pop).0);
+        byte_count_to_pop
+    }
+}
+
+
+pub trait Encoder {
+    type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
-    fn get_internal_buffer(&mut self) -> &mut Queue;
+    fn get_internal_buffer(&mut self) -> &mut Self::Queue;
     fn put_bit(&mut self,
                bit: bool,
                prob_of_false: u8);
@@ -64,9 +112,10 @@ trait Encoder<Queue: ByteQueue> {
     fn flush(&mut self);
 }
 
-trait Decoder<Queue:ByteQueue> {
+pub trait Decoder {
+    type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
-    fn get_internal_buffer(&mut self) -> &mut Queue;
+    fn get_internal_buffer(&mut self) -> &mut Self::Queue;
     fn get_bit(&mut self, prob_of_false: u8) -> bool;
     fn get_nibble<U:CDFUpdater> (&mut self, prob: &CDF16<U>) -> u8 {
         let high_bit_prob = prob.cdf[7];
@@ -133,7 +182,8 @@ mod test {
         num_calls: usize,
         queue: MockByteQueue,
     }
-    impl Encoder<MockByteQueue> for MockBitCoder {
+    impl Encoder for MockBitCoder {
+        type Queue = MockByteQueue;
         fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
             &mut self.queue
         }
@@ -143,7 +193,8 @@ mod test {
         }
         fn flush(&mut self){}
     }
-    impl Decoder<MockByteQueue> for MockBitCoder {
+    impl Decoder for MockBitCoder {
+        type Queue = MockByteQueue;
         fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
             &mut self.queue
         }

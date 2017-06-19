@@ -6,6 +6,7 @@ extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 mod probability;
 mod test;
+mod debug_encoder;
 mod encoder;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
