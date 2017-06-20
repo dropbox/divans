@@ -4,6 +4,7 @@
 extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
+mod interface;
 mod probability;
 mod test;
 mod debug_encoder;
@@ -13,39 +14,7 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
 use brotli_decompressor::transform::{TransformDictionaryWord};
-#[derive(Debug)]
-pub struct CopyCommand {
-    pub distance: u32,
-    pub num_bytes: u32,
-}
-
-#[derive(Debug)]
-pub struct DictCommand {
-    pub word_size: u8,
-    pub transform: u8,
-    pub final_size: u8,
-    pub _empty: u8,
-    pub word_id: u32,
-}
-
-#[derive(Debug)]
-pub struct LiteralCommand<SliceType:alloc::SliceWrapper<u8>> {
-    pub data: SliceType,
-}
-
-#[derive(Debug)]
-pub enum Command<SliceType:alloc::SliceWrapper<u8> > {
-    Copy(CopyCommand),
-    Dict(DictCommand),
-    Literal(LiteralCommand<SliceType>),
-}
-
-impl<SliceType:alloc::SliceWrapper<u8> > Command<SliceType> {
-    pub fn nop() -> Command<SliceType> {
-        Command::Copy(CopyCommand{distance:1, num_bytes:0})
-    }
-}
-
+pub use interface::{Command, Recoder, LiteralCommand, CopyCommand, DictCommand};
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default>{
     input_sub_offset: usize,
     ring_buffer: RingBuffer,
@@ -285,7 +254,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
               &Command::Literal(ref literal) => self.parse_literal(literal),
         }
     }
-    pub fn recode<SliceType:alloc::SliceWrapper<u8>>(&mut self,
+}
+impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Recoder for DivansRecodeState<RingBuffer> {
+    fn recode<SliceType:alloc::SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
                   input_offset : &mut usize,
                   output :&mut[u8],
@@ -314,4 +285,5 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         }
         self.flush(output, output_offset)
     }
+
 }
