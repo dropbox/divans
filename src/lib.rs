@@ -9,11 +9,12 @@ mod probability;
 mod debug_encoder;
 mod encoder;
 mod cmd_to_raw;
+mod codec;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Decoder, Recoder, LiteralCommand, CopyCommand, DictCommand};
 pub use cmd_to_raw::DivansRecodeState;
-const CMD_BUFFER_SIZE: usize = 16;
+use codec::CMD_BUFFER_SIZE;
 
 pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
     decoder: DivansDecoder,

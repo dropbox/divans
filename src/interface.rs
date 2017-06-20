@@ -1,5 +1,6 @@
 use alloc::{SliceWrapper};
 use brotli_decompressor::BrotliResult;
+use super::probability::{CDFUpdater, CDF16};
 #[derive(Debug)]
 pub struct CopyCommand {
     pub distance: u32,
@@ -55,4 +56,22 @@ pub trait Decoder {
         input_offset: &mut usize,
         output: &mut [Command<Self::CommandSliceType>],
         output_offset: &mut usize) -> BrotliResult;
+}
+
+
+pub trait ArithmeticEncoderOrDecoder {
+    // note: only one of these buffers must be nonzero,
+    // depending on if it is in encode or decode mode
+    fn drain_or_fill_internal_buffer(&mut self,
+                                     input_buffer:&[u8],
+                                     input_offset:&mut usize,
+                                     output_buffer:&mut [u8],
+                                     output_offset: &mut usize) -> BrotliResult;
+    fn get_or_put_bit(&mut self,
+                      bit: &mut bool,
+                      prob_of_false: u8);
+    fn get_or_put_nibble<U:CDFUpdater> (&mut self,
+                                        nibble: &mut u8,
+                                        prob: &CDF16<U>);
+    fn flush(&mut self);
 }
