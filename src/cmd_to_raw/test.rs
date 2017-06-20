@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use alloc::SliceWrapper;
-use super::BrotliResult;
+use super::super::SliceWrapper;
+use super::super::BrotliResult;
 const TEST_RING_SIZE: usize = 1<<7;
 struct ExRingBuffer([u8;TEST_RING_SIZE]);
 impl Default for ExRingBuffer {
@@ -293,7 +293,7 @@ static HISTORY_OF_DICT_TEST:[u8; TEST_RING_SIZE] = [
         32];
 #[allow(unused)]
 struct SimpleSliceWrapper<'a> (&'a [u8]);
-impl<'a> super::alloc::SliceWrapper<u8> for SimpleSliceWrapper<'a> {
+impl<'a> SliceWrapper<u8> for SimpleSliceWrapper<'a> {
   fn slice(&self) -> &[u8] {
      self.0
   }
