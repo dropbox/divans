@@ -51,8 +51,8 @@ pub trait Decoder {
     type CommandSliceType: SliceWrapper<u8>;
     fn decode(
         &mut self,
-        input: &mut[u8],
+        input: &[u8],
         input_offset: &mut usize,
-        output: &[Command<Self::CommandSliceType>],
+        output: &mut [Command<Self::CommandSliceType>],
         output_offset: &mut usize) -> BrotliResult;
 }
