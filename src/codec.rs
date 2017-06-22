@@ -52,6 +52,53 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     // need state variable describing the item we are building
 }
 
+enum CopySubstate {
+     DistanceLength(u8), // length so far
+     DistanceMantissa(u8), // current lsb
+     CountLength(u8), // length so far
+     CountMantissa(u8), // current lsb (should we use unary here?)
+     FullyDecoded
+}
+struct CopyState {
+   cc:CopyCommand, 
+   state: CopySubstate,
+}
+
+impl<AllocU8:Allocator<u8>> From<CopyState> for Command<AllocatedMemoryPrefix<AllocU8>> {
+     fn from(cp: CopyState) -> Self {
+        Command::Copy(cp.cc)
+     }
+}
+impl<AllocU8:Allocator<u8>> From<DictState> for Command<AllocatedMemoryPrefix<AllocU8>> {
+     fn from(dd: DictState) -> Self {
+        Command::Dict(dd.dc)
+     }
+}
+impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMemoryPrefix<AllocU8>> {
+     fn from(ll: LiteralState<AllocU8>) -> Self {
+        Command::Literal(ll.lc)
+     }
+}
+enum DictSubstate {
+     WordSize(u8),
+     WordIndexLength(u8),
+     WordIndexMantissa(u8),
+     TransformA, // materialized as a single nibble
+     TransformB,
+     FullyDecoded,
+}
+struct DictState {
+   dc:DictCommand,
+   state: DictSubstate,
+}
+
+struct LiteralSubstate {
+       length: u8
+}
+struct LiteralState<AllocU8:Allocator<u8>> {
+   lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
+   
+}
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
