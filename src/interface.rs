@@ -7,6 +7,12 @@ pub struct CopyCommand {
     pub num_bytes: u32,
 }
 
+impl CopyCommand {
+    pub fn nop() -> Self{
+        CopyCommand{distance:1, num_bytes:0}
+    }
+}
+
 #[derive(Debug)]
 pub struct DictCommand {
     pub word_size: u8,
@@ -36,7 +42,7 @@ impl<SliceType:SliceWrapper<u8>> Default for Command<SliceType> {
 
 impl<SliceType:SliceWrapper<u8>> Command<SliceType> {
     pub fn nop() -> Command<SliceType> {
-        Command::Copy(CopyCommand{distance:1, num_bytes:0})
+        Command::Copy(CopyCommand::nop())
     }
 }
 

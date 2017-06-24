@@ -61,6 +61,21 @@ struct CopyState {
    state: CopySubstate,
 }
 
+impl CopyState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                             Specialization:EncoderOrDecoderSpecialization,
+                             AllocU8:Allocator<u8>>(&mut self,
+                                                    _state: &mut CrossCommandState<ArithmeticCoder,
+                                                                             Specialization,
+                                                                             AllocU8>,
+                                                    _input_bytes:&[u8],
+                                                    _input_offset: &mut usize,
+                                                    _output_bytes:&mut [u8],
+                                                    _output_offset: &mut usize) -> BrotliResult {
+        panic!("unimpl");
+    }
+}
+
 impl<AllocU8:Allocator<u8>> From<CopyState> for Command<AllocatedMemoryPrefix<AllocU8>> {
      fn from(cp: CopyState) -> Self {
         Command::Copy(cp.cc)
@@ -138,6 +153,10 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     // need state variable describing the item we are building
 }
 
+pub enum OneCommandReturn {
+    Advance,
+    BufferExhausted(BrotliResult),
+}
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
@@ -157,32 +176,64 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                   input_command_offset: &mut usize,
                                                   output_commands: &mut[Command<AllocatedMemoryPrefix<AllocU8>>],
                                                   output_command_offset: &mut usize) -> BrotliResult {
+        loop {
+            let i_cmd_backing = Command::<ISl>::nop();
+            let mut o_cmd_backing = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
+            let output_commands_len = output_commands.len();
+            let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
+                                                                                   *input_command_offset,
+                                                                                   &i_cmd_backing);
+            let mut o_cmd = self.cross_command_state.specialization.get_output_command(output_commands,
+                                                                                       *output_command_offset,
+                                                                                       &mut o_cmd_backing);
+            match self.encode_or_decode_one_command(input_bytes,
+                                                    input_bytes_offset,
+                                                    output_bytes,
+                                                    output_bytes_offset,
+                                                    in_cmd,
+                                                    o_cmd) {
+                OneCommandReturn::Advance => {
+                    *input_command_offset += 1;
+                    *output_command_offset += 1;
+                    if input_commands.len() == *input_command_offset {
+                        return BrotliResult::NeedsMoreInput;
+                    }
+                    if output_commands_len == *output_command_offset {
+                        return BrotliResult::NeedsMoreOutput;
+                    }
+                },
+                OneCommandReturn::BufferExhausted(result) => {
+                    return result;
+                }
+            }
+        }
+    }
+    pub fn encode_or_decode_one_command<ISl:SliceWrapper<u8>>(&mut self,
+                                                  input_bytes: &[u8],
+                                                  input_bytes_offset: &mut usize,
+                                                  output_bytes: &mut [u8],
+                                                  output_bytes_offset: &mut usize,
+                                                  input_cmd: &Command<ISl>,
+                                                  o_cmd: &mut Command<AllocatedMemoryPrefix<AllocU8>>,
+                                                  ) -> OneCommandReturn {
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         let half = 128u8;
         loop {
-            let mut new_state: Option<EncodeOrDecodeState<AllocU8>> = None;
+            let mut new_state: Option<EncodeOrDecodeState<AllocU8>>;
             match &mut self.state {
                 &mut EncodeOrDecodeState::DivansSuccess => {
-                    return BrotliResult::ResultSuccess;
+                    return OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess);
                 },
                 &mut EncodeOrDecodeState::Begin => {
-                    let cur_backing = Command::<ISl>::nop();
-                    let cur_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
-                                                                          *input_command_offset,
-                                                                          &cur_backing);
                     let mut is_copy = false;
                     let mut is_dict_or_end = false;
                     let mut is_end = false;
-                    match cur_cmd {
+                    match input_cmd {
                         &Command::Copy(_) => is_copy = true,
                         &Command::Dict(_) => is_dict_or_end = true,
                         _ => {},
                     }
                     self.cross_command_state.coder.get_or_put_bit(&mut is_copy, half);
-                    let mut cmd_backing = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
-                    let mut cur_command = self.cross_command_state.specialization.get_output_command(output_commands,
-                                                                                   *output_command_offset,
-                                                                                   &mut cmd_backing);
                     if is_copy == false {
                         self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, half);
                         if is_dict_or_end == true {
@@ -218,13 +269,26 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         new_state = Some(EncodeOrDecodeState::DivansSuccess);
                     }
                 }
-                &mut EncodeOrDecodeState::Copy(ref copy_state) => {
+                &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
+                    match copy_state.encode_or_decode(&mut self.cross_command_state,
+                                                      input_bytes,
+                                                      input_bytes_offset,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        BrotliResult::ResultSuccess => {
+                            *o_cmd = Command::Copy(core::mem::replace(&mut copy_state.cc, CopyCommand::nop()));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
+                        },
+                        retval @ _ => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
+                }
+                &mut EncodeOrDecodeState::Literal(ref mut lit_state) => {
                     panic!("unimpl");
                 }
-                &mut EncodeOrDecodeState::Literal(ref lit_state) => {
-                    panic!("unimpl");
-                }
-                &mut EncodeOrDecodeState::Dict(ref dict_state) => {
+                &mut EncodeOrDecodeState::Dict(ref mut dict_state) => {
                     panic!("unimpl");
                 }
                 _ =>{panic!("Unimpl");},
