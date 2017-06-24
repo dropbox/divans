@@ -160,7 +160,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
                 return Ok(Command::Dict(DictCommand{
                     word_size:word_len,
                     word_id:word_index,
-                    _empty:0,
+                    empty:0,
                     final_size:expected_len,
                     transform:transform
                 }));

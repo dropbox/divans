@@ -105,6 +105,20 @@ struct DictState {
    dc:DictCommand,
    state: DictSubstate,
 }
+impl DictState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                             Specialization:EncoderOrDecoderSpecialization,
+                             AllocU8:Allocator<u8>>(&mut self,
+                                                    _state: &mut CrossCommandState<ArithmeticCoder,
+                                                                             Specialization,
+                                                                             AllocU8>,
+                                                    _input_bytes:&[u8],
+                                                    _input_offset: &mut usize,
+                                                    _output_bytes:&mut [u8],
+                                                    _output_offset: &mut usize) -> BrotliResult {
+        panic!("unimpl");
+    }
+}
 
 enum LiteralSubstate {
     Begin,
@@ -116,6 +130,23 @@ struct LiteralState<AllocU8:Allocator<u8>> {
    lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
    state: LiteralSubstate,
 }
+
+impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization
+                        >(&mut self,
+                          _state: &mut CrossCommandState<ArithmeticCoder,
+                                                         Specialization,
+                                                         AllocU8>,
+                          _input_bytes:&[u8],
+                          _input_offset: &mut usize,
+                          _output_bytes:&mut [u8],
+                          _output_offset: &mut usize) -> BrotliResult {
+        panic!("unimpl");
+    }
+}
+
+
 
 enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Begin,
@@ -239,13 +270,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         if is_dict_or_end == true {
                             self.cross_command_state.coder.get_or_put_bit(&mut is_end, half);
                             new_state = Some(EncodeOrDecodeState::Dict(DictState {
-                                dc: DictCommand {
-                                    word_size:0,
-                                    transform:0,
-                                    final_size:0,
-                                    _empty:0,
-                                    word_id:0,
-                                },
+                                dc: DictCommand::nop(),
                                 state: DictSubstate::Begin,
                             }));
                         } else {
@@ -286,10 +311,37 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 }
                 &mut EncodeOrDecodeState::Literal(ref mut lit_state) => {
-                    panic!("unimpl");
+                    match lit_state.encode_or_decode(&mut self.cross_command_state,
+                                                      input_bytes,
+                                                      input_bytes_offset,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        BrotliResult::ResultSuccess => {
+                            *o_cmd = Command::Literal(core::mem::replace(&mut lit_state.lc,
+                                                                         LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop()));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
+                        },
+                        retval @ _ => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
                 }
                 &mut EncodeOrDecodeState::Dict(ref mut dict_state) => {
-                    panic!("unimpl");
+                    match dict_state.encode_or_decode(&mut self.cross_command_state,
+                                                      input_bytes,
+                                                      input_bytes_offset,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        BrotliResult::ResultSuccess => {
+                            *o_cmd = Command::Dict(core::mem::replace(&mut dict_state.dc, DictCommand::nop()));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
+                        },
+                        retval @ _ => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
                 }
                 _ =>{panic!("Unimpl");},
             }

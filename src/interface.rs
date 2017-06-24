@@ -18,14 +18,27 @@ pub struct DictCommand {
     pub word_size: u8,
     pub transform: u8,
     pub final_size: u8,
-    pub _empty: u8,
+    pub empty: u8,
     pub word_id: u32,
 }
+impl DictCommand {
+    pub fn nop() -> Self{
+        DictCommand{word_size:0, transform:0, final_size:0, empty:1, word_id:0}
+    }
+}
+
 
 #[derive(Debug)]
 pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
     pub data: SliceType,
 }
+
+impl<SliceType:SliceWrapper<u8>+Default> LiteralCommand<SliceType> {
+    pub fn nop() -> Self {
+        LiteralCommand{data:SliceType::default()}
+    }
+}
+
 
 #[derive(Debug)]
 pub enum Command<SliceType:SliceWrapper<u8> > {
