@@ -46,10 +46,10 @@ impl<AllocU8:Allocator<u8>> SliceWrapper<u8> for AllocatedMemoryPrefix<AllocU8> 
         self.0.slice().split_at(self.1).0
     }
 }
-
+#[derive(Copy, Clone)]
 enum CopySubstate {
      Begin,
-     DistanceLengthGreater14Less25, // length not between 0 and 14, inclusive.. second nibble results in 15-24
+     DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
      DistanceMantissaNibbles(u8, u32), // nibble count (up to 6), intermediate result
      DistanceDecoded,
      CountLengthFirstGreater14Less25, // length not between 0 and 14 inclusive... second nibble results in 15-24
@@ -63,16 +63,47 @@ struct CopyState {
 
 impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                             Specialization:EncoderOrDecoderSpecialization,
-                             AllocU8:Allocator<u8>>(&mut self,
-                                                    _state: &mut CrossCommandState<ArithmeticCoder,
-                                                                             Specialization,
-                                                                             AllocU8>,
-                                                    _input_bytes:&[u8],
-                                                    _input_offset: &mut usize,
-                                                    _output_bytes:&mut [u8],
-                                                    _output_offset: &mut usize) -> BrotliResult {
-        panic!("unimpl");
+                        Specialization:EncoderOrDecoderSpecialization,
+                        AllocU8:Allocator<u8>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  AllocU8>,
+                                               in_cmd: &CopyCommand,
+                                               input_bytes:&[u8],
+                                                    input_offset: &mut usize,
+                                                    output_bytes:&mut [u8],
+                                                    output_offset: &mut usize) -> BrotliResult {
+        let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
+        if dlen ==0 {
+            return BrotliResult::ResultFailure; // not allowed to copy from 0 distance
+        }
+        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        loop {
+            superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+            match self.state {
+                CopySubstate::Begin => {
+                    let mut beg_nib = core::cmp::min(15, dlen - 1);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
+                    if beg_nib == 15 {
+                        self.state = CopySubstate::DistanceLengthGreater15Less25;
+                    } else if beg_nib == 0 {
+                        self.cc.distance = 1;
+                        self.state = CopySubstate::DistanceDecoded;
+                    } else {
+                        self.state = CopySubstate::DistanceMantissaNibbles(beg_nib,  1 << (beg_nib + 1));
+                    }
+                },
+                CopySubstate::DistanceLengthGreater15Less25 => {
+                    let mut last_nib = dlen - 15;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    self.state = CopySubstate::DistanceMantissaNibbles(last_nib + 15,  1 << (last_nib + 16));
+                },
+                CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
+                    panic!("unimpl");
+                },
+                _ => panic!("unimpl"),
+            }
+        }
     }
 }
 
@@ -92,6 +123,7 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
      }
 }
 
+#[derive(Copy, Clone)]
 enum DictSubstate {
     Begin,
     WordSizeGreater18Less25, // if in this state, second nibble results in values 19-24 (first nibble was between 4 and 18)
@@ -111,7 +143,8 @@ impl DictState {
                              AllocU8:Allocator<u8>>(&mut self,
                                                     _state: &mut CrossCommandState<ArithmeticCoder,
                                                                              Specialization,
-                                                                             AllocU8>,
+                                                                                   AllocU8>,
+                                                    in_cmd: &DictCommand,
                                                     _input_bytes:&[u8],
                                                     _input_offset: &mut usize,
                                                     _output_bytes:&mut [u8],
@@ -120,6 +153,7 @@ impl DictState {
     }
 }
 
+#[derive(Copy, Clone)]
 enum LiteralSubstate {
     Begin,
     LiteralCountLengthGreater14Less25,
@@ -132,12 +166,14 @@ struct LiteralState<AllocU8:Allocator<u8>> {
 }
 
 impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
-    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+    fn encode_or_decode<ISlice: SliceWrapper<u8>,
+                        ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization
                         >(&mut self,
                           _state: &mut CrossCommandState<ArithmeticCoder,
                                                          Specialization,
                                                          AllocU8>,
+                          in_cmd: &LiteralCommand<ISlice>,
                           _input_bytes:&[u8],
                           _input_offset: &mut usize,
                           _output_bytes:&mut [u8],
@@ -247,7 +283,6 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                   input_cmd: &Command<ISl>,
                                                   o_cmd: &mut Command<AllocatedMemoryPrefix<AllocU8>>,
                                                   ) -> OneCommandReturn {
-        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         let half = 128u8;
         loop {
             let mut new_state: Option<EncodeOrDecodeState<AllocU8>>;
@@ -295,7 +330,16 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 }
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
-                    match copy_state.encode_or_decode(&mut self.cross_command_state,
+                    match copy_state.
+                        encode_or_decode(&mut self.cross_command_state,
+                                                      match input_cmd {
+                                                          &Command::Copy(ref in_copy_state) => in_copy_state,
+                                                          _ => {
+                                                              // unreachable unless caller passed in different values for input_cmd
+                                                              // on subsequent calls that didn't return Advance
+                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                                                          }
+                                                      },
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
@@ -312,6 +356,14 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 }
                 &mut EncodeOrDecodeState::Literal(ref mut lit_state) => {
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
+                                                      match input_cmd {
+                                                          &Command::Literal(ref in_copy_state) => in_copy_state,
+                                                          _ => {
+                                                              // unreachable unless caller passed in different values for input_cmd
+                                                              // on subsequent calls that didn't return Advance
+                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                                                          }
+                                                      },
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
@@ -329,6 +381,14 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 }
                 &mut EncodeOrDecodeState::Dict(ref mut dict_state) => {
                     match dict_state.encode_or_decode(&mut self.cross_command_state,
+                                                      match input_cmd {
+                                                          &Command::Dict(ref in_dict_state) => in_dict_state,
+                                                          _ => {
+                                                              // unreachable unless caller passed in different values for input_cmd
+                                                              // on subsequent calls that didn't return Advance
+                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                                                          }
+                                                      },
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
