@@ -273,10 +273,10 @@ impl DictState {
                                                             self.dc.transform as i32);
                     self.dc.final_size = final_len as u8;// WHA
                     self.state = DictSubstate::FullyDecoded;
-                    return BrotliResult::ResultSuccess;;
+                    return BrotliResult::ResultSuccess;
                 }
                 DictSubstate::FullyDecoded => {
-                    return BrotliResult::ResultSuccess;;
+                    return BrotliResult::ResultSuccess;
                 }
             }
         }
@@ -288,7 +288,8 @@ enum LiteralSubstate {
     Begin,
     LiteralCountLengthGreater14Less25,
     LiteralCountMantissaNibbles(u8, u32),
-    LiteralNibbleIndex(u32)
+    LiteralNibbleIndex(u32),
+    FullyDecoded,
 }
 struct LiteralState<AllocU8:Allocator<u8>> {
    lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
@@ -300,15 +301,68 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                         ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization
                         >(&mut self,
-                          _state: &mut CrossCommandState<ArithmeticCoder,
+                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                          Specialization,
                                                          AllocU8>,
-                          _in_cmd: &LiteralCommand<ISlice>,
-                          _input_bytes:&[u8],
-                          _input_offset: &mut usize,
-                          _output_bytes:&mut [u8],
-                          _output_offset: &mut usize) -> BrotliResult {
-        panic!("unimpl");
+                          in_cmd: &LiteralCommand<ISlice>,
+                          input_bytes:&[u8],
+                          input_offset: &mut usize,
+                          output_bytes:&mut [u8],
+                          output_offset: &mut usize) -> BrotliResult {
+        let literal_len = in_cmd.data.slice().len() as u32;
+        let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
+        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        loop {
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
+            match self.state {
+                LiteralSubstate::Begin => {
+                    let mut beg_nib = core::cmp::min(15, lllen);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
+                    if beg_nib == 15 {
+                        self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
+                    } else if beg_nib <= 1 {
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(beg_nib as usize),
+                                                                        beg_nib as usize);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
+                    } else {
+                        self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
+                                                                                  1 << (beg_nib));
+                    }
+                },
+                LiteralSubstate::LiteralCountLengthGreater14Less25 => {
+                    let mut last_nib = lllen - 15;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
+                                                                              1 << (last_nib + 15));
+                },
+                LiteralSubstate::LiteralCountMantissaNibbles(len_remaining, decoded_so_far) => {
+                    let next_len_remaining = len_remaining - 4;
+                    let last_nib_as_u32 = (literal_len ^ decoded_so_far) >> next_len_remaining;
+                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
+                
+                    if next_len_remaining == 0 {
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize),
+                                                                      next_decoded_so_far as usize);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
+                    } else {
+                        self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
+                                                                                   next_decoded_so_far);
+                    }
+                },
+                LiteralSubstate::LiteralNibbleIndex(index) => {
+                    panic!("unimplemented");
+                },
+                LiteralSubstate::FullyDecoded => {
+                    return BrotliResult::ResultSuccess;
+                }
+            }
+        }
     }
 }
 
@@ -334,7 +388,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              AllocU8:Allocator<u8>> {
     coder: ArithmeticCoder,
     specialization: Specialization,
-    _phantom: core::marker::PhantomData<AllocU8>
+    m8: AllocU8,
 }
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
@@ -342,7 +396,6 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     cross_command_state: CrossCommandState<ArithmeticCoder,
                                            Specialization,
                                            AllocU8>,
-    m8: AllocU8,
     state : EncodeOrDecodeState<AllocU8>,
     // this holds recent Command::LiteralCommand's buffers when
     // those commands are repurposed for other things like LiteralCommand
