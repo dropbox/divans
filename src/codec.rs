@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 use core;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
+use brotli_decompressor::transform::{TransformDictionaryWord};
 use super::probability::{CDF16, FrequentistCDFUpdater};
 use super::interface::{
     CopyCommand,
@@ -64,6 +66,10 @@ struct CopyState {
    state: CopySubstate,
 }
 
+fn round_up_mod_4(val: u8) -> u8 {
+    ((val - 1)|3)+1
+}
+
 impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
@@ -77,12 +83,16 @@ impl CopyState {
                                                     output_bytes:&mut [u8],
                                                     output_offset: &mut usize) -> BrotliResult {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
+        let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
         if dlen ==0 {
             return BrotliResult::ResultFailure; // not allowed to copy from 0 distance
         }
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
-            superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
             match self.state {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
@@ -93,18 +103,69 @@ impl CopyState {
                         self.cc.distance = 1;
                         self.state = CopySubstate::DistanceDecoded;
                     } else {
-                        self.state = CopySubstate::DistanceMantissaNibbles(beg_nib,  1 << (beg_nib + 1));
+                        self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << (beg_nib + 1));
                     }
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
-                    let mut last_nib = dlen - 15;
+                    let mut last_nib = dlen - 16;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
-                    self.state = CopySubstate::DistanceMantissaNibbles(last_nib + 15,  1 << (last_nib + 16));
+                    self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 16));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
-                    panic!("unimpl");
+                    let next_len_remaining = len_remaining - 4;
+                    let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
+                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
+                
+                    if next_len_remaining == 0 {
+                        self.cc.distance = next_decoded_so_far;
+                        self.state = CopySubstate::DistanceDecoded;
+                    } else {
+                        self.state  = CopySubstate::DistanceMantissaNibbles(
+                            next_len_remaining,
+                            next_decoded_so_far);
+                    }
                 },
-                _ => panic!("unimpl"),
+                CopySubstate::DistanceDecoded => {
+                    let mut beg_nib = core::cmp::min(15, clen);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
+                    if beg_nib == 15 {
+                        self.state = CopySubstate::CountLengthFirstGreater14Less25;
+                    } else if beg_nib <= 1 {
+                        self.cc.num_bytes = beg_nib as u32;
+                        self.state = CopySubstate::FullyDecoded;
+                    } else {
+                        self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << beg_nib);
+                    }
+                    
+                }
+                CopySubstate::CountLengthFirstGreater14Less25 => {
+                    let mut last_nib = clen - 15;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 15));
+                },
+                CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
+                    let next_len_remaining = len_remaining - 4;
+                    let last_nib_as_u32 = (in_cmd.num_bytes ^ decoded_so_far) >> next_len_remaining;
+                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
+                
+                    if next_len_remaining == 0 {
+                        self.cc.num_bytes = next_decoded_so_far;
+                        self.state = CopySubstate::FullyDecoded;
+                    } else {
+                        self.state  = CopySubstate::CountMantissaNibbles(
+                            next_len_remaining,
+                            next_decoded_so_far);
+                    }
+                },
+                CopySubstate::FullyDecoded => {
+                    return BrotliResult::ResultSuccess;
+                }
             }
         }
     }
@@ -130,7 +191,6 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
 enum DictSubstate {
     Begin,
     WordSizeGreater18Less25, // if in this state, second nibble results in values 19-24 (first nibble was between 4 and 18)
-    WordSizeDecoded,
     WordIndexMantissa(u8, u32), // assume the length is < (1 << WordSize), decode that many nibbles and use binary encoding
     TransformHigh, // total number of transforms <= 121 therefore; nibble must be < 8
     TransformLow,
@@ -144,15 +204,82 @@ impl DictState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
                              AllocU8:Allocator<u8>>(&mut self,
-                                                    _state: &mut CrossCommandState<ArithmeticCoder,
+                                                    superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                              Specialization,
                                                                                    AllocU8>,
                                                     in_cmd: &DictCommand,
-                                                    _input_bytes:&[u8],
-                                                    _input_offset: &mut usize,
-                                                    _output_bytes:&mut [u8],
-                                                    _output_offset: &mut usize) -> BrotliResult {
-        panic!("unimpl");
+                                                    input_bytes:&[u8],
+                                                    input_offset: &mut usize,
+                                                    output_bytes:&mut [u8],
+                                                    output_offset: &mut usize) -> BrotliResult {
+        if in_cmd.word_size < 4 {
+            return BrotliResult::ResultFailure; // FIXME: do we have the nop do the right thing here?
+        }
+        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        loop {
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
+            match self.state {
+                DictSubstate::Begin => {
+                    let mut beg_nib = core::cmp::min(15, in_cmd.word_size - 4);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
+                    if beg_nib == 15 {
+                        self.state = DictSubstate::WordSizeGreater18Less25;
+                    } else {
+                        self.dc.word_size = beg_nib + 4;
+                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(1 << self.dc.word_size), 0);
+                    }
+                }
+                DictSubstate::WordSizeGreater18Less25 => {
+                    let mut beg_nib = in_cmd.word_size - 19;
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
+                    self.dc.word_size = beg_nib + 19;
+                    self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(1 << self.dc.word_size), 0);
+                }
+                DictSubstate::WordIndexMantissa(len_remaining, decoded_so_far) => {
+                    let next_len_remaining = len_remaining - 4;
+                    let last_nib_as_u32 = (in_cmd.word_id ^ decoded_so_far) >> next_len_remaining;
+                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
+                    let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
+                    if next_len_remaining == 0 {
+                        self.dc.word_id = next_decoded_so_far;
+                        self.state = DictSubstate::TransformHigh;
+                    } else {
+                        self.state  = DictSubstate::WordIndexMantissa(
+                            next_len_remaining,
+                            next_decoded_so_far);
+                    }
+                },
+                DictSubstate::TransformHigh => {
+                    let mut high_nib = in_cmd.transform >> 4;
+                    superstate.coder.get_or_put_nibble(&mut high_nib, &uniform_prob);
+                    self.dc.transform = high_nib << 4;
+                    self.state = DictSubstate::TransformLow;
+                }
+                DictSubstate::TransformLow => {
+                    let mut low_nib = in_cmd.transform & 0xf;
+                    superstate.coder.get_or_put_nibble(&mut low_nib, &uniform_prob);
+                    self.dc.transform |= low_nib;
+                    let dict = &kBrotliDictionary;
+                    let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
+                    let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
+                    let final_len = TransformDictionaryWord(&mut transformed_word[..],
+                                                            &word[..],
+                                                            self.dc.word_size as i32,
+                                                            self.dc.transform as i32);
+                    self.dc.final_size = final_len as u8;// WHA
+                    self.state = DictSubstate::FullyDecoded;
+                    return BrotliResult::ResultSuccess;;
+                }
+                DictSubstate::FullyDecoded => {
+                    return BrotliResult::ResultSuccess;;
+                }
+            }
+        }
     }
 }
 
@@ -176,7 +303,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                           _state: &mut CrossCommandState<ArithmeticCoder,
                                                          Specialization,
                                                          AllocU8>,
-                          in_cmd: &LiteralCommand<ISlice>,
+                          _in_cmd: &LiteralCommand<ISlice>,
                           _input_bytes:&[u8],
                           _input_offset: &mut usize,
                           _output_bytes:&mut [u8],
@@ -347,7 +474,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             *o_cmd = Command::Copy(core::mem::replace(&mut copy_state.cc, CopyCommand::nop()));
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
                         },
-                        retval @ _ => {
+                        retval => {
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
@@ -368,7 +495,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                          LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop()));
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
                         },
-                        retval @ _ => {
+                        retval => {
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
@@ -388,7 +515,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             *o_cmd = Command::Dict(core::mem::replace(&mut dict_state.dc, DictCommand::nop()));
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(0));
                         },
-                        retval @ _ => {
+                        retval => {
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
