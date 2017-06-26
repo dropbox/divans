@@ -19,7 +19,10 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self, data:&'a [Command<ISlice>],offset: usize, backing:&'a Command<ISlice>) -> &'a Command<ISlice>;
     fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
                                                     offset: usize,
-                                                    backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>>;
+                                                     backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>>;
+    fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
+    fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
+    fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
 }
 
 
@@ -234,7 +237,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub fn coder(&mut self) -> &mut ArithmeticCoder {
         &mut self.cross_command_state.coder
     }
-    pub fn encode_or_decode<ISl:SliceWrapper<u8>>(&mut self,
+    pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
                                                   input_bytes: &[u8],
                                                   input_bytes_offset: &mut usize,
                                                   output_bytes: &mut [u8],
@@ -275,7 +278,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
             }
         }
     }
-    pub fn encode_or_decode_one_command<ISl:SliceWrapper<u8>>(&mut self,
+    pub fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default>(&mut self,
                                                   input_bytes: &[u8],
                                                   input_bytes_offset: &mut usize,
                                                   output_bytes: &mut [u8],
@@ -330,16 +333,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 }
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
-                    match copy_state.
-                        encode_or_decode(&mut self.cross_command_state,
-                                                      match input_cmd {
-                                                          &Command::Copy(ref in_copy_state) => in_copy_state,
-                                                          _ => {
-                                                              // unreachable unless caller passed in different values for input_cmd
-                                                              // on subsequent calls that didn't return Advance
-                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
-                                                          }
-                                                      },
+                    let backing_store = CopyCommand::nop();
+                    let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
+                                                                                                           &backing_store);
+                    match copy_state.encode_or_decode(&mut self.cross_command_state,
+                                                      src_copy_command,
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
@@ -355,15 +353,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 }
                 &mut EncodeOrDecodeState::Literal(ref mut lit_state) => {
+                    let backing_store = LiteralCommand::nop();
+                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(input_cmd,
+                                                                                                                 &backing_store);
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
-                                                      match input_cmd {
-                                                          &Command::Literal(ref in_copy_state) => in_copy_state,
-                                                          _ => {
-                                                              // unreachable unless caller passed in different values for input_cmd
-                                                              // on subsequent calls that didn't return Advance
-                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
-                                                          }
-                                                      },
+                                                      src_literal_command,
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
@@ -380,15 +374,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 }
                 &mut EncodeOrDecodeState::Dict(ref mut dict_state) => {
+                    let backing_store = DictCommand::nop();
+                    let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
+                                                                                                                 &backing_store);
                     match dict_state.encode_or_decode(&mut self.cross_command_state,
-                                                      match input_cmd {
-                                                          &Command::Dict(ref in_dict_state) => in_dict_state,
-                                                          _ => {
-                                                              // unreachable unless caller passed in different values for input_cmd
-                                                              // on subsequent calls that didn't return Advance
-                                                              return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
-                                                          }
-                                                      },
+                                                      src_dict_command,
                                                       input_bytes,
                                                       input_bytes_offset,
                                                       output_bytes,
