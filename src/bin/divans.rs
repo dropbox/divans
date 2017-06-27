@@ -18,7 +18,7 @@ use divans::Command;
 use divans::DictCommand;
 use divans::BrotliResult;
 use divans::Recoder;
-
+use divans::CMD_BUFFER_SIZE;
 fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
     let mut output = Vec::with_capacity(s.len() >> 1);
     let mut rem = 0;
@@ -245,21 +245,23 @@ fn recode_inner<Reader:std::io::BufRead,
     mut w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
-    let mut ibuffer = [Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop(),
-                       Command::<ByteVec>::nop()];
+    let mut ibuffer:[Command<ByteVec>; CMD_BUFFER_SIZE] = [Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop()];
+    
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
     loop {
@@ -273,7 +275,7 @@ fn recode_inner<Reader:std::io::BufRead,
             },
             Ok(count) => {
                 if i_read_index == ibuffer.len() || count == 0 {
-                    recode_cmd_buffer(&mut state, &ibuffer.split_at(i_read_index).0, w,
+                    recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
                                       &mut obuffer[..]).unwrap();
                     i_read_index = 0
                 }

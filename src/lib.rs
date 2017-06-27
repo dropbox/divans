@@ -14,7 +14,7 @@ pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Decoder, Recoder, LiteralCommand, CopyCommand, DictCommand};
 pub use cmd_to_raw::DivansRecodeState;
-use codec::CMD_BUFFER_SIZE;
+pub use codec::CMD_BUFFER_SIZE;
 
 pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
     decoder: DivansDecoder,
@@ -24,10 +24,10 @@ pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
     buffer_offset: usize,
     decode_complete: bool,
 }
-
 impl<DivansDecoder:Decoder, RawRecoder: Recoder> DivansDecompressor<DivansDecoder, RawRecoder> {
     pub fn new(decoder: DivansDecoder,
                recoder: RawRecoder) -> Self{
+
         DivansDecompressor {
             decoder:decoder,
             recoder:recoder,
@@ -85,7 +85,7 @@ impl<DivansDecoder:Decoder, RawRecoder: Recoder> DivansDecompressor<DivansDecode
                 }
             }
             if self.buffer_offset < self.buffer_size && *output_offset < output_len {
-                match self.recoder.recode(self.buffer.split_at_mut(self.buffer_size).0,
+                match self.recoder.recode(self.buffer.split_at(self.buffer_size).0,
                                      &mut self.buffer_offset,
                                      output,
                                      output_offset) {
