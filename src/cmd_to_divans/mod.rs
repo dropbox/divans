@@ -1,36 +1,41 @@
-use core;
-use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use alloc::{SliceWrapper, Allocator};
 
 use codec::EncoderOrDecoderSpecialization;
 
-use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command,ArithmeticEncoderOrDecoder};
+use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
 
 use codec::AllocatedMemoryPrefix;
-struct EncoderSpecialization {
+pub struct EncoderSpecialization {
     backing: [u8; 128],
+    max_size: usize,
 }
 impl EncoderSpecialization {
     pub fn new() -> Self {
         EncoderSpecialization{
             backing:[0;128],
+            max_size: 0usize,
         }
     }
 }
 
 impl EncoderOrDecoderSpecialization for EncoderSpecialization {
-    fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&self,
+    fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&mut self,
                                                    m8:&mut AllocU8,
                                                    len: usize) -> AllocatedMemoryPrefix<AllocU8> {
-        AllocatedMemoryPrefix::<AllocU8>::new(m8, len)
+        if len > self.max_size {
+            self.max_size = len;
+        }
+        AllocatedMemoryPrefix::<AllocU8>::new(m8, self.max_size)
     }
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                       data:&'a [Command<ISlice>],
                                                       offset: usize,
-                                                      backing:&'a Command<ISlice>) -> &'a Command<ISlice> {
+                                                      _backing:&'a Command<ISlice>) -> &'a Command<ISlice> {
         &data[offset]
     }
-    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
-                                                    offset: usize,
+    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self,
+                                                     _data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
+                                                     _offset: usize,
                                                      backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>> {
         backing
     }
@@ -65,11 +70,12 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
                                                    index: usize) -> u8 {
         in_cmd.data.slice()[index]
     }
-    fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
+    fn get_recoder_output<'a>(&'a mut self,
+                              _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
         &mut self.backing[..]
     }
     fn get_recoder_output_offset<'a>(&self,
-                                     passed_in_output_bytes: &'a mut usize,
+                                     _passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize {
         *backing = self.backing.len();
         backing

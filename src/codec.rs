@@ -19,12 +19,13 @@ use super::interface::{
 pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
 
 pub trait EncoderOrDecoderSpecialization {
-    fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&self,
+    fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
                                                     len: usize) -> AllocatedMemoryPrefix<AllocU8>;
-    fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self, data:&'a [Command<ISlice>],offset: usize, backing:&'a Command<ISlice>) -> &'a Command<ISlice>;
+    fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self, data:&'a [Command<ISlice>],offset: usize,
+                                                      backing:&'a Command<ISlice>) -> &'a Command<ISlice>;
     fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
-                                                    offset: usize,
+                                                     offset: usize,
                                                      backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>>;
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
     fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
