@@ -35,7 +35,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_size:22,
             transform:1,
             final_size:23,
-            _empty:0,
+            empty:0,
             word_id:index
         });
         match ret {
@@ -83,7 +83,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_size:22,
             transform:4,
             final_size:23,
-            _empty:0,
+            empty:0,
             word_id:index
         });
         match ret {

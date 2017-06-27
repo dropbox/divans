@@ -25,6 +25,9 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
     fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
+    fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
+                                                   in_cmd: &LiteralCommand<ISlice>,
+                                                   index: usize) -> u8;
 }
 
 
@@ -292,8 +295,8 @@ enum LiteralSubstate {
     FullyDecoded,
 }
 struct LiteralState<AllocU8:Allocator<u8>> {
-   lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
-   state: LiteralSubstate,
+    lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
+    state: LiteralSubstate,
 }
 
 impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
@@ -310,6 +313,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                           output_bytes:&mut [u8],
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
+        let literal_nibble_len = (literal_len as usize) << 1;
         let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
@@ -326,7 +330,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     } else if beg_nib <= 1 {
                         self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(beg_nib as usize),
                                                                         beg_nib as usize);
-                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
+                        self.state = LiteralSubstate::LiteralNibbleIndex((beg_nib as u32) << 1);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
                                                                                   1 << (beg_nib));
@@ -349,14 +353,23 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     if next_len_remaining == 0 {
                         self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize),
                                                                       next_decoded_so_far as usize);
-                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(next_decoded_so_far << 1);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
                                                                                    next_decoded_so_far);
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(index) => {
-                    panic!("unimplemented");
+                    let mut cur_nibble = superstate.specialization.get_literal_nibble(in_cmd,
+                                                                                  literal_nibble_len - 1 - index as usize);
+                    superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
+                    self.lc.data.slice_mut()[index as usize >> 1] |= cur_nibble << ((index & 1) << 4);
+                    if index != 0 {
+                        self.state = LiteralSubstate::FullyDecoded;
+                        return BrotliResult::ResultSuccess;
+                    } else {
+                        self.state = LiteralSubstate::LiteralNibbleIndex(index - 1);
+                    }
                 },
                 LiteralSubstate::FullyDecoded => {
                     return BrotliResult::ResultSuccess;
@@ -388,6 +401,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              AllocU8:Allocator<u8>> {
     coder: ArithmeticCoder,
     specialization: Specialization,
+    recoder: super::cmd_to_raw::DivansRecodeState<AllocU8::AllocatedMemory>, 
     m8: AllocU8,
 }
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -511,7 +525,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     if is_end {
                         new_state = Some(EncodeOrDecodeState::DivansSuccess);
                     }
-                }
+                },
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
                     let backing_store = CopyCommand::nop();
                     let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
@@ -531,7 +545,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
-                }
+                },
                 &mut EncodeOrDecodeState::Literal(ref mut lit_state) => {
                     let backing_store = LiteralCommand::nop();
                     let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(input_cmd,
@@ -552,7 +566,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
-                }
+                },
                 &mut EncodeOrDecodeState::Dict(ref mut dict_state) => {
                     let backing_store = DictCommand::nop();
                     let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
@@ -572,8 +586,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
-                }
-                _ =>{panic!("Unimpl");},
+                },
+                &mut EncodeOrDecodeState::PopulateRingBuffer(index) => {
+                    
+                    new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(index));
+                },
             }
             match new_state {
                 Some(ns) => self.state = ns,

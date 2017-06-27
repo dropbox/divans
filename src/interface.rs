@@ -1,6 +1,8 @@
 use alloc::{SliceWrapper};
 use brotli_decompressor::BrotliResult;
 use super::probability::{CDFUpdater, CDF16};
+
+
 #[derive(Debug)]
 pub struct CopyCommand {
     pub distance: u32,
