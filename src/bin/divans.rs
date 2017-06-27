@@ -17,7 +17,7 @@ use divans::LiteralCommand;
 use divans::Command;
 use divans::DictCommand;
 use divans::BrotliResult;
-use divans::Recoder;
+use divans::Compressor;
 use divans::CMD_BUFFER_SIZE;
 fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
     let mut output = Vec::with_capacity(s.len() >> 1);
@@ -194,7 +194,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
 }
 
 fn recode_cmd_buffer<Writer:std::io::Write,
-          RState:Recoder>(mut state: &mut RState,
+          RState:Compressor>(mut state: &mut RState,
                                 cmd_buffer:&[Command<ByteVec>],
                                 mut w: &mut Writer,
                                 mut output_scratch:&mut [u8]) -> Result<usize, io::Error> {

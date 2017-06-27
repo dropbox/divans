@@ -61,15 +61,24 @@ impl<SliceType:SliceWrapper<u8>> Command<SliceType> {
     }
 }
 
-pub trait Recoder {
+pub trait Compressor {
     fn recode<SliceType:SliceWrapper<u8>>(&mut self,
-                  input:&[Command<SliceType>],
-                  input_offset : &mut usize,
-                  output :&mut[u8],
-                  output_offset: &mut usize) -> BrotliResult;
+                                          input:&[Command<SliceType>],
+                                          input_offset : &mut usize,
+                                          output :&mut[u8],
+                                          output_offset: &mut usize) -> BrotliResult;
 }
 
-pub trait Decoder {
+pub trait Decompressor {
+    fn recode<SliceType:SliceWrapper<u8>>(&mut self,
+                                          input:&[u8],
+                                          input_offset : &mut usize,
+                                          output :&mut[u8],
+                                          output_offset: &mut usize) -> BrotliResult;
+    fn flush(&mut self) -> BrotliResult;
+}
+
+pub trait CommandDecoder {
     type CommandSliceType: SliceWrapper<u8>;
     fn decode(
         &mut self,
@@ -77,6 +86,7 @@ pub trait Decoder {
         input_offset: &mut usize,
         output: &mut [Command<Self::CommandSliceType>],
         output_offset: &mut usize) -> BrotliResult;
+    fn flush(&mut self) -> BrotliResult;
 }
 
 

@@ -4,7 +4,7 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
 use brotli_decompressor::transform::{TransformDictionaryWord};
-pub use super::interface::{Command, Recoder, LiteralCommand, CopyCommand, DictCommand};
+pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 mod test;
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default>{
     input_sub_offset: usize,
@@ -246,7 +246,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeS
         }
     }
 }
-impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Recoder for DivansRecodeState<RingBuffer> {
+impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for DivansRecodeState<RingBuffer> {
     fn recode<SliceType:SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
                   input_offset : &mut usize,
