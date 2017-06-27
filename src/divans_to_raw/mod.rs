@@ -5,7 +5,7 @@ use codec::EncoderOrDecoderSpecialization;
 use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
 
 use codec::AllocatedMemoryPrefix;
-struct DecoderSpecialization {
+pub struct DecoderSpecialization {
     max_size: usize,    
 }
 impl DecoderSpecialization {

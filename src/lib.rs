@@ -17,7 +17,9 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 pub use interface::{Command, Decoder, Recoder, LiteralCommand, CopyCommand, DictCommand};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
-
+pub use divans_to_raw::DecoderSpecialization;
+pub use cmd_to_divans::EncoderSpecialization;
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
     decoder: DivansDecoder,
     recoder: RawRecoder,

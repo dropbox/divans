@@ -1,8 +1,8 @@
 use super::encoder::{
-    Encoder,
+    EntropyEncoder,
     ByteQueue,
     RegisterQueue,
-    Decoder,
+    EntropyDecoder,
 };
 
 #[derive(Default)]
@@ -11,7 +11,7 @@ struct DebugEncoder {
 }
 
 
-impl Encoder for DebugEncoder {
+impl EntropyEncoder for DebugEncoder {
     type Queue = RegisterQueue;
     fn get_internal_buffer(&mut self) -> &mut RegisterQueue {
         &mut self.buffer
@@ -33,7 +33,7 @@ struct DebugDecoder {
 }
 
 
-impl Decoder for DebugDecoder {
+impl EntropyDecoder for DebugDecoder {
     type Queue = RegisterQueue;
     fn get_internal_buffer(&mut self) -> &mut RegisterQueue {
         &mut self.buffer

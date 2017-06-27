@@ -58,7 +58,7 @@ impl ByteQueue for RegisterQueue {
 }
 
 
-pub trait Encoder {
+pub trait EntropyEncoder {
     type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
     fn get_internal_buffer(&mut self) -> &mut Self::Queue;
@@ -112,7 +112,7 @@ pub trait Encoder {
     fn flush(&mut self);
 }
 
-pub trait Decoder {
+pub trait EntropyDecoder {
     type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
     fn get_internal_buffer(&mut self) -> &mut Self::Queue;
@@ -165,7 +165,7 @@ pub trait Decoder {
 
 mod test {
     use super::ByteQueue;
-    use super::{Encoder, Decoder};
+    use super::{EntropyEncoder, EntropyDecoder};
     #[allow(unused_imports)]
     use probability::{CDF16, FrequentistCDFUpdater, BlendCDFUpdater, CDFUpdater};
     #[allow(unused)]
@@ -182,7 +182,7 @@ mod test {
         num_calls: usize,
         queue: MockByteQueue,
     }
-    impl Encoder for MockBitCoder {
+    impl EntropyEncoder for MockBitCoder {
         type Queue = MockByteQueue;
         fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
             &mut self.queue
@@ -193,7 +193,7 @@ mod test {
         }
         fn flush(&mut self){}
     }
-    impl Decoder for MockBitCoder {
+    impl EntropyDecoder for MockBitCoder {
         type Queue = MockByteQueue;
         fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
             &mut self.queue
