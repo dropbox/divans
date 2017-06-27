@@ -10,6 +10,7 @@ mod debug_encoder;
 mod encoder;
 mod cmd_to_raw;
 mod codec;
+mod cmd_to_divans;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Decoder, Recoder, LiteralCommand, CopyCommand, DictCommand};

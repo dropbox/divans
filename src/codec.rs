@@ -16,9 +16,12 @@ use super::interface::{
 //    Recoder,
     ArithmeticEncoderOrDecoder
 };
+pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
 
 pub trait EncoderOrDecoderSpecialization {
-    fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&self, len: usize) -> AllocU8::AllocatedMemory;
+    fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&self,
+                                                    m8: &mut AllocU8,
+                                                    len: usize) -> AllocatedMemoryPrefix<AllocU8>;
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self, data:&'a [Command<ISlice>],offset: usize, backing:&'a Command<ISlice>) -> &'a Command<ISlice>;
     fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
                                                     offset: usize,
@@ -29,13 +32,13 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
                                                    in_cmd: &LiteralCommand<ISlice>,
                                                    index: usize) -> u8;
-    fn get_recoder_output<'a>(&self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
-    fn get_recoder_output_offset<'a>(&self, passed_in_output_bytes: &'a mut usize) -> &'a mut usize;
-                          
+    fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
+    fn get_recoder_output_offset<'a>(&self,
+                                     passed_in_output_bytes: &'a mut usize,
+                                     backing: &'a mut usize) -> &'a mut usize;
 }
 
 
-pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
 
 impl<AllocU8:Allocator<u8>> Default for AllocatedMemoryPrefix<AllocU8> {
     fn default() -> Self {
@@ -176,6 +179,12 @@ impl CopyState {
                 }
             }
         }
+    }
+}
+
+impl <AllocU8:Allocator<u8>> AllocatedMemoryPrefix<AllocU8> {
+    pub fn new(m8 : &mut AllocU8, len: usize) -> Self {
+        AllocatedMemoryPrefix::<AllocU8>(m8.alloc_cell(len), len)
     }
 }
 
@@ -333,8 +342,8 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(beg_nib as usize),
-                                                                        beg_nib as usize);
+                        self.lc.data = superstate.specialization.alloc_literal_buffer(&mut superstate.m8,
+                                                                                      beg_nib as usize);
                         self.state = LiteralSubstate::LiteralNibbleIndex((beg_nib as u32) << 1);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
@@ -369,7 +378,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                                                                                   literal_nibble_len - 1 - index as usize);
                     superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
                     self.lc.data.slice_mut()[index as usize >> 1] |= cur_nibble << ((index & 1) << 4);
-                    if index != 0 {
+                    if index == 0 {
                         self.state = LiteralSubstate::FullyDecoded;
                         return BrotliResult::ResultSuccess;
                     } else {
@@ -442,33 +451,31 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                   output_bytes: &mut [u8],
                                                   output_bytes_offset: &mut usize,
                                                   input_commands: &[Command<ISl>],
-                                                  input_command_offset: &mut usize,
-                                                  output_commands: &mut[Command<AllocatedMemoryPrefix<AllocU8>>],
-                                                  output_command_offset: &mut usize) -> BrotliResult {
+                                                  input_command_offset: &mut usize) -> BrotliResult {
         loop {
             let i_cmd_backing = Command::<ISl>::nop();
-            let mut o_cmd_backing = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
-            let output_commands_len = output_commands.len();
+            let mut o_cmd = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
                                                                                    *input_command_offset,
                                                                                    &i_cmd_backing);
-            let mut o_cmd = self.cross_command_state.specialization.get_output_command(output_commands,
-                                                                                       *output_command_offset,
-                                                                                       &mut o_cmd_backing);
             match self.encode_or_decode_one_command(input_bytes,
                                                     input_bytes_offset,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
-                                                    o_cmd) {
+                                                    &mut o_cmd) {
                 OneCommandReturn::Advance => {
                     *input_command_offset += 1;
-                    *output_command_offset += 1;
+                    match &mut o_cmd {
+                        &mut Command::Literal(ref mut l) => {
+                            let mfd = core::mem::replace(&mut l.data,
+                                                         AllocatedMemoryPrefix::<AllocU8>::default()).0;
+                            self.cross_command_state.m8.free_cell(mfd);
+                        },
+                        _ => {},
+                    }
                     if input_commands.len() == *input_command_offset {
                         return BrotliResult::NeedsMoreInput;
-                    }
-                    if output_commands_len == *output_command_offset {
-                        return BrotliResult::NeedsMoreOutput;
                     }
                 },
                 OneCommandReturn::BufferExhausted(result) => {
@@ -595,12 +602,15 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 &mut EncodeOrDecodeState::PopulateRingBuffer => {
                     let mut ioffset: usize = 0;
                     let mut tmp_o_cmd = [core::mem::replace(o_cmd, Command::nop())];
+                    let mut tmp_output_offset_bytes_backing: usize = 0;
+                    let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
+                        &mut tmp_output_offset_bytes_backing,
+                        output_bytes_offset);
                     match self.cross_command_state.recoder.recode(&mut tmp_o_cmd,
                                                                   &mut ioffset,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
-                                                                  self.cross_command_state.
-                                                                  specialization.get_recoder_output_offset(output_bytes_offset)) {
+                                                                  tmp_output_offset_bytes) {
                         BrotliResult::NeedsMoreInput => new_state = Some(EncodeOrDecodeState::Begin),
                         BrotliResult::NeedsMoreOutput => new_state = Some(EncodeOrDecodeState::PopulateRingBuffer),
                         BrotliResult::ResultFailure => {
@@ -626,5 +636,4 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
             }
         }
     }
-                        
 }
