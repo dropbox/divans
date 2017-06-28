@@ -7,9 +7,9 @@ extern crate brotli_decompressor;
 mod integration_test;
 mod util;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
+use std::env;
 
-use std::io;
-use std::error::Error;
+
 use core::convert::From;
 use std::vec::Vec;
 use divans::CopyCommand;
@@ -19,6 +19,17 @@ use divans::DictCommand;
 use divans::BrotliResult;
 use divans::Compressor;
 use divans::CMD_BUFFER_SIZE;
+use std::fs::File;
+use std::error::Error;
+use std::io::{self,Write, Seek, SeekFrom, BufReader};
+
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+
+use std::path::Path;
 fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
     let mut output = Vec::with_capacity(s.len() >> 1);
     let mut rem = 0;
@@ -377,8 +388,137 @@ fn recode<Reader:std::io::BufRead,
     }
 }
 fn main() {
-   let stdin = std::io::stdin();
-   let mut stdin = stdin.lock();
-   recode(&mut stdin,
-          &mut std::io::stdout()).unwrap()
+    let mut do_compress = false;
+    let mut do_recode = false;
+    let mut filenames = [std::string::String::new(), std::string::String::new()];
+    let mut num_benchmarks = 1;
+    if env::args_os().len() > 1 {
+        let mut first = true;
+        for argument in env::args() {
+            if first {
+                first = false;
+                continue;
+            }
+            if argument == "-d" {
+                continue;
+            }
+            if argument.starts_with("-b") {
+                num_benchmarks = argument.trim_matches(
+                    '-').trim_matches(
+                    'b').parse::<usize>().unwrap();
+                continue;
+            }
+            if argument == "-r" {
+                do_recode = true;
+                continue;
+            }
+            if argument == "-c" {
+                do_compress = true;
+                continue;
+            }
+            if argument == "-h" || argument == "-help" || argument == "--help" {
+                println_stderr!("Decompression:\ndivans [input_file] [output_file]\nCompression:brotli -c [input_file] [output_file]\n");
+                return;
+      }
+            if filenames[0] == "" {
+                filenames[0] = argument.clone();
+                continue;
+            }
+            if filenames[1] == "" {
+                filenames[1] = argument.clone();
+                continue;
+            }
+            panic!("Unknown Argument {:}", argument);
+        }
+        if filenames[0] != "" {
+            let mut input = match File::open(&Path::new(&filenames[0])) {
+                Err(why) => panic!("couldn't open {:}\n{:}", filenames[0], why),
+                Ok(file) => file,
+            };
+            if filenames[1] != "" {
+                let mut output = match File::create(&Path::new(&filenames[1])) {
+                    Err(why) => panic!("couldn't open file for writing: {:}\n{:}", filenames[1], why),
+                    Ok(file) => file,
+                };
+                for i in 0..num_benchmarks {
+                    if do_compress {
+                        /*
+                        match compress(&mut input, &mut output, 65536, &params) {
+                            Ok(_) => {}
+                            Err(e) => panic!("Error {:?}", e),
+                    }*/
+                        panic!("unimpl");
+                    } else if do_recode {
+                        let mut buffered_input = BufReader::new(input);
+                        recode(&mut buffered_input,
+                               &mut output).unwrap();
+                        input = buffered_input.into_inner();
+                    } else {
+                        /*
+                        match decompress(&mut input, &mut output, 65536) {
+                            Ok(_) => {}
+                            Err(e) => panic!("Error {:?}", e),
+                    }*/
+                        panic!("unimpl");
+                    }
+                    if i + 1 != num_benchmarks {
+                        input.seek(SeekFrom::Start(0)).unwrap();
+                        output.seek(SeekFrom::Start(0)).unwrap();
+                    }
+                }
+                drop(output);
+            } else {
+                assert_eq!(num_benchmarks, 1);
+                if do_compress {
+                    /*
+                    match compress(&mut input, &mut io::stdout(), 65536, &params) {
+                        Ok(_) => {}
+                        Err(e) => panic!("Error {:?}", e),
+                }*/
+                   panic!("Unimpl");    
+                } else if do_recode {
+                    let mut buffered_input = BufReader::new(input);
+                    recode(&mut buffered_input,
+                           &mut io::stdout()).unwrap()
+                } else {
+                    /*
+                    match decompress(&mut input, &mut io::stdout(), 65536) {
+                        Ok(_) => {}
+                        Err(e) => panic!("Error {:?}", e),
+                }*/
+                    panic!("Unimpl");
+                }
+            }
+        } else {
+            assert_eq!(num_benchmarks, 1);
+            if do_compress {
+                /*
+                match compress(&mut io::stdin(), &mut io::stdout(), 65536, &params) {
+                    Ok(_) => return,
+                    Err(e) => panic!("Error {:?}", e),
+            }*/
+                panic!("unimpl");
+            } else if do_recode {
+                let stdin = std::io::stdin();
+                let mut stdin = stdin.lock();
+                recode(&mut stdin,
+                       &mut io::stdout()).unwrap()
+            } else {
+                panic!("unimpl");
+                /*
+                match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+                    Ok(_) => return,
+                    Err(e) => panic!("Error {:?}", e),
+                }*/
+            }
+        }
+    } else {
+        assert_eq!(num_benchmarks, 1);
+        panic!("unimpl");
+            /*
+        match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+            Ok(_) => return,
+            Err(e) => panic!("Error {:?}", e),
+        }*/
+    }
 }
