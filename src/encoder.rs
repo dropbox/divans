@@ -2,8 +2,8 @@
 use core;
 use core::default::Default;
 use probability::{CDFUpdater, CDF16};
-
-
+use interface::ArithmeticEncoderOrDecoder;
+use super::BrotliResult;
 pub trait ByteQueue {
       fn num_push_bytes_avail(&self) -> usize;
       fn num_pop_bytes_avail(&self) -> usize;
@@ -159,8 +159,41 @@ pub trait EntropyDecoder {
         }
         ret
     }
+    fn flush(&mut self) -> BrotliResult;
 }
 
+
+impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
+    fn drain_or_fill_internal_buffer(&mut self,
+                                     input_buffer:&[u8],
+                                     input_offset:&mut usize,
+                                     output_buffer:&mut [u8],
+                                     output_offset: &mut usize) -> BrotliResult {
+        let mut ibuffer = self.get_internal_buffer();
+        let coder_bytes_avail = ibuffer.num_push_bytes_avail();
+        if coder_bytes_avail != 0 {
+            let push_count = ibuffer.push_data(input_buffer.split_at(*input_offset).1);
+            *input_offset += push_count;
+            if ibuffer.num_push_bytes_avail() != 0 {
+                return BrotliResult::NeedsMoreInput;
+            }
+        }
+        return BrotliResult::ResultSuccess;
+    }
+    fn get_or_put_bit(&mut self,
+                      bit: &mut bool,
+                      prob_of_false: u8) {
+        *bit = self.get_bit(prob_of_false);
+    }
+    fn get_or_put_nibble<U:CDFUpdater>(&mut self,
+                                       nibble: &mut u8,
+                                       prob: &CDF16<U>) {
+        *nibble = self.get_nibble(prob);
+    }
+    fn close(&mut self) -> BrotliResult {
+        self.flush()
+    }
+}
 
 
 mod test {
@@ -203,6 +236,9 @@ mod test {
             self.calls_to_put_bit[self.num_calls >> 2][self.num_calls&3] = (bit, prob_of_false);
             self.num_calls += 1;
             bit
+        }
+        fn flush(&mut self) -> super::BrotliResult {
+            super::BrotliResult::ResultSuccess
         }
     }
     #[allow(unused)]

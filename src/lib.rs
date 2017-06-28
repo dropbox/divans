@@ -20,6 +20,14 @@ pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
 pub use cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+
+pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
+pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
+
+pub struct DivansCompressor<AllocU8:Allocator<u8> > {
+    codec: DivansCodec<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>,
+}
+
 /*
 pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
     decoder: DivansDecoder,

@@ -104,5 +104,5 @@ pub trait ArithmeticEncoderOrDecoder {
     fn get_or_put_nibble<U:CDFUpdater> (&mut self,
                                         nibble: &mut u8,
                                         prob: &CDF16<U>);
-    fn flush(&mut self);
+    fn close(&mut self) -> BrotliResult;
 }

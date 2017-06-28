@@ -4,9 +4,11 @@ use super::encoder::{
     RegisterQueue,
     EntropyDecoder,
 };
-
+use probability::{CDF16, CDFUpdater};
+use super::interface::ArithmeticEncoderOrDecoder;
+use super::BrotliResult;
 #[derive(Default)]
-struct DebugEncoder {
+pub struct DebugEncoder {
     buffer: RegisterQueue,
 }
 
@@ -28,7 +30,7 @@ impl EntropyEncoder for DebugEncoder {
 }
 
 #[derive(Default)]
-struct DebugDecoder {
+pub struct DebugDecoder {
     buffer: RegisterQueue,
 }
 
@@ -48,5 +50,42 @@ impl EntropyDecoder for DebugDecoder {
             assert_eq!(return_value, 1);
         }
         return_value != 0
+    }
+    fn flush(&mut self) -> BrotliResult {
+        return BrotliResult::ResultSuccess;
+    }
+}
+
+
+impl ArithmeticEncoderOrDecoder for DebugEncoder {
+    fn drain_or_fill_internal_buffer(&mut self,
+                                     input_buffer:&[u8],
+                                     input_offset:&mut usize,
+                                     output_buffer:&mut [u8],
+                                     output_offset: &mut usize) -> BrotliResult {
+        let mut ibuffer = self.get_internal_buffer();
+        let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
+        if coder_bytes_avail != 0 {
+            let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);
+            *output_offset += push_count;
+            if ibuffer.num_pop_bytes_avail() != 0 {
+                return BrotliResult::NeedsMoreOutput;
+            }
+        }
+        return BrotliResult::ResultSuccess;
+    }
+    fn get_or_put_bit(&mut self,
+                      bit: &mut bool,
+                      prob_of_false: u8) {
+        self.put_bit(*bit, prob_of_false)
+    }
+    fn get_or_put_nibble<U:CDFUpdater>(&mut self,
+                                       nibble: &mut u8,
+                                       prob: &CDF16<U>) {
+        self.put_nibble(*nibble, prob);
+    }
+    fn close(&mut self) -> BrotliResult {
+        self.flush();
+        BrotliResult::ResultSuccess
     }
 }

@@ -419,6 +419,25 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     recoder: super::cmd_to_raw::DivansRecodeState<AllocU8::AllocatedMemory>, 
     m8: AllocU8,
 }
+
+impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
+                             Specialization:EncoderOrDecoderSpecialization,
+      AllocU8:Allocator<u8>> CrossCommandState<ArithmeticCoder,
+                                               Specialization,
+                                               AllocU8> {
+    fn new(mut m8: AllocU8, spc: Specialization, ring_buffer_size: usize) -> Self {
+        let ring_buffer = m8.alloc_cell(ring_buffer_size);
+        CrossCommandState::<ArithmeticCoder,
+                            Specialization,
+                            AllocU8> {
+            coder: ArithmeticCoder::default(),
+            specialization: spc,
+            recoder: super::cmd_to_raw::DivansRecodeState::<AllocU8::AllocatedMemory>::new(
+                ring_buffer),
+            m8: m8,
+        }
+    }
+}
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
                        AllocU8: Allocator<u8>> {
@@ -426,10 +445,6 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            Specialization,
                                            AllocU8>,
     state : EncodeOrDecodeState<AllocU8>,
-    // this holds recent Command::LiteralCommand's buffers when
-    // those commands are repurposed for other things like LiteralCommand
-    literal_cache: [AllocU8::AllocatedMemory; CMD_BUFFER_SIZE],
-    // need state variable describing the item we are building
 }
 
 pub enum OneCommandReturn {
@@ -437,9 +452,21 @@ pub enum OneCommandReturn {
     BufferExhausted(BrotliResult),
 }
 
-impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
      Specialization: EncoderOrDecoderSpecialization,
      AllocU8: Allocator<u8>> DivansCodec<ArithmeticCoder, Specialization, AllocU8> {
+    pub fn new(m8:AllocU8,
+               specialization: Specialization,
+               ring_buffer_size: usize) -> Self {
+        DivansCodec::<ArithmeticCoder,  Specialization, AllocU8> {
+            cross_command_state:CrossCommandState::<ArithmeticCoder,
+                                                  Specialization,
+                                                    AllocU8>::new(m8,
+                                                                  specialization,
+                                                                  ring_buffer_size),
+            state:EncodeOrDecodeState::Begin,
+        }
+    }
     pub fn specialization(&mut self) -> &mut Specialization{
         &mut self.cross_command_state.specialization
     }

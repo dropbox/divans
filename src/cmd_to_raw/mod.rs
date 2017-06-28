@@ -6,7 +6,7 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::transform::{TransformDictionaryWord};
 pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 mod test;
-pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default>{
+pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>>{
     input_sub_offset: usize,
     ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
@@ -17,13 +17,13 @@ const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
    fn default() -> Self {
-      DivansRecodeState::<RingBuffer>::new()
+      DivansRecodeState::<RingBuffer>::new(RingBuffer::default())
    }
 }
-impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> DivansRecodeState<RingBuffer> {
-    fn new() -> Self {
+impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingBuffer> {
+    pub fn new(rb:RingBuffer) -> Self {
         DivansRecodeState {
-            ring_buffer: RingBuffer::default(),
+            ring_buffer: rb,
             ring_buffer_decode_index: 0,
             ring_buffer_output_index: 0,
             input_sub_offset: 0,
