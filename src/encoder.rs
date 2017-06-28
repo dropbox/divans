@@ -199,6 +199,7 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
 mod test {
     use super::ByteQueue;
     use super::{EntropyEncoder, EntropyDecoder};
+    use super::super::BrotliResult;
     #[allow(unused_imports)]
     use probability::{CDF16, FrequentistCDFUpdater, BlendCDFUpdater, CDFUpdater};
     #[allow(unused)]
@@ -237,8 +238,8 @@ mod test {
             self.num_calls += 1;
             bit
         }
-        fn flush(&mut self) -> super::BrotliResult {
-            super::BrotliResult::ResultSuccess
+        fn flush(&mut self) -> BrotliResult {
+            BrotliResult::ResultSuccess
         }
     }
     #[allow(unused)]
