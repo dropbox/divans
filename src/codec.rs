@@ -479,6 +479,43 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
     pub fn coder(&mut self) -> &mut ArithmeticCoder {
         &mut self.cross_command_state.coder
     }
+    pub fn flush(&mut self, 
+                 output_bytes: &mut [u8],
+                 output_bytes_offset: &mut usize) -> BrotliResult{
+        //FIXME: track states here somehow must  map from Begin -> wherever we are
+        let mut unused = 0usize;
+        let nop = Command::<AllocU8::AllocatedMemory>::nop();
+        let mut onop = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
+        match self.encode_or_decode_one_command(&[],
+                                           &mut unused,
+                                           output_bytes,
+                                           output_bytes_offset,
+                                           &nop,
+                                           &mut onop,
+                                           true) {
+            OneCommandReturn::BufferExhausted(res) => {
+                match res {
+                    BrotliResult::ResultSuccess => {},
+                    need => return need,
+                }
+            },
+            OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
+            
+        }
+        match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
+            BrotliResult::ResultSuccess => 
+                match self.cross_command_state.coder.close() {
+                    BrotliResult::ResultSuccess => {
+                        return self.cross_command_state.coder.drain_or_fill_internal_buffer(&[],
+                                                             &mut unused,
+                                                             output_bytes,
+                                                             output_bytes_offset);
+                    },
+                    ret => return ret,
+                },
+            ret=> return ret,
+        }
+    }
     pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
                                                   input_bytes: &[u8],
                                                   input_bytes_offset: &mut usize,
@@ -497,7 +534,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
-                                                    &mut o_cmd) {
+                                                    &mut o_cmd,
+                                                    false /* not end*/) {
                 OneCommandReturn::Advance => {
                     *input_command_offset += 1;
                     match &mut o_cmd {
@@ -525,7 +563,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                   output_bytes_offset: &mut usize,
                                                   input_cmd: &Command<ISl>,
                                                   o_cmd: &mut Command<AllocatedMemoryPrefix<AllocU8>>,
-                                                  ) -> OneCommandReturn {
+                                                  mut is_end: bool) -> OneCommandReturn {
         let half = 128u8;
         loop {
             let mut new_state: Option<EncodeOrDecodeState<AllocU8>>;
@@ -535,8 +573,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                 },
                 &mut EncodeOrDecodeState::Begin => {
                     let mut is_copy = false;
-                    let mut is_dict_or_end = false;
-                    let mut is_end = false;
+                    let mut is_dict_or_end = is_end;
                     match input_cmd {
                         &Command::Copy(_) => is_copy = true,
                         &Command::Dict(_) => is_dict_or_end = true,
@@ -640,7 +677,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
                         &mut tmp_output_offset_bytes_backing,
                         output_bytes_offset);
-                    match self.cross_command_state.recoder.recode(&mut tmp_o_cmd,
+                    match self.cross_command_state.recoder.encode(&mut tmp_o_cmd,
                                                                   &mut ioffset,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),

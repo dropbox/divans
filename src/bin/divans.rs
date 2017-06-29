@@ -63,7 +63,11 @@ fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
 }
 #[derive(Debug)]
 pub struct ByteVec(Vec<u8>);
-
+impl Default for ByteVec {
+    fn default() -> Self {
+        ByteVec(Vec::<u8>::new())
+    }
+}
 impl alloc::SliceWrapper<u8> for ByteVec {
     fn slice(&self) -> &[u8] {
         return &self.0[..];
@@ -213,7 +217,7 @@ fn recode_cmd_buffer<Writer:std::io::Write,
     let mut o_processed_index = 0usize;
     let mut ret = 0usize;
     while i_processed_index < cmd_buffer.len() {
-        match state.recode(cmd_buffer,
+        match state.encode(cmd_buffer,
                            &mut i_processed_index,
                            output_scratch,
                            &mut o_processed_index) {

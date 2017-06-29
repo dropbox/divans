@@ -247,7 +247,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
 }
 impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for DivansRecodeState<RingBuffer> {
-    fn recode<SliceType:SliceWrapper<u8>>(&mut self,
+    fn encode<SliceType:SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
                   input_offset : &mut usize,
                   output :&mut[u8],
@@ -276,5 +276,9 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
         }
         self.flush(output, output_offset)
     }
-
+    fn flush(&mut self,
+             _output:&mut[u8],
+             _output_offset:&mut usize)->BrotliResult{
+        BrotliResult::ResultSuccess
+    }
 }

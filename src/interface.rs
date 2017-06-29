@@ -62,20 +62,22 @@ impl<SliceType:SliceWrapper<u8>> Command<SliceType> {
 }
 
 pub trait Compressor {
-    fn recode<SliceType:SliceWrapper<u8>>(&mut self,
+    fn encode<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
+                                          output :&mut[u8],
+                                          output_offset: &mut usize) -> BrotliResult;
+    fn flush(&mut self,
                                           output :&mut[u8],
                                           output_offset: &mut usize) -> BrotliResult;
 }
 
 pub trait Decompressor {
-    fn recode<SliceType:SliceWrapper<u8>>(&mut self,
-                                          input:&[u8],
-                                          input_offset : &mut usize,
-                                          output :&mut[u8],
-                                          output_offset: &mut usize) -> BrotliResult;
-    fn flush(&mut self) -> BrotliResult;
+    fn decode(&mut self,
+              input:&[u8],
+              input_offset : &mut usize,
+              output :&mut[u8],
+              output_offset: &mut usize) -> BrotliResult;
 }
 
 pub trait CommandDecoder {
