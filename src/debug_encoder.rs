@@ -59,8 +59,8 @@ impl EntropyDecoder for DebugDecoder {
 
 impl ArithmeticEncoderOrDecoder for DebugEncoder {
     fn drain_or_fill_internal_buffer(&mut self,
-                                     input_buffer:&[u8],
-                                     input_offset:&mut usize,
+                                     _input_buffer:&[u8],
+                                     _input_offset:&mut usize,
                                      output_buffer:&mut [u8],
                                      output_offset: &mut usize) -> BrotliResult {
         let mut ibuffer = self.get_internal_buffer();

@@ -8,7 +8,7 @@ pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, Dic
 mod test;
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>>{
     input_sub_offset: usize,
-    ring_buffer: RingBuffer,
+    pub ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
 }

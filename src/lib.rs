@@ -25,47 +25,70 @@ pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
 pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
 
 pub struct DivansCompressor<AllocU8:Allocator<u8> > {
-    codec: DivansCodec<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>,
+    _codec: DivansCodec<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>,
+}
+impl<AllocU8:Allocator<u8> > DivansCompressor<AllocU8> {
+    pub fn new(m8: AllocU8, mut window_size: usize) -> Self {
+        if window_size < 10 {
+            window_size = 10;
+        }
+        if window_size > 24 {
+            window_size = 24;
+        }
+        DivansCompressor::<AllocU8> {
+            _codec:DivansCodec::<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>::new(
+                m8,
+                EncoderSpecialization::new(),
+                window_size,
+            ),
+        }
+    }
+}
+
+const HEADER_LENGTH: usize = 16;
+
+pub struct HeaderParser<AllocU8:Allocator<u8>> {
+    header:[u8;HEADER_LENGTH],
+    read_offset: usize,
+    m8: Option<AllocU8>,
+}
+
+pub enum DivansDecompressor<AllocU8:Allocator<u8> > {
+    Header(HeaderParser<AllocU8>),
+    Decode(DivansCodec<DefaultArithmeticDecoder, DecoderSpecialization, AllocU8>),
+}
+impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
+    pub fn new(m8: AllocU8) -> Self {
+        DivansDecompressor::Header(HeaderParser{header:[0u8;HEADER_LENGTH], read_offset:0, m8:Some(m8)})
+    }
+    pub fn parsed_header(&mut self, window_size: usize) -> BrotliResult {
+        if window_size < 10 {
+            return BrotliResult::ResultFailure;
+        }
+        if window_size > 24 {
+            return BrotliResult::ResultFailure;
+        }
+        let m8:AllocU8;
+        match self {
+            &mut DivansDecompressor::Header(ref mut header) => {
+                m8 = match core::mem::replace(&mut header.m8, None) {
+                    None => return BrotliResult::ResultFailure,
+                    Some(m) => m,
+                }
+            },
+            _ => return BrotliResult::ResultFailure,
+        }
+        core::mem::replace(self,
+                           DivansDecompressor::Decode(DivansCodec::<DefaultArithmeticDecoder,
+                                                                    DecoderSpecialization,
+                                                                    AllocU8>::new(m8,
+                                                                                  DecoderSpecialization::new(),
+                                                                                  window_size)));
+        BrotliResult::ResultSuccess
+    }
 }
 
 /*
-pub struct DivansDecompressor<DivansDecoder:Decoder, RawRecoder: Recoder> {
-    decoder: DivansDecoder,
-    recoder: RawRecoder,
-    buffer: [Command<DivansDecoder::CommandSliceType>; CMD_BUFFER_SIZE],
-    buffer_size: usize,
-    buffer_offset: usize,
-    decode_complete: bool,
-}
-impl<DivansDecoder:Decoder, RawRecoder: Recoder> DivansDecompressor<DivansDecoder, RawRecoder> {
-    pub fn new(decoder: DivansDecoder,
-               recoder: RawRecoder) -> Self{
-
-        DivansDecompressor {
-            decoder:decoder,
-            recoder:recoder,
-            buffer:[Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-                    Command::<DivansDecoder::CommandSliceType>::nop(),
-            ],
-            buffer_size: 0,
-            buffer_offset: 0,
-            decode_complete: false,
-        }
-    }
     pub fn decode(&mut self,
                   input:&[u8],
                   input_offset: &mut usize,

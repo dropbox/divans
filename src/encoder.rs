@@ -167,8 +167,8 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer:&[u8],
                                      input_offset:&mut usize,
-                                     output_buffer:&mut [u8],
-                                     output_offset: &mut usize) -> BrotliResult {
+                                     _output_buffer:&mut [u8],
+                                     _output_offset: &mut usize) -> BrotliResult {
         let mut ibuffer = self.get_internal_buffer();
         let coder_bytes_avail = ibuffer.num_push_bytes_avail();
         if coder_bytes_avail != 0 {

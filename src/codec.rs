@@ -421,7 +421,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
 }
 
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
-                             Specialization:EncoderOrDecoderSpecialization,
+      Specialization:EncoderOrDecoderSpecialization,
       AllocU8:Allocator<u8>> CrossCommandState<ArithmeticCoder,
                                                Specialization,
                                                AllocU8> {
@@ -437,7 +437,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             m8: m8,
         }
     }
+    fn free(mut self) -> AllocU8{
+        let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
+        self.m8.free_cell(rb);
+        self.m8
+    }
 }
+
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
                        AllocU8: Allocator<u8>> {
