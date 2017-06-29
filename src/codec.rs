@@ -70,8 +70,7 @@ enum CopySubstate {
      DistanceDecoded,
      CountLengthFirstGreater14Less25, // length not between 0 and 14 inclusive... second nibble results in 15-24
      CountMantissaNibbles(u8, u32), //nibble count, intermediate result
-    FullyDecoded
-        
+     FullyDecoded,
 }
 struct CopyState {
    cc:CopyCommand,
@@ -403,6 +402,9 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Copy(CopyState),
     PopulateRingBuffer,
     DivansSuccess,
+    EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
+    ShutdownCoder,
+    FinalBufferDrain,
 }
 
 impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
@@ -486,37 +488,58 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                  output_bytes: &mut [u8],
                  output_bytes_offset: &mut usize) -> BrotliResult{
         //FIXME: track states here somehow must  map from Begin -> wherever we are
-        let mut unused = 0usize;
-        let nop = Command::<AllocU8::AllocatedMemory>::nop();
-        let mut onop = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
-        match self.encode_or_decode_one_command(&[],
-                                           &mut unused,
-                                           output_bytes,
-                                           output_bytes_offset,
-                                           &nop,
-                                           &mut onop,
-                                           true) {
-            OneCommandReturn::BufferExhausted(res) => {
-                match res {
-                    BrotliResult::ResultSuccess => {},
-                    need => return need,
-                }
-            },
-            OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
-            
-        }
-        match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
-            BrotliResult::ResultSuccess => 
-                match self.cross_command_state.coder.close() {
-                    BrotliResult::ResultSuccess => {
-                        return self.cross_command_state.coder.drain_or_fill_internal_buffer(&[],
-                                                             &mut unused,
-                                                             output_bytes,
-                                                             output_bytes_offset);
-                    },
-                    ret => return ret,
+        loop {
+            match self.state {
+                EncodeOrDecodeState::Begin => {
+                    let mut unused = 0usize;
+                    let nop = Command::<AllocU8::AllocatedMemory>::nop();
+                    let mut onop = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
+                    match self.encode_or_decode_one_command(&[],
+                                                            &mut unused,
+                                                            output_bytes,
+                                                            output_bytes_offset,
+                                                            &nop,
+                                                            &mut onop,
+                                                            true) {
+                        OneCommandReturn::BufferExhausted(res) => {
+                            match res {
+                                BrotliResult::ResultSuccess => {},
+                                need => return need,
+                            }
+                        },
+                        OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
+                    }
+                    self.state = EncodeOrDecodeState::EncodedShutdownNode;
                 },
-            ret=> return ret,
+                EncodeOrDecodeState::EncodedShutdownNode => {
+                    let mut unused = 0usize;
+                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
+                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::ShutdownCoder,
+                        ret => return ret,
+                    }
+                },
+                EncodeOrDecodeState::ShutdownCoder => {
+                    match self.cross_command_state.coder.close() {
+                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::FinalBufferDrain,
+                        ret => return ret,
+                    }
+                },
+                EncodeOrDecodeState::FinalBufferDrain => {
+                    let mut unused = 0usize;
+                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[],
+                                                                                       &mut unused,
+                                                                                       output_bytes,
+                                                                                       output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.state = EncodeOrDecodeState::DivansSuccess;
+                            return BrotliResult::ResultSuccess;
+                        },
+                        ret => return ret,
+                    }
+                },
+                EncodeOrDecodeState::DivansSuccess => return BrotliResult::ResultSuccess,
+                _ => return BrotliResult::ResultFailure, // not allowed to flush if previous command was partially processed
+            }
         }
     }
     pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
@@ -571,6 +594,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
         loop {
             let mut new_state: Option<EncodeOrDecodeState<AllocU8>>;
             match &mut self.state {
+                &mut EncodeOrDecodeState::EncodedShutdownNode
+                    | &mut EncodeOrDecodeState::ShutdownCoder
+                    | &mut EncodeOrDecodeState::FinalBufferDrain => {
+                    // not allowed to encode additional commands after flush is invoked
+                    return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                }
                 &mut EncodeOrDecodeState::DivansSuccess => {
                     return OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess);
                 },
