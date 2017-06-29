@@ -461,6 +461,9 @@ pub enum OneCommandReturn {
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
      Specialization: EncoderOrDecoderSpecialization,
      AllocU8: Allocator<u8>> DivansCodec<ArithmeticCoder, Specialization, AllocU8> {
+    pub fn free(self) -> AllocU8 {
+        self.cross_command_state.free()
+    }
     pub fn new(m8:AllocU8,
                specialization: Specialization,
                ring_buffer_size: usize) -> Self {

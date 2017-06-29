@@ -165,6 +165,16 @@ impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
                                                                                   window_size)));
         BrotliResult::ResultSuccess
     }
+    pub fn free(self) ->AllocU8 {
+        match self {
+            DivansDecompressor::Header(parser) => {
+                parser.m8.unwrap()
+            },
+            DivansDecompressor::Decode(decoder) => {
+                decoder.free()
+            }
+        }
+    }
 }
 
 impl<AllocU8:Allocator<u8>> Decompressor for DivansDecompressor<AllocU8> {

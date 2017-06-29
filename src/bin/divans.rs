@@ -18,6 +18,7 @@ use divans::Command;
 use divans::DictCommand;
 use divans::BrotliResult;
 use divans::Compressor;
+use divans::Decompressor;
 use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
 use divans::DivansDecompressor;
@@ -418,7 +419,82 @@ fn compress<Reader:std::io::BufRead,
     compress_inner(state, r, w)
 }
 
-                
+fn decompress<Reader:std::io::Read,
+              Writer:std::io::Write> (mut r:&mut Reader,
+                                      mut w:&mut Writer,
+                                      buffer_size: usize) -> io::Result<()> {
+    let mut m8 = ByteVecAllocator{};
+    let mut ibuffer = m8.alloc_cell(buffer_size);
+    let mut obuffer = m8.alloc_cell(buffer_size);
+    let mut state = DivansDecompressor::<ByteVecAllocator>::new(m8);
+    let mut input_offset = 0usize;
+    let mut input_end = 0usize;
+    let mut output_offset = 0usize;
+    loop {
+        if output_offset < obuffer.slice().len() {
+            match state.decode(ibuffer.slice().split_at(input_end).0,
+                         &mut input_offset,
+                         obuffer.slice_mut(),
+                               &mut output_offset) {
+                BrotliResult::ResultSuccess => {
+                    break
+                },
+                BrotliResult::ResultFailure => {
+                    let mut m8 = state.free();
+                    m8.free_cell(ibuffer);
+                    m8.free_cell(obuffer);
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                             "Error within Divans File"));
+                },
+                BrotliResult::NeedsMoreOutput => {
+                    let mut output_written = 0;
+                    while output_written != output_offset {
+                        // flush buffer, if any
+                        match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
+                            Ok(count) => output_written += count,
+                            Err(e) => {
+                                if e.kind() == io::ErrorKind::Interrupted {
+                                    continue;
+                                }
+                                let mut m8 = state.free();
+                                m8.free_cell(ibuffer);
+                                m8.free_cell(obuffer);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    output_offset = 0; // reset buffer
+                },
+                BrotliResult::NeedsMoreInput => {
+                    if input_offset == input_end {
+                        input_offset = 0;
+                    }
+                    loop {
+                        match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
+                            Ok(size) => {
+                                input_end = input_offset + size;
+                                break
+                            },
+                            Err(e) => {
+                                if e.kind() == io::ErrorKind::Interrupted {
+                                    continue;
+                                }
+                                let mut m8 = state.free();
+                                m8.free_cell(ibuffer);
+                                m8.free_cell(obuffer);
+                                return Err(e);
+                            },
+                        }
+                    }
+                },
+            }
+        }
+    }
+    let mut m8 = state.free();
+    m8.free_cell(ibuffer);
+    m8.free_cell(obuffer);
+    Ok(())
+}
                 
 fn recode<Reader:std::io::BufRead,
           Writer:std::io::Write>(
@@ -572,11 +648,10 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        /*
                         match decompress(&mut input, &mut output, 65536) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
-                    }*/
+                        }
                         panic!("unimpl");
                     }
                     if i + 1 != num_benchmarks {
@@ -598,11 +673,10 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    /*
                     match decompress(&mut input, &mut io::stdout(), 65536) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
-                }*/
+                    }
                     panic!("Unimpl");
                 }
             }
@@ -615,28 +689,23 @@ fn main() {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
-                panic!("unimpl");
             } else if do_recode {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                panic!("unimpl");
-                /*
                 match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
-                }*/
+                }
             }
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        panic!("unimpl");
-            /*
         match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
-        }*/
+        }
     }
 }
