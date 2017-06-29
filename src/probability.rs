@@ -216,7 +216,7 @@ impl CDFUpdater for FrequentistCDFUpdater {
     fn initialization_prob(&self) -> [Prob;16] {
         [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
     }
-    fn blend(&self, data:&mut [Prob;16], symbol:u8) {
+    fn blend(&self, data: &mut [Prob;16], symbol:u8) {
         const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let symbol16 = [symbol as Prob; 16];
@@ -228,21 +228,21 @@ impl CDFUpdater for FrequentistCDFUpdater {
             *data = each16!(biased_data, srl);
         }
     }
-    fn max(&self, data:&[Prob;16]) -> i64 {
+    fn max(&self, data: &[Prob;16]) -> i64 {
         data[15] as i64
     }
-    fn log_max(&self, data:&[Prob;16]) -> Option<i8> {
+    fn log_max(&self, data: &[Prob;16]) -> Option<i8> {
         None
     }
-    fn valid(&self, data:&[Prob;16]) -> bool {
-        let prev = 0;
+    fn valid(&self, data: &[Prob;16]) -> bool {
+        let mut prev = 0;
         for item in data.split_at(15).0.iter() {
             if *item <= prev {
                 return false;
             }
+            prev = *item;
         }
         return true;
-
     }
 }
 
