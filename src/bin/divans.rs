@@ -19,6 +19,8 @@ use divans::DictCommand;
 use divans::BrotliResult;
 use divans::Compressor;
 use divans::CMD_BUFFER_SIZE;
+use divans::DivansCompressor;
+use divans::DivansDecompressor;
 use std::fs::File;
 use std::error::Error;
 use std::io::{self,Write, Seek, SeekFrom, BufReader};
@@ -28,6 +30,7 @@ macro_rules! println_stderr(
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
+
 
 use std::path::Path;
 fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
@@ -73,11 +76,42 @@ impl alloc::SliceWrapper<u8> for ByteVec {
         return &self.0[..];
     }
 }
+
+impl alloc::SliceWrapperMut<u8> for ByteVec {
+    fn slice_mut(&mut self) -> &mut [u8] {
+        return &mut self.0[..];
+    }
+}
+
+impl core::ops::Index<usize> for ByteVec {
+    type Output = u8;
+    fn index<'a>(&'a self, index:usize) -> &'a u8 {
+        return &self.0[index];
+    }
+}
+
+impl core::ops::IndexMut<usize> for ByteVec {
+
+    fn index_mut(&mut self, index:usize) -> &mut u8 {
+        return &mut self.0[index];
+    }
+}
+
+struct ByteVecAllocator {
+}
+impl alloc::Allocator<u8> for ByteVecAllocator {
+    type AllocatedMemory = ByteVec;
+    fn alloc_cell(&mut self, size:usize) ->ByteVec{
+        ByteVec(vec![0;size])
+    }
+    fn free_cell(&mut self, _bv:ByteVec) {
+
+    }
+}
 fn window_parse(s : String) -> Result<i32, io::Error> {
     let window_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if window_vec.len() == 0 {
-        panic!("Unexpected");
-    }
+        panic!("Unexpected");    }
     if window_vec.len() < 2 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
                        "window needs 1 argument"));
@@ -305,6 +339,86 @@ fn recode_inner<Reader:std::io::BufRead,
     }
     Ok(())
 }
+fn compress_inner<Reader:std::io::BufRead,
+                  Writer:std::io::Write,
+                  AllocU8:alloc::Allocator<u8> >(
+    mut state: DivansCompressor<AllocU8>,
+    mut r:&mut Reader,
+    mut w:&mut Writer) -> io::Result<()> {
+    let mut buffer = String::new();
+    let mut obuffer = [0u8;65536];
+    let mut ibuffer:[Command<ByteVec>; CMD_BUFFER_SIZE] = [Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop(),
+                                                           Command::<ByteVec>::nop()];
+    
+    let mut i_read_index = 0usize;
+    loop {
+        buffer.clear();
+        match r.read_line(&mut buffer) {
+            Err(e) => {
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(e)
+            },
+            Ok(count) => {
+                if i_read_index == ibuffer.len() || count == 0 {
+                    recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
+                                               &mut obuffer[..]).unwrap();
+                    i_read_index = 0
+                }
+                if count == 0 {
+                    break;
+                }
+                let line = buffer.trim().to_string();
+                ibuffer[i_read_index] = command_parse(line).unwrap();
+                i_read_index += 1;
+            }
+        }
+    }
+    Ok(())
+}
+fn compress<Reader:std::io::BufRead,
+            Writer:std::io::Write>(
+    mut r:&mut Reader,
+    mut w:&mut Writer) -> io::Result<()> {
+    let window_size : i32;
+    let mut buffer = String::new();
+    loop {
+        match r.read_line(&mut buffer) {
+            Err(e) => {
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(e);
+            },
+            Ok(_) => {
+                let line = buffer.trim().to_string();
+                window_size = window_parse(line).unwrap();
+                break;
+            }
+        }
+    }
+    let state =DivansCompressor::<ByteVecAllocator>::new(
+        ByteVecAllocator{},
+        window_size as usize);
+    compress_inner(state, r, w)
+}
+
+                
                 
 fn recode<Reader:std::io::BufRead,
           Writer:std::io::Write>(
@@ -446,12 +560,12 @@ fn main() {
                 };
                 for i in 0..num_benchmarks {
                     if do_compress {
-                        /*
-                        match compress(&mut input, &mut output, 65536, &params) {
+                        let mut buffered_input = BufReader::new(input);
+                        match compress(&mut buffered_input, &mut output) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
-                    }*/
-                        panic!("unimpl");
+                        }
+                        input = buffered_input.into_inner();
                     } else if do_recode {
                         let mut buffered_input = BufReader::new(input);
                         recode(&mut buffered_input,
@@ -474,12 +588,11 @@ fn main() {
             } else {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress {
-                    /*
-                    match compress(&mut input, &mut io::stdout(), 65536, &params) {
+                    let mut buffered_input = BufReader::new(input);
+                    match compress(&mut buffered_input, &mut io::stdout()) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
-                }*/
-                   panic!("Unimpl");    
+                    }
                 } else if do_recode {
                     let mut buffered_input = BufReader::new(input);
                     recode(&mut buffered_input,
@@ -496,11 +609,12 @@ fn main() {
         } else {
             assert_eq!(num_benchmarks, 1);
             if do_compress {
-                /*
-                match compress(&mut io::stdin(), &mut io::stdout(), 65536, &params) {
+                let stdin = std::io::stdin();
+                let mut stdin = stdin.lock();
+                match compress(&mut stdin, &mut io::stdout()) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
-            }*/
+                }
                 panic!("unimpl");
             } else if do_recode {
                 let stdin = std::io::stdin();
