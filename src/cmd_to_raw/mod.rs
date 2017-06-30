@@ -154,7 +154,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
           self.input_sub_offset += bytes_copied as usize;
           return BrotliResult::NeedsMoreOutput;
        }
-       self.input_sub_offset = 0;
        BrotliResult::ResultSuccess
     }
     #[allow(unused)]
@@ -196,7 +195,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
                 return BrotliResult::NeedsMoreOutput;
             }
-            self.input_sub_offset = 0; // we're done
             return BrotliResult::ResultSuccess;
         }
         let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd, copy.distance);
@@ -208,7 +206,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if copy_count != num_bytes_left_in_cmd {
             return BrotliResult::NeedsMoreOutput;
         }
-        self.input_sub_offset = 0; // we're done
         BrotliResult::ResultSuccess
     }
     fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> BrotliResult {
@@ -245,6 +242,27 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
               &Command::Literal(ref literal) => self.parse_literal(literal),
         }
     }
+    pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
+                  cmd:&Command<SliceType>,
+                  output :&mut[u8],
+                  output_offset: &mut usize) -> BrotliResult {
+        loop {
+            let res = self.parse_command(cmd);
+            match res {
+                BrotliResult::ResultSuccess => {
+                    break;
+                }, // move on to the next command
+                BrotliResult::NeedsMoreOutput => {
+                    match self.flush(output, output_offset) {
+                        BrotliResult::ResultSuccess => {},
+                        flush_res => {return flush_res},
+                    }
+                }, // flush, and try again
+                _ => return res,
+            }
+        }
+        self.flush(output, output_offset)
+    }
 }
 impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for DivansRecodeState<RingBuffer> {
     fn encode<SliceType:SliceWrapper<u8>>(&mut self,
@@ -265,7 +283,7 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
                  res = self.parse_command(cmd);
                  match res {
                     BrotliResult::ResultSuccess => {
-                        assert_eq!(self.input_sub_offset, 0); // done w/this command, no partial work
+                        self.input_sub_offset = 0; // done w/this command, no partial work
                         break;
                     }, // move on to the next command
                     BrotliResult::NeedsMoreOutput => continue, // flush, and try again

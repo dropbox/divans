@@ -5,7 +5,7 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-use interface::{Compressor, Nop};
+use interface::{Nop};
 use super::probability::{CDF16, FrequentistCDFUpdater};
 use super::interface::{
     CopyCommand,
@@ -400,7 +400,7 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Literal(LiteralState<AllocU8>),
     Dict(DictState),
     Copy(CopyState),
-    PopulateRingBuffer,
+    PopulateRingBuffer(Command<AllocatedMemoryPrefix<AllocU8>>),
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
@@ -493,13 +493,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                 EncodeOrDecodeState::Begin => {
                     let mut unused = 0usize;
                     let nop = Command::<AllocU8::AllocatedMemory>::nop();
-                    let mut onop = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
                     match self.encode_or_decode_one_command(&[],
                                                             &mut unused,
                                                             output_bytes,
                                                             output_bytes_offset,
                                                             &nop,
-                                                            &mut onop,
                                                             true) {
                         OneCommandReturn::BufferExhausted(res) => {
                             match res {
@@ -551,7 +549,6 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                   input_command_offset: &mut usize) -> BrotliResult {
         loop {
             let i_cmd_backing = Command::<ISl>::nop();
-            let mut o_cmd = Command::<AllocatedMemoryPrefix<AllocU8>>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
                                                                                    *input_command_offset,
                                                                                    &i_cmd_backing);
@@ -560,18 +557,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
-                                                    &mut o_cmd,
                                                     false /* not end*/) {
                 OneCommandReturn::Advance => {
                     *input_command_offset += 1;
-                    match &mut o_cmd {
-                        &mut Command::Literal(ref mut l) => {
-                            let mfd = core::mem::replace(&mut l.data,
-                                                         AllocatedMemoryPrefix::<AllocU8>::default()).0;
-                            self.cross_command_state.m8.free_cell(mfd);
-                        },
-                        _ => {},
-                    }
                     if input_commands.len() == *input_command_offset {
                         return BrotliResult::NeedsMoreInput;
                     }
@@ -588,7 +576,6 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                   output_bytes: &mut [u8],
                                                   output_bytes_offset: &mut usize,
                                                   input_cmd: &Command<ISl>,
-                                                  o_cmd: &mut Command<AllocatedMemoryPrefix<AllocU8>>,
                                                   mut is_end: bool) -> OneCommandReturn {
         let half = 128u8;
         loop {
@@ -609,7 +596,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     match input_cmd {
                         &Command::Copy(_) => is_copy = true,
                         &Command::Dict(_) => is_dict_or_end = true,
-                        _ => {},
+                        &Command::Literal(ref lit) => if lit.data.slice().len() == 0 {return OneCommandReturn::Advance}, // nop
                     }
                     self.cross_command_state.coder.get_or_put_bit(&mut is_copy, half);
                     if is_copy == false {
@@ -653,8 +640,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            *o_cmd = Command::Copy(core::mem::replace(&mut copy_state.cc, CopyCommand::nop()));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(Command::Copy(core::mem::replace(&mut copy_state.cc,
+                                                                                                                      CopyCommand::nop()))));
                         },
                         retval => {
                             return OneCommandReturn::BufferExhausted(retval);
@@ -673,9 +660,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            *o_cmd = Command::Literal(core::mem::replace(&mut lit_state.lc,
-                                                                         LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop()));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
+                                Command::Literal(core::mem::replace(&mut lit_state.lc,
+                                                                    LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop()))));
                         },
                         retval => {
                             return OneCommandReturn::BufferExhausted(retval);
@@ -694,35 +681,43 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            *o_cmd = Command::Dict(core::mem::replace(&mut dict_state.dc, DictCommand::nop()));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
+                                Command::Dict(core::mem::replace(&mut dict_state.dc,
+                                                                 DictCommand::nop()))));
                         },
                         retval => {
                             return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
-                &mut EncodeOrDecodeState::PopulateRingBuffer => {
-                    let mut ioffset: usize = 0;
-                    let mut tmp_o_cmd = [core::mem::replace(o_cmd, Command::nop())];
+                &mut EncodeOrDecodeState::PopulateRingBuffer(ref mut o_cmd) => {
                     let mut tmp_output_offset_bytes_backing: usize = 0;
                     let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
                         &mut tmp_output_offset_bytes_backing,
                         output_bytes_offset);
-                    match self.cross_command_state.recoder.encode(&mut tmp_o_cmd,
-                                                                  &mut ioffset,
+                    match self.cross_command_state.recoder.encode_cmd(o_cmd,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
-                        BrotliResult::NeedsMoreInput => new_state = Some(EncodeOrDecodeState::Begin),
-                        BrotliResult::NeedsMoreOutput => new_state = Some(EncodeOrDecodeState::PopulateRingBuffer),
+                        BrotliResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
+                        BrotliResult::NeedsMoreOutput => new_state = None,
                         BrotliResult::ResultFailure => {
-                            *o_cmd = core::mem::replace(&mut tmp_o_cmd[0], Command::nop());
                             return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
                         },
-                        BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::Begin),
+                        BrotliResult::ResultSuccess => {
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                            match o_cmd {
+                                &mut Command::Literal(ref mut l) => {
+                                    let mfd = core::mem::replace(&mut l.data,
+                                                                 AllocatedMemoryPrefix::<AllocU8>::default()).0;
+                                    self.cross_command_state.m8.free_cell(mfd);
+                                },
+                                _ => {},
+                            }
+
+                        },
                     }
-                    *o_cmd = core::mem::replace(&mut tmp_o_cmd[0], Command::nop())
+                    // *o_cmd = core::mem::replace(&mut tmp_o_cmd[0], Command::nop())
                 },
             }
             match new_state {

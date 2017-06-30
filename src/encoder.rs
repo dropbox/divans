@@ -35,11 +35,11 @@ impl ByteQueue for RegisterQueue {
     fn push_data(&mut self, data:&[u8]) -> usize {
         let byte_count_to_push = core::cmp::min(self.num_push_bytes_avail(),
                                                 data.len());
-        let offset = 1 << (8 * self.count);
+        let offset = self.count << 3;
         self.count += byte_count_to_push as u8;
         let mut reg = self.data;
-        for i in 0..byte_count_to_push {
-            reg |= (data[i] << (offset + i)) as FixedRegister;
+        for (i, data_iter) in data.split_at(byte_count_to_push).0.iter().enumerate() {
+            reg |= (*data_iter as FixedRegister) << (offset + ((i as u8) <<3));
         }
         self.data = reg;
         byte_count_to_push
@@ -53,6 +53,8 @@ impl ByteQueue for RegisterQueue {
         }
         data.split_at_mut(byte_count_to_pop).0.clone_from_slice(
             local.split_at(byte_count_to_pop).0);
+        self.data >>= byte_count_to_pop << 3;
+        self.count -= byte_count_to_pop as u8;
         byte_count_to_pop
     }
 }
