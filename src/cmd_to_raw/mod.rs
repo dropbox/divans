@@ -1,4 +1,5 @@
 use core;
+
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
@@ -91,15 +92,20 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
 
     //precondition: that there is sufficient room for amount_to_copy in buffer
-    fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> u32 {
+    fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> Result<u32,()> {
         desired_amount_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer() as u32,
                                                 desired_amount_to_copy);
         let left_dst_before_wrap = self.ring_buffer.slice().len() as u32 - self.ring_buffer_decode_index;
-        let src_distance_index :u32;
+        let mut src_distance_index :u32;
         if self.ring_buffer_decode_index as u32 >= distance {
             src_distance_index = self.ring_buffer_decode_index - distance;
         } else {
-            src_distance_index = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32 - distance;
+            src_distance_index = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32;
+            if src_distance_index >= distance {
+                src_distance_index -= distance;
+            } else {
+                return Err(())
+            }
         }
         let left_src_before_wrap = self.ring_buffer.slice().len() as u32 - src_distance_index;
         let mut trunc_amount_to_copy = core::cmp::min(core::cmp::min(left_dst_before_wrap,
@@ -120,7 +126,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.ring_buffer_decode_index =0;
         }
-        return trunc_amount_to_copy;
+        Ok(trunc_amount_to_copy)
     }
 
     // takes in a buffer of data to copy to the ring buffer--returns the number of bytes persisted
@@ -145,7 +151,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     fn parse_literal<SliceType:SliceWrapper<u8>>(&mut self,
                                                         lit:&LiteralCommand<SliceType>) -> BrotliResult {
        let data = lit.data.slice();
-       if data.len() < self.input_sub_offset { // this means user passed us different data a second time
+       let data_len = data.len(); 
+        if data_len < self.input_sub_offset { // this means user passed us different data a second time
            return BrotliResult::ResultFailure;
        }
        let remainder = data.split_at(self.input_sub_offset).1;
@@ -198,8 +205,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             return BrotliResult::ResultSuccess;
         }
         let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd, copy.distance);
-        let copy_count = self.copy_some_decoded_from_ring_buffer_to_decoded(copy.distance,
-                                                                            num_bytes_to_copy);
+        let copy_count = match self.copy_some_decoded_from_ring_buffer_to_decoded(
+            copy.distance,
+            num_bytes_to_copy) {
+            Ok(copy_count) => copy_count,
+            Err(_) => return BrotliResult::ResultFailure,
+        };
         self.input_sub_offset += copy_count as usize;
         // by taking the min of copy.distance and items to copy, we are nonoverlapping
         // this means we can use split_at_mut to cut the array into nonoverlapping segments
@@ -261,7 +272,13 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                 _ => return res,
             }
         }
-        self.flush(output, output_offset)
+        match self.flush(output, output_offset)  {
+            BrotliResult::ResultSuccess => {
+                self.input_sub_offset = 0;
+                return BrotliResult::ResultSuccess;
+            },
+            res => return res,
+        }
     }
 }
 impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for DivansRecodeState<RingBuffer> {

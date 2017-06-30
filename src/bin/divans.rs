@@ -271,8 +271,10 @@ fn recode_cmd_buffer<Writer:std::io::Write,
                 o_processed_index = 0;
             }
             BrotliResult::NeedsMoreInput => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               "Unknown Error Type: Needs more input (Partial command?)"));
+                assert_eq!(i_processed_index, cmd_buffer.len());
+                break;
+//                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+//                               "Unknown Error Type: Needs more input (Partial command?)"));
             }
             BrotliResult::ResultFailure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,

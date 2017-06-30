@@ -82,6 +82,16 @@ fn round_up_mod_4(val: u8) -> u8 {
     ((val - 1)|3)+1
 }
 
+fn round_up_mod_4_u32(val: u32) -> u32 {
+    ((val - 1)|3)+1
+}
+
+
+#[allow(non_snake_case)]
+fn Fail() -> BrotliResult {
+    BrotliResult::ResultFailure
+}
+
 impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
@@ -97,7 +107,7 @@ impl CopyState {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
         let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
         if dlen ==0 {
-            return BrotliResult::ResultFailure; // not allowed to copy from 0 distance
+            return Fail(); // not allowed to copy from 0 distance
         }
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
@@ -231,7 +241,7 @@ impl DictState {
                                                     output_bytes:&mut [u8],
                                                     output_offset: &mut usize) -> BrotliResult {
         if in_cmd.word_size < 4 {
-            return BrotliResult::ResultFailure; // FIXME: do we have the nop do the right thing here?
+            return Fail(); // FIXME: do we have the nop do the right thing here?
         }
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
@@ -247,7 +257,7 @@ impl DictState {
                         self.state = DictSubstate::WordSizeGreater18Less25;
                     } else {
                         self.dc.word_size = beg_nib + 4;
-                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(1 << self.dc.word_size), 0);
+                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(self.dc.word_size), 0);
                     }
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
@@ -431,7 +441,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                Specialization,
                                                AllocU8> {
     fn new(mut m8: AllocU8, spc: Specialization, ring_buffer_size: usize) -> Self {
-        let ring_buffer = m8.alloc_cell(ring_buffer_size);
+        let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             AllocU8> {
@@ -539,7 +549,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => return BrotliResult::ResultSuccess,
-                _ => return BrotliResult::ResultFailure, // not allowed to flush if previous command was partially processed
+                _ => return Fail(), // not allowed to flush if previous command was partially processed
             }
         }
     }
@@ -588,7 +598,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     | &mut EncodeOrDecodeState::ShutdownCoder
                     | &mut EncodeOrDecodeState::FinalBufferDrain => {
                     // not allowed to encode additional commands after flush is invoked
-                    return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                    return OneCommandReturn::BufferExhausted(Fail());
                 }
                 &mut EncodeOrDecodeState::DivansSuccess => {
                     return OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess);
@@ -710,7 +720,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             new_state = None;
                         },
                         BrotliResult::ResultFailure => {
-                            return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
+                            return OneCommandReturn::BufferExhausted(Fail());
                         },
                         BrotliResult::ResultSuccess => {
                             new_state = Some(EncodeOrDecodeState::Begin);
