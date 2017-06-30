@@ -5,7 +5,7 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-use interface::Compressor;
+use interface::{Compressor, Nop};
 use super::probability::{CDF16, FrequentistCDFUpdater};
 use super::interface::{
     CopyCommand,

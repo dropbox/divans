@@ -14,7 +14,7 @@ mod cmd_to_divans;
 mod divans_to_raw;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use interface::{Command, Decompressor, Compressor, LiteralCommand, CopyCommand, DictCommand};
+pub use interface::{Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;

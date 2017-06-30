@@ -3,15 +3,23 @@ use brotli_decompressor::BrotliResult;
 use super::probability::{CDFUpdater, CDF16};
 
 
+// Commands that can instantiate as a no-op should implement this.
+pub trait Nop<T> {
+    fn nop() -> T;
+}
+
 #[derive(Debug)]
 pub struct CopyCommand {
     pub distance: u32,
     pub num_bytes: u32,
 }
 
-impl CopyCommand {
-    pub fn nop() -> Self{
-        CopyCommand{distance:1, num_bytes:0}
+impl Nop<CopyCommand> for CopyCommand {
+    fn nop() -> Self {
+        CopyCommand {
+            distance: 1,
+            num_bytes: 0
+        }
     }
 }
 
@@ -23,24 +31,31 @@ pub struct DictCommand {
     pub empty: u8,
     pub word_id: u32,
 }
-impl DictCommand {
-    pub fn nop() -> Self{
-        DictCommand{word_size:0, transform:0, final_size:0, empty:1, word_id:0}
+
+impl Nop<DictCommand> for DictCommand {
+    fn nop() -> Self {
+        DictCommand {
+            word_size: 0,
+            transform: 0,
+            final_size: 0,
+            empty: 1,
+            word_id: 0
+        }
     }
 }
-
 
 #[derive(Debug)]
 pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
     pub data: SliceType,
 }
 
-impl<SliceType:SliceWrapper<u8>+Default> LiteralCommand<SliceType> {
-    pub fn nop() -> Self {
-        LiteralCommand{data:SliceType::default()}
+impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for LiteralCommand<SliceType> {
+    fn nop() -> Self {
+        LiteralCommand {
+            data: SliceType::default()
+        }
     }
 }
-
 
 #[derive(Debug)]
 pub enum Command<SliceType:SliceWrapper<u8> > {
@@ -55,8 +70,8 @@ impl<SliceType:SliceWrapper<u8>> Default for Command<SliceType> {
     }
 }
 
-impl<SliceType:SliceWrapper<u8>> Command<SliceType> {
-    pub fn nop() -> Command<SliceType> {
+impl<SliceType:SliceWrapper<u8>> Nop<Command<SliceType>> for Command<SliceType> {
+    fn nop() -> Command<SliceType> {
         Command::Copy(CopyCommand::nop())
     }
 }

@@ -22,6 +22,7 @@ use divans::Decompressor;
 use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
 use divans::DivansDecompressor;
+use divans::Nop;
 use std::fs::File;
 use std::error::Error;
 use std::io::{self,Write, Seek, SeekFrom, BufReader};
