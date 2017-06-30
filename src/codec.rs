@@ -37,6 +37,7 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize;
+    fn does_caller_want_original_file_bytes(&self) -> bool;
 }
 
 
@@ -344,7 +345,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     } else if beg_nib <= 1 {
                         self.lc.data = superstate.specialization.alloc_literal_buffer(&mut superstate.m8,
                                                                                       beg_nib as usize);
-                        self.state = LiteralSubstate::LiteralNibbleIndex((beg_nib as u32) << 1);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
                                                                                   1 << (beg_nib));
@@ -367,22 +368,24 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     if next_len_remaining == 0 {
                         self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize),
                                                                       next_decoded_so_far as usize);
-                        self.state = LiteralSubstate::LiteralNibbleIndex(next_decoded_so_far << 1);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
                                                                                    next_decoded_so_far);
                     }
                 },
-                LiteralSubstate::LiteralNibbleIndex(index) => {
-                    let mut cur_nibble = superstate.specialization.get_literal_nibble(in_cmd,
-                                                                                  literal_nibble_len - 1 - index as usize);
+                LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
+                    let byte_index = (nibble_index as usize) >> 1;
+                    let mut cur_nibble = superstate.specialization.get_literal_nibble(
+                        in_cmd,
+                        byte_index);
                     superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
-                    self.lc.data.slice_mut()[index as usize >> 1] |= cur_nibble << ((index & 1) << 4);
-                    if index == 0 {
+                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
+                    if nibble_index + 1 == literal_nibble_len as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
                         return BrotliResult::ResultSuccess;
                     } else {
-                        self.state = LiteralSubstate::LiteralNibbleIndex(index - 1);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 1);
                     }
                 },
                 LiteralSubstate::FullyDecoded => {
@@ -693,14 +696,19 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                 &mut EncodeOrDecodeState::PopulateRingBuffer(ref mut o_cmd) => {
                     let mut tmp_output_offset_bytes_backing: usize = 0;
                     let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
-                        &mut tmp_output_offset_bytes_backing,
-                        output_bytes_offset);
+                        output_bytes_offset,
+                        &mut tmp_output_offset_bytes_backing);
                     match self.cross_command_state.recoder.encode_cmd(o_cmd,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
                         BrotliResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
-                        BrotliResult::NeedsMoreOutput => new_state = None,
+                        BrotliResult::NeedsMoreOutput => {
+                            if self.cross_command_state.specialization.does_caller_want_original_file_bytes() {
+                                return OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput); // we need the caller to drain the buffer
+                            }
+                            new_state = None;
+                        },
                         BrotliResult::ResultFailure => {
                             return OneCommandReturn::BufferExhausted(BrotliResult::ResultFailure);
                         },

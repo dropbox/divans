@@ -19,6 +19,9 @@ impl EncoderSpecialization {
 }
 
 impl EncoderOrDecoderSpecialization for EncoderSpecialization {
+    fn does_caller_want_original_file_bytes(&self) -> bool {
+        false
+    }
     fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&mut self,
                                                    m8:&mut AllocU8,
                                                    len: usize) -> AllocatedMemoryPrefix<AllocU8> {
@@ -72,12 +75,14 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
     }
     fn get_recoder_output<'a>(&'a mut self,
                               _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
+        assert_eq!(self.does_caller_want_original_file_bytes(), false);
         &mut self.backing[..]
     }
     fn get_recoder_output_offset<'a>(&self,
                                      _passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize {
-        *backing = self.backing.len();
+        assert_eq!(self.does_caller_want_original_file_bytes(), false);
+        //*backing = self.backing.len();
         backing
     }
                           
