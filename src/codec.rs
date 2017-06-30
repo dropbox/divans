@@ -604,6 +604,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     return OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess);
                 },
                 &mut EncodeOrDecodeState::Begin => {
+                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(input_bytes, input_bytes_offset,
+                                                                                      output_bytes, output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {},
+                        need_something => return OneCommandReturn::BufferExhausted(need_something),
+                    }
+                  
                     let mut is_copy = false;
                     let mut is_dict_or_end = is_end;
                     match input_cmd {

@@ -72,6 +72,7 @@ impl<AllocU8:Allocator<u8>> DivansCompressor<AllocU8>   {
         }
         output[*output_offset..(*output_offset + HEADER_LENGTH - self.header_progress)].clone_from_slice(
                 &make_header(self.window_size)[self.header_progress..]);
+        *output_offset += HEADER_LENGTH - self.header_progress;
         self.header_progress = HEADER_LENGTH;
         BrotliResult::ResultSuccess
     }
