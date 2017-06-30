@@ -25,7 +25,6 @@ impl EntropyEncoder for DebugEncoder {
         assert_eq!(cnt, 1);
     }
     fn flush(&mut self) {
-
     }
 }
 
@@ -52,7 +51,7 @@ impl EntropyDecoder for DebugDecoder {
         return_value != 0
     }
     fn flush(&mut self) -> BrotliResult {
-        return BrotliResult::ResultSuccess;
+        BrotliResult::ResultSuccess
     }
 }
 
