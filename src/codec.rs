@@ -240,9 +240,7 @@ impl DictState {
                                                     input_offset: &mut usize,
                                                     output_bytes:&mut [u8],
                                                     output_offset: &mut usize) -> BrotliResult {
-        if in_cmd.word_size < 4 {
-            return Fail(); // FIXME: do we have the nop do the right thing here?
-        }
+        
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
@@ -251,7 +249,7 @@ impl DictState {
             }
             match self.state {
                 DictSubstate::Begin => {
-                    let mut beg_nib = core::cmp::min(15, in_cmd.word_size - 4);
+                    let mut beg_nib = core::cmp::min(15, in_cmd.word_size.wrapping_sub(4));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
                     if beg_nib == 15 {
                         self.state = DictSubstate::WordSizeGreater18Less25;
@@ -338,7 +336,6 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                           output_bytes:&mut [u8],
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
-        let literal_nibble_len = (literal_len as usize) << 1;
         let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
         let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
         loop {
@@ -391,7 +388,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                         byte_index);
                     superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
-                    if nibble_index + 1 == literal_nibble_len as u32 {
+                    if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
                         return BrotliResult::ResultSuccess;
                     } else {

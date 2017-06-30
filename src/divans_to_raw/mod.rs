@@ -57,9 +57,9 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
         backing
     }
     fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
-                                                   in_cmd: &LiteralCommand<ISlice>,
-                                                   index: usize) -> u8 {
-        in_cmd.data.slice()[index]
+                                                   _in_cmd: &LiteralCommand<ISlice>,
+                                                   _index: usize) -> u8 {
+        0
     }
     fn get_recoder_output<'a>(&'a mut self,
                               passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {

@@ -493,6 +493,22 @@ fn decompress<Reader:std::io::Read,
             }
         }
     }
+    let mut output_written = 0;
+    while output_written != output_offset {
+        // flush buffer, if any
+        match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
+            Ok(count) => output_written += count,
+            Err(e) => {
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                let mut m8 = state.free();
+                m8.free_cell(ibuffer);
+                m8.free_cell(obuffer);
+                return Err(e);
+            }
+        }
+    }
     let mut m8 = state.free();
     m8.free_cell(ibuffer);
     m8.free_cell(obuffer);
@@ -655,7 +671,6 @@ fn main() {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
-                        panic!("unimpl");
                     }
                     if i + 1 != num_benchmarks {
                         input.seek(SeekFrom::Start(0)).unwrap();
