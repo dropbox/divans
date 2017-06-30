@@ -1,24 +1,18 @@
 #![allow(unused)]
+use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
-
-pub trait CDFUpdater {
-    fn blend(&self, data:&mut [Prob;16], symbol: u8);
-    fn initialization_prob(&self) -> [Prob; 16];
-    fn max(&self, data:&[Prob; 16]) -> i64;
-    fn log_max(&self, data:&[Prob; 16]) -> Option<i8>;
-    fn valid(&self, data:&[Prob;16])->bool;
-}
 
 #[derive(Clone)]
 pub struct CDF2 {
     counts: [u8; 2],
     pub prob: u8,
 }
+
 impl Default for CDF2 {
-    fn default() -> CDF2 {
-        CDF2{
-            counts: [1,1],
+    fn default() -> Self {
+        Self {
+            counts: [1, 1],
             prob: 128,
         }
     }
@@ -58,52 +52,104 @@ impl CDF2 {
     }
 }
 
-#[derive(Clone)]
-pub struct CDF16<T:CDFUpdater>{
-    pub cdf:[Prob;16],
-    updater:T,
-}
-impl<T:CDFUpdater+Default> Default for CDF16<T> {
-    fn default() -> CDF16<T> {
-        let updater = T::default();
-        let starting_prob = updater.initialization_prob();
-        CDF16::<T>{
-            cdf:starting_prob,
-            updater:updater,
+pub trait CDF16 {
+    fn blend(&mut self, symbol: u8);
+    fn valid(&self) -> bool;
+
+    fn cdf(&self, symbol: u8) -> Prob;
+    fn pdf(&self, symbol: u8) -> Prob {
+        self.cdf(symbol) - self.cdf(symbol.wrapping_sub(1))
+    }
+
+    // the maximum value relative to which cdf() and pdf() values should be normalized.
+    fn max(&self) -> Prob;
+
+    // the base-2 logarithm of max(), if available, to support bit-shifting.
+    fn log_max(&self) -> Option<i8> {
+        None
+    }
+
+    // TODO: this convenience function should probably live elsewhere.
+    fn float_array(&self) -> [f32; 16] {
+        let mut ret = [0.0f32; 16];
+        for i in 0..16 {
+            ret[i] = (self.cdf(i as u8) as f32) / (self.max() as f32);
         }
+        ret
     }
 }
 
 const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
-impl<T:CDFUpdater> CDF16<T> {
-    pub fn float_array(&self) -> [f32; 16]{
-        let mut ret = [0.0f32; 16];
-        for i in 1..16 {
-            ret[i] = ((self.cdf[i].wrapping_sub(self.cdf[i-1])) as f32) / self.updater.max(&self.cdf) as f32;
+
+#[derive(Clone)]
+pub struct BlendCDF16 {
+    pub cdf: [Prob; 16]
+}
+
+impl Default for BlendCDF16 {
+    fn default() -> Self {
+        Self {
+            cdf: [(1 * CDF_LIMIT / 16) as Prob,
+                  (2 * CDF_LIMIT / 16) as Prob,
+                  (3 * CDF_LIMIT / 16) as Prob,
+                  (4 * CDF_LIMIT / 16) as Prob,
+                  (5 * CDF_LIMIT / 16) as Prob,
+                  (6 * CDF_LIMIT / 16) as Prob,
+                  (7 * CDF_LIMIT / 16) as Prob,
+                  (8 * CDF_LIMIT / 16) as Prob,
+                  (9 * CDF_LIMIT / 16) as Prob,
+                  (10 * CDF_LIMIT / 16) as Prob,
+                  (11 * CDF_LIMIT / 16) as Prob,
+                  (12 * CDF_LIMIT / 16) as Prob,
+                  (13 * CDF_LIMIT / 16) as Prob,
+                  (14 * CDF_LIMIT / 16) as Prob,
+                  (15 * CDF_LIMIT / 16) as Prob,
+                  CDF_LIMIT as Prob]
         }
-        ret[0] = self.cdf[0] as f32 / self.updater.max(&self.cdf) as f32;
-        for i in 0..16 {
-            ret[i] *= 16.0f32;
-        }
-        ret
-    }
-    pub fn valid(&self) -> bool {
-        self.updater.valid(&self.cdf)
-    }
-    pub fn blend (&mut self, symbol: u8){
-        self.updater.blend(&mut self.cdf, symbol)
-    }
-    pub fn max(&self) -> i64 {
-        return self.updater.max(&self.cdf);
-    }
-    pub fn log_max(&self) -> Option<i8> {
-        return self.updater.log_max(&self.cdf);
     }
 }
 
+impl CDF16 for BlendCDF16 {
+    fn valid(&self) -> bool {
+        for item in self.cdf.split_at(15).0.iter() {
+            if *item <= 0 || !(*item <= CDF_MAX) {
+                return false;
+            }
+        }
+        assert_eq!(self.cdf[15], CDF_LIMIT as Prob);
+        return true;
+    }
+    fn blend(&mut self, symbol:u8) {
+        self.cdf = mul_blend(self.cdf, symbol, 128, 0);
+    }
+    fn max(&self) -> Prob {
+        CDF_MAX as Prob
+    }
+    fn log_max(&self) -> Option<i8> {
+        Some(15)
+    }
+    fn cdf(&self, symbol: u8) -> Prob {
+        match symbol {
+            15 => self.max(),
+            _ => self.cdf[symbol as usize]
+        }
+    }
+}
 
+#[derive(Clone)]
+pub struct FrequentistCDF16 {
+    pub cdf: [Prob; 16]
+}
+
+impl Default for FrequentistCDF16 {
+    fn default() -> Self {
+        Self {
+            cdf: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+        }
+    }
+}
 
 #[allow(unused)]
 macro_rules! each16{
@@ -154,95 +200,38 @@ macro_rules! each16bin {
     }
 }
 
-#[derive(Clone)]
-pub struct BlendCDFUpdater {
-}
-
-impl CDFUpdater for BlendCDFUpdater {
-    fn initialization_prob(&self) -> [Prob;16] {
-        [
-             (1 * CDF_LIMIT / 16) as Prob,
-             (2 * CDF_LIMIT / 16) as Prob,
-             (3 * CDF_LIMIT / 16) as Prob,
-             (4 * CDF_LIMIT / 16) as Prob,
-             (5 * CDF_LIMIT / 16) as Prob,
-             (6 * CDF_LIMIT / 16) as Prob,
-             (7 * CDF_LIMIT / 16) as Prob,
-             (8 * CDF_LIMIT / 16) as Prob,
-             (9 * CDF_LIMIT / 16) as Prob,
-             (10 * CDF_LIMIT / 16) as Prob,
-             (11 * CDF_LIMIT / 16) as Prob,
-             (12 * CDF_LIMIT / 16) as Prob,
-             (13 * CDF_LIMIT / 16) as Prob,
-             (14 * CDF_LIMIT / 16) as Prob,
-             (15 * CDF_LIMIT / 16) as Prob,
-             CDF_LIMIT as Prob]
-    }
-    fn valid(&self, data:&[Prob; 16]) -> bool { // nonzero everywhere
-        let prev = 0;
-        for item in data.split_at(15).0.iter() {
-            if *item <= prev || !(*item <= CDF_MAX) {
-                return false;
-            }
-        }
-        assert_eq!(data[15], CDF_LIMIT as Prob);
-        return true;
-    }
-
-    fn blend(&self, data:&mut [Prob;16], symbol:u8) {
-        *data = mul_blend(*data, symbol, 128, 0);
-    }
-    fn max(&self, data:&[Prob;16]) -> i64 {
-        CDF_LIMIT
-    }
-    fn log_max(&self, data:&[Prob;16]) -> Option<i8> {
-        Some(15)
-    }
-}
-impl Default for BlendCDFUpdater {
-    fn default() -> BlendCDFUpdater {BlendCDFUpdater{}}
-}
 fn srl(a:Prob) -> Prob {
     a >> 1
 }
 
-#[derive(Clone)]
-pub struct FrequentistCDFUpdater {}
-impl Default for FrequentistCDFUpdater {
-    fn default() -> FrequentistCDFUpdater {FrequentistCDFUpdater{}}
-}
-
-impl CDFUpdater for FrequentistCDFUpdater {
-    fn initialization_prob(&self) -> [Prob;16] {
-        [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
-    }
-    fn blend(&self, data: &mut [Prob;16], symbol:u8) {
-        const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+impl CDF16 for FrequentistCDF16 {
+    fn blend(&mut self, symbol: u8) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-        let symbol16 = [symbol as Prob; 16];
-        let adder_symbol = each16bin!(CDF_INDEX, symbol16, gte_bool);
-        *data = each16bin!(adder_symbol, *data, add);
+        for i in (symbol as usize)..16 {
+            self.cdf[i] = self.cdf[i].wrapping_add(1);
+        }
         const LIMIT: Prob = 32767 - 32;
-        if data[data.len() - 1] >= LIMIT {
-            let biased_data = each16bin!(CDF_BIAS, *data, add);
-            *data = each16!(biased_data, srl);
+        if self.cdf[15] >= LIMIT {
+            for i in 0..16 {
+                self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 1;
+            }
         }
     }
-    fn max(&self, data: &[Prob;16]) -> i64 {
-        data[15] as i64
-    }
-    fn log_max(&self, data: &[Prob;16]) -> Option<i8> {
-        None
-    }
-    fn valid(&self, data: &[Prob;16]) -> bool {
+    fn valid(&self) -> bool {
         let mut prev = 0;
-        for item in data.split_at(15).0.iter() {
+        for item in self.cdf.split_at(15).0.iter() {
             if *item <= prev {
                 return false;
             }
             prev = *item;
         }
         return true;
+    }
+    fn max(&self) -> Prob {
+        self.cdf[15]
+    }
+    fn cdf(&self, symbol: u8) -> Prob {
+        self.cdf[symbol as usize]
     }
 }
 
@@ -268,7 +257,7 @@ fn add(a:Prob, b:Prob) -> Prob {
 
 const BLEND_FIXED_POINT_PRECISION : i8 = 15;
 
-pub fn mul_blend(baseline :[Prob;16], symbol: u8, blend : i32, bias : i32) ->[Prob;16] {
+pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [Prob;16] {
     const SCALE :i32 = 1i32 << BLEND_FIXED_POINT_PRECISION;
     let to_blend = to_blend_lut(symbol);
     let mut epi32:[i32;8] = [to_blend[0] as i32,
@@ -286,14 +275,14 @@ pub fn mul_blend(baseline :[Prob;16], symbol: u8, blend : i32, bias : i32) ->[Pr
         epi32[i] >>= BLEND_FIXED_POINT_PRECISION;
     }
     let mut retval : [Prob;16] =[epi32[0] as i16,
-                                epi32[1] as i16,
-                                epi32[2] as i16,
-                                epi32[3] as i16,
-                                epi32[4] as i16,
-                                epi32[5] as i16,
-                                epi32[6] as i16,
-                                epi32[7] as i16,
-                                0,0,0,0,0,0,0,0];
+                                 epi32[1] as i16,
+                                 epi32[2] as i16,
+                                 epi32[3] as i16,
+                                 epi32[4] as i16,
+                                 epi32[5] as i16,
+                                 epi32[6] as i16,
+                                 epi32[7] as i16,
+                                 0,0,0,0,0,0,0,0];
     let mut epi32:[i32;8] = [to_blend[8] as i32,
                              to_blend[9] as i32,
                              to_blend[10] as i32,
@@ -305,7 +294,7 @@ pub fn mul_blend(baseline :[Prob;16], symbol: u8, blend : i32, bias : i32) ->[Pr
     for i in 8..16 {
         epi32[i - 8] *= blend;
         epi32[i - 8] += baseline[i] as i32 * scale_minus_blend + bias;
-        retval[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as i16;
+        retval[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as Prob;
     }
     retval[15] = CDF_LIMIT as Prob;
     retval
@@ -346,6 +335,8 @@ fn to_blend_lut(symbol: u8) -> [Prob;16] {
 }
 
 mod test {
+    use super::CDF16;
+
     #[test]
     fn test_blend_lut() {
         for i in 0..16 {
@@ -356,6 +347,7 @@ mod test {
             }
         }
     }
+
     #[allow(unused)]
     const RAND_MAX : u32 = 32767;
     #[allow(unused)]
@@ -366,16 +358,14 @@ mod test {
     #[allow(unused)]
     fn test_random_helper(mut rand_table : [u32; 16],
                           num_trials: usize,
-                          blend: i32,
-                          bias: i32,
-                          desired_outcome : [super::Prob;16]) {
+                          desired_outcome : [u32; 16]) {
         let mut sum : u32 = 0;
         for i in 0..16 {
             rand_table[i] += sum;
             sum = rand_table[i];
         }
         assert_eq!(sum, RAND_MAX + 1);
-        let mut prob_state = super::CDF16::<super::BlendCDFUpdater>::default();
+        let mut prob_state = super::BlendCDF16::default();
         // make sure we have all probability taken care of
         let mut seed = 1u64;
         for i in 0..num_trials {
@@ -383,24 +373,26 @@ mod test {
             for j in 0..16{
                 if rand_num < rand_table[j] {
                     // we got an j as the next symbol
-                    prob_state.cdf = super::mul_blend(prob_state.cdf,
-                                       j as u8,
-                                       blend,
-                                              bias);
+                    prob_state.blend(j as u8);
                     assert!(prob_state.valid());
                     break;
                 }
                 assert!(j != 15); // should have broken
             }
         }
-        //assert_eq!(prob_state.float_array(), [0.032;16]);
-        assert_eq!(prob_state.cdf, desired_outcome);
+        let cdf_fp = prob_state.float_array();
+        for i in 0..16 {
+            let expected = (desired_outcome[i] as f32) / (desired_outcome[15] as f32);
+            let delta = (expected - cdf_fp[i]).abs() / expected;
+            assert!(delta < 0.001f32);
+        }
     }
     #[allow(unused)]
-    fn test_random_cdf<T:super::CDFUpdater>(mut prob_state:super::CDF16<T>,
-                                                    mut rand_table : [u32; 16],
-                                                    num_trials: usize,
-                                                    desired_outcome : [super::Prob;16]) {
+    #[cfg(test)]
+    fn test_random_cdf<C: CDF16>(mut prob_state: C,
+                                 mut rand_table : [u32; 16],
+                                 num_trials: usize,
+                                 desired_outcome : [u32; 16]) {
         let mut sum : u32 = 0;
         for i in 0..16 {
             rand_table[i] += sum;
@@ -421,8 +413,12 @@ mod test {
                 assert!(j != 15); // should have broken
             }
         }
-        //assert_eq!(prob_state.float_array(), [0.032;16]);
-        assert_eq!(prob_state.cdf, desired_outcome);
+        let cdf_fp = prob_state.float_array();
+        for i in 0..16 {
+            let expected = (desired_outcome[i] as f32) / (desired_outcome[15] as f32);
+            let delta = (expected - cdf_fp[i]).abs() / expected;
+            assert!(delta < 0.001f32);
+        }
     }
     #[test]
     fn test_stationary_probability() {
@@ -432,26 +428,24 @@ mod test {
                             rm/8,0,0,0,
                             rm/5 + 1,rm/5 + 1,rm/5 + 1,3 * rm/20 + 3],
                            1000000,
-                           128,
-                           0,
-                           [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,-32768]);
-                            
+                           [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,32768]);
+
     }
     #[test]
     fn test_stationary_probability_blend_cdf() {
         let rm = RAND_MAX as u32;
-        test_random_cdf(super::CDF16::<super::BlendCDFUpdater>::default(),
+        test_random_cdf(super::BlendCDF16::default(),
                         [0,0,rm/16,0,
                          rm/32,rm/32,0,0,
                          rm/8,0,0,0,
                          rm/5 + 1,rm/5 + 1,rm/5 + 1,3 * rm/20 + 3],
                         1000000,
-                        [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,-32768]);
+                        [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,32768]);
     }
     #[test]
     fn test_stationary_probability_frequentist_cdf() {
         let rm = RAND_MAX as u32;
-        test_random_cdf(super::CDF16::<super::FrequentistCDFUpdater>::default(),
+        test_random_cdf(super::FrequentistCDF16::default(),
                         [0,0,rm/16,0,
                          rm/32,rm/32,0,0,
                          rm/8,0,0,0,

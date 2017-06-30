@@ -1,6 +1,6 @@
 use alloc::{SliceWrapper};
 use brotli_decompressor::BrotliResult;
-use super::probability::{CDFUpdater, CDF16};
+use super::probability::CDF16;
 
 
 // Commands that can instantiate as a no-op should implement this.
@@ -118,8 +118,8 @@ pub trait ArithmeticEncoderOrDecoder {
     fn get_or_put_bit(&mut self,
                       bit: &mut bool,
                       prob_of_false: u8);
-    fn get_or_put_nibble<U:CDFUpdater> (&mut self,
-                                        nibble: &mut u8,
-                                        prob: &CDF16<U>);
+    fn get_or_put_nibble<C: CDF16>(&mut self,
+                                   nibble: &mut u8,
+                                   prob: &C);
     fn close(&mut self) -> BrotliResult;
 }

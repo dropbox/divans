@@ -5,8 +5,8 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-use interface::{Nop};
-use super::probability::{CDF16, FrequentistCDFUpdater};
+use interface::Nop;
+use super::probability::FrequentistCDF16;
 use super::interface::{
     CopyCommand,
     DictCommand,
@@ -109,7 +109,7 @@ impl CopyState {
         if dlen ==0 {
             return Fail(); // not allowed to copy from 0 distance
         }
-        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        let uniform_prob = FrequentistCDF16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -241,7 +241,7 @@ impl DictState {
                                                     output_bytes:&mut [u8],
                                                     output_offset: &mut usize) -> BrotliResult {
         
-        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        let uniform_prob = FrequentistCDF16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -337,7 +337,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
         let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
-        let uniform_prob = CDF16::<FrequentistCDFUpdater>::default();
+        let uniform_prob = FrequentistCDF16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},

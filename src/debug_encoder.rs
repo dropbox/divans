@@ -4,7 +4,7 @@ use super::encoder::{
     RegisterQueue,
     EntropyDecoder,
 };
-use probability::{CDF16, CDFUpdater};
+use probability::CDF16;
 use super::interface::ArithmeticEncoderOrDecoder;
 use super::BrotliResult;
 #[derive(Default)]
@@ -79,9 +79,9 @@ impl ArithmeticEncoderOrDecoder for DebugEncoder {
                       prob_of_false: u8) {
         self.put_bit(*bit, prob_of_false)
     }
-    fn get_or_put_nibble<U:CDFUpdater>(&mut self,
-                                       nibble: &mut u8,
-                                       prob: &CDF16<U>) {
+    fn get_or_put_nibble<C: CDF16>(&mut self,
+                                   nibble: &mut u8,
+                                   prob: &C) {
         self.put_nibble(*nibble, prob);
     }
     fn close(&mut self) -> BrotliResult {
