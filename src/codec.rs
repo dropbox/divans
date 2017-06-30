@@ -355,14 +355,14 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
-                                                                                  1 << (beg_nib));
+                                                                                  1 << (beg_nib - 1));
                     }
                 },
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen - 15;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
-                                                                              1 << (last_nib + 15));
+                                                                              1 << (last_nib + 15 - 1));
                 },
                 LiteralSubstate::LiteralCountMantissaNibbles(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
