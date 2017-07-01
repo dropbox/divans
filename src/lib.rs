@@ -12,6 +12,7 @@ mod cmd_to_raw;
 mod codec;
 mod cmd_to_divans;
 mod divans_to_raw;
+mod billing;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop};
@@ -27,8 +28,21 @@ const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
 pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
 
+
+#[cfg(not(feature="billing"))]
+pub type SelectedArithmeticEncoder = DefaultArithmeticEncoder;
+#[cfg(not(feature="billing"))]
+pub type SelectedArithmeticDecoder = DefaultArithmeticDecoder;
+
+
+#[cfg(feature="billing")]
+pub type SelectedArithmeticEncoder = billing::BillingArithmeticCoder<DefaultArithmeticEncoder>;
+#[cfg(feature="billing")]
+pub type SelectedArithmeticDecoder = billing::BillingArithmeticCoder<DefaultArithmeticDecoder>;
+
+
 pub struct DivansCompressor<AllocU8:Allocator<u8> > {
-    codec: DivansCodec<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>,
+    codec: DivansCodec<SelectedArithmeticEncoder, EncoderSpecialization, AllocU8>,
     header_progress: usize,
     window_size: u8,
 }
@@ -41,7 +55,7 @@ impl<AllocU8:Allocator<u8> > DivansCompressor<AllocU8> {
             window_size = 24;
         }
         DivansCompressor::<AllocU8> {
-            codec:DivansCodec::<DefaultArithmeticEncoder, EncoderSpecialization, AllocU8>::new(
+            codec:DivansCodec::<SelectedArithmeticEncoder, EncoderSpecialization, AllocU8>::new(
                 m8,
                 EncoderSpecialization::new(),
                 window_size,
@@ -135,7 +149,7 @@ impl<AllocU8:Allocator<u8>> HeaderParser<AllocU8> {
 }
 pub enum DivansDecompressor<AllocU8:Allocator<u8> > {
     Header(HeaderParser<AllocU8>),
-    Decode(DivansCodec<DefaultArithmeticDecoder, DecoderSpecialization, AllocU8>),
+    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, AllocU8>),
 }
 impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
     pub fn new(m8: AllocU8) -> Self {
@@ -159,7 +173,7 @@ impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
             _ => return BrotliResult::ResultFailure,
         }
         core::mem::replace(self,
-                           DivansDecompressor::Decode(DivansCodec::<DefaultArithmeticDecoder,
+                           DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder,
                                                                     DecoderSpecialization,
                                                                     AllocU8>::new(m8,
                                                                                   DecoderSpecialization::new(),
