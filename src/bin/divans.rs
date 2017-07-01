@@ -282,7 +282,6 @@ fn recode_cmd_buffer<Writer:std::io::Write,
             }
         }
     }
-    assert!(o_processed_index != 0);
     match w.write_all(output_scratch.split_at(o_processed_index).0) {
         Err(x) => return Err(x),
         Ok(_) => {},
@@ -341,6 +340,36 @@ fn recode_inner<Reader:std::io::BufRead,
             }
         }
     }
+    loop {
+        let mut o_processed_index = 0;
+        match state.flush(&mut obuffer[..],
+                          &mut o_processed_index) {
+            BrotliResult::ResultSuccess => {
+                if o_processed_index != 0 {
+                    match w.write_all(obuffer.split_at(o_processed_index).0) {
+                        Err(x) => return Err(x),
+                        Ok(_) => {},
+                    }
+                }
+                break;
+            },
+            BrotliResult::NeedsMoreOutput => {
+                assert!(o_processed_index != 0);
+                match w.write_all(obuffer.split_at(o_processed_index).0) {
+                    Err(x) => return Err(x),
+                    Ok(_) => {},
+                }
+            }
+            BrotliResult::NeedsMoreInput => {
+                panic!("Unreasonable demand: no input avail in this code path");
+            }
+            BrotliResult::ResultFailure => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                               "Brotli Failure to recode file"));
+            }
+        }
+    }
+
     Ok(())
 }
 fn compress_inner<Reader:std::io::BufRead,
@@ -390,6 +419,35 @@ fn compress_inner<Reader:std::io::BufRead,
                 let line = buffer.trim().to_string();
                 ibuffer[i_read_index] = command_parse(line).unwrap();
                 i_read_index += 1;
+            }
+        }
+    }
+    loop {
+        let mut o_processed_index = 0;
+        match state.flush(&mut obuffer[..],
+                          &mut o_processed_index) {
+            BrotliResult::ResultSuccess => {
+                if o_processed_index != 0 {
+                    match w.write_all(obuffer.split_at(o_processed_index).0) {
+                        Err(x) => return Err(x),
+                        Ok(_) => {},
+                    }
+                }
+                break;
+            },
+            BrotliResult::NeedsMoreOutput => {
+                assert!(o_processed_index != 0);
+                match w.write_all(obuffer.split_at(o_processed_index).0) {
+                    Err(x) => return Err(x),
+                    Ok(_) => {},
+                }
+            }
+            BrotliResult::NeedsMoreInput => {
+                panic!("Unreasonable demand: no input avail in this code path");
+            }
+            BrotliResult::ResultFailure => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                               "Brotli Failure to recode file"));
             }
         }
     }

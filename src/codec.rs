@@ -610,7 +610,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     let mut is_copy = false;
                     let mut is_dict_or_end = is_end;
                     match input_cmd {
-                        &Command::Copy(_) => is_copy = true,
+                        &Command::Copy(_) => is_copy = !is_end,
                         &Command::Dict(_) => is_dict_or_end = true,
                         &Command::Literal(ref lit) => if lit.data.slice().len() == 0 {return OneCommandReturn::Advance}, // nop
                     }
