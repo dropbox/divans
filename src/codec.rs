@@ -30,7 +30,7 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
     fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
-    fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
+    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
                                                    in_cmd: &LiteralCommand<ISlice>,
                                                    index: usize) -> u8;
     fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
@@ -383,9 +383,9 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut cur_nibble = superstate.specialization.get_literal_nibble(
+                    let mut cur_nibble = (superstate.specialization.get_literal_byte(
                         in_cmd,
-                        byte_index);
+                        byte_index) >> ((nibble_index & 1) << 2)) & 0xf;
                     superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
@@ -414,8 +414,12 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
-    FinalBufferDrain,
+    CoderBufferDrain,
+    WriteChecksum(usize),
 }
+
+const CHECKSUM_LENGTH: usize = 8;
+
 
 impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     fn default() -> Self {
@@ -528,21 +532,44 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                 },
                 EncodeOrDecodeState::ShutdownCoder => {
                     match self.cross_command_state.coder.close() {
-                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::FinalBufferDrain,
+                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::CoderBufferDrain,
                         ret => return ret,
                     }
                 },
-                EncodeOrDecodeState::FinalBufferDrain => {
+                EncodeOrDecodeState::CoderBufferDrain => {
                     let mut unused = 0usize;
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[],
                                                                                        &mut unused,
                                                                                        output_bytes,
                                                                                        output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
-                            self.state = EncodeOrDecodeState::DivansSuccess;
-                            return BrotliResult::ResultSuccess;
+                            self.state = EncodeOrDecodeState::WriteChecksum(0);
                         },
                         ret => return ret,
+                    }
+                },
+                EncodeOrDecodeState::WriteChecksum(count) => {
+                    let bytes_remaining = output_bytes.len() - *output_bytes_offset;
+                    let bytes_needed = CHECKSUM_LENGTH - count;
+                    let count_to_copy = core::cmp::min(bytes_remaining,
+                                                       bytes_needed);
+                    let checksum = ['~' as u8,
+                                    'd' as u8,
+                                    'i' as u8,
+                                    'v' as u8,
+                                    'a' as u8,
+                                    'n' as u8,
+                                    's' as u8,
+                                    '~' as u8];
+                    output_bytes.split_at_mut(*output_bytes_offset).1.split_at_mut(
+                        count_to_copy).0.clone_from_slice(checksum.split_at(count_to_copy).0);
+                    *output_bytes_offset += count_to_copy;
+                    if bytes_needed <= bytes_remaining {
+                        self.state = EncodeOrDecodeState::DivansSuccess;
+                        return BrotliResult::ResultSuccess;
+                    } else {
+                        self.state = EncodeOrDecodeState::WriteChecksum(count + count_to_copy);
+                        return BrotliResult::NeedsMoreOutput;
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => return BrotliResult::ResultSuccess,
@@ -593,7 +620,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             match &mut self.state {
                 &mut EncodeOrDecodeState::EncodedShutdownNode
                     | &mut EncodeOrDecodeState::ShutdownCoder
-                    | &mut EncodeOrDecodeState::FinalBufferDrain => {
+                    | &mut EncodeOrDecodeState::CoderBufferDrain
+                    | &mut EncodeOrDecodeState::WriteChecksum(_) => {
                     // not allowed to encode additional commands after flush is invoked
                     return OneCommandReturn::BufferExhausted(Fail());
                 }

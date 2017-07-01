@@ -68,7 +68,7 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
             _ => backing,
         }                
     }
-    fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
+    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
                                                    in_cmd: &LiteralCommand<ISlice>,
                                                    index: usize) -> u8 {
         in_cmd.data.slice()[index]

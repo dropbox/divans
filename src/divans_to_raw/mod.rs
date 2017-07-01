@@ -56,7 +56,7 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                                             backing: &'a DictCommand) -> &'a DictCommand {
         backing
     }
-    fn get_literal_nibble<ISlice:SliceWrapper<u8>>(&self,
+    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
                                                    _in_cmd: &LiteralCommand<ISlice>,
                                                    _index: usize) -> u8 {
         0
