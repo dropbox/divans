@@ -39,7 +39,10 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_id:index
         });
         match ret {
-            BrotliResult::ResultSuccess => assert!(index < 5),
+            BrotliResult::ResultSuccess => {
+                assert!(index < 5);
+                state.input_sub_offset = 0; // reset decode
+            },
             BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
         }
@@ -87,7 +90,10 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_id:index
         });
         match ret {
-            BrotliResult::ResultSuccess => assert!(index < 5),
+            BrotliResult::ResultSuccess => {
+                assert!(index < 5);
+                state.input_sub_offset = 0;
+            },
             BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
         }
