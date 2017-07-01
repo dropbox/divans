@@ -11,7 +11,7 @@ pub struct CDF2 {
 
 impl Default for CDF2 {
     fn default() -> Self {
-        Self {
+        CDF2 {
             counts: [1, 1],
             prob: 128,
         }
@@ -90,7 +90,7 @@ pub struct BlendCDF16 {
 
 impl Default for BlendCDF16 {
     fn default() -> Self {
-        Self {
+        BlendCDF16 {
             cdf: [(1 * CDF_LIMIT / 16) as Prob,
                   (2 * CDF_LIMIT / 16) as Prob,
                   (3 * CDF_LIMIT / 16) as Prob,
@@ -145,7 +145,7 @@ pub struct FrequentistCDF16 {
 
 impl Default for FrequentistCDF16 {
     fn default() -> Self {
-        Self {
+        FrequentistCDF16 {
             cdf: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
         }
     }
