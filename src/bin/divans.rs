@@ -475,6 +475,11 @@ fn decompress<Reader:std::io::Read,
                     loop {
                         match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
                             Ok(size) => {
+                                if size == 0 {
+                                    return Err(io::Error::new(
+                                        io::ErrorKind::UnexpectedEof,
+                                        "Divans file invalid: didn't have a terminator marker"));
+                                }
                                 input_end = input_offset + size;
                                 break
                             },

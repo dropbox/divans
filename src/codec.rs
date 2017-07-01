@@ -125,13 +125,13 @@ impl CopyState {
                         self.cc.distance = 1;
                         self.state = CopySubstate::DistanceDecoded;
                     } else {
-                        self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << (beg_nib + 1));
+                        self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << beg_nib);
                     }
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen - 16;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
-                    self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 16));
+                    self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
@@ -159,14 +159,14 @@ impl CopyState {
                         self.cc.num_bytes = beg_nib as u32;
                         self.state = CopySubstate::FullyDecoded;
                     } else {
-                        self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << beg_nib);
+                        self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << (beg_nib - 1));
                     }
                     
                 }
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen - 15;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
-                    self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 15));
+                    self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
@@ -259,7 +259,7 @@ impl DictState {
                     }
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
-                    let mut beg_nib = in_cmd.word_size - 19;
+                    let mut beg_nib = in_cmd.word_size.wrapping_sub(19);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
                     self.dc.word_size = beg_nib + 19;
                     self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(1 << self.dc.word_size), 0);
@@ -359,10 +359,10 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                     }
                 },
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
-                    let mut last_nib = lllen - 15;
+                    let mut last_nib = lllen.wrapping_sub(15);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
-                                                                              1 << (last_nib + 15 - 1));
+                                                                              1 << (last_nib + 14));
                 },
                 LiteralSubstate::LiteralCountMantissaNibbles(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;

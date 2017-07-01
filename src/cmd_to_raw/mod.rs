@@ -157,16 +157,17 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
        }
        let remainder = data.split_at(self.input_sub_offset).1;
        let bytes_copied = self.copy_to_ring_buffer(remainder);
+       self.input_sub_offset += bytes_copied as usize;
        if bytes_copied != remainder.len() {
-          self.input_sub_offset += bytes_copied as usize;
           return BrotliResult::NeedsMoreOutput;
        }
        BrotliResult::ResultSuccess
     }
     #[allow(unused)]
     fn parse_copy_simplified(&mut self, copy:&CopyCommand) -> BrotliResult {
-        for _i in (self.input_sub_offset as usize)..(copy.num_bytes as usize){
+        for i in (self.input_sub_offset as usize)..(copy.num_bytes as usize){
             if (self.ring_buffer_decode_index + 1 & (self.ring_buffer.slice().len() as u32 - 1)) == self.ring_buffer_output_index {
+               self.input_sub_offset = i;
                return BrotliResult::NeedsMoreOutput;
             }
             let mut src = self.ring_buffer_decode_index + self.ring_buffer.slice().len() as u32 - copy.distance;
@@ -178,6 +179,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                self.ring_buffer_decode_index = 0;
             }
         }
+        self.input_sub_offset = copy.num_bytes as usize;
         return BrotliResult::ResultSuccess;
     }
     fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
