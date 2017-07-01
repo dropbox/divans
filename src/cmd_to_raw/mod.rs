@@ -223,10 +223,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
     fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> BrotliResult {
         // dictionary words are bounded in size: make sure there's enough room for the whole word
-        if self.input_sub_offset != 0 {
-            // error: dictionary should never allow for partial words, since they fit in a small amount of space
-            return BrotliResult::ResultFailure;
-        }
         let copy_len = dict_cmd.word_size as u32;
         let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
         let word_index = (dict_cmd.word_id * copy_len) + word_len_category_index;
@@ -243,9 +239,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if dict_cmd.final_size != 0 && final_len as usize != dict_cmd.final_size as usize {
             return BrotliResult::ResultFailure;
         }
-        if self.copy_to_ring_buffer(transformed_word.split_at(final_len as usize).0) as i32 != final_len {
+        if self.input_sub_offset != 0 {
+            assert_eq!(self.input_sub_offset as i32, final_len);
+        } else if self.copy_to_ring_buffer(transformed_word.split_at(final_len as usize).0) as i32 != final_len {
             panic!("We already assured sufficient space in buffer for word: internal error");
         }
+        self.input_sub_offset = final_len as usize;
         BrotliResult::ResultSuccess
     }
     fn parse_command<SliceType:SliceWrapper<u8>>(&mut self, cmd: &Command<SliceType>) -> BrotliResult {

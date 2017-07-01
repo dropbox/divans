@@ -228,6 +228,11 @@ struct DictState {
    dc:DictCommand,
    state: DictSubstate,
 }
+const DICT_BITS:[u8;25] = [
+    0,  0,  0,  0, 10, 10, 11, 11, 10, 10,
+    10, 10, 10,  9,  9,  8,  7,  7,  8,  7,
+    7,  6,  6,  5,  5];
+
 impl DictState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
@@ -255,14 +260,17 @@ impl DictState {
                         self.state = DictSubstate::WordSizeGreater18Less25;
                     } else {
                         self.dc.word_size = beg_nib + 4;
-                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(self.dc.word_size), 0);
+                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                     }
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
                     let mut beg_nib = in_cmd.word_size.wrapping_sub(19);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob);
                     self.dc.word_size = beg_nib + 19;
-                    self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(1 << self.dc.word_size), 0);
+                    if self.dc.word_size > 24 {
+                        return BrotliResult::ResultFailure;
+                    }
+                    self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                 }
                 DictSubstate::WordIndexMantissa(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
