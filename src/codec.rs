@@ -129,7 +129,7 @@ impl CopyState {
                     }
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
-                    let mut last_nib = dlen - 16;
+                    let mut last_nib = dlen.wrapping_sub(16);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
                     self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
@@ -164,7 +164,7 @@ impl CopyState {
                     
                 }
                 CopySubstate::CountLengthFirstGreater14Less25 => {
-                    let mut last_nib = clen - 15;
+                    let mut last_nib = clen.wrapping_sub(15);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob);
                     self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },

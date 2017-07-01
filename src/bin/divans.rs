@@ -758,7 +758,6 @@ fn main() {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
-                    panic!("Unimpl");
                 }
             }
         } else {
