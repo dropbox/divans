@@ -2,6 +2,11 @@
 #[cfg(test)]
 #[macro_use]
 extern crate std;
+
+#[cfg(not(test))]
+#[cfg(feature="billing")]
+#[macro_use]
+extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 mod interface;
@@ -147,9 +152,20 @@ impl<AllocU8:Allocator<u8>> HeaderParser<AllocU8> {
     }
 
 }
+
+#[cfg(not(feature="billing"))]
+fn print_decompression_result(_decompressor :&SelectedArithmeticDecoder, _bytes_written: usize) {
+   
+}
+
+#[cfg(feature="billing")]
+fn print_decompression_result(decompressor :&SelectedArithmeticDecoder, bytes_written: usize) {
+   decompressor.print_compression_ratio(bytes_written);
+}
+
 pub enum DivansDecompressor<AllocU8:Allocator<u8> > {
     Header(HeaderParser<AllocU8>),
-    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, AllocU8>),
+    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, AllocU8>, usize),
 }
 impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
     pub fn new(m8: AllocU8) -> Self {
@@ -177,7 +193,7 @@ impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
                                                                     DecoderSpecialization,
                                                                     AllocU8>::new(m8,
                                                                                   DecoderSpecialization::new(),
-                                                                                  window_size)));
+                                                                                  window_size), 0));
         BrotliResult::ResultSuccess
     }
     pub fn free(self) ->AllocU8 {
@@ -185,7 +201,8 @@ impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
             DivansDecompressor::Header(parser) => {
                 parser.m8.unwrap()
             },
-            DivansDecompressor::Decode(decoder) => {
+            DivansDecompressor::Decode(decoder, bytes_encoded) => {
+                print_decompression_result(&decoder.get_coder(), bytes_encoded);
                 decoder.free()
             }
         }
@@ -199,7 +216,7 @@ impl<AllocU8:Allocator<u8>> Decompressor for DivansDecompressor<AllocU8> {
               output:&mut [u8],
               output_offset: &mut usize) -> BrotliResult {
         let window_size: usize;
-        
+
         match self  {
             &mut DivansDecompressor::Header(ref mut header_parser) => {
                 let remaining = input.len() - *input_offset;
@@ -220,15 +237,18 @@ impl<AllocU8:Allocator<u8>> Decompressor for DivansDecompressor<AllocU8> {
                     return BrotliResult::NeedsMoreInput;
                 }
             },
-            &mut DivansDecompressor::Decode(ref mut divans_parser) => {
+            &mut DivansDecompressor::Decode(ref mut divans_parser, ref mut bytes_encoded) => {
                 let mut unused:usize = 0;
-                return divans_parser.encode_or_decode::<AllocU8::AllocatedMemory>(
+                let old_output_offset = *output_offset;
+                let retval = divans_parser.encode_or_decode::<AllocU8::AllocatedMemory>(
                     input,
                     input_offset,
                     output,
                     output_offset,
                     &[],
                     &mut unused);
+                *bytes_encoded += *output_offset - old_output_offset;
+                return retval;
             },
         }
         self.finish_parsing_header(window_size);

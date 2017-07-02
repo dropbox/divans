@@ -58,7 +58,11 @@ pub trait CDF16 {
 
     fn cdf(&self, symbol: u8) -> Prob;
     fn pdf(&self, symbol: u8) -> Prob {
-        self.cdf(symbol) - self.cdf(symbol.wrapping_sub(1))
+        if symbol == 0 {
+            self.cdf(symbol)
+        } else {
+            self.cdf(symbol) - self.cdf(symbol - 1)
+        }
     }
 
     // the maximum value relative to which cdf() and pdf() values should be normalized.

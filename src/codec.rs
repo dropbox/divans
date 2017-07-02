@@ -500,6 +500,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             state:EncodeOrDecodeState::Begin,
         }
     }
+    pub fn get_coder(&self) -> &ArithmeticCoder {
+        &self.cross_command_state.coder
+    }
     pub fn specialization(&mut self) -> &mut Specialization{
         &mut self.cross_command_state.specialization
     }
