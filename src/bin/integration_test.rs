@@ -3,7 +3,9 @@ extern crate core;
 use std::io;
 
 use std::io::Write;
+use std::io::BufReader;
 use core::cmp;
+use super::brotli_decompressor;
 use super::brotli_decompressor::BrotliResult;
 use super::brotli_decompressor::BrotliDecompressStream;
 use super::brotli_decompressor::BrotliState;
@@ -103,14 +105,14 @@ pub fn divans_decompress_internal(mut brotli_file : &[u8]) -> Result<Box<[u8]>, 
 #[test]
 fn test_ends_with_truncated_dictionary() {
    let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/ends_with_truncated_dictionary.br")).unwrap();
-   let div_raw = divans_decompress_internal(include_bytes!("../../testdata/ends_with_truncated_dictionary.dv")).unwrap();
+   let div_raw = divans_decompress_internal(include_bytes!("../../testdata/ends_with_truncated_dictionary.ir")).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
    assert_eq!(raw_file, div_raw);
 }
 #[test]
 fn test_random_then_unicode() {
    let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.dv.br")).unwrap();
+   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
    assert_eq!(raw_file, div_raw);
@@ -118,7 +120,7 @@ fn test_random_then_unicode() {
 #[test]
 fn test_alice29() {
    let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/alice29.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/alice29.dv.br")).unwrap();
+   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/alice29.ir.br")).unwrap();
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
    assert_eq!(raw_file, div_raw);
@@ -126,9 +128,33 @@ fn test_alice29() {
 #[test]
 fn test_asyoulik() {
    let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/asyoulik.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/asyoulik.dv.br")).unwrap();
+   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/asyoulik.ir.br")).unwrap();
    assert_eq!(div_input.len(), 541890);
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
    assert_eq!(raw_file, div_raw);
+}
+
+
+
+#[test]
+fn test_e2e_alice() {
+   let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
+   let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
+   let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
+   brotli_decompressor::BrotliDecompress(&mut raw_text_as_br_buffer,
+        &mut raw_text_buffer).unwrap();
+   let ir_as_br = include_bytes!("../../testdata/alice29.ir.br");
+   let mut ir_buffer = UnlimitedBuffer::new(&[]);
+   let mut ir_as_br_buffer = UnlimitedBuffer::new(ir_as_br);
+   brotli_decompressor::BrotliDecompress(&mut ir_as_br_buffer,
+        &mut ir_buffer).unwrap();
+   let mut dv_buffer = UnlimitedBuffer::new(&[]);
+   let mut buf_ir = BufReader::new(ir_buffer);
+   let mut rt_buffer = UnlimitedBuffer::new(&[]);
+   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 680).unwrap();
+   let a =  rt_buffer.data;
+   let b = raw_text_buffer.data;
+   assert_eq!(a, b);
 }

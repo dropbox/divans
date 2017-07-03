@@ -1,3 +1,4 @@
+#![allow(unused_macros)]
 use interface::ArithmeticEncoderOrDecoder;
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
