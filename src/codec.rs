@@ -328,7 +328,12 @@ impl DictState {
         }
     }
 }
-
+use std::io::Write;
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
 #[derive(Copy, Clone)]
 enum LiteralSubstate {
     Begin,
@@ -413,8 +418,36 @@ impl<AllocU8:Allocator<u8>,
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(
                         in_cmd,
                         byte_index) >> ((nibble_index & 1) << 2)) & 0xf;
-                    superstate.coder.get_or_put_nibble(&mut cur_nibble, &uniform_prob);
+                    let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
+                    let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
+                    let k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
+                    let k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
+                    let k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
+                    let k5 = ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize;
+                    let k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
+                    let k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
+                    let k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
+                    let literal_prior_offset = (-((nibble_index & 1) as isize)) as usize;
+                    {
+                        let mut nibble_prob = &mut superstate.bk.nibble_priors.slice_mut()[
+                            FIRST_LITERAL_PRIOR_OFFSET
+                                + (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
+                                + k0 + (k1 << 4) + (k3 << 8)];
+                        superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob);
+                        nibble_prob.blend(cur_nibble);
+                    }
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
+                    superstate.bk.push_literal_nibble(cur_nibble);
+                    /*
+                    if (nibble_index & 1) == 1 {
+                        println_stderr!("{}{}{}{}{}",
+                                        ((k7<<4)|k8) as u8 as char,
+                                        ((k5<<4)|k6) as u8 as char,
+                                        ((k3<<4)|k4) as u8 as char,
+                                        ((k1<<4)|k2) as u8 as char,
+                                        self.lc.data.slice_mut()[byte_index] as char);
+                    }
+                     */
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
                         return BrotliResult::ResultSuccess;
@@ -473,6 +506,7 @@ const NIBBLE_PRIORS_SIZE :usize = SECOND_LITERAL_PRIOR_OFFSET + NUM_SECOND_LITER
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+   last_8_literals: u64,
    last_4_states: u8,
    nibble_priors: AllocCDF16::AllocatedMemory,
    bit_priors: AllocCDF2::AllocatedMemory,
@@ -487,9 +521,14 @@ impl<Cdf16:CDF16,
            nibble_prior:AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             last_4_states: 0,
+            last_8_literals: 0xfffefffefffefffe,
             bit_priors:bit_prior,
             nibble_priors:nibble_prior,
         }
+    }
+    fn push_literal_nibble(&mut self, nibble: u8) {
+        self.last_8_literals >>= 0x4;
+        self.last_8_literals |= (nibble as u64) << 0x3c;
     }
     fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
         &mut self.bit_priors.slice_mut()[COPY_TYPE_PRIOR_OFFSET + ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS))]
@@ -898,6 +937,17 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             return OneCommandReturn::BufferExhausted(Fail());
                         },
                         BrotliResult::ResultSuccess => {
+                            // clobber bk.last_8_literals with the last 8 literals
+                            let last_8 = self.cross_command_state.recoder.last_8_literals();
+                            self.cross_command_state.bk.last_8_literals =
+                                (last_8[0] as u64)
+                                | ((last_8[1] as u64)<<0x8)
+                                | ((last_8[2] as u64)<<0x10)
+                                | ((last_8[3] as u64)<<0x18)
+                                | ((last_8[4] as u64)<<0x20)
+                                | ((last_8[5] as u64)<<0x28)
+                                | ((last_8[6] as u64)<<0x30)
+                                | ((last_8[7] as u64)<<0x38);
                             new_state = Some(EncodeOrDecodeState::Begin);
                             match o_cmd {
                                 &mut Command::Literal(ref mut l) => {

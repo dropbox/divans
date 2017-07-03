@@ -30,6 +30,18 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             input_sub_offset: 0,
         }
     }
+    pub fn last_8_literals(&self) -> [u8; 8] {
+        let mut ret = [0u8; 8];
+        if self.ring_buffer_decode_index < 8 {
+            let len = self.ring_buffer.slice().len();
+            for i in 0..8 {
+                ret[i] = self.ring_buffer.slice()[(self.ring_buffer_decode_index as usize + len - i - 1) & (len - 1)];
+            }
+        } else {
+            ret.clone_from_slice(self.ring_buffer.slice().split_at(self.ring_buffer_decode_index as usize - 8).1.split_at(8).0);
+        }
+        ret
+    }
     // this copies as much data as possible from the RingBuffer
     // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
     pub fn flush(&mut self, output :&mut[u8], output_offset: &mut usize) -> BrotliResult {
