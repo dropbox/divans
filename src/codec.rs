@@ -6,7 +6,7 @@ use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
 use interface::Nop;
-use super::probability::FrequentistCDF16;
+use super::probability::{CDF2,CDF16};
 use super::interface::{
     CopyCommand,
     DictCommand,
@@ -95,9 +95,11 @@ fn Fail() -> BrotliResult {
 impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
                         AllocU8:Allocator<u8>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
+                                                                                  Cdf16,
                                                                                   AllocU8>,
                                                in_cmd: &CopyCommand,
                                                input_bytes:&[u8],
@@ -109,7 +111,7 @@ impl CopyState {
         if dlen ==0 {
             return Fail(); // not allowed to copy from 0 distance
         }
-        let uniform_prob = FrequentistCDF16::default();
+        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -235,18 +237,20 @@ const DICT_BITS:[u8;25] = [
 
 impl DictState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                             Specialization:EncoderOrDecoderSpecialization,
-                             AllocU8:Allocator<u8>>(&mut self,
-                                                    superstate: &mut CrossCommandState<ArithmeticCoder,
-                                                                             Specialization,
-                                                                                   AllocU8>,
-                                                    in_cmd: &DictCommand,
-                                                    input_bytes:&[u8],
-                                                    input_offset: &mut usize,
-                                                    output_bytes:&mut [u8],
-                                                    output_offset: &mut usize) -> BrotliResult {
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  Cdf16,
+                                                                                  AllocU8>,
+                                               in_cmd: &DictCommand,
+                                               input_bytes:&[u8],
+                                               input_offset: &mut usize,
+                                               output_bytes:&mut [u8],
+                                               output_offset: &mut usize) -> BrotliResult {
         
-        let uniform_prob = FrequentistCDF16::default();
+        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -333,10 +337,12 @@ struct LiteralState<AllocU8:Allocator<u8>> {
 impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
     fn encode_or_decode<ISlice: SliceWrapper<u8>,
                         ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Cdf16:CDF16,
                         Specialization:EncoderOrDecoderSpecialization
                         >(&mut self,
                           superstate: &mut CrossCommandState<ArithmeticCoder,
-                                                         Specialization,
+                                                             Specialization,
+                                                             Cdf16,
                                                          AllocU8>,
                           in_cmd: &LiteralCommand<ISlice>,
                           input_bytes:&[u8],
@@ -345,7 +351,7 @@ impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
         let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
-        let uniform_prob = FrequentistCDF16::default();
+        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -435,27 +441,42 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     }
 }
 
+const NUM_COPY_PRIORS:usize=16;
+const NUM_DICT_PRIORS:usize=16;
+const NUM_EOF_PRIORS:usize=1;
+const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 256;
+const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 256;
+const NIBBLE_PRIORS_SIZE :usize = NUM_FIRST_LITERAL_NIBBLE_PRIORS + NUM_SECOND_LITERAL_NIBBLE_PRIORS;
+const BIT_PRIORS_SIZE:usize = NUM_COPY_PRIORS+ NUM_DICT_PRIORS+ NUM_EOF_PRIORS;
 pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
+                             Cdf16:CDF16,
                              AllocU8:Allocator<u8>> {
     coder: ArithmeticCoder,
     specialization: Specialization,
     recoder: super::cmd_to_raw::DivansRecodeState<AllocU8::AllocatedMemory>, 
     m8: AllocU8,
+    nibble_priors: [Cdf16; NIBBLE_PRIORS_SIZE],
+    bit_priors: [CDF2; BIT_PRIORS_SIZE],
 }
 
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
       Specialization:EncoderOrDecoderSpecialization,
+      Cdf16:CDF16,
       AllocU8:Allocator<u8>> CrossCommandState<ArithmeticCoder,
                                                Specialization,
+                                               Cdf16,
                                                AllocU8> {
     fn new(mut m8: AllocU8, spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
+                            Cdf16,
                             AllocU8> {
             coder: ArithmeticCoder::default(),
             specialization: spc,
+            nibble_priors: [Cdf16::default();NIBBLE_PRIORS_SIZE],
+            bit_priors: [CDF2::default(); BIT_PRIORS_SIZE],
             recoder: super::cmd_to_raw::DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
             m8: m8,
@@ -470,9 +491,11 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
+                       Cdf16:CDF16,
                        AllocU8: Allocator<u8>> {
     cross_command_state: CrossCommandState<ArithmeticCoder,
                                            Specialization,
+                                           Cdf16,
                                            AllocU8>,
     state : EncodeOrDecodeState<AllocU8>,
 }
@@ -484,16 +507,18 @@ pub enum OneCommandReturn {
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
      Specialization: EncoderOrDecoderSpecialization,
-     AllocU8: Allocator<u8>> DivansCodec<ArithmeticCoder, Specialization, AllocU8> {
+     Cdf16:CDF16,
+     AllocU8: Allocator<u8>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8> {
     pub fn free(self) -> AllocU8 {
         self.cross_command_state.free()
     }
     pub fn new(m8:AllocU8,
                specialization: Specialization,
                ring_buffer_size: usize) -> Self {
-        DivansCodec::<ArithmeticCoder,  Specialization, AllocU8> {
+        DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
-                                                  Specialization,
+                                                    Specialization,
+                                                    Cdf16,
                                                     AllocU8>::new(m8,
                                                                   specialization,
                                                                   ring_buffer_size),

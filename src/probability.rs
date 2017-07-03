@@ -3,7 +3,7 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct CDF2 {
     counts: [u8; 2],
     pub prob: u8,
@@ -52,7 +52,7 @@ impl CDF2 {
     }
 }
 
-pub trait CDF16 {
+pub trait CDF16:Sized+Default+Copy {
     fn blend(&mut self, symbol: u8);
     fn valid(&self) -> bool;
 
@@ -78,7 +78,7 @@ pub trait CDF16 {
         let mut ret = [0.0f32; 16];
         for i in 0..16 {
             ret[i] = (self.cdf(i as u8) as f32) / (self.max() as f32);
-        }
+       }
         ret
     }
 }
@@ -87,7 +87,7 @@ const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 
-#[derive(Clone)]
+#[derive(Clone,Copy)]
 pub struct BlendCDF16 {
     pub cdf: [Prob; 16]
 }
@@ -142,7 +142,7 @@ impl CDF16 for BlendCDF16 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
 }

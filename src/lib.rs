@@ -33,6 +33,8 @@ const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
 pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
 
+pub type DefaultCDF16 = probability::FrequentistCDF16;
+
 
 #[cfg(not(feature="billing"))]
 pub type SelectedArithmeticEncoder = DefaultArithmeticEncoder;
@@ -47,7 +49,7 @@ pub type SelectedArithmeticDecoder = billing::BillingArithmeticCoder<DefaultArit
 
 
 pub struct DivansCompressor<AllocU8:Allocator<u8> > {
-    codec: DivansCodec<SelectedArithmeticEncoder, EncoderSpecialization, AllocU8>,
+    codec: DivansCodec<SelectedArithmeticEncoder, EncoderSpecialization, DefaultCDF16, AllocU8>,
     header_progress: usize,
     window_size: u8,
 }
@@ -60,7 +62,7 @@ impl<AllocU8:Allocator<u8> > DivansCompressor<AllocU8> {
             window_size = 24;
         }
         DivansCompressor::<AllocU8> {
-            codec:DivansCodec::<SelectedArithmeticEncoder, EncoderSpecialization, AllocU8>::new(
+            codec:DivansCodec::<SelectedArithmeticEncoder, EncoderSpecialization, DefaultCDF16, AllocU8>::new(
                 m8,
                 EncoderSpecialization::new(),
                 window_size,
@@ -165,7 +167,7 @@ fn print_decompression_result(decompressor :&SelectedArithmeticDecoder, bytes_wr
 
 pub enum DivansDecompressor<AllocU8:Allocator<u8> > {
     Header(HeaderParser<AllocU8>),
-    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, AllocU8>, usize),
+    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, DefaultCDF16, AllocU8>, usize),
 }
 impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
     pub fn new(m8: AllocU8) -> Self {
@@ -191,6 +193,7 @@ impl<AllocU8:Allocator<u8> > DivansDecompressor<AllocU8> {
         core::mem::replace(self,
                            DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder,
                                                                     DecoderSpecialization,
+                                                                    DefaultCDF16,
                                                                     AllocU8>::new(m8,
                                                                                   DecoderSpecialization::new(),
                                                                                   window_size), 0));
