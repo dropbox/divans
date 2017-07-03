@@ -137,8 +137,7 @@ fn test_asyoulik() {
 
 
 
-#[test]
-fn test_e2e_alice() {
+fn e2e_alice(buffer_size: usize) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
    let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
@@ -153,7 +152,38 @@ fn test_e2e_alice() {
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
    super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 680).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+   let a =  rt_buffer.data;
+   let b = raw_text_buffer.data;
+   assert_eq!(a, b);
+}
+
+#[test]
+fn test_e2e_alice() {
+    e2e_alice(65536);
+}
+
+#[test]
+fn test_e2e_smallbuf() {
+    e2e_alice(15);
+}
+
+
+#[test]
+fn test_e2e_tinybuf() {
+    e2e_alice(1);
+}
+
+
+#[test]
+fn test_e2e_64x() {
+   let raw_text_buffer = UnlimitedBuffer::new(b"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+   let ir_buffer = UnlimitedBuffer::new(b"window 22 len 64\ninsert 1 58\ncopy 63 from 1 ctx 3\n");
+   let mut dv_buffer = UnlimitedBuffer::new(&[]);
+   let mut buf_ir = BufReader::new(ir_buffer);
+   let mut rt_buffer = UnlimitedBuffer::new(&[]);
+   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);

@@ -234,6 +234,7 @@ impl<AllocU8:Allocator<u8>> Decompressor for DivansDecompressor<AllocU8> {
                                          (header_parser.read_offset+remaining)].clone_from_slice(
                         input.split_at(*input_offset).1);
                     *input_offset += remaining;
+                    header_parser.read_offset += remaining;
                     return BrotliResult::NeedsMoreInput;
                 }
             },

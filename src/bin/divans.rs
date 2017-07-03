@@ -493,68 +493,66 @@ fn decompress<Reader:std::io::Read,
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
     loop {
-        if output_offset < obuffer.slice().len() {
-            match state.decode(ibuffer.slice().split_at(input_end).0,
-                         &mut input_offset,
-                         obuffer.slice_mut(),
-                               &mut output_offset) {
-                BrotliResult::ResultSuccess => {
-                    break
-                },
-                BrotliResult::ResultFailure => {
-                    let mut m8 = state.free();
-                    m8.free_cell(ibuffer);
-                    m8.free_cell(obuffer);
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                             "Error within Divans File"));
-                },
-                BrotliResult::NeedsMoreOutput => {
-                    let mut output_written = 0;
-                    while output_written != output_offset {
-                        // flush buffer, if any
-                        match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
-                            Ok(count) => output_written += count,
-                            Err(e) => {
-                                if e.kind() == io::ErrorKind::Interrupted {
-                                    continue;
-                                }
-                                let mut m8 = state.free();
-                                m8.free_cell(ibuffer);
-                                m8.free_cell(obuffer);
-                                return Err(e);
+        match state.decode(ibuffer.slice().split_at(input_end).0,
+                           &mut input_offset,
+                           obuffer.slice_mut(),
+                           &mut output_offset) {
+            BrotliResult::ResultSuccess => {
+                break
+            },
+            BrotliResult::ResultFailure => {
+                let mut m8 = state.free();
+                m8.free_cell(ibuffer);
+                m8.free_cell(obuffer);
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          "Error within Divans File"));
+            },
+            BrotliResult::NeedsMoreOutput => {
+                let mut output_written = 0;
+                while output_written != output_offset {
+                    // flush buffer, if any
+                    match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
+                        Ok(count) => output_written += count,
+                        Err(e) => {
+                            if e.kind() == io::ErrorKind::Interrupted {
+                                continue;
                             }
+                            let mut m8 = state.free();
+                            m8.free_cell(ibuffer);
+                            m8.free_cell(obuffer);
+                            return Err(e);
                         }
                     }
-                    output_offset = 0; // reset buffer
-                },
-                BrotliResult::NeedsMoreInput => {
-                    if input_offset == input_end {
-                        input_offset = 0;
+                }
+                output_offset = 0; // reset buffer
+            },
+            BrotliResult::NeedsMoreInput => {
+                if input_offset == input_end {
+                    input_offset = 0;
+                }
+                loop {
+                    match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
+                        Ok(size) => {
+                            if size == 0 {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::UnexpectedEof,
+                                    "Divans file invalid: didn't have a terminator marker"));
+                            }
+                            input_end = input_offset + size;
+                            break
+                        },
+                        Err(e) => {
+                            if e.kind() == io::ErrorKind::Interrupted {
+                                continue;
+                            }
+                            let mut m8 = state.free();
+                            m8.free_cell(ibuffer);
+                            m8.free_cell(obuffer);
+                            return Err(e);
+                        },
                     }
-                    loop {
-                        match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
-                            Ok(size) => {
-                                if size == 0 {
-                                    return Err(io::Error::new(
-                                        io::ErrorKind::UnexpectedEof,
-                                        "Divans file invalid: didn't have a terminator marker"));
-                                }
-                                input_end = input_offset + size;
-                                break
-                            },
-                            Err(e) => {
-                                if e.kind() == io::ErrorKind::Interrupted {
-                                    continue;
-                                }
-                                let mut m8 = state.free();
-                                m8.free_cell(ibuffer);
-                                m8.free_cell(obuffer);
-                                return Err(e);
-                            },
-                        }
-                    }
-                },
-            }
+                }
+            },
         }
     }
     let mut output_written = 0;
