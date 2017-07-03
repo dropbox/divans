@@ -6,6 +6,7 @@ extern crate brotli_decompressor;
 
 mod integration_test;
 mod util;
+mod test;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use std::env;
 
