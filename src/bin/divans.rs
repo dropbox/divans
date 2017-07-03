@@ -68,46 +68,48 @@ fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
     Ok(output)
 }
 #[derive(Debug)]
-pub struct ByteVec(Vec<u8>);
-impl Default for ByteVec {
+pub struct ItemVec<Item:Sized+Default>(Vec<Item>);
+impl<Item:Sized+Default> Default for ItemVec<Item> {
     fn default() -> Self {
-        ByteVec(Vec::<u8>::new())
+        ItemVec(Vec::<Item>::new())
     }
 }
-impl alloc::SliceWrapper<u8> for ByteVec {
-    fn slice(&self) -> &[u8] {
+impl<Item:Sized+Default> alloc::SliceWrapper<Item> for ItemVec<Item> {
+    fn slice(&self) -> &[Item] {
         return &self.0[..];
     }
 }
 
-impl alloc::SliceWrapperMut<u8> for ByteVec {
-    fn slice_mut(&mut self) -> &mut [u8] {
+impl<Item:Sized+Default> alloc::SliceWrapperMut<Item> for ItemVec<Item> {
+    fn slice_mut(&mut self) -> &mut [Item] {
         return &mut self.0[..];
     }
 }
 
-impl core::ops::Index<usize> for ByteVec {
-    type Output = u8;
-    fn index<'a>(&'a self, index:usize) -> &'a u8 {
+impl<Item:Sized+Default> core::ops::Index<usize> for ItemVec<Item> {
+    type Output = Item;
+    fn index<'a>(&'a self, index:usize) -> &'a Item {
         return &self.0[index];
     }
 }
 
-impl core::ops::IndexMut<usize> for ByteVec {
+impl<Item:Sized+Default> core::ops::IndexMut<usize> for ItemVec<Item> {
 
-    fn index_mut(&mut self, index:usize) -> &mut u8 {
+    fn index_mut(&mut self, index:usize) -> &mut Item {
         return &mut self.0[index];
     }
 }
 
-struct ByteVecAllocator {
+#[derive(Default)]
+struct ItemVecAllocator<Item:Sized+Default> {
+    _item: core::marker::PhantomData<Item>,
 }
-impl alloc::Allocator<u8> for ByteVecAllocator {
-    type AllocatedMemory = ByteVec;
-    fn alloc_cell(&mut self, size:usize) ->ByteVec{
-        ByteVec(vec![0;size])
+impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item> {
+    type AllocatedMemory = ItemVec<Item>;
+    fn alloc_cell(&mut self, size:usize) ->ItemVec<Item>{
+        ItemVec(vec![Item::default();size])
     }
-    fn free_cell(&mut self, _bv:ByteVec) {
+    fn free_cell(&mut self, _bv:ItemVec<Item>) {
 
     }
 }
@@ -132,7 +134,7 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     };
     return Ok(expected_window_size)
 }
-fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
+fn command_parse(s : String) -> Result<Command<ItemVec<u8>>, io::Error> {
     let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
@@ -221,7 +223,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
     } else if cmd == "insert"{
         if command_vec.len() != 3 {
             if command_vec.len() == 2 && command_vec[1] == "0" {
-                return Ok(Command::Literal(LiteralCommand{data:ByteVec(Vec::new())}));
+                return Ok(Command::Literal(LiteralCommand{data:ItemVec(Vec::new())}));
             }
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           String::from("insert needs 3 arguments, not (") + &s + ")"));
@@ -239,7 +241,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        return Ok(Command::Literal(LiteralCommand{data:ByteVec(data)}));
+        return Ok(Command::Literal(LiteralCommand{data:ItemVec(data)}));
     }
     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                               String::from("Unknown ") + &s))
@@ -247,7 +249,7 @@ fn command_parse(s : String) -> Result<Command<ByteVec>, io::Error> {
 
 fn recode_cmd_buffer<Writer:std::io::Write,
           RState:Compressor>(mut state: &mut RState,
-                                cmd_buffer:&[Command<ByteVec>],
+                                cmd_buffer:&[Command<ItemVec<u8>>],
                                 mut w: &mut Writer,
                                 mut output_scratch:&mut [u8]) -> Result<usize, io::Error> {
     let mut i_processed_index = 0usize;
@@ -298,22 +300,22 @@ fn recode_inner<Reader:std::io::BufRead,
     mut w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
-    let mut ibuffer:[Command<ByteVec>; CMD_BUFFER_SIZE] = [Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop()];
+    let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop()];
     
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
@@ -375,28 +377,32 @@ fn recode_inner<Reader:std::io::BufRead,
 }
 fn compress_inner<Reader:std::io::BufRead,
                   Writer:std::io::Write,
-                  AllocU8:alloc::Allocator<u8> >(
-    mut state: DivansCompressor<AllocU8>,
+                  AllocU8:alloc::Allocator<u8>,
+                  AllocCDF2:alloc::Allocator<divans::CDF2>,
+                  AllocCDF16:alloc::Allocator<divans::DefaultCDF16>>(
+    mut state: DivansCompressor<AllocU8,
+                                AllocCDF2,
+                                AllocCDF16>,
     mut r:&mut Reader,
     mut w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
-    let mut ibuffer:[Command<ByteVec>; CMD_BUFFER_SIZE] = [Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop(),
-                                                           Command::<ByteVec>::nop()];
+    let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop(),
+                                                           Command::<ItemVec<u8>>::nop()];
     
     let mut i_read_index = 0usize;
     loop {
@@ -475,8 +481,12 @@ fn compress<Reader:std::io::BufRead,
             }
         }
     }
-    let state =DivansCompressor::<ByteVecAllocator>::new(
-        ByteVecAllocator{},
+    let state =DivansCompressor::<ItemVecAllocator<u8>,
+                                  ItemVecAllocator<divans::CDF2>,
+                                  ItemVecAllocator<divans::DefaultCDF16>>::new(
+        ItemVecAllocator::<u8>::default(),
+        ItemVecAllocator::<divans::CDF2>::default(),
+        ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize);
     compress_inner(state, r, w)
 }
@@ -485,10 +495,14 @@ fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (mut r:&mut Reader,
                                       mut w:&mut Writer,
                                       buffer_size: usize) -> io::Result<()> {
-    let mut m8 = ByteVecAllocator{};
+    let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
-    let mut state = DivansDecompressor::<ByteVecAllocator>::new(m8);
+    let mut state = DivansDecompressor::<ItemVecAllocator<u8>,
+                                         ItemVecAllocator<divans::CDF2>,
+                                         ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
+                                                                ItemVecAllocator::<divans::CDF2>::default(),
+    ItemVecAllocator::<divans::DefaultCDF16>::default());
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
@@ -501,7 +515,7 @@ fn decompress<Reader:std::io::Read,
                 break
             },
             BrotliResult::ResultFailure => {
-                let mut m8 = state.free();
+                let mut m8 = state.free().0;
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -517,7 +531,7 @@ fn decompress<Reader:std::io::Read,
                             if e.kind() == io::ErrorKind::Interrupted {
                                 continue;
                             }
-                            let mut m8 = state.free();
+                            let mut m8 = state.free().0;
                             m8.free_cell(ibuffer);
                             m8.free_cell(obuffer);
                             return Err(e);
@@ -545,7 +559,7 @@ fn decompress<Reader:std::io::Read,
                             if e.kind() == io::ErrorKind::Interrupted {
                                 continue;
                             }
-                            let mut m8 = state.free();
+                            let mut m8 = state.free().0;
                             m8.free_cell(ibuffer);
                             m8.free_cell(obuffer);
                             return Err(e);
@@ -564,14 +578,14 @@ fn decompress<Reader:std::io::Read,
                 if e.kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                let mut m8 = state.free();
+                let mut m8 = state.free().0;
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(e);
             }
         }
     }
-    let mut m8 = state.free();
+    let mut m8 = state.free().0;
     m8.free_cell(ibuffer);
     m8.free_cell(obuffer);
     Ok(())

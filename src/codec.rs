@@ -96,11 +96,15 @@ impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
-                        AllocU8:Allocator<u8>>(&mut self,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   Cdf16,
-                                                                                  AllocU8>,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>,
                                                in_cmd: &CopyCommand,
                                                input_bytes:&[u8],
                                                     input_offset: &mut usize,
@@ -239,11 +243,15 @@ impl DictState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
-                        AllocU8:Allocator<u8>>(&mut self,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   Cdf16,
-                                                                                  AllocU8>,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>,
                                                in_cmd: &DictCommand,
                                                input_bytes:&[u8],
                                                input_offset: &mut usize,
@@ -334,16 +342,21 @@ struct LiteralState<AllocU8:Allocator<u8>> {
     state: LiteralSubstate,
 }
 
-impl<AllocU8:Allocator<u8>> LiteralState<AllocU8> {
+impl<AllocU8:Allocator<u8>,
+                         > LiteralState<AllocU8> {
     fn encode_or_decode<ISlice: SliceWrapper<u8>,
                         ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Cdf16:CDF16,
-                        Specialization:EncoderOrDecoderSpecialization
+                        Specialization:EncoderOrDecoderSpecialization,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>
                         >(&mut self,
                           superstate: &mut CrossCommandState<ArithmeticCoder,
                                                              Specialization,
                                                              Cdf16,
-                                                         AllocU8>,
+                                                             AllocU8,
+                                                             AllocCDF2,
+                                                             AllocCDF16>,
                           in_cmd: &LiteralCommand<ISlice>,
                           input_bytes:&[u8],
                           input_offset: &mut usize,
@@ -451,11 +464,15 @@ const BIT_PRIORS_SIZE:usize = NUM_COPY_PRIORS+ NUM_DICT_PRIORS+ NUM_EOF_PRIORS;
 pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
                              Cdf16:CDF16,
-                             AllocU8:Allocator<u8>> {
+                             AllocU8:Allocator<u8>,
+                             AllocCDF2:Allocator<CDF2>,
+                             AllocCDF16:Allocator<Cdf16>> {
     coder: ArithmeticCoder,
     specialization: Specialization,
     recoder: super::cmd_to_raw::DivansRecodeState<AllocU8::AllocatedMemory>, 
     m8: AllocU8,
+    mcdf2: AllocCDF2,
+    mcdf16: AllocCDF16,
     nibble_priors: [Cdf16; NIBBLE_PRIORS_SIZE],
     bit_priors: [CDF2; BIT_PRIORS_SIZE],
 }
@@ -463,16 +480,26 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
       Specialization:EncoderOrDecoderSpecialization,
       Cdf16:CDF16,
-      AllocU8:Allocator<u8>> CrossCommandState<ArithmeticCoder,
-                                               Specialization,
-                                               Cdf16,
-                                               AllocU8> {
-    fn new(mut m8: AllocU8, spc: Specialization, ring_buffer_size: usize) -> Self {
+                             AllocU8:Allocator<u8>,
+                             AllocCDF2:Allocator<CDF2>,
+                             AllocCDF16:Allocator<Cdf16>
+      > CrossCommandState<ArithmeticCoder,
+                          Specialization,
+                          Cdf16,
+                          AllocU8,
+                          AllocCDF2,
+                          AllocCDF16> {
+    fn new(mut m8: AllocU8,
+           mcdf2:AllocCDF2,
+           mcdf16:AllocCDF16,
+           spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
-                            AllocU8> {
+                            AllocU8,
+                            AllocCDF2,
+                            AllocCDF16> {
             coder: ArithmeticCoder::default(),
             specialization: spc,
             nibble_priors: [Cdf16::default();NIBBLE_PRIORS_SIZE],
@@ -480,23 +507,29 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             recoder: super::cmd_to_raw::DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
             m8: m8,
+            mcdf2:mcdf2,
+            mcdf16:mcdf16,
         }
     }
-    fn free(mut self) -> AllocU8{
+    fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         self.m8.free_cell(rb);
-        self.m8
+        (self.m8, self.mcdf2, self.mcdf16)
     }
 }
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
                        Cdf16:CDF16,
-                       AllocU8: Allocator<u8>> {
+                       AllocU8: Allocator<u8>,
+                       AllocCDF2:Allocator<CDF2>,
+                       AllocCDF16:Allocator<Cdf16>> {
     cross_command_state: CrossCommandState<ArithmeticCoder,
                                            Specialization,
                                            Cdf16,
-                                           AllocU8>,
+                                           AllocU8,
+                                           AllocCDF2,
+                                           AllocCDF16>,
     state : EncodeOrDecodeState<AllocU8>,
 }
 
@@ -508,18 +541,26 @@ pub enum OneCommandReturn {
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
      Specialization: EncoderOrDecoderSpecialization,
      Cdf16:CDF16,
-     AllocU8: Allocator<u8>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8> {
-    pub fn free(self) -> AllocU8 {
+     AllocU8: Allocator<u8>,
+     AllocCDF2: Allocator<CDF2>,
+     AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
+    pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         self.cross_command_state.free()
     }
     pub fn new(m8:AllocU8,
+               mcdf2:AllocCDF2,
+               mcdf16:AllocCDF16,
                specialization: Specialization,
                ring_buffer_size: usize) -> Self {
-        DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8> {
+        DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
                                                     Cdf16,
-                                                    AllocU8>::new(m8,
+                                                    AllocU8,
+                                                    AllocCDF2,
+                                                    AllocCDF16>::new(m8,
+                                                                     mcdf2,
+                                                                     mcdf16,
                                                                   specialization,
                                                                   ring_buffer_size),
             state:EncodeOrDecodeState::Begin,
