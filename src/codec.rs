@@ -328,12 +328,13 @@ impl DictState {
         }
     }
 }
+/*
 use std::io::Write;
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
-);
+);*/
 #[derive(Copy, Clone)]
 enum LiteralSubstate {
     Begin,
@@ -420,19 +421,19 @@ impl<AllocU8:Allocator<u8>,
                         byte_index) >> ((nibble_index & 1) << 2)) & 0xf;
                     let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
-                    let k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
-                    let k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
-                    let k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
-                    let k5 = ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize;
-                    let k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
-                    let k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
-                    let k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
+                    let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
+                    let _k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
+                    let _k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
+                    let _k5 = ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize;
+                    let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
+                    let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
+                    let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     let literal_prior_offset = (-((nibble_index & 1) as isize)) as usize;
                     {
                         let mut nibble_prob = &mut superstate.bk.nibble_priors.slice_mut()[
                             FIRST_LITERAL_PRIOR_OFFSET
                                 + (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
-                                + k0 + (k1 << 4) + (k3 << 8)];
+                                + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/)];
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob);
                         nibble_prob.blend(cur_nibble);
                     }
@@ -497,9 +498,9 @@ const EOF_PRIOR_OFFSET:usize = DICT_TYPE_PRIOR_OFFSET + NUM_DICT_TYPE_PRIORS;
 const NUM_EOF_PRIORS:usize=1;
 const BIT_PRIORS_SIZE:usize = EOF_PRIOR_OFFSET + NUM_EOF_PRIORS;
 const FIRST_LITERAL_PRIOR_OFFSET: usize = 0;
-const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 4096;
+const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 65536;
 const SECOND_LITERAL_PRIOR_OFFSET:usize = FIRST_LITERAL_PRIOR_OFFSET + NUM_FIRST_LITERAL_NIBBLE_PRIORS;
-const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 4096;
+const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 65536;
 const NIBBLE_PRIORS_SIZE :usize = SECOND_LITERAL_PRIOR_OFFSET + NUM_SECOND_LITERAL_NIBBLE_PRIORS;
 
 
