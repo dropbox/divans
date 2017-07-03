@@ -454,13 +454,66 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     }
 }
 
-const NUM_COPY_PRIORS:usize=16;
-const NUM_DICT_PRIORS:usize=16;
+const COPY_TYPE_PRIOR_OFFSET:usize=0;
+const LOG_NUM_COPY_TYPE_PRIORS:usize = 2;
+const NUM_COPY_TYPE_PRIORS:usize=(1<<LOG_NUM_COPY_TYPE_PRIORS);
+const DICT_TYPE_PRIOR_OFFSET:usize = COPY_TYPE_PRIOR_OFFSET + NUM_COPY_TYPE_PRIORS;
+const LOG_NUM_DICT_TYPE_PRIORS:usize=2;
+const NUM_DICT_TYPE_PRIORS:usize=(1<<LOG_NUM_DICT_TYPE_PRIORS);
+const EOF_PRIOR_OFFSET:usize = DICT_TYPE_PRIOR_OFFSET + NUM_DICT_TYPE_PRIORS;
 const NUM_EOF_PRIORS:usize=1;
-const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 256;
-const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 256;
-const NIBBLE_PRIORS_SIZE :usize = NUM_FIRST_LITERAL_NIBBLE_PRIORS + NUM_SECOND_LITERAL_NIBBLE_PRIORS;
-const BIT_PRIORS_SIZE:usize = NUM_COPY_PRIORS+ NUM_DICT_PRIORS+ NUM_EOF_PRIORS;
+const BIT_PRIORS_SIZE:usize = EOF_PRIOR_OFFSET + NUM_EOF_PRIORS;
+const FIRST_LITERAL_PRIOR_OFFSET: usize = 0;
+const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 4096;
+const SECOND_LITERAL_PRIOR_OFFSET:usize = FIRST_LITERAL_PRIOR_OFFSET + NUM_FIRST_LITERAL_NIBBLE_PRIORS;
+const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 4096;
+const NIBBLE_PRIORS_SIZE :usize = SECOND_LITERAL_PRIOR_OFFSET + NUM_SECOND_LITERAL_NIBBLE_PRIORS;
+
+
+pub struct CrossCommandBookKeeping<Cdf16:CDF16,
+                                   AllocCDF2:Allocator<CDF2>,
+                                   AllocCDF16:Allocator<Cdf16>> {
+   last_4_states: u8,
+   nibble_priors: AllocCDF16::AllocatedMemory,
+   bit_priors: AllocCDF2::AllocatedMemory,
+}
+
+impl<Cdf16:CDF16,
+     AllocCDF2:Allocator<CDF2>,
+     AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
+                                                          AllocCDF2,
+                                                          AllocCDF16> {
+    fn new(bit_prior:AllocCDF2::AllocatedMemory,
+           nibble_prior:AllocCDF16::AllocatedMemory) -> Self {
+        CrossCommandBookKeeping{
+            last_4_states: 0,
+            bit_priors:bit_prior,
+            nibble_priors:nibble_prior,
+        }
+    }
+    fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+        &mut self.bit_priors.slice_mut()[COPY_TYPE_PRIOR_OFFSET + ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS))]
+    }
+    fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+        &mut self.bit_priors.slice_mut()[DICT_TYPE_PRIOR_OFFSET + ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS))]
+    }
+    fn next_state(&mut self) {
+        self.last_4_states >>= 2;
+    }
+    fn obs_dict_state(&mut self) {
+        self.next_state();
+        self.last_4_states |= 192;
+    }
+    fn obs_copy_state(&mut self) {
+        self.next_state();
+        self.last_4_states |= 64;
+    }
+    fn obs_literal_state(&mut self) {
+        self.next_state();
+        self.last_4_states |= 128;
+    }
+}
+
 pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
                              Cdf16:CDF16,
@@ -473,8 +526,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     m8: AllocU8,
     mcdf2: AllocCDF2,
     mcdf16: AllocCDF16,
-    nibble_priors: [Cdf16; NIBBLE_PRIORS_SIZE],
-    bit_priors: [CDF2; BIT_PRIORS_SIZE],
+    bk: CrossCommandBookKeeping<Cdf16, AllocCDF2, AllocCDF16>,
 }
 
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
@@ -490,10 +542,12 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                           AllocCDF2,
                           AllocCDF16> {
     fn new(mut m8: AllocU8,
-           mcdf2:AllocCDF2,
-           mcdf16:AllocCDF16,
+           mut mcdf2:AllocCDF2,
+           mut mcdf16:AllocCDF16,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
+        let bit_priors = mcdf2.alloc_cell(BIT_PRIORS_SIZE);
+        let nibble_priors = mcdf16.alloc_cell(NIBBLE_PRIORS_SIZE);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -502,18 +556,21 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             AllocCDF16> {
             coder: ArithmeticCoder::default(),
             specialization: spc,
-            nibble_priors: [Cdf16::default();NIBBLE_PRIORS_SIZE],
-            bit_priors: [CDF2::default(); BIT_PRIORS_SIZE],
             recoder: super::cmd_to_raw::DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
+            bk:CrossCommandBookKeeping::new(bit_priors, nibble_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
+        let cdf2 = core::mem::replace(&mut self.bk.bit_priors, AllocCDF2::AllocatedMemory::default());
+        let cdf16 = core::mem::replace(&mut self.bk.nibble_priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
+        self.mcdf2.free_cell(cdf2);
+        self.mcdf16.free_cell(cdf16);
         (self.m8, self.mcdf2, self.mcdf16)
     }
 }
@@ -691,7 +748,6 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                   output_bytes_offset: &mut usize,
                                                   input_cmd: &Command<ISl>,
                                                   mut is_end: bool) -> OneCommandReturn {
-        let half = 128u8;
         loop {
             let mut new_state: Option<EncodeOrDecodeState<AllocU8>>;
             match &mut self.state {
@@ -719,16 +775,26 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         &Command::Dict(_) => is_dict_or_end = true,
                         &Command::Literal(ref lit) => if lit.data.slice().len() == 0 {return OneCommandReturn::Advance}, // nop
                     }
-                    self.cross_command_state.coder.get_or_put_bit(&mut is_copy, half);
+                    {
+                        let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
+                        self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob);
+                        copy_prob.blend(is_copy);
+                    }
                     if is_copy == false {
-                        self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, half);
+                        {
+                            let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
+                            self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob);
+                            dict_prob.blend(is_dict_or_end);
+                        }
                         if is_dict_or_end == true {
-                            self.cross_command_state.coder.get_or_put_bit(&mut is_end, half);
+                            self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8);
+                            self.cross_command_state.bk.obs_dict_state();
                             new_state = Some(EncodeOrDecodeState::Dict(DictState {
                                 dc: DictCommand::nop(),
                                 state: DictSubstate::Begin,
                             }));
                         } else {
+                            self.cross_command_state.bk.obs_literal_state();
                             new_state = Some(EncodeOrDecodeState::Literal(LiteralState {
                                 lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
                                     data:AllocatedMemoryPrefix::default(),
@@ -737,6 +803,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             }));
                         }
                     } else {
+                        self.cross_command_state.bk.obs_copy_state();
                         new_state = Some(EncodeOrDecodeState::Copy(CopyState {
                             cc: CopyCommand {
                                 distance:0,

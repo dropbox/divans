@@ -19,7 +19,7 @@ impl Default for CDF2 {
 }
 
 impl CDF2 {
-    fn blend(&mut self, symbol: bool) {
+    pub fn blend(&mut self, symbol: bool) {
         let fcount = self.counts[0];
         let tcount = self.counts[1];
         debug_assert!(fcount != 0);
