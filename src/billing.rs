@@ -1,4 +1,5 @@
 #![allow(unknown_lints,unused_macros,unused_imports)]
+use core::iter::FromIterator;
 use interface::{ArithmeticEncoderOrDecoder, BillingDesignation};
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
@@ -7,6 +8,7 @@ use brotli_decompressor::BrotliResult;
 mod billing {
     pub use std::collections::HashMap;
     pub use std::string::String;
+    pub use std::vec::Vec;
 }
 
 #[cfg(feature="billing")]
@@ -56,15 +58,18 @@ impl<Coder:ArithmeticEncoderOrDecoder+Default> BillingArithmeticCoder<Coder> {
 #[cfg(feature="billing")]
 impl<Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<Coder> {
     fn drop(&mut self) {
-        let max_keystr_len = self.counter.iter().map(|(k, _)| format!("{:?}", k).len()).max().unwrap_or(5);
-        let report = |k: billing::String, v: (f64, f64)| {
-            let keystr = format!("{1:0$}", max_keystr_len, k);
-            println_stderr!("{} Bit count: {:9.1} Byte count: {:11.3} Virtual bits: {:7.0}",
-                            keystr, v.0, v.0 / 8.0, v.1);
+        let max_key_len = self.counter.keys().map(|k| format!("{:?}", k).len()).max().unwrap_or(5);
+        let report = |k, v: (f64, f64)| {
+            println_stderr!("{1:0$} Bit count: {2:9.1} Byte count: {3:11.3} Virtual bits: {4:7.0}",
+                            max_key_len, k, v.0, v.0 / 8.0, v.1);
         };
+        let mut sorted_entries = billing::Vec::from_iter(self.counter.iter());
+        sorted_entries.sort_by_key(|&(k, _)| format!("{:?}", k));
+
         let mut total_bits : f64 = 0.0;
         let mut total_vbits : f64 = 0.0;
-        for (k, v) in self.counter.iter() {
+
+        for (k, v) in sorted_entries {
             report(format!("{:?}", k), *v);
             total_bits += v.0;
             total_vbits += v.1;
