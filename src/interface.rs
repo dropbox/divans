@@ -112,6 +112,8 @@ pub enum BillingDesignation {
     CopyCommand,
     DictCommand,
     LiteralCommand,
+    CrossCommandCopyIndicator,
+    CrossCommandDictIndicator,
 }
 
 pub trait ArithmeticEncoderOrDecoder {

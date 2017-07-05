@@ -834,13 +834,15 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     }
                     {
                         let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
-                        self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob);
+                        self.cross_command_state.coder.get_or_put_bit_with_billing(&mut is_copy, copy_prob.prob,
+                                                                                   BillingDesignation::CrossCommandCopyIndicator);
                         copy_prob.blend(is_copy);
                     }
                     if is_copy == false {
                         {
                             let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
-                            self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob);
+                            self.cross_command_state.coder.get_or_put_bit_with_billing(&mut is_dict_or_end, dict_prob.prob,
+                                                                                       BillingDesignation::CrossCommandDictIndicator);
                             dict_prob.blend(is_dict_or_end);
                         }
                         if is_dict_or_end == true {
