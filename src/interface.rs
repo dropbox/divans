@@ -106,6 +106,13 @@ pub trait CommandDecoder {
     fn flush(&mut self) -> BrotliResult;
 }
 
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum BillingDesignation {
+    Unknown,
+    CopyCommand,
+    DictCommand,
+    LiteralCommand,
+}
 
 pub trait ArithmeticEncoderOrDecoder {
     // note: only one of these buffers must be nonzero,
@@ -118,8 +125,22 @@ pub trait ArithmeticEncoderOrDecoder {
     fn get_or_put_bit(&mut self,
                       bit: &mut bool,
                       prob_of_false: u8);
+    fn get_or_put_bit_with_billing(&mut self,
+                                   bit: &mut bool,
+                                   prob_of_false: u8,
+                                   _billing: BillingDesignation) {
+        self.get_or_put_bit(bit, prob_of_false)
+    }
+
     fn get_or_put_nibble<C: CDF16>(&mut self,
                                    nibble: &mut u8,
                                    prob: &C);
+    fn get_or_put_nibble_with_billing<C: CDF16>(&mut self,
+                                                nibble: &mut u8,
+                                                prob: &C,
+                                                _billing: BillingDesignation) {
+        self.get_or_put_nibble(nibble, prob)
+    }
+
     fn close(&mut self) -> BrotliResult;
 }
