@@ -109,7 +109,7 @@ pub trait CommandDecoder {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum BillingDesignation {
     Unknown,
-    CopyCommand,
+    CopyCommand(CopyCommandBilling),
     DictCommand,
     LiteralCommand(LiteralCommandBilling),
     CrossCommand(CrossCommandBilling),
@@ -121,6 +121,13 @@ pub enum CrossCommandBilling {
     CopyIndicator,
     DictIndicator,
     EndIndicator,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum CopyCommandBilling {
+    Unknown,
+    Distance,
+    Length,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]

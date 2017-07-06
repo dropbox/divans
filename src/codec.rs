@@ -7,6 +7,7 @@ pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
 use interface::{
     BillingDesignation,
+    CopyCommandBilling,
     CrossCommandBilling,
     LiteralCommandBilling,
     Nop
@@ -129,7 +130,7 @@ impl CopyState {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else if beg_nib == 0 {
@@ -142,7 +143,7 @@ impl CopyState {
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
                     self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -151,7 +152,7 @@ impl CopyState {
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -166,7 +167,7 @@ impl CopyState {
                 CopySubstate::DistanceDecoded => {
                     let mut beg_nib = core::cmp::min(15, clen);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Length));
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthFirstGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -180,7 +181,7 @@ impl CopyState {
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen.wrapping_sub(15);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Length));
                     self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -189,7 +190,7 @@ impl CopyState {
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::CopyCommand);
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Length));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
