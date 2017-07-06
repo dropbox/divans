@@ -129,8 +129,10 @@ impl CopyState {
             match self.state {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceBegNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
+                    nibble_prob.blend(beg_nib);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else if beg_nib == 0 {
@@ -142,8 +144,10 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
-                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceLastNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
+                    nibble_prob.blend(last_nib);
                     self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -452,8 +456,8 @@ impl<AllocU8:Allocator<u8>,
                     {
                         let index : usize = (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
                             + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/);
-                        let mut nibble_prob = superstate.bk.nibble_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                                              index);
+                        let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                                           index);
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob,
                                                            BillingDesignation::LiteralCommand(LiteralCommandBilling::Data));
                         nibble_prob.blend(cur_nibble);
@@ -514,7 +518,7 @@ const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 const NUM_FIRST_LITERAL_NIBBLE_PRIORS: usize = 65536;
 const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
 
-define_prior_struct!(CrossCommandBitPriors, CrossCommandBilling,
+define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::CopyIndicator, 4),
                      (CrossCommandBilling::DictIndicator, 4),
                      (CrossCommandBilling::EndIndicator, 1));
@@ -524,17 +528,27 @@ enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
 }
-define_prior_struct!(LiteralNibblePriors, LiteralNibblePriorType,
+define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, 65536),
                      (LiteralNibblePriorType::SecondNibble, 65536));
+
+#[derive(PartialEq)]
+enum CopyCommandNibblePriorType {
+    DistanceBegNib,
+    DistanceLastNib,
+}
+define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
+                     (CopyCommandNibblePriorType::DistanceBegNib, 1),
+                     (CopyCommandNibblePriorType::DistanceLastNib, 1));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     last_8_literals: u64,
     last_4_states: u8,
-    nibble_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
-    bit_priors: CrossCommandBitPriors<CDF2, AllocCDF2>,
+    lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
+    copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
 }
 
 impl<Cdf16:CDF16,
@@ -542,16 +556,20 @@ impl<Cdf16:CDF16,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
                                                           AllocCDF2,
                                                           AllocCDF16> {
-    fn new(bit_prior:AllocCDF2::AllocatedMemory,
-           nibble_prior:AllocCDF16::AllocatedMemory) -> Self {
+    fn new(lit_prior: AllocCDF16::AllocatedMemory,
+           cc_prior: AllocCDF2::AllocatedMemory,
+           copy_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             last_4_states: 0,
             last_8_literals: 0xfffefffefffefffe,
-            bit_priors: CrossCommandBitPriors {
-                priors: bit_prior
+            lit_priors: LiteralCommandPriors {
+                priors: lit_prior
             },
-            nibble_priors: LiteralNibblePriors {
-                priors: nibble_prior
+            cc_priors: CrossCommandPriors {
+                priors: cc_prior
+            },
+            copy_priors: CopyCommandPriors {
+                priors: copy_prior
             },
         }
     }
@@ -560,11 +578,11 @@ impl<Cdf16:CDF16,
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
     fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        self.bit_priors.get(CrossCommandBilling::CopyIndicator,
+        self.cc_priors.get(CrossCommandBilling::CopyIndicator,
                             ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
     }
     fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        self.bit_priors.get(CrossCommandBilling::DictIndicator,
+        self.cc_priors.get(CrossCommandBilling::DictIndicator,
                             ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
     }
     fn next_state(&mut self) {
@@ -616,8 +634,9 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
            mut mcdf16:AllocCDF16,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
-        let bit_priors = mcdf2.alloc_cell(CrossCommandBitPriors::<CDF2, AllocCDF2>::num_all_priors());
-        let nibble_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let cc_priors = mcdf2.alloc_cell(CrossCommandPriors::<CDF2, AllocCDF2>::num_all_priors());
+        let copy_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -631,13 +650,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(bit_priors, nibble_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
-        let cdf2 = core::mem::replace(&mut self.bk.bit_priors.priors, AllocCDF2::AllocatedMemory::default());
-        let cdf16 = core::mem::replace(&mut self.bk.nibble_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf2 = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF2::AllocatedMemory::default());
+        let cdf16 = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf2.free_cell(cdf2);
         self.mcdf16.free_cell(cdf16);
