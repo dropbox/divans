@@ -170,8 +170,10 @@ impl CopyState {
                 },
                 CopySubstate::DistanceDecoded => {
                     let mut beg_nib = core::cmp::min(15, clen);
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::LengthBegNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Length));
+                    nibble_prob.blend(beg_nib);
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthFirstGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -184,8 +186,10 @@ impl CopyState {
                 }
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen.wrapping_sub(15);
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::LengthLastNib, 0);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Length));
+                    nibble_prob.blend(last_nib);
                     self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -536,10 +540,14 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 enum CopyCommandNibblePriorType {
     DistanceBegNib,
     DistanceLastNib,
+    LengthBegNib,
+    LengthLastNib,
 }
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, 1),
-                     (CopyCommandNibblePriorType::DistanceLastNib, 1));
+                     (CopyCommandNibblePriorType::DistanceLastNib, 1),
+                     (CopyCommandNibblePriorType::LengthBegNib, 1),
+                     (CopyCommandNibblePriorType::LengthLastNib, 1));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
