@@ -856,14 +856,10 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         BrotliResult::ResultSuccess => {},
                         need_something => return OneCommandReturn::BufferExhausted(need_something),
                     }
-
-                    let mut is_copy = false;
-                    let mut is_dict_or_end = is_end;
-                    match input_cmd {
-                        &Command::Copy(_) => is_copy = !is_end,
-                        &Command::Dict(_) => is_dict_or_end = true,
-                        &Command::Literal(ref lit) => if lit.data.slice().len() == 0 {return OneCommandReturn::Advance}, // nop
-                    }
+                    let command_type_code = command_type_to_nibble(input_cmd);
+                    self.cross_command_state.coder.get_or_put_nibble_with_billing(
+                        &mut command_type_code, copy_prob.prob,
+                        BillingDesignation::CrossCommandCopyIndicator);
                     {
                         let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
                         self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob,
