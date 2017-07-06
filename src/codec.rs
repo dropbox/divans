@@ -125,8 +125,8 @@ impl CopyState {
             match self.state {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut beg_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else if beg_nib == 0 {
@@ -138,8 +138,8 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -147,8 +147,8 @@ impl CopyState {
                     let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -162,8 +162,8 @@ impl CopyState {
                 },
                 CopySubstate::DistanceDecoded => {
                     let mut beg_nib = core::cmp::min(15, clen);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut beg_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthFirstGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -176,8 +176,8 @@ impl CopyState {
                 }
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen.wrapping_sub(15);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -185,8 +185,8 @@ impl CopyState {
                     let last_nib_as_u32 = (in_cmd.num_bytes ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::CopyCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::CopyCommand);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -274,8 +274,8 @@ impl DictState {
             match self.state {
                 DictSubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, in_cmd.word_size.wrapping_sub(4));
-                    superstate.coder.get_or_put_nibble_with_billing(&mut beg_nib, &uniform_prob,
-                                                                    BillingDesignation::DictCommand);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                                                       BillingDesignation::DictCommand);
                     if beg_nib == 15 {
                         self.state = DictSubstate::WordSizeGreater18Less25;
                     } else {
@@ -285,8 +285,8 @@ impl DictState {
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
                     let mut beg_nib = in_cmd.word_size.wrapping_sub(19);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut beg_nib, &uniform_prob,
-                                                                    BillingDesignation::DictCommand);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                                                       BillingDesignation::DictCommand);
 
                     self.dc.word_size = beg_nib + 19;
                     if self.dc.word_size > 24 {
@@ -299,8 +299,8 @@ impl DictState {
                     let last_nib_as_u32 = (in_cmd.word_id ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::DictCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::DictCommand);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     if next_len_remaining == 0 {
                         self.dc.word_id = next_decoded_so_far;
@@ -313,15 +313,15 @@ impl DictState {
                 },
                 DictSubstate::TransformHigh => {
                     let mut high_nib = in_cmd.transform >> 4;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut high_nib, &uniform_prob,
-                                                                    BillingDesignation::DictCommand);
+                    superstate.coder.get_or_put_nibble(&mut high_nib, &uniform_prob,
+                                                       BillingDesignation::DictCommand);
                     self.dc.transform = high_nib << 4;
                     self.state = DictSubstate::TransformLow;
                 }
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut low_nib, &uniform_prob,
-                                                                    BillingDesignation::DictCommand);
+                    superstate.coder.get_or_put_nibble(&mut low_nib, &uniform_prob,
+                                                       BillingDesignation::DictCommand);
                     self.dc.transform |= low_nib;
                     let dict = &kBrotliDictionary;
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
@@ -392,8 +392,8 @@ impl<AllocU8:Allocator<u8>,
             match self.state {
                 LiteralSubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, lllen);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut beg_nib, &uniform_prob,
-                                                                    BillingDesignation::LiteralCommand);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
+                                                       BillingDesignation::LiteralCommand);
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -407,8 +407,8 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::LiteralCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::LiteralCommand);
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
                                                                               1 << (last_nib + 14));
                 },
@@ -417,8 +417,8 @@ impl<AllocU8:Allocator<u8>,
                     let last_nib_as_u32 = (literal_len ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble_with_billing(&mut last_nib, &uniform_prob,
-                                                                    BillingDesignation::LiteralCommand);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                                                       BillingDesignation::LiteralCommand);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -450,8 +450,8 @@ impl<AllocU8:Allocator<u8>,
                             FIRST_LITERAL_PRIOR_OFFSET
                                 + (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
                                 + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/)];
-                        superstate.coder.get_or_put_nibble_with_billing(&mut cur_nibble, nibble_prob,
-                                                                        BillingDesignation::LiteralCommand);
+                        superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob,
+                                                           BillingDesignation::LiteralCommand);
                         nibble_prob.blend(cur_nibble);
                     }
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
@@ -834,19 +834,20 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     }
                     {
                         let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
-                        self.cross_command_state.coder.get_or_put_bit_with_billing(&mut is_copy, copy_prob.prob,
-                                                                                   BillingDesignation::CrossCommandCopyIndicator);
+                        self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob,
+                                                                      BillingDesignation::CrossCommandCopyIndicator);
                         copy_prob.blend(is_copy);
                     }
                     if is_copy == false {
                         {
                             let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
-                            self.cross_command_state.coder.get_or_put_bit_with_billing(&mut is_dict_or_end, dict_prob.prob,
-                                                                                       BillingDesignation::CrossCommandDictIndicator);
+                            self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob,
+                                                                          BillingDesignation::CrossCommandDictIndicator);
                             dict_prob.blend(is_dict_or_end);
                         }
                         if is_dict_or_end == true {
-                            self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8);
+                            self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8,
+                                                                          BillingDesignation::Unknown);
                             self.cross_command_state.bk.obs_dict_state();
                             new_state = Some(EncodeOrDecodeState::Dict(DictState {
                                 dc: DictCommand::nop(),

@@ -74,14 +74,14 @@ impl ArithmeticEncoderOrDecoder for DebugEncoder {
         }
         return BrotliResult::ResultSuccess;
     }
-    fn get_or_put_bit(&mut self,
-                      bit: &mut bool,
-                      prob_of_false: u8) {
+    fn get_or_put_bit_without_billing(&mut self,
+                                      bit: &mut bool,
+                                      prob_of_false: u8) {
         self.put_bit(*bit, prob_of_false)
     }
-    fn get_or_put_nibble<C: CDF16>(&mut self,
-                                   nibble: &mut u8,
-                                   prob: &C) {
+    fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
+                                                   nibble: &mut u8,
+                                                   prob: &C) {
         self.put_nibble(*nibble, prob);
     }
     fn close(&mut self) -> BrotliResult {

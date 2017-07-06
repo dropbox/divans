@@ -124,24 +124,24 @@ pub trait ArithmeticEncoderOrDecoder {
                                      input_offset:&mut usize,
                                      output_buffer:&mut [u8],
                                      output_offset: &mut usize) -> BrotliResult;
+    fn get_or_put_bit_without_billing(&mut self,
+                                      bit: &mut bool,
+                                      prob_of_false: u8);
     fn get_or_put_bit(&mut self,
                       bit: &mut bool,
-                      prob_of_false: u8);
-    fn get_or_put_bit_with_billing(&mut self,
-                                   bit: &mut bool,
-                                   prob_of_false: u8,
-                                   _billing: BillingDesignation) {
-        self.get_or_put_bit(bit, prob_of_false)
+                      prob_of_false: u8,
+                      _billing: BillingDesignation) {
+        self.get_or_put_bit_without_billing(bit, prob_of_false)
     }
 
+    fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
+                                                   nibble: &mut u8,
+                                                   prob: &C);
     fn get_or_put_nibble<C: CDF16>(&mut self,
                                    nibble: &mut u8,
-                                   prob: &C);
-    fn get_or_put_nibble_with_billing<C: CDF16>(&mut self,
-                                                nibble: &mut u8,
-                                                prob: &C,
-                                                _billing: BillingDesignation) {
-        self.get_or_put_nibble(nibble, prob)
+                                   prob: &C,
+                                   _billing: BillingDesignation) {
+        self.get_or_put_nibble_without_billing(nibble, prob)
     }
 
     fn close(&mut self) -> BrotliResult;

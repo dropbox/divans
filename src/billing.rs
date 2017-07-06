@@ -87,16 +87,16 @@ impl<Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingAri
                                      output_offset: &mut usize) -> BrotliResult{
        self.coder.drain_or_fill_internal_buffer(input_buffer, input_offset, output_buffer, output_offset)
     }
+    fn get_or_put_bit_without_billing(&mut self,
+                                      bit: &mut bool,
+                                      prob_of_false: u8) {
+        self.get_or_put_bit(bit, prob_of_false, BillingDesignation::Unknown)
+    }
     fn get_or_put_bit(&mut self,
                       bit: &mut bool,
-                      prob_of_false: u8) {
-        self.get_or_put_bit_with_billing(bit, prob_of_false, BillingDesignation::Unknown)
-    }
-    fn get_or_put_bit_with_billing(&mut self,
-                                   bit: &mut bool,
-                                   prob_of_false: u8,
-                                   billing: BillingDesignation) {
-        self.coder.get_or_put_bit(bit, prob_of_false);
+                      prob_of_false: u8,
+                      billing: BillingDesignation) {
+        self.coder.get_or_put_bit_without_billing(bit, prob_of_false);
         let mut actual_prob = (prob_of_false as f64 + 0.5) / 256.0;
         if *bit {
             actual_prob = 1.0 - actual_prob;
@@ -105,16 +105,16 @@ impl<Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingAri
         (*v).0 += -actual_prob.log2();
         (*v).1 += 1.0;
     }
+    fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
+                                                   nibble: &mut u8,
+                                                   prob: &C) {
+        self.get_or_put_nibble(nibble, prob, BillingDesignation::Unknown)
+    }
     fn get_or_put_nibble<C: CDF16>(&mut self,
                                    nibble: &mut u8,
-                                   prob: &C) {
-        self.get_or_put_nibble_with_billing(nibble, prob, BillingDesignation::Unknown)
-    }
-    fn get_or_put_nibble_with_billing<C: CDF16>(&mut self,
-                                                nibble: &mut u8,
-                                                prob: &C,
-                                                billing: BillingDesignation) {
-        self.coder.get_or_put_nibble(nibble, prob);
+                                   prob: &C,
+                                   billing: BillingDesignation) {
+        self.coder.get_or_put_nibble_without_billing(nibble, prob);
         let actual_prob = prob.pdf(*nibble) as f64 / (prob.max() as f64);
         let v = self.counter.entry(billing).or_insert((0.0, 0.0));
         (*v).0 += -actual_prob.log2();
