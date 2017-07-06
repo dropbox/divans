@@ -180,7 +180,7 @@ impl CopyState {
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     nibble_prob.blend(beg_nib);
-                    superstate.bk.last_dlen_greater15 = beg_nib == 15;
+                    superstate.bk.last_clen_greater15 = beg_nib == 15;
 
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthFirstGreater14Less25;
