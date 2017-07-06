@@ -111,9 +111,22 @@ pub enum BillingDesignation {
     Unknown,
     CopyCommand,
     DictCommand,
-    LiteralCommand,
-    CrossCommandCopyIndicator,
-    CrossCommandDictIndicator,
+    LiteralCommand(LiteralCommandBilling),
+    CrossCommand(CrossCommandBilling),
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum CrossCommandBilling {
+    Unknown,
+    CopyIndicator,
+    DictIndicator,
+    EndIndicator,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum LiteralCommandBilling {
+    Unknown,
+    Data,
 }
 
 pub trait ArithmeticEncoderOrDecoder {

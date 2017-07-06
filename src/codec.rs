@@ -5,16 +5,19 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-use interface::{BillingDesignation, Nop};
-use super::probability::{CDF2,CDF16};
+use interface::{
+    BillingDesignation,
+    CrossCommandBilling,
+    LiteralCommandBilling,
+    Nop
+};
+use super::probability::{CDF2, CDF16};
 use super::interface::{
+    ArithmeticEncoderOrDecoder,
+    Command,
     CopyCommand,
     DictCommand,
     LiteralCommand,
-    Command,
-//    Decoder,
-//    Recoder,
-    ArithmeticEncoderOrDecoder
 };
 
 pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
@@ -393,7 +396,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, lllen);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::LiteralCommand);
+                                                       BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -408,7 +411,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::LiteralCommand);
+                                                       BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
                                                                               1 << (last_nib + 14));
                 },
@@ -418,7 +421,7 @@ impl<AllocU8:Allocator<u8>,
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::LiteralCommand);
+                                                       BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -446,12 +449,12 @@ impl<AllocU8:Allocator<u8>,
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     let literal_prior_offset = (-((nibble_index & 1) as isize)) as usize;
                     {
-                        let mut nibble_prob = &mut superstate.bk.nibble_priors.slice_mut()[
-                            FIRST_LITERAL_PRIOR_OFFSET
-                                + (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
-                                + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/)];
+                        let index : usize = (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
+                            + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/);
+                        let mut nibble_prob = superstate.bk.nibble_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                                              index);
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob,
-                                                           BillingDesignation::LiteralCommand);
+                                                           BillingDesignation::LiteralCommand(LiteralCommandBilling::Data));
                         nibble_prob.blend(cur_nibble);
                     }
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
@@ -505,29 +508,32 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     }
 }
 
-const COPY_TYPE_PRIOR_OFFSET:usize=0;
-const LOG_NUM_COPY_TYPE_PRIORS:usize = 2;
-const NUM_COPY_TYPE_PRIORS:usize=(1<<LOG_NUM_COPY_TYPE_PRIORS);
-const DICT_TYPE_PRIOR_OFFSET:usize = COPY_TYPE_PRIOR_OFFSET + NUM_COPY_TYPE_PRIORS;
-const LOG_NUM_DICT_TYPE_PRIORS:usize=2;
-const NUM_DICT_TYPE_PRIORS:usize=(1<<LOG_NUM_DICT_TYPE_PRIORS);
-const EOF_PRIOR_OFFSET:usize = DICT_TYPE_PRIOR_OFFSET + NUM_DICT_TYPE_PRIORS;
-const NUM_EOF_PRIORS:usize=1;
-const BIT_PRIORS_SIZE:usize = EOF_PRIOR_OFFSET + NUM_EOF_PRIORS;
-const FIRST_LITERAL_PRIOR_OFFSET: usize = 0;
-const NUM_FIRST_LITERAL_NIBBLE_PRIORS:usize = 65536;
-const SECOND_LITERAL_PRIOR_OFFSET:usize = FIRST_LITERAL_PRIOR_OFFSET + NUM_FIRST_LITERAL_NIBBLE_PRIORS;
-const NUM_SECOND_LITERAL_NIBBLE_PRIORS:usize = 65536;
-const NIBBLE_PRIORS_SIZE :usize = SECOND_LITERAL_PRIOR_OFFSET + NUM_SECOND_LITERAL_NIBBLE_PRIORS;
+const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
+const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
+const NUM_FIRST_LITERAL_NIBBLE_PRIORS: usize = 65536;
+const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
 
+define_prior_struct!(CrossCommandBitPriors, CrossCommandBilling,
+                     (CrossCommandBilling::CopyIndicator, 4),
+                     (CrossCommandBilling::DictIndicator, 4),
+                     (CrossCommandBilling::EndIndicator, 1));
+
+#[derive(PartialEq)]
+enum LiteralNibblePriorType {
+    FirstNibble,
+    SecondNibble,
+}
+define_prior_struct!(LiteralNibblePriors, LiteralNibblePriorType,
+                     (LiteralNibblePriorType::FirstNibble, 65536),
+                     (LiteralNibblePriorType::SecondNibble, 65536));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
-   last_8_literals: u64,
-   last_4_states: u8,
-   nibble_priors: AllocCDF16::AllocatedMemory,
-   bit_priors: AllocCDF2::AllocatedMemory,
+    last_8_literals: u64,
+    last_4_states: u8,
+    nibble_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
+    bit_priors: CrossCommandBitPriors<CDF2, AllocCDF2>,
 }
 
 impl<Cdf16:CDF16,
@@ -540,8 +546,12 @@ impl<Cdf16:CDF16,
         CrossCommandBookKeeping{
             last_4_states: 0,
             last_8_literals: 0xfffefffefffefffe,
-            bit_priors:bit_prior,
-            nibble_priors:nibble_prior,
+            bit_priors: CrossCommandBitPriors {
+                priors: bit_prior
+            },
+            nibble_priors: LiteralNibblePriors {
+                priors: nibble_prior
+            },
         }
     }
     fn push_literal_nibble(&mut self, nibble: u8) {
@@ -549,10 +559,12 @@ impl<Cdf16:CDF16,
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
     fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        &mut self.bit_priors.slice_mut()[COPY_TYPE_PRIOR_OFFSET + ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS))]
+        self.bit_priors.get(CrossCommandBilling::CopyIndicator,
+                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
     }
     fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        &mut self.bit_priors.slice_mut()[DICT_TYPE_PRIOR_OFFSET + ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS))]
+        self.bit_priors.get(CrossCommandBilling::DictIndicator,
+                            ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
@@ -603,8 +615,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
            mut mcdf16:AllocCDF16,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
-        let bit_priors = mcdf2.alloc_cell(BIT_PRIORS_SIZE);
-        let nibble_priors = mcdf16.alloc_cell(NIBBLE_PRIORS_SIZE);
+        let bit_priors = mcdf2.alloc_cell(CrossCommandBitPriors::<CDF2, AllocCDF2>::num_priors());
+        let nibble_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::num_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -623,8 +635,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
-        let cdf2 = core::mem::replace(&mut self.bk.bit_priors, AllocCDF2::AllocatedMemory::default());
-        let cdf16 = core::mem::replace(&mut self.bk.nibble_priors, AllocCDF16::AllocatedMemory::default());
+        let cdf2 = core::mem::replace(&mut self.bk.bit_priors.priors, AllocCDF2::AllocatedMemory::default());
+        let cdf16 = core::mem::replace(&mut self.bk.nibble_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf2.free_cell(cdf2);
         self.mcdf16.free_cell(cdf16);
@@ -835,19 +847,19 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                     {
                         let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
                         self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob,
-                                                                      BillingDesignation::CrossCommandCopyIndicator);
+                                                                      BillingDesignation::CrossCommand(CrossCommandBilling::CopyIndicator));
                         copy_prob.blend(is_copy);
                     }
                     if is_copy == false {
                         {
                             let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
                             self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob,
-                                                                          BillingDesignation::CrossCommandDictIndicator);
+                                                                          BillingDesignation::CrossCommand(CrossCommandBilling::DictIndicator));
                             dict_prob.blend(is_dict_or_end);
                         }
                         if is_dict_or_end == true {
                             self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8,
-                                                                          BillingDesignation::Unknown);
+                                                                          BillingDesignation::CrossCommand(CrossCommandBilling::EndIndicator));
                             self.cross_command_state.bk.obs_dict_state();
                             new_state = Some(EncodeOrDecodeState::Dict(DictState {
                                 dc: DictCommand::nop(),

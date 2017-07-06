@@ -81,9 +81,9 @@ impl<Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<Coder> {
 #[cfg(feature="billing")]
 impl<Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingArithmeticCoder<Coder> {
     fn drain_or_fill_internal_buffer(&mut self,
-                                     input_buffer:&[u8],
-                                     input_offset:&mut usize,
-                                     output_buffer:&mut [u8],
+                                     input_buffer: &[u8],
+                                     input_offset: &mut usize,
+                                     output_buffer: &mut [u8],
                                      output_offset: &mut usize) -> BrotliResult{
        self.coder.drain_or_fill_internal_buffer(input_buffer, input_offset, output_buffer, output_offset)
     }

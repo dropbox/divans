@@ -11,6 +11,8 @@ extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 mod interface;
 mod probability;
+#[macro_use]
+mod priors;
 mod debug_encoder;
 mod encoder;
 mod cmd_to_raw;
