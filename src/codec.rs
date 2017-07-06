@@ -733,10 +733,10 @@ const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 const BLOCK_TYPE_COMMAND_SWITCH:usize=0;
 const BLOCK_TYPE_DISTANCE_SWITCH:usize=0;
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
-                     (CrossCommandBilling::FullSelection, 4 * NUM_BLOCK_TYPES),
-                     (CrossCommandBilling::CopyIndicator, 4 * NUM_BLOCK_TYPES),
-                     (CrossCommandBilling::DictIndicator, 4 * NUM_BLOCK_TYPES),
-                     (CrossCommandBilling::EndIndicator, 1 * NUM_BLOCK_TYPES));
+                     (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
+                     (CrossCommandBilling::CopyIndicator, 4, NUM_BLOCK_TYPES),
+                     (CrossCommandBilling::DictIndicator, 4, NUM_BLOCK_TYPES),
+                     (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
 
 #[derive(PartialEq, Debug, Clone)]
 enum LiteralNibblePriorType {
@@ -749,11 +749,11 @@ enum LiteralNibblePriorType {
 
 const NUM_LITERAL_ORGANIC_PRIORS :usize = 65536;
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_LITERAL_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SecondNibble, NUM_LITERAL_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+                     (LiteralNibblePriorType::FirstNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SecondNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SizeMantissaNib, 1, NUM_BLOCK_TYPES));
 
 #[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
@@ -768,14 +768,14 @@ enum CopyCommandNibblePriorType {
 }
 const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
-                     (CopyCommandNibblePriorType::DistanceBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::DistanceLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::CountSmall, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::CountBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::CountLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES),
-                     (CopyCommandNibblePriorType::CountMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS * NUM_BLOCK_TYPES));
+                     (CopyCommandNibblePriorType::DistanceBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::DistanceMnemonic, 1, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::DistanceLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::CountSmall, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::CountBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::CountLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::CountMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES));
 
 #[derive(PartialEq, Debug, Clone)]
 enum DictCommandNibblePriorType {
@@ -787,9 +787,9 @@ enum DictCommandNibblePriorType {
 
 const NUM_ORGANIC_DICT_DISTANCE_PRIORS: usize = 5;
 define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
-                     (DictCommandNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
-                     (DictCommandNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
-                     (DictCommandNibblePriorType::Index, NUM_ORGANIC_DICT_DISTANCE_PRIORS * NUM_BLOCK_TYPES),
+                     (DictCommandNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
+                     (DictCommandNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
+                     (DictCommandNibblePriorType::Index, NUM_ORGANIC_DICT_DISTANCE_PRIORS, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::Transform, 2));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
