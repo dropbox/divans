@@ -20,8 +20,13 @@ macro_rules! define_prior_struct {
                 &mut self.priors.slice_mut()[(offset as usize) + index]
             }
             // TODO: technically this does not depend on the template paramters.
-            fn num_priors() -> usize {
+            #[inline]
+            fn num_all_priors() -> usize {
                 sum_cdr!($($args),*)
+            }
+            #[inline]
+            fn num_prior(billing: $billing_type) -> usize {
+                (define_prior_struct_helper_select!(billing; $($args),*)) as usize
             }
         }
     };
@@ -31,6 +36,13 @@ macro_rules! define_prior_struct_helper_offset {
     ($billing: expr; ($type: expr, $count: expr)) => { 0 };  // should panic if billing != type
     ($billing: expr; ($type: expr, $count: expr), $($more:tt),*) => {
         (($billing != $type) as u32) * ($count + define_prior_struct_helper_offset!($billing; $($more),*))
+    };
+}
+
+macro_rules! define_prior_struct_helper_select {
+    ($billing: expr; ($type: expr, $count: expr)) => { $count };  // should panic if billing != type
+    ($billing: expr; ($type: expr, $count: expr), $($more:tt),*) => {
+        if $billing == $type { $count } else { define_prior_struct_helper_select!($billing; $($more),*) }
     };
 }
 
@@ -48,32 +60,40 @@ mod test {
     define_prior_struct!(TestPriorSet, PriorType,
                          (PriorType::Foo, 5), (PriorType::Bar, 6), (PriorType::Cat, 3));
 
+    type TestPriorSetImpl = TestPriorSet<CDF2, HeapAlloc<CDF2>>;
+
     #[test]
-    fn test_num_priors() {
-        assert_eq!(TestPriorSet::<CDF2, HeapAlloc<CDF2>>::num_priors(), 5 + 6 + 3);
+    fn test_num_prior() {
+        let cases : [(PriorType, usize); 3] = [(PriorType::Foo, 5),
+                                               (PriorType::Bar, 6),
+                                               (PriorType::Cat, 3)];
+        let mut expected_sum = 0usize;
+        for &(t, expected_count) in cases.iter() {
+            assert_eq!(TestPriorSetImpl::num_prior(t), expected_count);
+            expected_sum += expected_count;
+        }
+        assert_eq!(TestPriorSetImpl::num_all_priors(), expected_sum);
     }
 
     #[test]
     fn test_get() {
         let mut allocator = HeapAlloc::<CDF2>::new(CDF2::default());
-        let mut prior_set = TestPriorSet::<CDF2, HeapAlloc<CDF2>> {
-            priors: allocator.alloc_cell(TestPriorSet::<CDF2, HeapAlloc<CDF2>>::num_priors()),
+        let mut prior_set = TestPriorSetImpl {
+            priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
-        let cases : [(PriorType, usize);3] = [(PriorType::Foo, 5),
-                                              (PriorType::Bar, 6),
-                                              (PriorType::Cat, 3)];
+        let prior_types : [PriorType; 3] = [PriorType::Foo, PriorType::Bar, PriorType::Cat];
         // Check that all priors are initialized to default.
-        for case in cases.iter() {
-            for i in 0..(case.1) {
-                let mut cdf = prior_set.get(case.0, i);
+        for &t in prior_types.iter() {
+            for i in 0..TestPriorSetImpl::num_prior(t) {
+                let cdf = prior_set.get(t, i);
                 assert_eq!(cdf.prob, 128u8);
             }
         }
 
         // Use the priors, updating them by varying degrees.
-        for case in cases.iter() {
-            for i in 0..(case.1) {
-                let mut cdf = prior_set.get(case.0, i);
+        for &t in prior_types.iter() {
+            for i in 0..TestPriorSetImpl::num_prior(t) {
+                let mut cdf = prior_set.get(t, i);
                 for j in 0..i {
                     cdf.blend(true);
                 }
@@ -81,9 +101,9 @@ mod test {
         }
 
         // Ascertain that the priors were updated the proper # of times.
-        for case in cases.iter() {
-            for i in 0..(case.1) {
-                let mut cdf = prior_set.get(case.0, i);
+        for &t in prior_types.iter() {
+            for i in 0..TestPriorSetImpl::num_prior(t) {
+                let cdf = prior_set.get(t, i);
                 let mut baseline = CDF2::default();
                 for j in 0..i {
                     baseline.blend(true);

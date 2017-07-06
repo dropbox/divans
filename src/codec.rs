@@ -615,8 +615,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
            mut mcdf16:AllocCDF16,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
-        let bit_priors = mcdf2.alloc_cell(CrossCommandBitPriors::<CDF2, AllocCDF2>::num_priors());
-        let nibble_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::num_priors());
+        let bit_priors = mcdf2.alloc_cell(CrossCommandBitPriors::<CDF2, AllocCDF2>::num_all_priors());
+        let nibble_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
