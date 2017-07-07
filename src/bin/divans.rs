@@ -134,7 +134,7 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     };
     return Ok(expected_window_size)
 }
-fn command_parse(s : String) -> Result<Command<ItemVec<u8>>, io::Error> {
+fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
@@ -142,7 +142,7 @@ fn command_parse(s : String) -> Result<Command<ItemVec<u8>>, io::Error> {
     let cmd = &command_vec[0];
     if cmd == "window" {
             // FIXME validate
-            return Ok(Command::Copy(CopyCommand{distance:1,num_bytes:0}));
+            return Ok(Some(Command::Copy(CopyCommand{distance:1,num_bytes:0})));
     } else if cmd == "copy" {
         if command_vec.len() < 4 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -166,7 +166,7 @@ fn command_parse(s : String) -> Result<Command<ItemVec<u8>>, io::Error> {
                                           msg.description()));
             }
         };
-        return Ok(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len}));
+        return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len})));
     } else if cmd == "dict" {
         if command_vec.len() < 6 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -211,37 +211,39 @@ fn command_parse(s : String) -> Result<Command<ItemVec<u8>>, io::Error> {
                                                   msg.description()));
                     }
                 } as u8;
-                return Ok(Command::Dict(DictCommand{
+                return Ok(Some(Command::Dict(DictCommand{
                     word_size:word_len,
                     word_id:word_index,
                     empty:0,
                     final_size:expected_len,
                     transform:transform
-                }));
+                })));
             }
         }
     } else if cmd == "insert"{
         if command_vec.len() != 3 {
             if command_vec.len() == 2 && command_vec[1] == "0" {
-                return Ok(Command::Literal(LiteralCommand{data:ItemVec(Vec::new())}));
+                return Ok(None);
             }
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           String::from("insert needs 3 arguments, not (") + &s + ")"));
         }
         let expected_len = match command_vec[1].parse::<usize>() {
-                Ok(el) => el,
+            Ok(el) => el,
             Err(msg) => {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                               msg.description()));
             }
         };
-        
+        if expected_len ==  0 {
+            return Ok(None);
+        }
         let data = try!(hex_string_to_vec(&command_vec[2]));
         if data.len() != expected_len {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        return Ok(Command::Literal(LiteralCommand{data:ItemVec(data)}));
+        return Ok(Some(Command::Literal(LiteralCommand{data:ItemVec(data)})));
     }
     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                               String::from("Unknown ") + &s))
@@ -338,8 +340,13 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                ibuffer[i_read_index] = command_parse(line).unwrap();
-                i_read_index += 1;
+                match command_parse(line).unwrap() {
+                    None => {},
+                    Some(c) => {
+                        ibuffer[i_read_index] = c;
+                        i_read_index += 1;
+                    }
+                }
             }
         }
     }
@@ -424,8 +431,13 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                ibuffer[i_read_index] = command_parse(line).unwrap();
-                i_read_index += 1;
+                match command_parse(line).unwrap() {
+                    None => {},
+                    Some(c) => {
+                        ibuffer[i_read_index] = c;
+                        i_read_index += 1;
+                    }
+                }
             }
         }
     }
