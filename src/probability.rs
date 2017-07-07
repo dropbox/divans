@@ -211,10 +211,11 @@ fn srl(a:Prob) -> Prob {
 impl CDF16 for FrequentistCDF16 {
     fn blend(&mut self, symbol: u8) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+        const INCREMENT : Prob = 16;
         for i in (symbol as usize)..16 {
-            self.cdf[i] = self.cdf[i].wrapping_add(1);
+            self.cdf[i] = self.cdf[i].wrapping_add(INCREMENT);
         }
-        const LIMIT: Prob = 32767 - 32;
+        const LIMIT: Prob = 32767 - 32 - INCREMENT;
         if self.cdf[15] >= LIMIT {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 1;
