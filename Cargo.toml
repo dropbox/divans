@@ -20,6 +20,7 @@ lto=true
 
 [features]
 billing = []
+bitcmdselect = []
 float64 = []
 seccomp = ["brotli-decompressor/seccomp"]
 no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli-decompressor/no-stdlib"]

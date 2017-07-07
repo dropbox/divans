@@ -543,8 +543,8 @@ const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
 
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4),
-                     (CrossCommandBilling::CopyIndicator, 1),
-                     (CrossCommandBilling::DictIndicator, 1),
+                     (CrossCommandBilling::CopyIndicator, 4),
+                     (CrossCommandBilling::DictIndicator, 4),
                      (CrossCommandBilling::EndIndicator, 1));
 
 #[derive(PartialEq)]
@@ -582,8 +582,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_clen: u8,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
+    legacy_cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
-    binary_priors: core::marker::PhantomData<AllocCDF2>,
 }
 
 impl<Cdf16:CDF16,
@@ -593,6 +593,7 @@ impl<Cdf16:CDF16,
                                                           AllocCDF16> {
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
+           legacy_cc_prior: AllocCDF2::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             last_dlen: 1,
@@ -605,28 +606,30 @@ impl<Cdf16:CDF16,
             cc_priors: CrossCommandPriors {
                 priors: cc_prior
             },
+            legacy_cc_priors: CrossCommandPriors {
+                priors: legacy_cc_prior
+            },
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
             },
-            binary_priors: core::marker::PhantomData::<AllocCDF2>::default(),
         }
     }
     fn push_literal_nibble(&mut self, nibble: u8) {
         self.last_8_literals >>= 0x4;
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
-//    fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-//        self.cc_priors.get(CrossCommandBilling::CopyIndicator,
-//                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
-//    }
+    fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+        self.legacy_cc_priors.get(CrossCommandBilling::CopyIndicator,
+                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
+    }
     fn get_command_type_prob<'a>(&'a mut self) -> &'a mut Cdf16 {
         self.cc_priors.get(CrossCommandBilling::FullSelection,
                             ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
     }
-//    fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-//        self.cc_priors.get(CrossCommandBilling::DictIndicator,
-//                            ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
-//    }
+    fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+        self.legacy_cc_priors.get(CrossCommandBilling::DictIndicator,
+                            ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
+    }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
@@ -679,6 +682,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let legacy_cc_priors = mcdf2.alloc_cell(CrossCommandPriors::<CDF2, AllocCDF2>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -692,7 +696,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, legacy_cc_priors, copy_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -721,7 +725,15 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         &Command::BlockSwitchDistance(_) => return 0x6,
     }
 }
-
+pub static mut COMMAND_LINE_ENFORCE_LEGACY_ENCODING:bool = false;
+#[cfg(not(feature="bitcmdselect"))]
+fn use_legacy_bitwise_command_type_code() -> bool {
+    unsafe{COMMAND_LINE_ENFORCE_LEGACY_ENCODING}
+}
+#[cfg(feature="bitcmdselect")]
+fn use_legacy_bitwise_command_type_code() -> bool {
+    true
+}
 fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) -> EncodeOrDecodeState<AllocU8> {
    match command_type_code {
       1 => EncodeOrDecodeState::Copy(CopyState {
@@ -938,16 +950,68 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         BrotliResult::ResultSuccess => {},
                         need_something => return OneCommandReturn::BufferExhausted(need_something),
                     }
-                    let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
-                    {
+                    if use_legacy_bitwise_command_type_code() { // fallback to bit-encoding for comparison
+                        let mut is_copy = false;
+                        let mut is_dict_or_end = is_end;
+                        match input_cmd {
+                            &Command::Copy(_) => is_copy = !is_end,
+                            &Command::Dict(_) => is_dict_or_end = true,
+                            &Command::Literal(_) => {},
+                            _ => panic!("UNIMPL"),
+                        }
+                        {
+                            let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
+                            self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob,
+                                                                          BillingDesignation::CrossCommand(CrossCommandBilling::CopyIndicator));
+                            copy_prob.blend(is_copy);
+                        }
+                        if is_copy == false {
+                            {
+                                let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
+                                self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob,
+                                                                              BillingDesignation::CrossCommand(CrossCommandBilling::DictIndicator));
+                                dict_prob.blend(is_dict_or_end);
+                            }
+                            if is_dict_or_end == true {
+                                self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8,
+                                                                              BillingDesignation::CrossCommand(CrossCommandBilling::EndIndicator));
+                                self.cross_command_state.bk.obs_dict_state();
+                                new_state = Some(EncodeOrDecodeState::Dict(DictState {
+                                    dc: DictCommand::nop(),
+                                    state: DictSubstate::Begin,
+                                }));
+                            } else {
+                                self.cross_command_state.bk.obs_literal_state();
+                                new_state = Some(EncodeOrDecodeState::Literal(LiteralState {
+                                    lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
+                                        data:AllocatedMemoryPrefix::default(),
+                                    },
+                                    state:LiteralSubstate::Begin,
+                                }));
+                            }
+                        } else {
+                            self.cross_command_state.bk.obs_copy_state();
+                            new_state = Some(EncodeOrDecodeState::Copy(CopyState {
+                                cc: CopyCommand {
+                                    distance:0,
+                                    num_bytes:0,
+                                },
+                                state:CopySubstate::Begin,
+                            }));
+                        }
+                        if is_end {
+                            new_state = Some(EncodeOrDecodeState::DivansSuccess);
+                        }
+                    } else { // this is the future: nibble-only encoding
+                        let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                         let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
                         self.cross_command_state.coder.get_or_put_nibble(
                             &mut command_type_code,
                             command_type_prob,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
                         command_type_prob.blend(command_type_code);
+                        new_state = Some(get_command_state_from_nibble(command_type_code));
                     }
-                    new_state = Some(get_command_state_from_nibble(command_type_code));
                 },
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
                     let backing_store = CopyCommand::nop();

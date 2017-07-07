@@ -20,6 +20,7 @@ mod codec;
 mod cmd_to_divans;
 mod divans_to_raw;
 mod billing;
+pub use codec::COMMAND_LINE_ENFORCE_LEGACY_ENCODING; 
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop};
