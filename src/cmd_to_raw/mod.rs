@@ -264,6 +264,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
               &Command::Copy(ref copy) => self.parse_copy(copy),
               &Command::Dict(ref dict) => self.parse_dictionary(dict),
               &Command::Literal(ref literal) => self.parse_literal(literal),
+              &Command::BlockSwitchCommand(_)
+              | &Command::BlockSwitchDistance(_)
+              | &Command::BlockSwitchLiteral(_) => BrotliResult::ResultSuccess,
         }
     }
     pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
