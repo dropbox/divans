@@ -129,28 +129,31 @@ impl CopyState {
             match self.state {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceBegNib,
-                                                                        if superstate.bk.last_dlen_greater15 {1} else {0});
+                    let index = (superstate.bk.last_dlen >> 2) as usize;
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceBegNib, index);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
-                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::DistanceExpo));
                     nibble_prob.blend(beg_nib);
-                    superstate.bk.last_dlen_greater15 = beg_nib == 15;
 
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
-                    } else if beg_nib == 0 {
-                        self.cc.distance = 1;
-                        self.state = CopySubstate::DistanceDecoded;
                     } else {
-                        self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << beg_nib);
+                        superstate.bk.last_dlen = beg_nib + 1;
+                        if beg_nib == 0 {
+                            self.cc.distance = 1;
+                            self.state = CopySubstate::DistanceDecoded;
+                        } else {
+                            self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << beg_nib);
+                        }
                     }
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
                     let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceLastNib, 0);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
-                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::DistanceExpo));
                     nibble_prob.blend(last_nib);
+                    superstate.bk.last_dlen = (last_nib + 15) + 1;
                     self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -158,9 +161,10 @@ impl CopyState {
                     let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceMantissaNib, 0);
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceMantissaNib,
+                                                                        (len_remaining >> 2) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
-                                                       BillingDesignation::CopyCommand(CopyCommandBilling::Distance));
+                                                       BillingDesignation::CopyCommand(CopyCommandBilling::DistanceMantissa));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib);
 
@@ -175,29 +179,31 @@ impl CopyState {
                 },
                 CopySubstate::DistanceDecoded => {
                     let mut beg_nib = core::cmp::min(15, clen);
-                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountBegNib,
-                                                                        if superstate.bk.last_clen_greater15 {1} else {0});
+                    let index = (superstate.bk.last_dlen >> 4) as usize; // + (if superstate.bk.last_clen > 15 {25} else {0})) as usize;
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountBegNib, index);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     nibble_prob.blend(beg_nib);
-                    superstate.bk.last_clen_greater15 = beg_nib == 15;
 
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthFirstGreater14Less25;
-                    } else if beg_nib <= 1 {
-                        self.cc.num_bytes = beg_nib as u32;
-                        self.state = CopySubstate::FullyDecoded;
                     } else {
-                        self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << (beg_nib - 1));
+                        superstate.bk.last_clen = beg_nib;
+                        if beg_nib <= 1 {
+                            self.cc.num_bytes = beg_nib as u32;
+                            self.state = CopySubstate::FullyDecoded;
+                        } else {
+                            self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << (beg_nib - 1));
+                        }
                     }
-
-                }
+                },
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen.wrapping_sub(15);
                     let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountLastNib, 0);
                     superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     nibble_prob.blend(last_nib);
+                    superstate.bk.last_clen = last_nib + 15;
                     self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
@@ -556,10 +562,10 @@ enum CopyCommandNibblePriorType {
     CountMantissaNib,
 }
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
-                     (CopyCommandNibblePriorType::DistanceBegNib, 2),
+                     (CopyCommandNibblePriorType::DistanceBegNib, 8),
                      (CopyCommandNibblePriorType::DistanceLastNib, 1),
-                     (CopyCommandNibblePriorType::DistanceMantissaNib, 1),
-                     (CopyCommandNibblePriorType::CountBegNib, 2),
+                     (CopyCommandNibblePriorType::DistanceMantissaNib, 8),
+                     (CopyCommandNibblePriorType::CountBegNib, 8),
                      (CopyCommandNibblePriorType::CountLastNib, 1),
                      (CopyCommandNibblePriorType::CountMantissaNib, 1));
 
@@ -568,8 +574,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF16:Allocator<Cdf16>> {
     last_8_literals: u64,
     last_4_states: u8,
-    last_dlen_greater15: bool,
-    last_clen_greater15: bool,
+    last_dlen: u8,
+    last_clen: u8,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
@@ -584,8 +590,8 @@ impl<Cdf16:CDF16,
            cc_prior: AllocCDF2::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
-            last_dlen_greater15: false,
-            last_clen_greater15: false,
+            last_dlen: 1,
+            last_clen: 1,
             last_4_states: 0,
             last_8_literals: 0xfffefffefffefffe,
             lit_priors: LiteralCommandPriors {

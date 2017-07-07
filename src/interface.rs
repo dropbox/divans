@@ -126,7 +126,8 @@ pub enum CrossCommandBilling {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum CopyCommandBilling {
     Unknown,
-    Distance,
+    DistanceExpo,
+    DistanceMantissa,
     Count,
 }
 
