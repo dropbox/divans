@@ -72,10 +72,10 @@ impl<AllocU8:Allocator<u8>> SliceWrapper<u8> for AllocatedMemoryPrefix<AllocU8> 
 enum CopySubstate {
      Begin,
      DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
-     DistanceMantissaNibbles(u8, u32), // nibble count (up to 6), intermediate result
+     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
      DistanceDecoded,
      CountLengthFirstGreater14Less25, // length not between 0 and 14 inclusive... second nibble results in 15-24
-     CountMantissaNibbles(u8, u32), //nibble count, intermediate result
+     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
      FullyDecoded,
 }
 struct CopyState {
@@ -143,7 +143,7 @@ impl CopyState {
                             self.cc.distance = 1;
                             self.state = CopySubstate::DistanceDecoded;
                         } else {
-                            self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(beg_nib),  1 << beg_nib);
+                            self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib),  1 << beg_nib);
                         }
                     }
                 },
@@ -154,15 +154,15 @@ impl CopyState {
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::DistanceExpo));
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
-                    self.state = CopySubstate::DistanceMantissaNibbles(round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
+                    self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
                 },
-                CopySubstate::DistanceMantissaNibbles(len_remaining, decoded_so_far) => {
+                CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
                     let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceMantissaNib,
-                                                                        (len_remaining >> 2) as usize);
+                                                                        ((len_remaining >> 2) * 8 + (len_decoded >> 2)) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::DistanceMantissa));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
@@ -173,6 +173,7 @@ impl CopyState {
                         self.state = CopySubstate::DistanceDecoded;
                     } else {
                         self.state  = CopySubstate::DistanceMantissaNibbles(
+                            len_decoded + 4,
                             next_len_remaining,
                             next_decoded_so_far);
                     }
@@ -193,7 +194,7 @@ impl CopyState {
                             self.cc.num_bytes = beg_nib as u32;
                             self.state = CopySubstate::FullyDecoded;
                         } else {
-                            self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(beg_nib - 1),  1 << (beg_nib - 1));
+                            self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib - 1),  1 << (beg_nib - 1));
                         }
                     }
                 },
@@ -204,14 +205,15 @@ impl CopyState {
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_clen = last_nib + 15;
-                    self.state = CopySubstate::CountMantissaNibbles(round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
+                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
                 },
-                CopySubstate::CountMantissaNibbles(len_remaining, decoded_so_far) => {
+                CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
                     let last_nib_as_u32 = (in_cmd.num_bytes ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountMantissaNib, 0);
+                    let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountMantissaNib,
+                                                                        ((len_remaining >> 2) * 8 + (len_decoded >> 2)) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
@@ -222,6 +224,7 @@ impl CopyState {
                         self.state = CopySubstate::FullyDecoded;
                     } else {
                         self.state  = CopySubstate::CountMantissaNibbles(
+                            len_decoded + 4,
                             next_len_remaining,
                             next_decoded_so_far);
                     }
@@ -564,10 +567,10 @@ enum CopyCommandNibblePriorType {
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, 8),
                      (CopyCommandNibblePriorType::DistanceLastNib, 1),
-                     (CopyCommandNibblePriorType::DistanceMantissaNib, 8),
+                     (CopyCommandNibblePriorType::DistanceMantissaNib, 64),
                      (CopyCommandNibblePriorType::CountBegNib, 8),
                      (CopyCommandNibblePriorType::CountLastNib, 1),
-                     (CopyCommandNibblePriorType::CountMantissaNib, 1));
+                     (CopyCommandNibblePriorType::CountMantissaNib, 64));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
