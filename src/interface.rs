@@ -9,9 +9,7 @@ pub trait Nop<T> {
 }
 
 #[derive(Debug,Copy,Clone)]
-pub struct BlockSwitch(u8) {
-    pub type: u8,
-}
+pub struct BlockSwitch(u8);
 
 #[derive(Debug)]
 pub struct CopyCommand {
@@ -72,21 +70,6 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     BlockSwitchDistance(BlockSwitch),
 }
 
-pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType>,
-                                                          is_end: bool) -> u8 {
-
-    if is_end {
-        return 0xf;
-    }
-    match cmd {
-        &Copy(_) => return 0x1,
-        &Dict(_) => return 0x2,
-        &Literal(_) => return 0x3,
-        &BlockSwitchCommand(_) => return 0x4,
-        &BlockSwitchLiteral(_) => return 0x5,
-        &BlockSwitchDistance(_) => return 0x6,
-    }
-}
 
 impl<SliceType:SliceWrapper<u8>> Default for Command<SliceType> {
     fn default() -> Self {
@@ -145,6 +128,7 @@ pub enum CrossCommandBilling {
     CopyIndicator,
     DictIndicator,
     EndIndicator,
+    FullSelection,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]

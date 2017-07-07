@@ -33,16 +33,16 @@ macro_rules! define_prior_struct {
 }
 
 macro_rules! define_prior_struct_helper_offset {
-    ($billing: expr; ($type: expr, $count: expr)) => { 0 };  // should panic if billing != type
-    ($billing: expr; ($type: expr, $count: expr), $($more:tt),*) => {
-        (($billing != $type) as u32) * ($count + define_prior_struct_helper_offset!($billing; $($more),*))
+    ($billing: expr; ($ty: expr, $count: expr)) => { 0 };  // should panic if billing != type
+    ($billing: expr; ($ty: expr, $count: expr), $($more:tt),*) => {
+        (($billing != $ty) as u32) * ($count + define_prior_struct_helper_offset!($billing; $($more),*))
     };
 }
 
 macro_rules! define_prior_struct_helper_select {
-    ($billing: expr; ($type: expr, $count: expr)) => { $count };  // should panic if billing != type
-    ($billing: expr; ($type: expr, $count: expr), $($more:tt),*) => {
-        if $billing == $type { $count } else { define_prior_struct_helper_select!($billing; $($more),*) }
+    ($billing: expr; ($ty: expr, $count: expr)) => { $count };  // should panic if billing != type
+    ($billing: expr; ($ty: expr, $count: expr), $($more:tt),*) => {
+        if $billing == $ty { $count } else { define_prior_struct_helper_select!($billing; $($more),*) }
     };
 }
 

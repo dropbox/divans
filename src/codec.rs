@@ -519,8 +519,9 @@ const NUM_FIRST_LITERAL_NIBBLE_PRIORS: usize = 65536;
 const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
 
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
-                     (CrossCommandBilling::CopyIndicator, 4),
-                     (CrossCommandBilling::DictIndicator, 4),
+                     (CrossCommandBilling::FullSelection, 4),
+                     (CrossCommandBilling::CopyIndicator, 1),
+                     (CrossCommandBilling::DictIndicator, 1),
                      (CrossCommandBilling::EndIndicator, 1));
 
 #[derive(PartialEq)]
@@ -547,8 +548,9 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_8_literals: u64,
     last_4_states: u8,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
-    cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
+    cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
+    binary_priors: core::marker::PhantomData<AllocCDF2>,
 }
 
 impl<Cdf16:CDF16,
@@ -557,7 +559,7 @@ impl<Cdf16:CDF16,
                                                           AllocCDF2,
                                                           AllocCDF16> {
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
-           cc_prior: AllocCDF2::AllocatedMemory,
+           cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             last_4_states: 0,
@@ -571,20 +573,25 @@ impl<Cdf16:CDF16,
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
             },
+            binary_priors: core::marker::PhantomData::<AllocCDF2>::default(),
         }
     }
     fn push_literal_nibble(&mut self, nibble: u8) {
         self.last_8_literals >>= 0x4;
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
-    fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        self.cc_priors.get(CrossCommandBilling::CopyIndicator,
+//    fn get_copy_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+//        self.cc_priors.get(CrossCommandBilling::CopyIndicator,
+//                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
+//    }
+    fn get_command_type_prob<'a>(&'a mut self) -> &'a mut Cdf16 {
+        self.cc_priors.get(CrossCommandBilling::FullSelection,
                             ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
     }
-    fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
-        self.cc_priors.get(CrossCommandBilling::DictIndicator,
-                            ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
-    }
+//    fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
+//        self.cc_priors.get(CrossCommandBilling::DictIndicator,
+//                            ((self.last_4_states as usize) >> (8 - LOG_NUM_DICT_TYPE_PRIORS)))
+//    }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
@@ -635,7 +642,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let cc_priors = mcdf2.alloc_cell(CrossCommandPriors::<CDF2, AllocCDF2>::num_all_priors());
+        let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
@@ -655,13 +662,53 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
-        let cdf2 = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF2::AllocatedMemory::default());
+        let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16 = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
-        self.mcdf2.free_cell(cdf2);
+        self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16);
         (self.m8, self.mcdf2, self.mcdf16)
     }
+}
+
+pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType>,
+                                                          is_end: bool) -> u8 {
+
+    if is_end {
+        return 0xf;
+    }
+    match cmd {
+        &Command::Copy(_) => return 0x1,
+        &Command::Dict(_) => return 0x2,
+        &Command::Literal(_) => return 0x3,
+        &Command::BlockSwitchCommand(_) => return 0x4,
+        &Command::BlockSwitchLiteral(_) => return 0x5,
+        &Command::BlockSwitchDistance(_) => return 0x6,
+    }
+}
+
+fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) -> EncodeOrDecodeState<AllocU8> {
+   match command_type_code {
+      1 => EncodeOrDecodeState::Copy(CopyState {
+                            cc: CopyCommand {
+                                distance:0,
+                                num_bytes:0,
+                            },
+                            state:CopySubstate::Begin,
+                        }),
+      2 => EncodeOrDecodeState::Dict(DictState {
+                                dc: DictCommand::nop(),
+                                state: DictSubstate::Begin,
+                            }),
+      3 => EncodeOrDecodeState::Literal(LiteralState {
+                                lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
+                                    data:AllocatedMemoryPrefix::default(),
+                                },
+                                state:LiteralSubstate::Begin,
+                            }),
+      0xf => EncodeOrDecodeState::DivansSuccess,
+      _ => panic!("unimpl"),
+   }
 }
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -856,53 +903,16 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         BrotliResult::ResultSuccess => {},
                         need_something => return OneCommandReturn::BufferExhausted(need_something),
                     }
-                    let command_type_code = command_type_to_nibble(input_cmd);
-                    self.cross_command_state.coder.get_or_put_nibble_with_billing(
-                        &mut command_type_code, copy_prob.prob,
-                        BillingDesignation::CrossCommandCopyIndicator);
+                    let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {
-                        let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
-                        self.cross_command_state.coder.get_or_put_bit(&mut is_copy, copy_prob.prob,
-                                                                      BillingDesignation::CrossCommand(CrossCommandBilling::CopyIndicator));
-                        copy_prob.blend(is_copy);
+                        let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
+                        self.cross_command_state.coder.get_or_put_nibble(
+                            &mut command_type_code,
+                            command_type_prob,
+                            BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
+                        command_type_prob.blend(command_type_code);
                     }
-                    if is_copy == false {
-                        {
-                            let dict_prob = self.cross_command_state.bk.get_dict_type_prob();
-                            self.cross_command_state.coder.get_or_put_bit(&mut is_dict_or_end, dict_prob.prob,
-                                                                          BillingDesignation::CrossCommand(CrossCommandBilling::DictIndicator));
-                            dict_prob.blend(is_dict_or_end);
-                        }
-                        if is_dict_or_end == true {
-                            self.cross_command_state.coder.get_or_put_bit(&mut is_end, (CDF2::default().max() - 1) as u8,
-                                                                          BillingDesignation::CrossCommand(CrossCommandBilling::EndIndicator));
-                            self.cross_command_state.bk.obs_dict_state();
-                            new_state = Some(EncodeOrDecodeState::Dict(DictState {
-                                dc: DictCommand::nop(),
-                                state: DictSubstate::Begin,
-                            }));
-                        } else {
-                            self.cross_command_state.bk.obs_literal_state();
-                            new_state = Some(EncodeOrDecodeState::Literal(LiteralState {
-                                lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
-                                    data:AllocatedMemoryPrefix::default(),
-                                },
-                                state:LiteralSubstate::Begin,
-                            }));
-                        }
-                    } else {
-                        self.cross_command_state.bk.obs_copy_state();
-                        new_state = Some(EncodeOrDecodeState::Copy(CopyState {
-                            cc: CopyCommand {
-                                distance:0,
-                                num_bytes:0,
-                            },
-                            state:CopySubstate::Begin,
-                        }));
-                    }
-                    if is_end {
-                        new_state = Some(EncodeOrDecodeState::DivansSuccess);
-                    }
+                    new_state = Some(get_command_state_from_nibble(command_type_code));
                 },
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
                     let backing_store = CopyCommand::nop();
