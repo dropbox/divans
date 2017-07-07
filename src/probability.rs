@@ -279,14 +279,14 @@ pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [P
         epi32[i] += baseline[i] as i32 * scale_minus_blend + bias;
         epi32[i] >>= BLEND_FIXED_POINT_PRECISION;
     }
-    let mut retval : [Prob;16] =[epi32[0] as i16,
-                                 epi32[1] as i16,
-                                 epi32[2] as i16,
-                                 epi32[3] as i16,
-                                 epi32[4] as i16,
-                                 epi32[5] as i16,
-                                 epi32[6] as i16,
-                                 epi32[7] as i16,
+    let mut retval : [Prob;16] =[epi32[0] as Prob,
+                                 epi32[1] as Prob,
+                                 epi32[2] as Prob,
+                                 epi32[3] as Prob,
+                                 epi32[4] as Prob,
+                                 epi32[5] as Prob,
+                                 epi32[6] as Prob,
+                                 epi32[7] as Prob,
                                  0,0,0,0,0,0,0,0];
     let mut epi32:[i32;8] = [to_blend[8] as i32,
                              to_blend[9] as i32,
@@ -309,7 +309,7 @@ fn to_blend(symbol: u8) -> [Prob;16] {
     let delta: Prob = CDF_MAX - 15;
     const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
     const BASELINE : [Prob;16] =[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-    let symbol16 = [symbol as i16; 16];
+    let symbol16 = [symbol as Prob; 16];
     let delta16 = [delta; 16];
     let mask_symbol = each16bin!(CDF_INDEX, symbol16, gte);
     let add_mask = each16bin!(delta16, mask_symbol, and);
