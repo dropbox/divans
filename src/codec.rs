@@ -5,11 +5,13 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
+
 use interface::{
     BillingDesignation,
     CopyCommandBilling,
     CrossCommandBilling,
     LiteralCommandBilling,
+    BlockSwitch,
     Nop
 };
 use super::probability::{CDF2, CDF16};
@@ -512,13 +514,100 @@ impl<AllocU8:Allocator<u8>,
     }
 }
 
-
-
+#[derive(Clone,Copy)]
+enum BlockTypeState {
+    Begin,
+    TwoNibbleType,
+    FinalNibble(u8),
+    FullyDecoded(u8),
+}
+impl BlockTypeState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(
+        &mut self,
+        superstate: &mut CrossCommandState<ArithmeticCoder,
+                                           Specialization,
+                                           Cdf16,
+                                           AllocU8,
+                                           AllocCDF2,
+                                           AllocCDF16>,
+        input_bs: BlockSwitch,
+        block_type_switch_index:usize,
+        input_bytes: &[u8],
+        input_offset: &mut usize,
+        output_bytes: &mut [u8],
+        output_offset: &mut usize) -> BrotliResult {
+        let mut varint_nibble:u8 =
+            if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][1] {
+                0
+            } else if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][0] + 1 {
+                1
+            } else if input_bs.block_type() <= 12 {
+                input_bs.block_type() + 2
+            } else {
+                15
+            };
+        let mut first_nibble:u8 = input_bs.block_type() & 0xf;
+        let mut second_nibble:u8 = input_bs.block_type() >> 4;
+        loop {
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes,
+                                                                 input_offset,
+                                                                 output_bytes,
+                                                                 output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
+            match *self {
+                BlockTypeState::Begin => {
+                    superstate.coder.get_or_put_nibble(
+                        &mut varint_nibble,
+                        &superstate.bk.btype_prior[block_type_switch_index][0],
+                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
+                    superstate.bk.btype_prior[block_type_switch_index][0].blend(varint_nibble);
+                    match varint_nibble {
+                        0 => *self = BlockTypeState::FullyDecoded(
+                            superstate.bk.btype_lru[block_type_switch_index][1]),
+                        1 => *self = BlockTypeState::FullyDecoded(
+                            superstate.bk.btype_lru[block_type_switch_index][0] + 1),
+                        15 => *self = BlockTypeState::TwoNibbleType,
+                        val => *self = BlockTypeState::FullyDecoded(val - 2),
+                    }
+                },
+                BlockTypeState::TwoNibbleType => {
+                    superstate.coder.get_or_put_nibble(
+                        &mut first_nibble,
+                        &superstate.bk.btype_prior[block_type_switch_index][1],
+                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
+                    superstate.bk.btype_prior[block_type_switch_index][1].blend(first_nibble);
+                    *self = BlockTypeState::FinalNibble(first_nibble);
+                },
+                BlockTypeState::FinalNibble(first_nibble) => {
+                    superstate.coder.get_or_put_nibble(
+                        &mut second_nibble,
+                        &superstate.bk.btype_prior[block_type_switch_index][2],
+                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
+                    superstate.bk.btype_prior[block_type_switch_index][2].blend(second_nibble);
+                    *self = BlockTypeState::FinalNibble((second_nibble << 4) | first_nibble);
+                }
+                BlockTypeState::FullyDecoded(_) =>   {
+                    return BrotliResult::ResultSuccess;
+                }
+            }
+        }
+    }
+}
 enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Begin,
     Literal(LiteralState<AllocU8>),
     Dict(DictState),
     Copy(CopyState),
+    BlockSwitchLiteral(BlockTypeState),
+    BlockSwitchCommand(BlockTypeState),
+    BlockSwitchDistance(BlockTypeState),
     PopulateRingBuffer(Command<AllocatedMemoryPrefix<AllocU8>>),
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
@@ -540,7 +629,9 @@ const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
 const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 const NUM_FIRST_LITERAL_NIBBLE_PRIORS: usize = 65536;
 const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
-
+const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
+const BLOCK_TYPE_COMMAND_SWITCH:usize=0;
+const BLOCK_TYPE_DISTANCE_SWITCH:usize=0;
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4),
                      (CrossCommandBilling::CopyIndicator, 4),
@@ -584,6 +675,9 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     legacy_cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
+    distance_lru: [i32;4],
+    btype_prior: [[Cdf16;3];3],
+    btype_lru: [[u8;2];3],
 }
 
 impl<Cdf16:CDF16,
@@ -599,7 +693,7 @@ impl<Cdf16:CDF16,
             last_dlen: 1,
             last_clen: 1,
             last_4_states: 0,
-            last_8_literals: 0xfffefffefffefffe,
+            last_8_literals: 0,
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
             },
@@ -612,6 +706,11 @@ impl<Cdf16:CDF16,
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
             },
+            btype_prior: [[Cdf16::default(),
+                           Cdf16::default(),
+                           Cdf16::default()];3],
+            distance_lru: [4,11,15,16],
+            btype_lru:[[0,1];3],
         }
     }
     fn push_literal_nibble(&mut self, nibble: u8) {
@@ -644,6 +743,33 @@ impl<Cdf16:CDF16,
     fn obs_literal_state(&mut self) {
         self.next_state();
         self.last_4_states |= 128;
+    }
+    fn obs_distance(&mut self, distance:i32) {
+        if distance == self.distance_lru[1] {
+            self.distance_lru = [distance,
+                                 self.distance_lru[0],
+                                 self.distance_lru[2],
+                                 self.distance_lru[3]];
+        } else if distance == self.distance_lru[2] {
+            self.distance_lru = [distance,
+                                 self.distance_lru[0],
+                                 self.distance_lru[1],
+                                 self.distance_lru[3]];
+        } else if distance != self.distance_lru[0] {
+            self.distance_lru = [distance,
+                                 self.distance_lru[0],
+                                 self.distance_lru[1],
+                                 self.distance_lru[2]];            
+        }
+    }
+    fn obs_btypel(&mut self, btype:u8) {
+        self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0]];
+    }
+    fn obs_btypec(&mut self, btype:u8) {
+        self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0]];
+    }
+    fn obs_btyped(&mut self, btype:u8) {
+        self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0]];
     }
 }
 
@@ -753,7 +879,10 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
                                 },
                                 state:LiteralSubstate::Begin,
                             }),
-      0xf => EncodeOrDecodeState::DivansSuccess,
+     4 => EncodeOrDecodeState::BlockSwitchLiteral(BlockTypeState::Begin),
+     5 => EncodeOrDecodeState::BlockSwitchCommand(BlockTypeState::Begin),
+     6 => EncodeOrDecodeState::BlockSwitchDistance(BlockTypeState::Begin),
+     0xf => EncodeOrDecodeState::DivansSuccess,
       _ => panic!("unimpl"),
    }
 }
@@ -957,7 +1086,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             &Command::Copy(_) => is_copy = !is_end,
                             &Command::Dict(_) => is_dict_or_end = true,
                             &Command::Literal(_) => {},
-                            _ => panic!("UNIMPL"),
+                            &Command::BlockSwitchLiteral(_) => return OneCommandReturn::Advance, // ignore directive
+                            &Command::BlockSwitchCommand(_) => return OneCommandReturn::Advance, // ignore directive
+                            &Command::BlockSwitchDistance(_) => return OneCommandReturn::Advance, // ignore directive
                         }
                         {
                             let copy_prob = self.cross_command_state.bk.get_copy_type_prob();
@@ -1013,6 +1144,79 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         new_state = Some(get_command_state_from_nibble(command_type_code));
                     }
                 },
+                &mut EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
+                    let src_block_switch_literal = match input_cmd {
+                        &Command::BlockSwitchLiteral(bs) => bs,
+                        _ => BlockSwitch::default(),
+                    };
+                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                                                            src_block_switch_literal,
+                                                            BLOCK_TYPE_LITERAL_SWITCH,
+                                                            input_bytes,
+                                                            input_bytes_offset,
+                                                            output_bytes,
+                                                            output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.obs_btypel(match block_type_state {
+                                &mut BlockTypeState::FullyDecoded(btype) => btype,
+                                _ => panic!("illegal output state"),
+                            });
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                        },
+                        retval => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
+                },
+                &mut EncodeOrDecodeState::BlockSwitchCommand(ref mut block_type_state) => {
+                    let src_block_switch_command = match input_cmd {
+                        &Command::BlockSwitchCommand(bs) => bs,
+                        _ => BlockSwitch::default(),
+                    };
+                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                                                            src_block_switch_command,
+                                                            BLOCK_TYPE_COMMAND_SWITCH,
+                                                            input_bytes,
+                                                            input_bytes_offset,
+                                                            output_bytes,
+                                                            output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.obs_btypec(match block_type_state {
+                                &mut BlockTypeState::FullyDecoded(btype) => btype,
+                                _ => panic!("illegal output state"),
+                            });
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                        },
+                        retval => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
+                },
+                &mut EncodeOrDecodeState::BlockSwitchDistance(ref mut block_type_state) => {
+                    let src_block_switch_distance = match input_cmd {
+                        &Command::BlockSwitchDistance(bs) => bs,
+                        _ => BlockSwitch::default(),
+                    };
+
+                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                                                            src_block_switch_distance,
+                                                            BLOCK_TYPE_DISTANCE_SWITCH,
+                                                            input_bytes,
+                                                            input_bytes_offset,
+                                                            output_bytes,
+                                                            output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.obs_btyped(match block_type_state {
+                                &mut BlockTypeState::FullyDecoded(btype) => btype,
+                                _ => panic!("illegal output state"),
+                            });
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                        },
+                        retval => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
+                },
                 &mut EncodeOrDecodeState::Copy(ref mut copy_state) => {
                     let backing_store = CopyCommand::nop();
                     let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
@@ -1025,8 +1229,10 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(Command::Copy(core::mem::replace(&mut copy_state.cc,
-                                                                                                                      CopyCommand::nop()))));
+                            self.cross_command_state.bk.obs_distance(copy_state.cc.distance as i32);
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
+                                Command::Copy(core::mem::replace(&mut copy_state.cc,
+                                                                 CopyCommand::nop()))));
                         },
                         retval => {
                             return OneCommandReturn::BufferExhausted(retval);

@@ -8,8 +8,14 @@ pub trait Nop<T> {
     fn nop() -> T;
 }
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug,Copy,Clone,Default)]
 pub struct BlockSwitch(u8);
+
+impl BlockSwitch {
+    pub fn block_type(&self) -> u8 {
+        self.0
+    }
+}
 
 #[derive(Debug)]
 pub struct CopyCommand {
@@ -128,6 +134,7 @@ pub enum CrossCommandBilling {
     CopyIndicator,
     DictIndicator,
     EndIndicator,
+    BlockSwitchType,
     FullSelection,
 }
 
