@@ -1,5 +1,7 @@
 use core;
 use core::default::Default;
+use probability::CDF16;
+use super::interface::ArithmeticEncoderOrDecoder;
 use super::BrotliResult;
 use super::encoder::{
     EntropyEncoder,
@@ -146,7 +148,7 @@ impl Default for ANS1 {
     }
 }
 
-struct EntropyDecoderANS {
+pub struct EntropyDecoderANS {
     c: ANS1,
     q: CycleQueue,
     len: u16,
@@ -160,12 +162,12 @@ struct BitStack {
     nbits : usize,
 }
 
-struct ByteStack {
+pub struct ByteStack {
     data : [u8; MAX_BUFFER_BITS],
     nbytes : usize,
 }
 const CYCLE_QUEUE_SIZE: usize = 16;
-struct CycleQueue {
+pub struct CycleQueue {
     data : [u8; CYCLE_QUEUE_SIZE],
     start : usize,
     used : usize,
@@ -205,7 +207,7 @@ impl Default for CycleQueue {
     }
 }
 
-struct EntropyEncoderANS {
+pub struct EntropyEncoderANS {
     c: ANS1,
     q: ByteStack,
     bits: BitStack,
@@ -366,10 +368,7 @@ impl EntropyEncoderANS {
 
 /// TODO(anatoly): each chunk can be run in parallel
 /// output format:
-/// <ans_final_state: [u8; 8], size: u16, encoded_buffer: [u8; size]>
-/// [ ans final state, 8 bytes
-///   encoded buffer size: u16, <= (64 * 1024)
-///   size bytes of encoded buffer data: [u8; size] ]
+/// [<size: u16, encoded_buffer: [u8; size]>]
 /// This avoids using 2 bytes for buffers that fit into the initial 8 byte state
 impl EntropyEncoder for EntropyEncoderANS {
     type Queue = ByteStack;
@@ -444,6 +443,39 @@ impl EntropyDecoder for EntropyDecoderANS {
         self.c.reset();
         self.len = 0;
         return BrotliResult::ResultSuccess;
+    }
+}
+
+impl ArithmeticEncoderOrDecoder for EntropyEncoderANS {
+    fn drain_or_fill_internal_buffer(&mut self,
+                                     _input_buffer:&[u8],
+                                     _input_offset:&mut usize,
+                                     output_buffer:&mut [u8],
+                                     output_offset: &mut usize) -> BrotliResult {
+        let mut ibuffer = self.get_internal_buffer();
+        let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
+        if coder_bytes_avail != 0 {
+            let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);
+            *output_offset += push_count;
+            if ibuffer.num_pop_bytes_avail() != 0 {
+                return BrotliResult::NeedsMoreOutput;
+            }
+        }
+        return BrotliResult::ResultSuccess;
+    }
+    fn get_or_put_bit_without_billing(&mut self,
+                                      bit: &mut bool,
+                                      prob_of_false: u8) {
+        self.put_bit(*bit, prob_of_false)
+    }
+    fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
+                                                   nibble: &mut u8,
+                                                   prob: &C) {
+        self.put_nibble(*nibble, prob);
+    }
+    fn close(&mut self) -> BrotliResult {
+        self.flush();
+        BrotliResult::ResultSuccess
     }
 }
 

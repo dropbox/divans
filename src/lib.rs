@@ -34,8 +34,8 @@ pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
-pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
-pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
+pub type DefaultArithmeticEncoder = ans::EntropyEncoderANS;
+pub type DefaultArithmeticDecoder = ans::EntropyDecoderANS;
 
 pub type DefaultCDF16 = probability::FrequentistCDF16;
 pub use probability::CDF2;
