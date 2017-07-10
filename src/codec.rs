@@ -467,7 +467,7 @@ impl<AllocU8:Allocator<u8>,
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(
                         in_cmd,
-                        byte_index) >> ((nibble_index & 1) << 2)) & 0xf;
+                        byte_index) >> ((1 - (nibble_index & 1)) << 2)) & 0xf;
                     let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
                     let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
@@ -487,7 +487,7 @@ impl<AllocU8:Allocator<u8>,
                                                            BillingDesignation::LiteralCommand(LiteralCommandBilling::Data));
                         nibble_prob.blend(cur_nibble);
                     }
-                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((nibble_index & 1) << 2);
+                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((1 - (nibble_index & 1)) << 2);
                     superstate.bk.push_literal_nibble(cur_nibble);
                     /*
                     if (nibble_index & 1) == 1 {
