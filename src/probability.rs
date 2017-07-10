@@ -3,6 +3,10 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
+pub trait Entropy {
+    fn entropy(&self) -> f64;
+}
+
 #[derive(Clone, Copy)]
 pub struct CDF2 {
     counts: [u8; 2],
@@ -14,6 +18,17 @@ impl Default for CDF2 {
         CDF2 {
             counts: [1, 1],
             prob: 128,
+        }
+    }
+}
+
+impl Entropy for CDF2 {
+    fn entropy(&self) -> f64 {
+        if self.prob == 0 || (self.prob as i64) == self.max() {
+            0.0f64
+        } else {
+            let prob_f64 = (self.prob as f64) / (self.max() as f64);
+            -(prob_f64 * prob_f64.log2() + (1.0 - prob_f64) * (1.0 - prob_f64).log2())
         }
     }
 }
@@ -82,6 +97,21 @@ pub trait CDF16:Sized+Default+Copy {
         ret
     }
 }
+
+impl<T> Entropy for T where T: CDF16 {
+    fn entropy(&self) -> f64 {
+        let mut sum = 0.0f64;
+        for i in 0..16 {
+            let v = self.pdf(i as u8);
+            sum += if v == 0 { 0.0f64 } else {
+                let v_f64 = (v as f64) / (self.max() as f64);
+                v_f64 * (-v_f64.log2())
+            };
+        }
+        sum
+    }
+}
+
 
 const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768

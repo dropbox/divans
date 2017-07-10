@@ -128,7 +128,7 @@ pub enum BillingDesignation {
     CrossCommand(CrossCommandBilling),
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum CrossCommandBilling {
     Unknown,
     CopyIndicator,

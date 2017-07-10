@@ -1,7 +1,7 @@
 #![allow(unused)]
 #![macro_escape]
 use core;
-use super::probability::{CDF2, CDF16};
+use super::probability::{CDF2, CDF16, Entropy};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 macro_rules! define_prior_struct {
@@ -10,10 +10,10 @@ macro_rules! define_prior_struct {
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.
-        struct $name<T, AllocT: Allocator<T>> {
+        struct $name<T: Entropy, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T, AllocT: Allocator<T>> $name<T, AllocT> {
+        impl<T: Entropy, AllocT: Allocator<T>> $name<T, AllocT> {
             #[inline]
             fn get(&mut self, billing: $billing_type, index: usize) -> &mut T {
                 let offset = define_prior_struct_helper_offset!(billing; $($args),*);
@@ -27,6 +27,28 @@ macro_rules! define_prior_struct {
             #[inline]
             fn num_prior(billing: $billing_type) -> usize {
                 (define_prior_struct_helper_select!(billing; $($args),*)) as usize
+            }
+        }
+        #[cfg(feature="debug_entropy")]
+        impl<T: Entropy, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+            fn drop(&mut self) {
+                // Check for proper initialization.
+                if self.priors.slice().len() != $name::<T, AllocT>::num_all_priors() {
+                    return;
+                }
+                println!("[Summary for {}]", stringify!($name));
+                for arg in [$($args),*].into_iter() {
+                    let ref billing = arg.0;
+                    let count = arg.1;
+                    for i in 0..count {
+                        if i == 16 {
+                            println!("  {:?}[..] : omitted", billing);
+                            break;
+                        }
+                        let ent = self.get(billing.clone(), i).entropy();
+                        println!("  {:?}[{:2}] : {}", billing, i, ent);
+                    }
+                }
             }
         }
     };
@@ -52,10 +74,10 @@ macro_rules! sum_cdr {
 }
 
 mod test {
-    use super::{Allocator, CDF2, SliceWrapperMut};
+    use super::{Allocator, CDF2, Entropy, SliceWrapper, SliceWrapperMut};
     use alloc::HeapAlloc;
 
-    #[derive(PartialEq, Eq, Clone, Copy)]
+    #[derive(PartialEq, Eq, Clone, Copy, Debug)]
     enum PriorType { Foo, Bar, Cat }
     define_prior_struct!(TestPriorSet, PriorType,
                          (PriorType::Foo, 5), (PriorType::Bar, 6), (PriorType::Cat, 3));

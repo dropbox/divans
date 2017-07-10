@@ -14,7 +14,7 @@ use interface::{
     BlockSwitch,
     Nop
 };
-use super::probability::{CDF2, CDF16};
+use super::probability::{CDF2, CDF16, Entropy};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
@@ -636,7 +636,7 @@ define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::DictIndicator, 4),
                      (CrossCommandBilling::EndIndicator, 1));
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Clone)]
 enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
@@ -645,7 +645,7 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, 65536),
                      (LiteralNibblePriorType::SecondNibble, 65536));
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
     DistanceBegNib,
     DistanceLastNib,
