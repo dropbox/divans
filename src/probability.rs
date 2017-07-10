@@ -360,56 +360,25 @@ mod test {
         *state = (*state).wrapping_mul(1103515245).wrapping_add(12345);
         return ((*state / 65536) as u32 % (RAND_MAX + 1)) as u32;
     }
-    #[allow(unused)]
-    fn test_random_helper(mut rand_table : [u32; 16],
-                          num_trials: usize,
-                          desired_outcome : [u32; 16]) {
-        let mut sum : u32 = 0;
-        for i in 0..16 {
-            rand_table[i] += sum;
-            sum = rand_table[i];
-        }
-        assert_eq!(sum, RAND_MAX + 1);
-        let mut prob_state = super::BlendCDF16::default();
-        // make sure we have all probability taken care of
-        let mut seed = 1u64;
-        for i in 0..num_trials {
-            let rand_num = simple_rand(&mut seed) as u32;
-            for j in 0..16{
-                if rand_num < rand_table[j] {
-                    // we got an j as the next symbol
-                    prob_state.blend(j as u8);
-                    assert!(prob_state.valid());
-                    break;
-                }
-                assert!(j != 15); // should have broken
-            }
-        }
-        let cdf_fp = prob_state.float_array();
-        for i in 0..16 {
-            let expected = (desired_outcome[i] as f32) / (desired_outcome[15] as f32);
-            let delta = (expected - cdf_fp[i]).abs() / expected;
-            assert!(delta < 0.001f32);
-        }
-    }
+
     #[allow(unused)]
     #[cfg(test)]
     fn test_random_cdf<C: CDF16>(mut prob_state: C,
-                                 mut rand_table : [u32; 16],
-                                 num_trials: usize,
-                                 desired_outcome : [u32; 16]) {
-        let mut sum : u32 = 0;
+                                 rand_table : [(u32, u32); 16],
+                                 num_trials: usize) {
+        let mut cutoffs : [u32; 16] = [0; 16];
+        let mut sum_prob : f32 = 0.0f32;
         for i in 0..16 {
-            rand_table[i] += sum;
-            sum = rand_table[i];
+            sum_prob += (rand_table[i].0 as f32) / (rand_table[i].1 as f32);
+            cutoffs[i] = (((RAND_MAX + 1) as f32) * sum_prob).round() as u32;
         }
-        assert_eq!(sum, RAND_MAX + 1);
+        assert_eq!(cutoffs[15], RAND_MAX + 1);
         // make sure we have all probability taken care of
         let mut seed = 1u64;
         for i in 0..num_trials {
             let rand_num = simple_rand(&mut seed) as u32;
-            for j in 0..16{
-                if rand_num < rand_table[j] {
+            for j in 0..16 {
+                if rand_num < cutoffs[j] {
                     // we got an j as the next symbol
                     prob_state.blend(j as u8);
                     assert!(prob_state.valid());
@@ -418,44 +387,33 @@ mod test {
                 assert!(j != 15); // should have broken
             }
         }
-        let cdf_fp = prob_state.float_array();
         for i in 0..16 {
-            let expected = (desired_outcome[i] as f32) / (desired_outcome[15] as f32);
-            let delta = (expected - cdf_fp[i]).abs() / expected;
-            assert!(delta < 0.001f32);
+            let actual = (prob_state.pdf(i as u8) as f32) / (prob_state.max() as f32);
+            let expected = (rand_table[i].0 as f32) / (rand_table[i].1 as f32);
+            let abs_delta = (expected - actual).abs();
+            let rel_delta = abs_delta / expected;  // may be nan
+            // TODO: These bounds should be tightened.
+            assert!(rel_delta < 0.16f32 || abs_delta < 0.016f32);
         }
-    }
-    #[test]
-    fn test_stationary_probability() {
-        let rm = RAND_MAX as u32;
-        test_random_helper([0,0,rm/16,0,
-                            rm/32,rm/32,0,0,
-                            rm/8,0,0,0,
-                            rm/5 + 1,rm/5 + 1,rm/5 + 1,3 * rm/20 + 3],
-                           1000000,
-                           [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,32768]);
-
     }
     #[test]
     fn test_stationary_probability_blend_cdf() {
         let rm = RAND_MAX as u32;
         test_random_cdf(super::BlendCDF16::default(),
-                        [0,0,rm/16,0,
-                         rm/32,rm/32,0,0,
-                         rm/8,0,0,0,
-                         rm/5 + 1,rm/5 + 1,rm/5 + 1,3 * rm/20 + 3],
-                        1000000,
-                        [1,2,1605,1606,2728,3967,3968,3969,7880,7881,7882,7883,14150,20830,27071,32768]);
+                        [(0,1), (0,1), (1,16), (0,1),
+                         (1,32), (1,32), (0,1), (0,1),
+                         (1,8), (0,1), (0,1), (0,1),
+                         (1,5), (1,5), (1,5), (3,20)],
+                        1000000);
     }
     #[test]
     fn test_stationary_probability_frequentist_cdf() {
         let rm = RAND_MAX as u32;
         test_random_cdf(super::FrequentistCDF16::default(),
-                        [0,0,rm/16,0,
-                         rm/32,rm/32,0,0,
-                         rm/8,0,0,0,
-                         rm/5 + 1,rm/5 + 1,rm/5 + 1,3 * rm/20 + 3],
-                        1000000,
-                        [1,2,1175,1176,1739,2296,2297,2298,4592,4593,4594,4595,8302,11997,15658,18416]);
+                        [(0,1), (0,1), (1,16), (0,1),
+                         (1,32), (1,32), (0,1), (0,1),
+                         (1,8), (0,1), (0,1), (0,1),
+                         (1,5), (1,5), (1,5), (3,20)],
+                        1000000);
     }
 }
