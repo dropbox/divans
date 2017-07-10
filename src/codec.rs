@@ -759,7 +759,7 @@ impl<Cdf16:CDF16,
             self.distance_lru = [distance,
                                  self.distance_lru[0],
                                  self.distance_lru[1],
-                                 self.distance_lru[2]];            
+                                 self.distance_lru[2]];
         }
     }
     fn obs_btypel(&mut self, btype:u8) {
@@ -1135,12 +1135,20 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                         }
                     } else { // this is the future: nibble-only encoding
                         let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
-                        let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
-                        self.cross_command_state.coder.get_or_put_nibble(
-                            &mut command_type_code,
-                            command_type_prob,
-                            BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
-                        command_type_prob.blend(command_type_code);
+                        {
+                            let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
+                            self.cross_command_state.coder.get_or_put_nibble(
+                                &mut command_type_code,
+                                command_type_prob,
+                                BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
+                            command_type_prob.blend(command_type_code);
+                        }
+                        match input_cmd {
+                            &Command::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
+                            &Command::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
+                            &Command::Literal(_) => { self.cross_command_state.bk.obs_literal_state(); },
+                            _ => {},
+                        }
                         new_state = Some(get_command_state_from_nibble(command_type_code));
                     }
                 },
