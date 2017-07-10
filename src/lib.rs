@@ -13,8 +13,9 @@ mod interface;
 mod probability;
 #[macro_use]
 mod priors;
-mod debug_encoder;
+#[macro_use]
 mod encoder;
+mod debug_encoder;
 mod cmd_to_raw;
 mod codec;
 mod cmd_to_divans;

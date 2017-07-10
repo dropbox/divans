@@ -55,36 +55,4 @@ impl EntropyDecoder for DebugDecoder {
     }
 }
 
-
-impl ArithmeticEncoderOrDecoder for DebugEncoder {
-    fn drain_or_fill_internal_buffer(&mut self,
-                                     _input_buffer:&[u8],
-                                     _input_offset:&mut usize,
-                                     output_buffer:&mut [u8],
-                                     output_offset: &mut usize) -> BrotliResult {
-        let mut ibuffer = self.get_internal_buffer();
-        let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
-        if coder_bytes_avail != 0 {
-            let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);
-            *output_offset += push_count;
-            if ibuffer.num_pop_bytes_avail() != 0 {
-                return BrotliResult::NeedsMoreOutput;
-            }
-        }
-        return BrotliResult::ResultSuccess;
-    }
-    fn get_or_put_bit_without_billing(&mut self,
-                                      bit: &mut bool,
-                                      prob_of_false: u8) {
-        self.put_bit(*bit, prob_of_false)
-    }
-    fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
-                                                   nibble: &mut u8,
-                                                   prob: &C) {
-        self.put_nibble(*nibble, prob);
-    }
-    fn close(&mut self) -> BrotliResult {
-        self.flush();
-        BrotliResult::ResultSuccess
-    }
-}
+arithmetic_encoder_or_decoder_impl!(DebugEncoder);
