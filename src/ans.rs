@@ -389,6 +389,7 @@ impl EntropyEncoder for EntropyEncoderANS {
         return &mut self.q;
     }
     fn put_bit(&mut self, bit: bool, mut prob_of_false: u8) {
+        //perror!("put_bit {} {}", bit, prob_of_false);
         if  prob_of_false == 0 {
             prob_of_false = 1;
         }
@@ -457,6 +458,7 @@ impl EntropyDecoder for EntropyDecoderANS {
         }
         self.c.decode_advance(x1, &dst, &mut n);
         assert!(n == 4 || false == ANS1::decode_will_advance(x1));
+        //perror!("get_bit {} {}", bit, prob_of_false);
         return bit;
     }
     fn flush(&mut self) -> BrotliResult {

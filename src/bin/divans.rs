@@ -503,6 +503,13 @@ fn compress<Reader:std::io::BufRead,
     compress_inner(state, r, w)
 }
 
+fn zero_slice(sl: &mut [u8]) -> usize {
+    for v in sl.iter_mut() {
+        *v = 0u8;
+    }
+    return sl.len();
+}
+
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (mut r:&mut Reader,
                                       mut w:&mut Writer,
@@ -518,6 +525,7 @@ fn decompress<Reader:std::io::Read,
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
+
     loop {
         match state.decode(ibuffer.slice().split_at(input_end).0,
                            &mut input_offset,
@@ -560,11 +568,15 @@ fn decompress<Reader:std::io::Read,
                     match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
                         Ok(size) => {
                             if size == 0 {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::UnexpectedEof,
-                                    "Divans file invalid: didn't have a terminator marker"));
+                                println_stderr!("End of file.  Feeding zero's.\n");
+                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_offset).1);
+                                input_end = input_offset + len;
+                                //return Err(io::Error::new(
+                                //    io::ErrorKind::UnexpectedEof,
+                                //    "Divans file invalid: didn't have a terminator marker"));
+                            } else {
+                                input_end = input_offset + size;
                             }
-                            input_end = input_offset + size;
                             break
                         },
                         Err(e) => {
