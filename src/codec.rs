@@ -131,7 +131,7 @@ impl CopyState {
             match self.state {
                 CopySubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    let index = (superstate.bk.last_dlen >> 2) as usize;
+                    let index = (superstate.bk.last_dlen >> 4) as usize;
                     let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::DistanceBegNib, index);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::DistanceExpo));
