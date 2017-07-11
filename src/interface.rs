@@ -1,7 +1,7 @@
 use alloc::{SliceWrapper};
 use brotli_decompressor::BrotliResult;
 use super::probability::CDF16;
-
+use super::codec::{CopySubstate, DictSubstate, LiteralSubstate};
 
 // Commands that can instantiate as a no-op should implement this.
 pub trait Nop<T> {
@@ -122,9 +122,9 @@ pub trait CommandDecoder {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum BillingDesignation {
     Unknown,
-    CopyCommand(CopyCommandBilling),
-    DictCommand(DictCommandBilling),
-    LiteralCommand(LiteralCommandBilling),
+    CopyCommand(CopySubstate),
+    DictCommand(DictSubstate),
+    LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
 }
 
@@ -136,30 +136,6 @@ pub enum CrossCommandBilling {
     EndIndicator,
     BlockSwitchType,
     FullSelection,
-}
-
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub enum CopyCommandBilling {
-    Unknown,
-    DistanceExpo,
-    DistanceMantissa,
-    CountExpo,
-    CountMantissa,
-}
-
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub enum LiteralCommandBilling {
-    Unknown,
-    Size,
-    Data,
-}
-
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub enum DictCommandBilling {
-    Unknown,
-    Size,
-    Index,
-    Transform,
 }
 
 pub trait ArithmeticEncoderOrDecoder {
