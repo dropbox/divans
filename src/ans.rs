@@ -52,6 +52,8 @@ impl ANS1 {
     pub fn update(&mut self, p1: u8) {
         let v1 = p1 as u64;
         let v0 = (1u64<<BITS) - v1;
+        assert!(v1 != 0);
+        assert!(v0 != 0);
         self.ls = [v0, v1];
         self.bs = [0, v0];
         self.ss = [v0, v0 + v1];
@@ -267,8 +269,10 @@ impl ByteQueue for ByteStack {
     }
     fn pop_data(&mut self, data:&mut [u8]) -> usize {
         let n = core::cmp::min(data.len(), self.num_pop_bytes_avail());
-        let sl = self.data[self.nbytes .. self.nbytes + n].iter().as_slice();
-        data.clone_from_slice(sl);
+        let sl = self.data[self.nbytes .. self.nbytes + n].iter();
+        for (d, s) in data.iter_mut().zip(sl) {
+            *d = *s;
+        }
         self.nbytes = self.nbytes + n;
         return n;
     }
@@ -313,6 +317,8 @@ impl Default for EntropyEncoderANS {
 
 impl EntropyEncoderANS {
     fn encode_bit(c: &mut ANS1, q: &mut ByteStack, bit: bool, prob_of_false: u8) {
+        assert!((prob_of_false as u64) != 1u64<<BITS);
+        assert!(prob_of_false != 0);
         let p1 = ((1u64<<BITS) - (prob_of_false as u64)) as u8;
         c.update(p1);
         //TODO(anatoly): optimize to use whole words instead of arrays
@@ -333,8 +339,9 @@ impl EntropyEncoderANS {
             //TODO(anatoly): this can be relaxed
             //pop all bytes before pushing another buffer
             assert!(self.q.stack_num_bytes() == 0);
-            assert!(self.probs.stack_num_bytes() == num);
             {
+                //bits and probs should be same size
+                assert!(self.probs.stack_num_bytes() == num);
                 let bits = self.bits.data.iter();
                 let probs = self.probs.data.iter();
                 for (b,p) in bits.zip(probs) {
@@ -375,7 +382,10 @@ impl EntropyEncoder for EntropyEncoderANS {
     fn get_internal_buffer(&mut self) -> &mut ByteStack {
         return &mut self.q;
     }
-    fn put_bit(&mut self, bit: bool, prob_of_false: u8) {
+    fn put_bit(&mut self, bit: bool, mut prob_of_false: u8) {
+        if  prob_of_false == 0 {
+            prob_of_false = 1;
+        }
         self.bits.stack_bit(bit);
         self.probs.stack_byte(prob_of_false);
         if self.probs.stack_bytes_avail() == 0 {
@@ -419,7 +429,10 @@ impl EntropyDecoder for EntropyDecoderANS {
         return &mut self.q;
     }
     //TODO(anatoly): clean this up
-    fn get_bit(&mut self, prob_of_false: u8) -> bool {
+    fn get_bit(&mut self, mut prob_of_false: u8) -> bool {
+        if  prob_of_false == 0 {
+            prob_of_false = 1;
+        }
         if self.len == 0 && self.c.r <= RANS64_L {
             self.read_len();
             self.read_reg();
