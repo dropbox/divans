@@ -17,6 +17,7 @@ macro_rules! define_prior_struct {
             #[inline]
             fn get(&mut self, billing: $billing_type, index: usize) -> &mut T {
                 let offset = define_prior_struct_helper_offset!(billing; $($args),*);
+                assert!(index < $name::<T, AllocT>::num_prior(billing));
                 &mut self.priors.slice_mut()[(offset as usize) + index]
             }
             // TODO: technically this does not depend on the template paramters.
