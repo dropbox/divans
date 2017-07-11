@@ -10,6 +10,7 @@ use interface::{
     BillingDesignation,
     CopyCommandBilling,
     CrossCommandBilling,
+    DictCommandBilling,
     LiteralCommandBilling,
     BlockSwitch,
     Nop
@@ -307,8 +308,11 @@ impl DictState {
             match self.state {
                 DictSubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, in_cmd.word_size.wrapping_sub(4));
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::DictCommand);
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::SizeBegNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
+                                                       BillingDesignation::DictCommand(DictCommandBilling::Size));
+                    nibble_prob.blend(beg_nib);
+
                     if beg_nib == 15 {
                         self.state = DictSubstate::WordSizeGreater18Less25;
                     } else {
@@ -318,8 +322,10 @@ impl DictState {
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
                     let mut beg_nib = in_cmd.word_size.wrapping_sub(19);
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::DictCommand);
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::SizeLastNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
+                                                       BillingDesignation::DictCommand(DictCommandBilling::Size));
+                    nibble_prob.blend(beg_nib);
 
                     self.dc.word_size = beg_nib + 19;
                     if self.dc.word_size > 24 {
@@ -332,8 +338,10 @@ impl DictState {
                     let last_nib_as_u32 = (in_cmd.word_id ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
-                                                       BillingDesignation::DictCommand);
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Index, 0);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
+                                                       BillingDesignation::DictCommand(DictCommandBilling::Index));
+                    nibble_prob.blend(last_nib);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     if next_len_remaining == 0 {
                         self.dc.word_id = next_decoded_so_far;
@@ -347,14 +355,14 @@ impl DictState {
                 DictSubstate::TransformHigh => {
                     let mut high_nib = in_cmd.transform >> 4;
                     superstate.coder.get_or_put_nibble(&mut high_nib, &uniform_prob,
-                                                       BillingDesignation::DictCommand);
+                                                       BillingDesignation::DictCommand(DictCommandBilling::Transform));
                     self.dc.transform = high_nib << 4;
                     self.state = DictSubstate::TransformLow;
                 }
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
                     superstate.coder.get_or_put_nibble(&mut low_nib, &uniform_prob,
-                                                       BillingDesignation::DictCommand);
+                                                       BillingDesignation::DictCommand(DictCommandBilling::Transform));
                     self.dc.transform |= low_nib;
                     let dict = &kBrotliDictionary;
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
@@ -425,8 +433,11 @@ impl<AllocU8:Allocator<u8>,
             match self.state {
                 LiteralSubstate::Begin => {
                     let mut beg_nib = core::cmp::min(15, lllen);
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, &uniform_prob,
-                                                       BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
+                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeBegNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob,
+                                                       BillingDesignation::LiteralCommand(LiteralCommandBilling::Size));
+                    nibble_prob.blend(beg_nib);
+
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
@@ -440,8 +451,11 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
-                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeLastNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
+                    nibble_prob.blend(last_nib);
+
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
                                                                               1 << (last_nib + 14));
                 },
@@ -640,10 +654,14 @@ define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
 enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
+    SizeBegNib,
+    SizeLastNib,
 }
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, 65536),
-                     (LiteralNibblePriorType::SecondNibble, 65536));
+                     (LiteralNibblePriorType::SecondNibble, 65536),
+                     (LiteralNibblePriorType::SizeBegNib, 1),
+                     (LiteralNibblePriorType::SizeLastNib, 1));
 
 #[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
@@ -662,6 +680,18 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::CountLastNib, 1),
                      (CopyCommandNibblePriorType::CountMantissaNib, 64));
 
+#[derive(PartialEq, Debug, Clone)]
+enum DictCommandNibblePriorType {
+    SizeBegNib,
+    SizeLastNib,
+    Index,
+    Transform,
+}
+define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
+                     (DictCommandNibblePriorType::SizeBegNib, 1),
+                     (DictCommandNibblePriorType::SizeLastNib, 1),
+                     (DictCommandNibblePriorType::Index, 1));
+
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
@@ -673,6 +703,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     legacy_cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
+    dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
     distance_lru: [i32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
@@ -686,7 +717,8 @@ impl<Cdf16:CDF16,
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            legacy_cc_prior: AllocCDF2::AllocatedMemory,
-           copy_prior: AllocCDF16::AllocatedMemory) -> Self {
+           copy_prior: AllocCDF16::AllocatedMemory,
+           dict_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             last_dlen: 1,
             last_clen: 1,
@@ -703,6 +735,9 @@ impl<Cdf16:CDF16,
             },
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
+            },
+            dict_priors: DictCommandPriors {
+                priors: dict_prior,
             },
             btype_prior: [[Cdf16::default(),
                            Cdf16::default(),
@@ -804,8 +839,9 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let copy_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let legacy_cc_priors = mcdf2.alloc_cell(CrossCommandPriors::<CDF2, AllocCDF2>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
@@ -820,16 +856,20 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, legacy_cc_priors, copy_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, legacy_cc_priors, copy_priors, dict_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16 = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
-        self.mcdf16.free_cell(cdf16);
+        self.mcdf16.free_cell(cdf16b);
+        self.mcdf16.free_cell(cdf16c);
+        self.mcdf16.free_cell(cdf16d);
         (self.m8, self.mcdf2, self.mcdf16)
     }
 }

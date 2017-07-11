@@ -123,7 +123,7 @@ pub trait CommandDecoder {
 pub enum BillingDesignation {
     Unknown,
     CopyCommand(CopyCommandBilling),
-    DictCommand,
+    DictCommand(DictCommandBilling),
     LiteralCommand(LiteralCommandBilling),
     CrossCommand(CrossCommandBilling),
 }
@@ -149,7 +149,16 @@ pub enum CopyCommandBilling {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub enum LiteralCommandBilling {
     Unknown,
+    Size,
     Data,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum DictCommandBilling {
+    Unknown,
+    Size,
+    Index,
+    Transform,
 }
 
 pub trait ArithmeticEncoderOrDecoder {
