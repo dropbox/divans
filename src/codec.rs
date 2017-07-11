@@ -123,7 +123,6 @@ impl CopyState {
         if dlen ==0 {
             return Fail(); // not allowed to copy from 0 distance
         }
-        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -204,7 +203,7 @@ impl CopyState {
                 CopySubstate::CountLengthFirstGreater14Less25 => {
                     let mut last_nib = clen.wrapping_sub(15);
                     let mut nibble_prob = superstate.bk.copy_priors.get(CopyCommandNibblePriorType::CountLastNib, 0);
-                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::CopyCommand(CopyCommandBilling::Count));
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_clen = last_nib + 15;
@@ -299,7 +298,6 @@ impl DictState {
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> BrotliResult {
 
-        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -354,15 +352,19 @@ impl DictState {
                 },
                 DictSubstate::TransformHigh => {
                     let mut high_nib = in_cmd.transform >> 4;
-                    superstate.coder.get_or_put_nibble(&mut high_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform, 0);
+                    superstate.coder.get_or_put_nibble(&mut high_nib, nibble_prob,
                                                        BillingDesignation::DictCommand(DictCommandBilling::Transform));
+                    nibble_prob.blend(high_nib);
                     self.dc.transform = high_nib << 4;
                     self.state = DictSubstate::TransformLow;
                 }
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
-                    superstate.coder.get_or_put_nibble(&mut low_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform, 1);
+                    superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob,
                                                        BillingDesignation::DictCommand(DictCommandBilling::Transform));
+                    nibble_prob.blend(low_nib);
                     self.dc.transform |= low_nib;
                     let dict = &kBrotliDictionary;
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
@@ -424,7 +426,6 @@ impl<AllocU8:Allocator<u8>,
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
         let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
-        let uniform_prob = Cdf16::default();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -464,8 +465,10 @@ impl<AllocU8:Allocator<u8>,
                     let last_nib_as_u32 = (literal_len ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    superstate.coder.get_or_put_nibble(&mut last_nib, &uniform_prob,
+                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, 0);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob,
                                                        BillingDesignation::LiteralCommand(LiteralCommandBilling::Unknown));
+                    nibble_prob.blend(last_nib);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
@@ -656,12 +659,14 @@ enum LiteralNibblePriorType {
     SecondNibble,
     SizeBegNib,
     SizeLastNib,
+    SizeMantissaNib,
 }
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, 65536),
                      (LiteralNibblePriorType::SecondNibble, 65536),
                      (LiteralNibblePriorType::SizeBegNib, 1),
-                     (LiteralNibblePriorType::SizeLastNib, 1));
+                     (LiteralNibblePriorType::SizeLastNib, 1),
+                     (LiteralNibblePriorType::SizeMantissaNib, 1));
 
 #[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
@@ -690,7 +695,8 @@ enum DictCommandNibblePriorType {
 define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::SizeBegNib, 1),
                      (DictCommandNibblePriorType::SizeLastNib, 1),
-                     (DictCommandNibblePriorType::Index, 1));
+                     (DictCommandNibblePriorType::Index, 1),
+                     (DictCommandNibblePriorType::Transform, 2));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
