@@ -568,7 +568,7 @@ fn decompress<Reader:std::io::Read,
                     match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
                         Ok(size) => {
                             if size == 0 {
-                                println_stderr!("End of file.  Feeding zero's.\n");
+                                //println_stderr!("End of file.  Feeding zero's.\n");
                                 let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_offset).1);
                                 input_end = input_offset + len;
                                 //return Err(io::Error::new(
