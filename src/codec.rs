@@ -272,7 +272,7 @@ pub enum DictSubstate {
     Begin,
     WordSizeFirst,
     WordSizeGreater18Less25, // if in this state, second nibble results in values 19-24 (first nibble was between 4 and 18)
-    WordIndexMantissa(u8, u32), // assume the length is < (1 << WordSize), decode that many nibbles and use binary encoding
+    WordIndexMantissa(u8, u8, u32), // assume the length is < (1 << WordSize), decode that many nibbles and use binary encoding
     TransformHigh, // total number of transforms <= 121 therefore; nibble must be < 8
     TransformLow,
     FullyDecoded,
@@ -311,7 +311,7 @@ impl DictState {
                 need_something => return need_something,
             }
             let billing = BillingDesignation::DictCommand(match self.state {
-                DictSubstate::WordIndexMantissa(_, _) => DictSubstate::WordIndexMantissa(0, 0),
+                DictSubstate::WordIndexMantissa(_, _, _) => DictSubstate::WordIndexMantissa(0, 0, 0),
                 _ => self.state
             });
 
@@ -329,7 +329,7 @@ impl DictState {
                         self.state = DictSubstate::WordSizeGreater18Less25;
                     } else {
                         self.dc.word_size = beg_nib + 4;
-                        self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
+                        self.state = DictSubstate::WordIndexMantissa(0, round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                     }
                 }
                 DictSubstate::WordSizeGreater18Less25 => {
@@ -342,14 +342,15 @@ impl DictState {
                     if self.dc.word_size > 24 {
                         return BrotliResult::ResultFailure;
                     }
-                    self.state = DictSubstate::WordIndexMantissa(round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
+                    self.state = DictSubstate::WordIndexMantissa(0, round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                 }
-                DictSubstate::WordIndexMantissa(len_remaining, decoded_so_far) => {
+                DictSubstate::WordIndexMantissa(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
                     let last_nib_as_u32 = (in_cmd.word_id ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Index, 0);
+                    let index = if len_decoded == 0 { ((DICT_BITS[self.dc.word_size as usize] % 4) + 1) as usize } else { 0usize };
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Index, index);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
 
@@ -359,6 +360,7 @@ impl DictState {
                         self.state = DictSubstate::TransformHigh;
                     } else {
                         self.state  = DictSubstate::WordIndexMantissa(
+                            len_decoded + 4,
                             next_len_remaining,
                             next_decoded_so_far);
                     }
@@ -711,7 +713,7 @@ enum DictCommandNibblePriorType {
 define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::SizeBegNib, 1),
                      (DictCommandNibblePriorType::SizeLastNib, 1),
-                     (DictCommandNibblePriorType::Index, 1),
+                     (DictCommandNibblePriorType::Index, 5),
                      (DictCommandNibblePriorType::Transform, 2));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
