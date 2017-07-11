@@ -36,7 +36,11 @@ const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
 pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
 
+#[cfg(feature="blend")]
+pub type DefaultCDF16 = probability::BlendCDF16;
+#[cfg(not(feature="blend"))]
 pub type DefaultCDF16 = probability::FrequentistCDF16;
+
 pub use probability::CDF2;
 
 #[cfg(not(feature="billing"))]

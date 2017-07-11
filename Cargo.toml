@@ -20,6 +20,7 @@ lto=true
 
 [features]
 billing = []
+blend = []
 debug_entropy = []
 bitcmdselect = []
 float64 = []
