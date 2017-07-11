@@ -234,6 +234,9 @@ impl ByteStack {
     fn reset(&mut self) {
         self.nbytes = self.data.len();
     }
+    fn bytes(&mut self) -> &[u8] {
+        return &self.data[self.nbytes ..  self.data.len()];
+    }
     fn stack_num_bytes(&self) -> usize {
         return self.data.len() - self.nbytes;
     }
@@ -281,6 +284,9 @@ impl ByteQueue for ByteStack {
 impl BitStack {
     fn reset(&mut self) {
         self.nbits = self.data.len();
+    }
+    fn bits(&mut self) -> &[bool] {
+        return &self.data[self.nbits ..  self.data.len()];
     }
     fn stack_num_bits(&mut self) -> usize {
         return self.data.len() - self.nbits;
@@ -342,8 +348,8 @@ impl EntropyEncoderANS {
             {
                 //bits and probs should be same size
                 assert!(self.probs.stack_num_bytes() == num);
-                let bits = self.bits.data.iter();
-                let probs = self.probs.data.iter();
+                let bits = self.bits.bits().iter();
+                let probs = self.probs.bytes().iter();
                 for (b,p) in bits.zip(probs) {
                     EntropyEncoderANS::encode_bit(&mut self.c, &mut self.q, *b,*p);
                 }
@@ -386,6 +392,7 @@ impl EntropyEncoder for EntropyEncoderANS {
         if  prob_of_false == 0 {
             prob_of_false = 1;
         }
+        assert!(prob_of_false != 0);
         self.bits.stack_bit(bit);
         self.probs.stack_byte(prob_of_false);
         if self.probs.stack_bytes_avail() == 0 {
