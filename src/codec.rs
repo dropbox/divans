@@ -465,9 +465,10 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut cur_nibble = (superstate.specialization.get_literal_byte(
-                        in_cmd,
-                        byte_index) >> ((1 - (nibble_index & 1)) << 2)) & 0xf;
+                    let high_nibble = (nibble_index & 1) == 0;
+                    let shift : u8 = if high_nibble { 4 } else { 0 };
+                    let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
+                                          >> shift) & 0xf;
                     let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
                     let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
@@ -477,17 +478,16 @@ impl<AllocU8:Allocator<u8>,
                     let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
-                    let literal_prior_offset = (-((nibble_index & 1) as isize)) as usize;
                     {
-                        let index : usize = (NUM_FIRST_LITERAL_NIBBLE_PRIORS & literal_prior_offset)
-                            + (k0 | (k1 << 4)/* | (k2 << 8) | (k3 << 0xc)*/);
-                        let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                                           index);
+                        let index : usize = k0 | (k1 << 4) /* | (k2 << 8) | (k3 << 0xc)*/ ;
+                        let mut nibble_prob = superstate.bk.lit_priors.get(
+                            if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
+                            index);
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob,
                                                            BillingDesignation::LiteralCommand(LiteralCommandBilling::Data));
                         nibble_prob.blend(cur_nibble);
                     }
-                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << ((1 - (nibble_index & 1)) << 2);
+                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << shift;
                     superstate.bk.push_literal_nibble(cur_nibble);
                     /*
                     if (nibble_index & 1) == 1 {
@@ -627,8 +627,6 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
 
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
 const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
-const NUM_FIRST_LITERAL_NIBBLE_PRIORS: usize = 65536;
-const NUM_SECOND_LITERAL_NIBBLE_PRIORS: usize = 65536;
 const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 const BLOCK_TYPE_COMMAND_SWITCH:usize=0;
 const BLOCK_TYPE_DISTANCE_SWITCH:usize=0;
