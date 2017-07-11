@@ -13,14 +13,16 @@ mod interface;
 mod probability;
 #[macro_use]
 mod priors;
-mod debug_encoder;
+#[macro_use]
 mod encoder;
+mod debug_encoder;
 mod cmd_to_raw;
 mod codec;
 mod cmd_to_divans;
 mod divans_to_raw;
 mod billing;
 pub use codec::COMMAND_LINE_ENFORCE_LEGACY_ENCODING; 
+mod ans;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop};
@@ -33,8 +35,8 @@ pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
-pub type DefaultArithmeticEncoder = debug_encoder::DebugEncoder;
-pub type DefaultArithmeticDecoder = debug_encoder::DebugDecoder;
+pub type DefaultArithmeticEncoder = ans::EntropyEncoderANS;
+pub type DefaultArithmeticDecoder = ans::EntropyDecoderANS;
 
 #[cfg(feature="blend")]
 pub type DefaultCDF16 = probability::BlendCDF16;

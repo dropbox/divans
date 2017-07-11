@@ -153,6 +153,7 @@ fn e2e_alice(buffer_size: usize) {
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
    super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+   println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
