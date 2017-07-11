@@ -143,7 +143,8 @@ pub enum CopyCommandBilling {
     Unknown,
     DistanceExpo,
     DistanceMantissa,
-    Count,
+    CountExpo,
+    CountMantissa,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
