@@ -5,7 +5,14 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-
+/*
+use std::io::Write;
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+*/
 use interface::{
     BillingDesignation,
     CrossCommandBilling,
@@ -75,8 +82,8 @@ pub enum CopySubstate {
     CountLengthGreater14Less25, // length not between 0 and 14 inclusive... second nibble results in 15-24
     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
     CountDecoded,
-    DistanceLengthFirst,
-    DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
+    DistanceLengthMnemonic, // references a recent distance cached value
+    DistanceNumNibbles,
     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
     FullyDecoded,
 }
@@ -195,31 +202,30 @@ impl CopyState {
                     }
                 },
                 CopySubstate::CountDecoded => {
-                    self.state = CopySubstate::DistanceLengthFirst;
+                    self.state = CopySubstate::DistanceNumNibbles;//CopySubstate::DistanceLengthMnemonic;
                 },
-                CopySubstate::DistanceLengthFirst => {
-                    let mut beg_nib = core::cmp::min(15, dlen - 1);
+                CopySubstate::DistanceLengthMnemonic => {
+                    let mut beg_nib = superstate.bk.distance_mnemonic_code(in_cmd.distance);
                     let index = (superstate.bk.last_clen >> 3) as usize;
                     let dtype = superstate.bk.get_distance_block_type();
-                    let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceBegNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                    nibble_prob.blend(beg_nib);
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceBegNib,
+                            NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
+                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                        nibble_prob.blend(beg_nib);
+                    }
                     if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthGreater15Less25;
+                        self.state = CopySubstate::DistanceNumNibbles;
                     } else {
-                        superstate.bk.last_dlen = beg_nib + 1;
-                        if beg_nib == 0 {
-                            self.cc.distance = 1;
-                            self.state = CopySubstate::FullyDecoded;
-                        } else {
-                            self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib),  1 << beg_nib);
-                        }
+                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
+                        self.state = CopySubstate::FullyDecoded;
                     }
                 },
-                CopySubstate::DistanceLengthGreater15Less25 => {
-                    let mut last_nib = dlen.wrapping_sub(16);
+                CopySubstate::DistanceNumNibbles => {
+                    let mut last_nib = (dlen + 4) / 4;
                     let index = (superstate.bk.last_clen >> 3) as usize;
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -227,8 +233,8 @@ impl CopyState {
                         NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
-                    superstate.bk.last_dlen = (last_nib + 15) + 1;
-                    self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
+                    superstate.bk.last_dlen = last_nib << 2;
+                    self.state = CopySubstate::DistanceMantissaNibbles(0, last_nib << 2,  0);
                 },
                 CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
@@ -421,13 +427,7 @@ impl DictState {
         }
     }
 }
-/*
-use std::io::Write;
-macro_rules! println_stderr(
-    ($($val:tt)*) => { {
-        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
-    } }
-);*/
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralSubstate {
     Begin,
@@ -761,7 +761,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     legacy_cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
-    distance_lru: [i32;4],
+    distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
 }
@@ -803,6 +803,74 @@ impl<Cdf16:CDF16,
             btype_lru:[[0,1];3],
         }
     }
+    fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
+        match code {
+            0 => self.distance_lru[0],
+            1 => self.distance_lru[1],
+            2 => self.distance_lru[2],
+            3 => self.distance_lru[3],
+            4 => self.distance_lru[0] + 1,
+            5 => self.distance_lru[0].wrapping_sub(1),
+            6 => self.distance_lru[1] + 1,
+            7 => self.distance_lru[1].wrapping_sub(1),
+            8 => self.distance_lru[0] + 2,
+            9 => self.distance_lru[0].wrapping_sub(2),
+            10 => self.distance_lru[1] + 2,
+            11 => self.distance_lru[1].wrapping_sub(2),
+            12 => self.distance_lru[0] + 3,
+            13 => self.distance_lru[0].wrapping_sub(3),
+            14 => self.distance_lru[1] + 3,
+            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
+        }
+    }
+    fn distance_mnemonic_code(&self, d: u32) -> u8 {
+        if d == self.distance_lru[0] {
+            return 0;
+        }
+        if d == self.distance_lru[1] {
+            return 1;
+        }
+        if d == self.distance_lru[2] {
+            return 2;
+        }
+        if d == self.distance_lru[3] {
+            return 3;
+        }
+        if d == self.distance_lru[0] + 1 {
+            return 4;
+        }
+        if d == self.distance_lru[0].wrapping_sub(1) {
+            return 5;
+        }
+        if d == self.distance_lru[1] + 1 {
+            return 6;
+        }
+        if d == self.distance_lru[1].wrapping_sub(1) {
+            return 7;
+        }
+        if d == self.distance_lru[0] + 2 {
+            return 8;
+        }
+        if d == self.distance_lru[0].wrapping_sub(2) {
+            return 9;
+        }
+        if d == self.distance_lru[1] + 2 {
+            return 10;
+        }
+        if d == self.distance_lru[1].wrapping_sub(2) {
+            return 11;
+        }
+        if d == self.distance_lru[0] + 3 {
+            return 12;
+        }
+        if d == self.distance_lru[0].wrapping_sub(3) {
+            return 13;
+        }
+        if d == self.distance_lru[1] + 3 {
+            return 14;
+        }
+        15
+    }
     fn get_command_block_type(&self) -> usize {
         self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0] as usize
     }
@@ -843,7 +911,7 @@ impl<Cdf16:CDF16,
         self.next_state();
         self.last_4_states |= 128;
     }
-    fn obs_distance(&mut self, distance:i32) {
+    fn obs_distance(&mut self, distance:u32) {
         if distance == self.distance_lru[1] {
             self.distance_lru = [distance,
                                  self.distance_lru[0],
@@ -1342,7 +1410,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_distance(copy_state.cc.distance as i32);
+                            self.cross_command_state.bk.obs_distance(copy_state.cc.distance);
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Copy(core::mem::replace(&mut copy_state.cc,
                                                                  CopyCommand::nop()))));
