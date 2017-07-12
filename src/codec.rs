@@ -472,7 +472,7 @@ impl<AllocU8:Allocator<u8>,
             }
             let billing = BillingDesignation::LiteralCommand(match self.state {
                 LiteralSubstate::LiteralCountMantissaNibbles(_, _) => LiteralSubstate::LiteralCountMantissaNibbles(0, 0),
-                LiteralSubstate::LiteralNibbleIndex(_) => LiteralSubstate::LiteralNibbleIndex(0),
+                LiteralSubstate::LiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
                 _ => self.state
             });
             match self.state {
@@ -543,10 +543,11 @@ impl<AllocU8:Allocator<u8>,
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     {
-                        let index : usize = k0 | (k1 << 4) /* | (k2 << 8) | (k3 << 0xc)*/ ;
+                        let nibble_index_truncated = if nibble_index < 2 { nibble_index } else { 2 };
+                        let index : usize = (k0 | (k1 << 4)) + (nibble_index_truncated as usize) * 256; /* | (k2 << 8) | (k3 << 0xc)*/ ;
                         let mut nibble_prob = superstate.bk.lit_priors.get(
                             if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
-                            index + NUM_LITERAL_ORGANIC_PRIORS + ltype);
+                            index + NUM_LITERAL_ORGANIC_PRIORS * ltype);
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                         nibble_prob.blend(cur_nibble);
                     }
