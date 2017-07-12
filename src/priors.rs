@@ -1,7 +1,7 @@
 #![allow(unused)]
 #![macro_escape]
 use core;
-use super::probability::{CDF2, CDF16, Entropy};
+use super::probability::{CDF2, CDF16, CDFDebug};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 macro_rules! define_prior_struct {
@@ -10,10 +10,10 @@ macro_rules! define_prior_struct {
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.
-        struct $name<T: Entropy, AllocT: Allocator<T>> {
+        struct $name<T: CDFDebug + Default, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T: Entropy, AllocT: Allocator<T>> $name<T, AllocT> {
+        impl<T: CDFDebug + Default, AllocT: Allocator<T>> $name<T, AllocT> {
             #[inline]
             fn get(&mut self, billing: $billing_type, index: usize) -> &mut T {
                 let offset = define_prior_struct_helper_offset!(billing; $($args),*);
@@ -31,7 +31,7 @@ macro_rules! define_prior_struct {
             }
         }
         #[cfg(feature="debug_entropy")]
-        impl<T: Entropy, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+        impl<T: CDFDebug + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 // Check for proper initialization.
                 if self.priors.slice().len() != $name::<T, AllocT>::num_all_priors() {
@@ -41,13 +41,17 @@ macro_rules! define_prior_struct {
                 for arg in [$($args),*].into_iter() {
                     let ref billing = arg.0;
                     let count = arg.1;
+                    let mut num_cdfs_printed = 0usize;
                     for i in 0..count {
-                        if i == 16 {
-                            println!("  {:?}[..] : omitted", billing);
+                        if num_cdfs_printed == 16 {
+                            println!("  {:?}[...] : omitted", billing);
                             break;
                         }
-                        let ent = self.get(billing.clone(), i).entropy();
-                        println!("  {:?}[{:2}] : {}", billing, i, ent);
+                        let cdf = self.get(billing.clone(), i);
+                        if cdf.used() {
+                            println!("  {:?}[{}] : {}", billing, i, cdf.entropy());
+                            num_cdfs_printed += 1;
+                        }
                     }
                 }
             }
@@ -75,7 +79,7 @@ macro_rules! sum_cdr {
 }
 
 mod test {
-    use super::{Allocator, CDF2, Entropy, SliceWrapper, SliceWrapperMut};
+    use super::{Allocator, CDF2, CDFDebug, SliceWrapper, SliceWrapperMut};
     use alloc::HeapAlloc;
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]

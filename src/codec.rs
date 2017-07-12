@@ -12,7 +12,7 @@ use interface::{
     BlockSwitch,
     Nop
 };
-use super::probability::{CDF2, CDF16, Entropy};
+use super::probability::{CDF2, CDF16, CDFDebug};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,

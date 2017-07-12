@@ -3,7 +3,8 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
-pub trait Entropy {
+pub trait CDFDebug {
+    fn used(&self) -> bool { false }
     fn entropy(&self) -> f64;
 }
 
@@ -22,7 +23,7 @@ impl Default for CDF2 {
     }
 }
 
-impl Entropy for CDF2 {
+impl CDFDebug for CDF2 {
     fn entropy(&self) -> f64 {
         if self.prob == 0 || (self.prob as i64) == self.max() {
             0.0f64
@@ -30,6 +31,9 @@ impl Entropy for CDF2 {
             let prob_f64 = (self.prob as f64) / (self.max() as f64);
             -(prob_f64 * prob_f64.log2() + (1.0 - prob_f64) * (1.0 - prob_f64).log2())
         }
+    }
+    fn used(&self) -> bool {
+        self.counts[0] != 1 || self.counts[1] != 1
     }
 }
 
@@ -98,7 +102,7 @@ pub trait CDF16:Sized+Default+Copy {
     }
 }
 
-impl<T> Entropy for T where T: CDF16 {
+impl<T> CDFDebug for T where T: CDF16 {
     fn entropy(&self) -> f64 {
         let mut sum = 0.0f64;
         for i in 0..16 {
@@ -109,6 +113,10 @@ impl<T> Entropy for T where T: CDF16 {
             };
         }
         sum
+    }
+    fn used(&self) -> bool {
+        // FIXME: a pretty primitive check.
+        self.entropy() != T::default().entropy()
     }
 }
 
