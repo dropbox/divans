@@ -58,7 +58,7 @@ macro_rules! define_prior_struct {
 macro_rules! define_prior_struct_helper_offset {
     ($billing: expr; ($ty: expr, $count: expr)) => { 0 };  // should panic if billing != type
     ($billing: expr; ($ty: expr, $count: expr), $($more:tt),*) => {
-        (($billing != $ty) as u32) * ($count + define_prior_struct_helper_offset!($billing; $($more),*))
+        ((($billing != $ty) as u32) * ($count + define_prior_struct_helper_offset!($billing; $($more),*)) as u32) as usize
     };
 }
 
