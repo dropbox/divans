@@ -120,7 +120,7 @@ fn test_random_then_unicode() {
 #[test]
 fn test_alice29() {
    let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/alice29.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/alice29.ir.br")).unwrap();
+   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/alice29-priors.ir.br")).unwrap();
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
    assert_eq!(raw_file, div_raw);
@@ -137,15 +137,18 @@ fn test_asyoulik() {
 
 
 
-fn e2e_alice(buffer_size: usize) {
+fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
    let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
    brotli_decompressor::BrotliDecompress(&mut raw_text_as_br_buffer,
         &mut raw_text_buffer).unwrap();
-   let ir_as_br = include_bytes!("../../testdata/alice29.ir.br");
+   let mut ir_as_br_buffer = if use_serialized_priors {
+       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir.br"))
+   } else {
+       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29.ir.br"))
+   };
    let mut ir_buffer = UnlimitedBuffer::new(&[]);
-   let mut ir_as_br_buffer = UnlimitedBuffer::new(ir_as_br);
    brotli_decompressor::BrotliDecompress(&mut ir_as_br_buffer,
         &mut ir_buffer).unwrap();
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
@@ -161,18 +164,18 @@ fn e2e_alice(buffer_size: usize) {
 
 #[test]
 fn test_e2e_alice() {
-    e2e_alice(65536);
+    e2e_alice(65536, true);
 }
 
 #[test]
-fn test_e2e_smallbuf() {
-    e2e_alice(15);
+fn test_e2e_smallbuf_without_priors() {
+    e2e_alice(15, false);
 }
 
 
 #[test]
 fn test_e2e_tinybuf() {
-    e2e_alice(1);
+    e2e_alice(1, true);
 }
 
 
