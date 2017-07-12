@@ -179,7 +179,7 @@ impl CopyState {
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountMantissaNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS * ctype + index);
+                        (NUM_COPY_COMMAND_ORGANIC_PRIORS * ctype + index) * (24>>2) + (next_len_remaining >>2) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib);
@@ -239,7 +239,7 @@ impl CopyState {
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceMantissaNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS + dtype + index);
+                        (NUM_COPY_COMMAND_ORGANIC_PRIORS + dtype + index) * (24>>2) + (next_len_remaining>>2) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib);
@@ -374,7 +374,7 @@ impl DictState {
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.dict_priors.get(
                         DictCommandNibblePriorType::Index,
-                        NUM_ORGANIC_DICT_DISTANCE_PRIORS * dtype + index);
+                        (NUM_ORGANIC_DICT_DISTANCE_PRIORS * dtype + index) * (12 >> 2) + (next_len_remaining>>2) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
 
@@ -513,7 +513,7 @@ impl<AllocU8:Allocator<u8>,
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, ctype);
+                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, ctype*(24 >>2) +  (next_len_remaining >> 2) as usize);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
