@@ -1,6 +1,7 @@
 #![allow(unknown_lints,unused_macros,unused_imports)]
 use core::iter::FromIterator;
-use interface::{ArithmeticEncoderOrDecoder, BillingDesignation};
+use alloc::{Allocator};
+use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator};
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
 
@@ -27,17 +28,18 @@ pub struct BillingArithmeticCoder<Coder:ArithmeticEncoderOrDecoder> {
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder+Default> Default for BillingArithmeticCoder<Coder> {
-   fn default() -> Self {
+impl<Coder:ArithmeticEncoderOrDecoder+NewWithAllocator> NewWithAllocator for BillingArithmeticCoder<Coder> {
+   type AllocU8 = Coder::AllocU8;
+   fn new(m8: &mut Self::AllocU8) -> Self {
        BillingArithmeticCoder::<Coder>{
-           coder: Coder::default(),
+           coder: Coder::new(m8),
            counter: billing::HashMap::new(),
        }
    }
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder+Default> BillingArithmeticCoder<Coder> {
+impl<Coder:ArithmeticEncoderOrDecoder> BillingArithmeticCoder<Coder> {
     // Return the (bits, virtual bits) pair.
     pub fn get_total(&self) -> (f64, f64) {
         let mut total_bits : f64 = 0.0;

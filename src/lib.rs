@@ -37,10 +37,10 @@ const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
 macro_rules! DefaultArithmeticEncoder(
-    ($val: ident) => { ans::EntropyEncoderANS<$val> }
+    () => { ans::EntropyEncoderANS }
 );
 macro_rules! DefaultArithmeticDecoder(
-    ($val: ident) => { ans::EntropyDecoderANS<$val> }
+    () => { ans::EntropyDecoderANS }
 );
 
 #[cfg(feature="blend")]
@@ -53,22 +53,44 @@ pub use probability::CDF2;
 
 #[cfg(not(feature="billing"))]
 macro_rules! SelectedArithmeticEncoder(
-    ($val: ident) => { DefaultArithmeticEncoder!($val) }
+    ($type: ident) => { DefaultArithmeticEncoder!()<$type> }
 );
+
+#[cfg(not(feature="billing"))]
+macro_rules! NewSelectedArithmeticEncoder(
+    ($type: ident, $val: ident) => { DefaultArithmeticEncoder!()::<$val>new($val)  }
+);
+
 #[cfg(not(feature="billing"))]
 macro_rules! SelectedArithmeticDecoder(
-    ($val: ident) => { DefaultArithmeticDecoder!($val) }
+    ($val: expr) => { DefaultArithmeticDecoder!($val) }
+);
+
+#[cfg(not(feature="billing"))]
+macro_rules! NewSelectedArithmeticDecoder(
+    ($type: ident, $val: ident) => { DefaultArithmeticDecoder!()::<$val>new($val)  }
 );
 
 
 #[cfg(feature="billing")]
 macro_rules! SelectedArithmeticEncoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($vala)> }
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($val)> }
 );
 #[cfg(feature="billing")]
-macro_rules! SelectedArithmeticDecoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($vala)> }
+macro_rules! NewSelectedArithmeticEncoder(
+    ($type: ident, $val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!()<$val>>::new($val)  }
 );
+
+
+#[cfg(feature="billing")]
+macro_rules! SelectedArithmeticDecoder(
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($val)> }
+);
+#[cfg(feature="billing")]
+macro_rules! NewSelectedArithmeticDecoder(
+    ($type: ident, $val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!()<$val>>::new($val)  }
+);
+
 
 
 pub struct DivansCompressor<AllocU8:Allocator<u8>,
@@ -88,8 +110,7 @@ impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:A
         if window_size > 24 {
             window_size = 24;
         }
-        //update this if you change the SelectedArithmeticEncoder macro
-        let enc = ans::EntropyEncoderANS::<AllocU8>::new(&mut m8);
+        let enc = NewSelectedArithmeticEncoder(AllocU8, &mut m8);
         DivansCompressor::<AllocU8, AllocCDF2, AllocCDF16> {
             codec:DivansCodec::<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
@@ -256,7 +277,7 @@ impl<AllocU8:Allocator<u8>,
             _ => return BrotliResult::ResultFailure,
         }
         //update this if you change the SelectedArithmeticDecoder macro
-        let decoder = ans::EntropyDecoderANS::<AllocU8>::new(&mut m8);
+        let decoder = NewSelectedArithmeticDecoder!(AllocU8, &mut m8);
         core::mem::replace(self,
                            DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder!(AllocU8),
                                                                     DecoderSpecialization,
