@@ -119,7 +119,8 @@ const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 
 #[derive(Clone,Copy)]
 pub struct BlendCDF16 {
-    pub cdf: [Prob; 16]
+    pub cdf: [Prob; 16],
+    mix_rate: i32,
 }
 
 impl Default for BlendCDF16 {
@@ -140,7 +141,8 @@ impl Default for BlendCDF16 {
                   (13 * CDF_LIMIT / 16) as Prob,
                   (14 * CDF_LIMIT / 16) as Prob,
                   (15 * CDF_LIMIT / 16) as Prob,
-                  CDF_LIMIT as Prob]
+                  CDF_LIMIT as Prob],
+            mix_rate: 1 << 11, // chosen as (1 << 15) divided by 16.
         }
     }
 }
@@ -156,7 +158,9 @@ impl CDF16 for BlendCDF16 {
         return true;
     }
     fn blend(&mut self, symbol:u8) {
-        self.cdf = mul_blend(self.cdf, symbol, 128, 0);
+        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
+        // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
+        self.mix_rate -= self.mix_rate >> 7;
     }
     fn max(&self) -> Prob {
         CDF_MAX as Prob
@@ -423,7 +427,7 @@ mod test {
             let abs_delta = (expected - actual).abs();
             let rel_delta = abs_delta / expected;  // may be nan
             // TODO: These bounds should be tightened.
-            assert!(rel_delta < 0.16f32 || abs_delta < 0.016f32);
+            assert!(rel_delta < 0.16f32 || abs_delta < 0.014f32);
         }
     }
     #[test]
