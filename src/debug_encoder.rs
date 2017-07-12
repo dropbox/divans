@@ -55,4 +55,6 @@ impl EntropyDecoder for DebugDecoder {
     }
 }
 
-arithmetic_encoder_or_decoder_impl!(DebugEncoder);
+impl ArithmeticEncoderOrDecoder for DebugEncoder {
+    arithmetic_encoder_or_decoder_methods!();
+}
