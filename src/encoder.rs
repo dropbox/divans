@@ -197,9 +197,8 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
     }
 }
 
-macro_rules! arithmetic_encoder_or_decoder_impl(
-    ($val: ident) => {
-        impl ArithmeticEncoderOrDecoder for $val {
+macro_rules! arithmetic_encoder_or_decoder_methods(
+    () => {
             fn drain_or_fill_internal_buffer(&mut self,
                                              _input_buffer:&[u8],
                                              _input_offset:&mut usize,
@@ -231,7 +230,6 @@ macro_rules! arithmetic_encoder_or_decoder_impl(
                 BrotliResult::ResultSuccess
             }
         }
-    }
 );
 
 mod test {

@@ -888,7 +888,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     bk: CrossCommandBookKeeping<Cdf16, AllocCDF2, AllocCDF16>,
 }
 
-impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
+impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
       Specialization:EncoderOrDecoderSpecialization,
       Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
@@ -903,6 +903,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
     fn new(mut m8: AllocU8,
            mut mcdf2:AllocCDF2,
            mut mcdf16:AllocCDF16,
+           coder: ArithmeticCoder,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -916,7 +917,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                             AllocU8,
                             AllocCDF2,
                             AllocCDF16> {
-            coder: ArithmeticCoder::default(),
+            coder: coder,
             specialization: spc,
             recoder: super::cmd_to_raw::DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
@@ -1012,7 +1013,7 @@ pub enum OneCommandReturn {
     BufferExhausted(BrotliResult),
 }
 
-impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
+impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
      Cdf16:CDF16,
      AllocU8: Allocator<u8>,
@@ -1024,6 +1025,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
     pub fn new(m8:AllocU8,
                mcdf2:AllocCDF2,
                mcdf16:AllocCDF16,
+               coder: ArithmeticCoder,
                specialization: Specialization,
                ring_buffer_size: usize) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
@@ -1035,8 +1037,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder+Default,
                                                     AllocCDF16>::new(m8,
                                                                      mcdf2,
                                                                      mcdf16,
-                                                                  specialization,
-                                                                  ring_buffer_size),
+                                                                     coder,
+                                                                     specialization,
+                                                                     ring_buffer_size),
             state:EncodeOrDecodeState::Begin,
         }
     }
