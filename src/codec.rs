@@ -203,7 +203,7 @@ impl CopyState {
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceBegNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS + dtype + index);
+                        NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib);
                     if beg_nib == 15 {
@@ -224,7 +224,7 @@ impl CopyState {
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceLastNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS + dtype + index);
+                        NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
@@ -239,7 +239,7 @@ impl CopyState {
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceMantissaNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS + dtype + index);
+                        NUM_COPY_COMMAND_ORGANIC_PRIORS * dtype + index);
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib);
