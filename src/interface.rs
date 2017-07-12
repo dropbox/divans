@@ -1,4 +1,4 @@
-use alloc::{SliceWrapper};
+use alloc::{SliceWrapper, Allocator};
 use brotli_decompressor::BrotliResult;
 use super::probability::CDF16;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate};
@@ -139,6 +139,11 @@ pub enum CrossCommandBilling {
     EndIndicator,
     BlockSwitchType,
     FullSelection,
+}
+
+pub trait NewWithAllocator {
+    type AllocU8: Allocator<u8>;
+    fn new(m8: &mut Self::AllocU8) -> Self;
 }
 
 pub trait ArithmeticEncoderOrDecoder {

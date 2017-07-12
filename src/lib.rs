@@ -9,6 +9,7 @@ extern crate std;
 extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
+
 mod interface;
 mod probability;
 #[macro_use]
@@ -25,7 +26,7 @@ pub use codec::COMMAND_LINE_ENFORCE_LEGACY_ENCODING;
 mod ans;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use interface::{BlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop};
+pub use interface::{BlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
@@ -35,8 +36,12 @@ pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
-pub type DefaultArithmeticEncoder = ans::EntropyEncoderANS;
-pub type DefaultArithmeticDecoder = ans::EntropyDecoderANS;
+macro_rules! DefaultArithmeticEncoder(
+    ($val: ident) => { ans::EntropyEncoderANS<$val> }
+);
+macro_rules! DefaultArithmeticDecoder(
+    ($val: ident) => { ans::EntropyDecoderANS<$val> }
+);
 
 #[cfg(feature="blend")]
 pub type DefaultCDF16 = probability::BlendCDF16;
@@ -45,40 +50,52 @@ pub type DefaultCDF16 = probability::FrequentistCDF16;
 
 pub use probability::CDF2;
 
+
 #[cfg(not(feature="billing"))]
-pub type SelectedArithmeticEncoder = DefaultArithmeticEncoder;
+macro_rules! SelectedArithmeticEncoder(
+    ($val: ident) => { DefaultArithmeticEncoder!($val) }
+);
 #[cfg(not(feature="billing"))]
-pub type SelectedArithmeticDecoder = DefaultArithmeticDecoder;
+macro_rules! SelectedArithmeticDecoder(
+    ($val: ident) => { DefaultArithmeticDecoder!($val) }
+);
 
 
 #[cfg(feature="billing")]
-pub type SelectedArithmeticEncoder = billing::BillingArithmeticCoder<DefaultArithmeticEncoder>;
+macro_rules! SelectedArithmeticEncoder(
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($vala)> }
+);
 #[cfg(feature="billing")]
-pub type SelectedArithmeticDecoder = billing::BillingArithmeticCoder<DefaultArithmeticDecoder>;
+macro_rules! SelectedArithmeticDecoder(
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($vala)> }
+);
 
 
 pub struct DivansCompressor<AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
-    codec: DivansCodec<SelectedArithmeticEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
 }
 impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> DivansCompressor<AllocU8,
                                                                                                                          AllocCDF2,
                                                                                                                          AllocCDF16> {
-    pub fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> Self {
+    pub fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> Self {
         if window_size < 10 {
             window_size = 10;
         }
         if window_size > 24 {
             window_size = 24;
         }
+        //update this if you change the SelectedArithmeticEncoder macro
+        let enc = ans::EntropyEncoderANS::<AllocU8>::new(&mut m8);
         DivansCompressor::<AllocU8, AllocCDF2, AllocCDF16> {
-            codec:DivansCodec::<SelectedArithmeticEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
                 mcdf16,
+                enc,
                 EncoderSpecialization::new(),
                 window_size,
             ),
@@ -180,12 +197,12 @@ impl<AllocU8:Allocator<u8>,
 }
 
 #[cfg(not(feature="billing"))]
-fn print_decompression_result(_decompressor :&SelectedArithmeticDecoder, _bytes_written: usize) {
+fn print_decompression_result<AllocU8:Allocator<u8>>(_decompressor :&SelectedArithmeticDecoder!(AllocU8), _bytes_written: usize) {
    
 }
 
 #[cfg(feature="billing")]
-fn print_decompression_result(decompressor :&SelectedArithmeticDecoder, bytes_written: usize) {
+fn print_decompression_result<AllocU8:Allocator<u8>>(decompressor :&SelectedArithmeticDecoder!(AllocU8), bytes_written: usize) {
    decompressor.print_compression_ratio(bytes_written);
 }
 
@@ -193,7 +210,7 @@ pub enum DivansDecompressor<AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
     Header(HeaderParser<AllocU8, AllocCDF2, AllocCDF16>),
-    Decode(DivansCodec<SelectedArithmeticDecoder, DecoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>, usize),
+    Decode(DivansCodec<SelectedArithmeticDecoder!(AllocU8), DecoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>, usize),
 }
 impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
@@ -208,7 +225,7 @@ impl<AllocU8:Allocator<u8>,
         if window_size > 24 {
             return BrotliResult::ResultFailure;
         }
-        let m8:AllocU8;
+        let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
         let mcdf16:AllocCDF16;
         match self {
@@ -238,8 +255,10 @@ impl<AllocU8:Allocator<u8>,
             },
             _ => return BrotliResult::ResultFailure,
         }
+        //update this if you change the SelectedArithmeticDecoder macro
+        let decoder = ans::EntropyDecoderANS::<AllocU8>::new(&mut m8);
         core::mem::replace(self,
-                           DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder,
+                           DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder!(AllocU8),
                                                                     DecoderSpecialization,
                                                                     DefaultCDF16,
                                                                     AllocU8,
@@ -247,8 +266,9 @@ impl<AllocU8:Allocator<u8>,
                                                                     AllocCDF16>::new(m8,
                                                                                      mcdf2,
                                                                                      mcdf16,
-                                                                                  DecoderSpecialization::new(),
-                                                                                  window_size), 0));
+                                                                                     decoder,
+                                                                                     DecoderSpecialization::new(),
+                                                                                     window_size), 0));
         BrotliResult::ResultSuccess
     }
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
