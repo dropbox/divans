@@ -13,6 +13,7 @@ use std::env;
 
 use core::convert::From;
 use std::vec::Vec;
+use divans::BlockSwitch;
 use divans::CopyCommand;
 use divans::LiteralCommand;
 use divans::Command;
@@ -143,10 +144,28 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
     if cmd == "window" {
             // FIXME validate
             return Ok(Some(Command::Copy(CopyCommand{distance:1,num_bytes:0})));
+    } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
+        if command_vec.len() != 2 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "*type needs 1 argument"));
+        }
+        let block_type = match command_vec[1].parse::<u32>() {
+            Ok(el) => el as u8,
+            Err(msg) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          msg.description()));
+            }
+        };
+        return Ok(Some(match cmd.chars().next().unwrap() {
+            'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
+            'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
+            'l' => Command::BlockSwitchLiteral(BlockSwitch::new(block_type)),
+            _ => panic!("Logic error: already checked for valid command"),
+        }));
     } else if cmd == "copy" {
         if command_vec.len() < 4 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      "copy needs 4 arguments"));                
+                                      "copy needs 4 arguments"));
         }
         let expected_len = match command_vec[1].parse::<u32>() {
             Ok(el) => el,

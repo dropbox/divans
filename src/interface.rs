@@ -12,6 +12,9 @@ pub trait Nop<T> {
 pub struct BlockSwitch(u8);
 
 impl BlockSwitch {
+    pub fn new(block_type: u8) -> Self {
+        BlockSwitch(block_type)
+    }
     pub fn block_type(&self) -> u8 {
         self.0
     }
