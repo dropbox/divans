@@ -1,9 +1,9 @@
 #![allow(unknown_lints,unused_macros,unused_imports)]
 use core::iter::FromIterator;
-use interface::{ArithmeticEncoderOrDecoder, BillingDesignation};
+use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator};
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
-
+use alloc::Allocator;
 #[cfg(feature="billing")]
 mod billing {
     pub use std::collections::HashMap;
@@ -31,6 +31,16 @@ impl<Coder:ArithmeticEncoderOrDecoder+Default> Default for BillingArithmeticCode
    fn default() -> Self {
        BillingArithmeticCoder::<Coder>{
            coder: Coder::default(),
+           counter: billing::HashMap::new(),
+       }
+   }
+}
+#[cfg(feature="billing")]
+impl<A:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder+NewWithAllocator> NewWithAllocator for BillingArithmeticCoder<Coder> {
+   type AllocU8 = A;
+   fn new(m8: &mut Self::AllocU8) -> Self {
+       BillingArithmeticCoder::<Coder>{
+           coder: Coder::new(m8),
            counter: billing::HashMap::new(),
        }
    }

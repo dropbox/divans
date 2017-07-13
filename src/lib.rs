@@ -63,11 +63,11 @@ macro_rules! SelectedArithmeticDecoder(
 
 #[cfg(feature="billing")]
 macro_rules! SelectedArithmeticEncoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($vala)> }
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($val)> }
 );
 #[cfg(feature="billing")]
 macro_rules! SelectedArithmeticDecoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($vala)> }
+    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($val)> }
 );
 
 
@@ -89,7 +89,7 @@ impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:A
             window_size = 24;
         }
         //update this if you change the SelectedArithmeticEncoder macro
-        let enc = ans::EntropyEncoderANS::<AllocU8>::new(&mut m8);
+        let enc = billing::BillingArithmeticCoder::<AllocU8>::new(&mut m8);//ans::EntropyEncoderANS::<AllocU8>::new(&mut m8);
         DivansCompressor::<AllocU8, AllocCDF2, AllocCDF16> {
             codec:DivansCodec::<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
