@@ -146,7 +146,7 @@ pub trait NewWithAllocator<AllocU8: Allocator<u8>> {
 }
 
 pub trait BillingCapability { // maybe we should have called it capa-bill-ity
-    fn debug_print(&self, size:usize) {
+    fn debug_print(&self, _size:usize) {
         //intentially a default noop, can be filled out by decoders
     }
 }
