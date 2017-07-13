@@ -1,6 +1,8 @@
 #![allow(unknown_lints,unused_macros,unused_imports)]
 use core::iter::FromIterator;
-use interface::{ArithmeticEncoderOrDecoder, BillingDesignation};
+use core::marker::PhantomData;
+use alloc::{Allocator};
+use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator};
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
 
@@ -21,23 +23,26 @@ macro_rules! println_stderr(
 );
 
 #[cfg(feature="billing")]
-pub struct BillingArithmeticCoder<Coder:ArithmeticEncoderOrDecoder> {
+pub struct BillingArithmeticCoder<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> {
     coder: Coder,
-    counter: billing::HashMap<BillingDesignation, (f64, f64)>
+    counter: billing::HashMap<BillingDesignation, (f64, f64)>,
+    _phantom: PhantomData<AllocU8>,
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder+Default> Default for BillingArithmeticCoder<Coder> {
-   fn default() -> Self {
-       BillingArithmeticCoder::<Coder>{
-           coder: Coder::default(),
+impl<AllocU8:Allocator<u8>,
+     Coder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>> NewWithAllocator<AllocU8> for BillingArithmeticCoder<AllocU8, Coder> {
+   fn new(m8: &mut AllocU8) -> Self {
+       BillingArithmeticCoder::<AllocU8, Coder>{
+           coder: Coder::new(m8),
            counter: billing::HashMap::new(),
+           _phantom:PhantomData::<AllocU8>::default(),
        }
    }
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder+Default> BillingArithmeticCoder<Coder> {
+impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> BillingArithmeticCoder<AllocU8, Coder> {
     // Return the (bits, virtual bits) pair.
     pub fn get_total(&self) -> (f64, f64) {
         let mut total_bits : f64 = 0.0;
@@ -56,7 +61,7 @@ impl<Coder:ArithmeticEncoderOrDecoder+Default> BillingArithmeticCoder<Coder> {
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<Coder> {
+impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<AllocU8, Coder> {
     fn drop(&mut self) {
         let max_key_len = self.counter.keys().map(|k| format!("{:?}", k).len()).max().unwrap_or(5);
         let report = |k, v: (f64, f64)| {
@@ -79,7 +84,7 @@ impl<Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<Coder> {
 }
 
 #[cfg(feature="billing")]
-impl<Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingArithmeticCoder<Coder> {
+impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingArithmeticCoder<AllocU8, Coder> {
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer: &[u8],
                                      input_offset: &mut usize,
@@ -122,5 +127,8 @@ impl<Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingAri
     }
     fn close(&mut self) -> BrotliResult {
         self.coder.close()
+    }
+    fn debug_print(&self, byte_size: usize) {
+        self.print_compression_ratio(byte_size);
     }
 }

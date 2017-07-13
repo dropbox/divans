@@ -220,9 +220,8 @@ pub struct EntropyEncoderANS<AllocU8: Allocator<u8>>  {
     probs: ByteStack<AllocU8>,
 }
 
-impl<A: Allocator<u8>> NewWithAllocator for ByteStack<A> {
-    type AllocU8 = A;
-	fn new(m8: &mut Self::AllocU8) -> Self {
+impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
+	fn new(m8: &mut A) -> Self {
 		let data = m8.alloc_cell(MAX_BUFFER_SIZE);
         return ByteStack {data: data, nbytes: MAX_BUFFER_SIZE};
     }
@@ -280,24 +279,23 @@ impl<AllocU8: Allocator<u8>> ByteQueue for ByteStack<AllocU8> {
     }
 }
 
-impl<A: Allocator<u8>> NewWithAllocator for EntropyDecoderANS<A> {
-    type AllocU8 = A;
-	fn new(_m8: &mut Self::AllocU8) -> Self {
+impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyDecoderANS<A> {
+
+	fn new(_m8: &mut A) -> Self {
         let c = ANS1::default();
         let q = CycleQueue::default();
-		let p = PhantomData::<Self::AllocU8>::default();
+		let p = PhantomData::<A>::default();
         return EntropyDecoderANS{c: c, q: q, len: 0, phantom: p};
     }
 }
 
-impl<A: Allocator<u8>> NewWithAllocator for EntropyEncoderANS<A> {
-    type AllocU8 = A;
-	fn new(m8: &mut Self::AllocU8) -> Self {
+impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyEncoderANS<A> {
+	fn new(m8: &mut A) -> Self {
         let mut c = ANS1::default();
         c.encode_init();
-        let q = ByteStack::<Self::AllocU8>::new(m8);
-        let b = ByteStack::<Self::AllocU8>::new(m8);
-        let p = ByteStack::<Self::AllocU8>::new(m8);
+        let q = ByteStack::<A>::new(m8);
+        let b = ByteStack::<A>::new(m8);
+        let p = ByteStack::<A>::new(m8);
         assert!(p.stack_bytes_avail() == MAX_BUFFER_SIZE);
         assert!(b.stack_bytes_avail() == MAX_BUFFER_SIZE);
         return EntropyEncoderANS{c: c, q: q, bits: b, probs: p};

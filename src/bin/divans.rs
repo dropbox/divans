@@ -23,7 +23,12 @@ use divans::Compressor;
 use divans::Decompressor;
 use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
+use divans::DivansCompressorFactoryStruct;
+use divans::DivansCompressorFactory;
 use divans::DivansDecompressor;
+use divans::DivansDecompressorFactory;
+use divans::DivansDecompressorFactoryStruct;
+use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator};
 use divans::Nop;
 use std::fs::File;
 use std::error::Error;
@@ -403,10 +408,12 @@ fn recode_inner<Reader:std::io::BufRead,
 }
 fn compress_inner<Reader:std::io::BufRead,
                   Writer:std::io::Write,
+                  Encoder:ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                   AllocU8:alloc::Allocator<u8>,
                   AllocCDF2:alloc::Allocator<divans::CDF2>,
                   AllocCDF16:alloc::Allocator<divans::DefaultCDF16>>(
-    mut state: DivansCompressor<AllocU8,
+    mut state: DivansCompressor<Encoder,
+                                AllocU8,
                                 AllocCDF2,
                                 AllocCDF16>,
     mut r:&mut Reader,
@@ -512,7 +519,7 @@ fn compress<Reader:std::io::BufRead,
             }
         }
     }
-    let state =DivansCompressor::<ItemVecAllocator<u8>,
+    let state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
                                   ItemVecAllocator<divans::CDF2>,
                                   ItemVecAllocator<divans::DefaultCDF16>>::new(
         ItemVecAllocator::<u8>::default(),
@@ -536,7 +543,7 @@ fn decompress<Reader:std::io::Read,
     let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
-    let mut state = DivansDecompressor::<ItemVecAllocator<u8>,
+    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,
                                          ItemVecAllocator<divans::CDF2>,
                                          ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
                                                                 ItemVecAllocator::<divans::CDF2>::default(),

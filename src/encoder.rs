@@ -166,6 +166,9 @@ pub trait EntropyDecoder {
 
 
 impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
+    fn debug_print(&self, data: usize) {
+        panic!("Unimplemented");
+    }
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer:&[u8],
                                      input_offset:&mut usize,
@@ -199,6 +202,9 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
 
 macro_rules! arithmetic_encoder_or_decoder_methods(
     () => {
+            fn debug_print(&self, _bytes_serialized :usize){
+                panic!("unimplemented");
+            }
             fn drain_or_fill_internal_buffer(&mut self,
                                              _input_buffer:&[u8],
                                              _input_offset:&mut usize,
