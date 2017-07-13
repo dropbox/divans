@@ -10,7 +10,7 @@ extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 
-mod interface;
+pub mod interface;
 mod probability;
 #[macro_use]
 mod priors;
@@ -36,6 +36,7 @@ use core::marker::PhantomData;
 
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
+
 
 #[cfg(feature="blend")]
 pub type DefaultCDF16 = probability::BlendCDF16;
@@ -64,7 +65,6 @@ macro_rules! DefaultEncoderType(
 macro_rules! DefaultDecoderType(
     () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
 );
-
 
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
@@ -214,12 +214,12 @@ impl<AllocU8:Allocator<u8>,
 }
 
 #[cfg(not(feature="billing"))]
-fn print_decompression_result<AllocU8:Allocator<u8>>(_decompressor :&DefaultDecoderType!(), _bytes_written: usize) {
+fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(_decompressor :&D, _bytes_written: usize) {
    
 }
 
 #[cfg(feature="billing")]
-fn print_decompression_result<AllocU8:Allocator<u8>>(decompressor :&DefaultDecoderType!(), bytes_written: usize) {
+fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(decompressor :&D, bytes_written: usize) {
    decompressor.print_compression_ratio(bytes_written);
 }
 
@@ -300,7 +300,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                                                      window_size), 0));
         BrotliResult::ResultSuccess
     }
-    fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+    pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         match self {
             DivansDecompressor::Header(parser) => {
                 (parser.m8.unwrap(),
@@ -308,7 +308,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                  parser.mcdf16.unwrap())
             },
             DivansDecompressor::Decode(decoder, bytes_encoded) => {
-                print_decompression_result(&decoder.get_coder(), bytes_encoded);
+                print_decompression_result::<DefaultDecoder, AllocU8>(&decoder.get_coder(), bytes_encoded);
                 decoder.free()
             }
         }
@@ -384,6 +384,5 @@ impl<AllocU8:Allocator<u8>,
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
-
 
 
