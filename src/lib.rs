@@ -57,16 +57,16 @@ macro_rules! DefaultDecoderType(
 
 #[cfg(feature="billing")]
 macro_rules! DefaultEncoderType(
-    () => { billing::BillingArithmeticCoder<ans::EntropyEncoderANS<AllocU8>> }
+    () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyEncoderANS<AllocU8>> }
 );
 
 #[cfg(feature="billing")]
 macro_rules! DefaultDecoderType(
-    () => { billing::BillingArithmeticCoder<ans::EntropyDecoderANS<AllocU8>> }
+    () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
 );
 
 
-pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
@@ -127,7 +127,7 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     retval
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
 
     fn write_header(&mut self, output: &mut[u8],
@@ -148,7 +148,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator, AllocU8:Allo
     }
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16>   {
@@ -223,7 +223,7 @@ fn print_decompression_result<AllocU8:Allocator<u8>>(decompressor :&DefaultDecod
    decompressor.print_compression_ratio(bytes_written);
 }
 
-pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
@@ -235,13 +235,13 @@ pub trait DivansDecompressorFactory<
      AllocU8:Allocator<u8>, 
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
-     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator;
+     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
     fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
         DivansDecompressor::Header(HeaderParser{header:[0u8;HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16)})
     }
 }
 
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
                         AllocCDF16:Allocator<DefaultCDF16>>  
@@ -300,7 +300,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
                                                                                      window_size), 0));
         BrotliResult::ResultSuccess
     }
-    fn free(&mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+    fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         match self {
             DivansDecompressor::Header(parser) => {
                 (parser.m8.unwrap(),
@@ -315,7 +315,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
     }
 }
 
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> Decompressor for DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
