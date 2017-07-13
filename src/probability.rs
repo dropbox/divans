@@ -150,7 +150,7 @@ impl Default for BlendCDF16 {
                   (14 * CDF_LIMIT / 16) as Prob,
                   (15 * CDF_LIMIT / 16) as Prob,
                   CDF_LIMIT as Prob],
-            mix_rate: 1 << 11, // chosen as (1 << 15) divided by 16.
+            mix_rate: (1 << 11) + (1 << 9), // chosen as (1 << 15) divided by 16.
         }
     }
 }
@@ -253,7 +253,7 @@ fn srl(a:Prob) -> Prob {
 impl CDF16 for FrequentistCDF16 {
     fn blend(&mut self, symbol: u8) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-        const INCREMENT : Prob = 16;
+        const INCREMENT : Prob = 24;
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(INCREMENT);
         }
