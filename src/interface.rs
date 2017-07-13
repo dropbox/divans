@@ -145,6 +145,19 @@ pub trait NewWithAllocator<AllocU8: Allocator<u8>> {
     fn new(m8: &mut AllocU8) -> Self;
 }
 
+#[cfg(not(feature="billing"))]
+pub trait BillingCapability {
+
+}
+#[cfg(not(feature="billing"))]
+impl<T> BillingCapability for T {
+
+}
+#[cfg(feature="billing")]
+pub trait BillingCapability { // maybe we should have called it capa-bill-ity
+    fn debug_print(&self, size:usize);
+}
+
 pub trait ArithmeticEncoderOrDecoder {
     // note: only one of these buffers must be nonzero,
     // depending on if it is in encode or decode mode
@@ -174,5 +187,4 @@ pub trait ArithmeticEncoderOrDecoder {
     }
 
     fn close(&mut self) -> BrotliResult;
-    fn debug_print(&self, size:usize);
 }

@@ -219,8 +219,9 @@ fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u
 }
 
 #[cfg(feature="billing")]
-fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(decompressor :&D,
-                                                                                    bytes_written: usize) {
+fn print_decompression_result<D: ArithmeticEncoderOrDecoder+interface::BillingCapability,
+                              AllocU8:Allocator<u8>>(decompressor :&D,
+                                                     bytes_written: usize) {
     decompressor.debug_print(bytes_written);
 }
 
@@ -242,7 +243,7 @@ pub trait DivansDecompressorFactory<
     }
 }
 
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
                         AllocCDF16:Allocator<DefaultCDF16>>  
@@ -316,7 +317,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
     }
 }
 
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> Decompressor for DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {

@@ -25,7 +25,6 @@ use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
-use divans::DivansDecompressor;
 use divans::DivansDecompressorFactory;
 use divans::DivansDecompressorFactoryStruct;
 use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator};

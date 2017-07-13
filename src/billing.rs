@@ -2,7 +2,7 @@
 use core::iter::FromIterator;
 use core::marker::PhantomData;
 use alloc::{Allocator};
-use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator};
+use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
 use super::probability::CDF16;
 use brotli_decompressor::BrotliResult;
 
@@ -128,6 +128,11 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
     fn close(&mut self) -> BrotliResult {
         self.coder.close()
     }
+}
+
+// only need to implement this for feature=billing, since it's defined for any T in the default case
+#[cfg(feature="billing")]
+impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> BillingCapability for BillingArithmeticCoder<AllocU8, Coder> {
     fn debug_print(&self, byte_size: usize) {
         self.print_compression_ratio(byte_size);
     }
