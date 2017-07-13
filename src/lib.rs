@@ -26,7 +26,7 @@ pub use codec::COMMAND_LINE_ENFORCE_LEGACY_ENCODING;
 mod ans;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use interface::{BlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator};
+pub use interface::{BlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
@@ -36,13 +36,6 @@ pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
-macro_rules! DefaultArithmeticEncoder(
-    () => { ans::EntropyEncoderANS }
-);
-macro_rules! DefaultArithmeticDecoder(
-    () => { ans::EntropyDecoderANS }
-);
-
 #[cfg(feature="blend")]
 pub type DefaultCDF16 = probability::BlendCDF16;
 #[cfg(not(feature="blend"))]
@@ -50,69 +43,53 @@ pub type DefaultCDF16 = probability::FrequentistCDF16;
 
 pub use probability::CDF2;
 
-
 #[cfg(not(feature="billing"))]
-macro_rules! SelectedArithmeticEncoder(
-    ($type: ident) => { DefaultArithmeticEncoder!()<$type> }
+macro_rules! DefaultEncoderType(
+    () => {ans::EntropyEncoderANS<AllocU8>}
 );
 
 #[cfg(not(feature="billing"))]
-macro_rules! NewSelectedArithmeticEncoder(
-    ($type: ident, $val: ident) => { DefaultArithmeticEncoder!()::<$val>new($val)  }
-);
-
-#[cfg(not(feature="billing"))]
-macro_rules! SelectedArithmeticDecoder(
-    ($val: expr) => { DefaultArithmeticDecoder!($val) }
-);
-
-#[cfg(not(feature="billing"))]
-macro_rules! NewSelectedArithmeticDecoder(
-    ($type: ident, $val: ident) => { DefaultArithmeticDecoder!()::<$val>new($val)  }
+macro_rules! DefaultDecoderType(
+    () => {ans::EntropyDecoderANS<AllocU8>}
 );
 
 
 #[cfg(feature="billing")]
-macro_rules! SelectedArithmeticEncoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!($val)> }
+macro_rules! DefaultEncoderType(
+    () => { billing::BillingArithmeticCoder<ans::EntropyEncoderANS<AllocU8>> }
 );
-#[cfg(feature="billing")]
-macro_rules! NewSelectedArithmeticEncoder(
-    ($type: ident, $val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticEncoder!()<$val>>::new($val)  }
-);
-
 
 #[cfg(feature="billing")]
-macro_rules! SelectedArithmeticDecoder(
-    ($val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!($val)> }
-);
-#[cfg(feature="billing")]
-macro_rules! NewSelectedArithmeticDecoder(
-    ($type: ident, $val: ident) => { billing::BillingArithmeticCoder<DefaultArithmeticDecoder!()<$val>>::new($val)  }
+macro_rules! DefaultDecoderType(
+    () => { billing::BillingArithmeticCoder<ans::EntropyDecoderANS<AllocU8>> }
 );
 
 
-
-pub struct DivansCompressor<AllocU8:Allocator<u8>,
+pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+                            AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
-    codec: DivansCodec<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
 }
-impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> DivansCompressor<AllocU8,
-                                                                                                                         AllocCDF2,
-                                                                                                                         AllocCDF16> {
-    pub fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> Self {
+
+pub trait DivansCompressorFactory<
+     AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> {
+     type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator;
+    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> 
+        DivansCompressor<Self::DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
         }
         if window_size > 24 {
             window_size = 24;
         }
-        let enc = NewSelectedArithmeticEncoder(AllocU8, &mut m8);
+        let enc = Self::DefaultEncoder::new(&mut m8);
         DivansCompressor::<AllocU8, AllocCDF2, AllocCDF16> {
-            codec:DivansCodec::<SelectedArithmeticEncoder!(AllocU8), EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
                 mcdf16,
@@ -126,6 +103,19 @@ impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:A
     }
 }
 
+pub struct DivansCompressorFactoryStruct
+    <AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> {
+}
+
+impl<AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
+    for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
+     type DefaultEncoder = DefaultEncoderType!();
+}
+
 fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     let mut retval = [0u8; HEADER_LENGTH];
     retval[0..MAGIC_NUMBER.len()].clone_from_slice(&MAGIC_NUMBER[..]);
@@ -133,8 +123,9 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     retval
 }
 
-impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> DivansCompressor<AllocU8, AllocCDF2,
-                                                                                                                         AllocCDF16> {
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
+    DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
+
     fn write_header(&mut self, output: &mut[u8],
                     output_offset:&mut usize) -> BrotliResult {
         let bytes_avail = output.len() - *output_offset;
@@ -153,9 +144,10 @@ impl<AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:A
     }
 }
 
-impl<AllocU8:Allocator<u8>,
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+     AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<AllocU8, AllocCDF2, AllocCDF16>   {
+     AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16>   {
     fn encode<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
@@ -218,28 +210,33 @@ impl<AllocU8:Allocator<u8>,
 }
 
 #[cfg(not(feature="billing"))]
-fn print_decompression_result<AllocU8:Allocator<u8>>(_decompressor :&SelectedArithmeticDecoder!(AllocU8), _bytes_written: usize) {
+fn print_decompression_result<AllocU8:Allocator<u8>>(_decompressor :&DefaultDecoderType!(), _bytes_written: usize) {
    
 }
 
 #[cfg(feature="billing")]
-fn print_decompression_result<AllocU8:Allocator<u8>>(decompressor :&SelectedArithmeticDecoder!(AllocU8), bytes_written: usize) {
+fn print_decompression_result<AllocU8:Allocator<u8>>(decompressor :&DefaultDecoderType!(), bytes_written: usize) {
    decompressor.print_compression_ratio(bytes_written);
 }
 
-pub enum DivansDecompressor<AllocU8:Allocator<u8>,
+pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+                            AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
     Header(HeaderParser<AllocU8, AllocCDF2, AllocCDF16>),
-    Decode(DivansCodec<SelectedArithmeticDecoder!(AllocU8), DecoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>, usize),
+    Decode(DivansCodec<DefaultDecoder, DecoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>, usize),
 }
-impl<AllocU8:Allocator<u8>,
+
+pub trait DivansDecompressorFactory<
+     AllocU8:Allocator<u8>, 
      AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> DivansDecompressor<AllocU8, AllocCDF2, AllocCDF16> {
-    pub fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> Self {
+     AllocCDF16:Allocator<DefaultCDF16>> {
+     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator;
+    fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
         DivansDecompressor::Header(HeaderParser{header:[0u8;HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16)})
     }
-    pub fn finish_parsing_header(&mut self, window_size: usize) -> BrotliResult {
+
+    fn finish_parsing_header(&mut self, window_size: usize) -> BrotliResult {
         if window_size < 10 {
             return BrotliResult::ResultFailure;
         }
@@ -277,9 +274,9 @@ impl<AllocU8:Allocator<u8>,
             _ => return BrotliResult::ResultFailure,
         }
         //update this if you change the SelectedArithmeticDecoder macro
-        let decoder = NewSelectedArithmeticDecoder!(AllocU8, &mut m8);
+        let decoder = Self::DefaultDecoder::new(&mut m8);
         core::mem::replace(self,
-                           DivansDecompressor::Decode(DivansCodec::<SelectedArithmeticDecoder!(AllocU8),
+                           DivansDecompressor::Decode(DivansCodec::<Self::DefaultDecocoder,
                                                                     DecoderSpecialization,
                                                                     DefaultCDF16,
                                                                     AllocU8,
@@ -292,8 +289,8 @@ impl<AllocU8:Allocator<u8>,
                                                                                      window_size), 0));
         BrotliResult::ResultSuccess
     }
-    pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
-        match self {
+    fn free(val: DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16>) -> (AllocU8, AllocCDF2, AllocCDF16) {
+        match val {
             DivansDecompressor::Header(parser) => {
                 (parser.m8.unwrap(),
                  parser.mcdf2.unwrap(),
@@ -307,9 +304,10 @@ impl<AllocU8:Allocator<u8>,
     }
 }
 
-impl<AllocU8:Allocator<u8>,
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator,
+     AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> Decompressor for DivansDecompressor<AllocU8, AllocCDF2, AllocCDF16> {
+     AllocCDF16:Allocator<DefaultCDF16>> Decompressor for DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
     fn decode(&mut self,
               input:&[u8],
               input_offset:&mut usize,
@@ -359,4 +357,19 @@ impl<AllocU8:Allocator<u8>,
         BrotliResult::NeedsMoreInput
     }
 }
+
+pub struct DivansDecompressorFactoryStruct
+    <AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> {
+}
+
+impl<AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> DivansDecompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
+    for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
+     type DefaultDecoder = DefaultDecoderType!();
+}
+
+
 
