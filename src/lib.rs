@@ -32,6 +32,7 @@ pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
 pub use cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+use core::marker::PhantomData;
 
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
@@ -362,6 +363,9 @@ pub struct DivansDecompressorFactoryStruct
     <AllocU8:Allocator<u8>, 
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
+    p1: PhantomData<AllocU8>;
+    p2: PhantomData<AllocCDF2>;
+    p3: PhantomData<AllocCDF16>;
 }
 
 impl<AllocU8:Allocator<u8>, 
