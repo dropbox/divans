@@ -145,17 +145,10 @@ pub trait NewWithAllocator<AllocU8: Allocator<u8>> {
     fn new(m8: &mut AllocU8) -> Self;
 }
 
-#[cfg(not(feature="billing"))]
-pub trait BillingCapability {
-
-}
-#[cfg(not(feature="billing"))]
-impl<T> BillingCapability for T {
-
-}
-#[cfg(feature="billing")]
 pub trait BillingCapability { // maybe we should have called it capa-bill-ity
-    fn debug_print(&self, size:usize);
+    fn debug_print(&self, _size:usize) {
+        //intentially a default noop, can be filled out by decoders
+    }
 }
 
 pub trait ArithmeticEncoderOrDecoder {

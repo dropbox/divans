@@ -2,14 +2,15 @@ use core;
 use core::marker::PhantomData;
 use alloc::{
     Allocator,
-    SliceWrapper, 
+    SliceWrapper,
     SliceWrapperMut
 };
 use core::default::Default;
 use probability::CDF16;
 use super::interface::{
-	ArithmeticEncoderOrDecoder,
-	NewWithAllocator,
+    ArithmeticEncoderOrDecoder,
+    NewWithAllocator,
+    BillingCapability,
 };
 use super::BrotliResult;
 use super::encoder::{
@@ -78,7 +79,7 @@ impl ANS1 {
         let bs = self.bs[bit];  // freq start
         let ls = self.ls[bit];
         let x_max = ((RANS64_L >> BITS) << 32).wrapping_mul(ls);
-        let x1 = 
+        let x1 =
             if x >= x_max {
                 *n = *n - 4;
                 ANS1::write_u32(x as u32, &mut dst[*n .. *n + 4]);
@@ -221,8 +222,8 @@ pub struct EntropyEncoderANS<AllocU8: Allocator<u8>>  {
 }
 
 impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
-	fn new(m8: &mut A) -> Self {
-		let data = m8.alloc_cell(MAX_BUFFER_SIZE);
+    fn new(m8: &mut A) -> Self {
+        let data = m8.alloc_cell(MAX_BUFFER_SIZE);
         return ByteStack {data: data, nbytes: MAX_BUFFER_SIZE};
     }
 }
@@ -281,16 +282,16 @@ impl<AllocU8: Allocator<u8>> ByteQueue for ByteStack<AllocU8> {
 
 impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyDecoderANS<A> {
 
-	fn new(_m8: &mut A) -> Self {
+    fn new(_m8: &mut A) -> Self {
         let c = ANS1::default();
         let q = CycleQueue::default();
-		let p = PhantomData::<A>::default();
+        let p = PhantomData::<A>::default();
         return EntropyDecoderANS{c: c, q: q, len: 0, phantom: p};
     }
 }
 
 impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyEncoderANS<A> {
-	fn new(m8: &mut A) -> Self {
+    fn new(m8: &mut A) -> Self {
         let mut c = ANS1::default();
         c.encode_init();
         let q = ByteStack::<A>::new(m8);
@@ -453,13 +454,16 @@ impl<AllocU8: Allocator<u8>> ArithmeticEncoderOrDecoder for EntropyEncoderANS<Al
     arithmetic_encoder_or_decoder_methods!();
 }
 
+impl<AllocU8: Allocator<u8>> BillingCapability for EntropyDecoderANS<AllocU8> {
+}
+
 #[cfg(test)]
 mod test {
     use std::io::Write;
-    use std::vec::{ 
+    use std::vec::{
         Vec,
     };
-    use std::boxed::{ 
+    use std::boxed::{
         Box,
     };
     use core;
@@ -477,11 +481,11 @@ mod test {
         ByteQueue,
     };
     use interface::{
-    	NewWithAllocator,
+        NewWithAllocator,
     };
     use alloc;
     use alloc::{
-        Allocator, 
+        Allocator,
     };
 
     fn init_src(src: &mut [u8]) -> u8 {
@@ -498,9 +502,9 @@ mod test {
             }
         }
         return ((ones<<BITS) as u64 / (src.len() as u64 * 8)) as u8;
-    } 
-    
-    
+    }
+
+
     #[test]
     fn rw_u32_test() {
         let mut buf: [u8; 4] = [0; 4];
@@ -509,7 +513,7 @@ mod test {
         let out = ANS1::read_u32(&mut buf);
         assert!(inp == out);
     }
-    
+
     fn encode<AllocU8: Allocator<u8>>(e: &mut EntropyEncoderANS<AllocU8>, p0: u8, src: &[u8], dst: &mut [u8], n: &mut usize) {
         let mut t = 0;
         *n = 0;
@@ -519,7 +523,7 @@ mod test {
             for i in (0..8).rev() {
                 let b: bool = (v & (1u8<<i)) != 0;
                 e.put_bit(b, p0);
-                let mut q = e.get_internal_buffer(); 
+                let mut q = e.get_internal_buffer();
                 let qb = q.num_pop_bytes_avail();
                 if qb > 0 {
                     assert!(qb + *n <= dst.len());
@@ -532,7 +536,7 @@ mod test {
         assert!(t == src.len() * 8);
         e.flush();
         {
-            let mut q = e.get_internal_buffer(); 
+            let mut q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
             q.pop_data(&mut dst[*n .. *n + qb]);
             *n = *n + qb;
@@ -542,7 +546,7 @@ mod test {
     fn decode<AllocU8: Allocator<u8>>(d: &mut EntropyDecoderANS<AllocU8>, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8]) {
         let mut t = 0;
         {
-            let mut q = d.get_internal_buffer(); 
+            let mut q = d.get_internal_buffer();
             let sz = q.num_push_bytes_avail();
             assert!(sz >= 10);
             assert!(sz <= 16);
@@ -559,7 +563,7 @@ mod test {
                 if bit {
                     *v = *v | (1u8<<(7 - b));
                 }
-                let mut q = d.get_internal_buffer(); 
+                let mut q = d.get_internal_buffer();
                 if q.num_push_bytes_avail() > 0 && *n < src.len() {
                     let sz = core::cmp::min(src.len() - *n, q.num_push_bytes_avail());
                     q.push_data(&src[*n .. *n + sz]);
@@ -574,7 +578,7 @@ mod test {
     pub struct Rebox<T> {
       b: Box<[T]>,
     }
-    
+
     impl<T> core::default::Default for Rebox<T> {
       fn default() -> Self {
         let v: Vec<T> = Vec::new();
@@ -582,36 +586,36 @@ mod test {
         Rebox::<T> { b: b }
       }
     }
-    
+
     impl<T> core::ops::Index<usize> for Rebox<T> {
       type Output = T;
       fn index(&self, index: usize) -> &T {
         &(*self.b)[index]
       }
     }
-    
+
     impl<T> core::ops::IndexMut<usize> for Rebox<T> {
       fn index_mut(&mut self, index: usize) -> &mut T {
         &mut (*self.b)[index]
       }
     }
-    
+
     impl<T> alloc::SliceWrapper<T> for Rebox<T> {
       fn slice(&self) -> &[T] {
         &*self.b
       }
     }
-    
+
     impl<T> alloc::SliceWrapperMut<T> for Rebox<T> {
       fn slice_mut(&mut self) -> &mut [T] {
         &mut *self.b
       }
     }
-    
+
     pub struct HeapAllocator<T: core::clone::Clone> {
       pub default_value: T,
     }
-    
+
     impl<T: core::clone::Clone> alloc::Allocator<T> for HeapAllocator<T> {
       type AllocatedMemory = Rebox<T>;
       fn alloc_cell(self: &mut HeapAllocator<T>, len: usize) -> Rebox<T> {
@@ -638,10 +642,10 @@ mod test {
         start.clone_from_slice(src.iter().as_slice());
         encode(&mut e, prob0, &src, &mut dst, &mut n);
         perror!("encoded size: {}", n);
-    
+
         let nbits = n * 8;
         let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0; 
+        let p1 = prob as f64 / 256.0;
         let p0 = 1.0 - p1;
         let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
         let actual = nbits as f64;
@@ -657,7 +661,7 @@ mod test {
         assert!(t == SZ);
         perror!("done!");
     }
-    
+
     #[test]
     fn cyclequeue_test() {
         let mut c = CycleQueue::default();
@@ -679,7 +683,7 @@ mod test {
             assert!(c.num_pop_bytes_avail() == 0);
         }
     }
-    
+
     #[test]
     fn ans1_test() {
         const SZ: usize = 1024*4;
@@ -706,10 +710,10 @@ mod test {
         assert!(t == SZ * 8);
         assert!(n >= 8);
         c.encode_flush(&mut dst, &mut n);
-    
+
         let nbits = (dst.len() - n) * 8;
         let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0; 
+        let p1 = prob as f64 / 256.0;
         let p0 = 1.0 - p1;
         let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
         let actual = nbits as f64;
