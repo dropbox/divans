@@ -213,12 +213,6 @@ impl<AllocU8:Allocator<u8>,
 
 }
 
-fn print_decompression_result<D: ArithmeticEncoderOrDecoder+interface::BillingCapability,
-                              AllocU8:Allocator<u8>>(decompressor :&D,
-                                                     bytes_written: usize) {
-    decompressor.debug_print(bytes_written);
-}
-
 pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
@@ -304,7 +298,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                  parser.mcdf16.unwrap())
             },
             DivansDecompressor::Decode(decoder, bytes_encoded) => {
-                print_decompression_result::<DefaultDecoder, AllocU8>(&decoder.get_coder(), bytes_encoded);
+                decoder.get_coder().debug_print(bytes_encoded);
                 decoder.free()
             }
         }
