@@ -213,12 +213,6 @@ impl<AllocU8:Allocator<u8>,
 
 }
 
-#[cfg(not(feature="billing"))]
-fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(_decompressor :&D, _bytes_written: usize) {
-   
-}
-
-#[cfg(feature="billing")]
 fn print_decompression_result<D: ArithmeticEncoderOrDecoder+interface::BillingCapability,
                               AllocU8:Allocator<u8>>(decompressor :&D,
                                                      bytes_written: usize) {
