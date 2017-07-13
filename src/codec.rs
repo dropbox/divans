@@ -199,8 +199,7 @@ impl CopyState {
                     let index = if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountMantissaNib,
-                        NUM_COPY_COMMAND_ORGANIC_PRIORS * ctype + index);
+                        CopyCommandNibblePriorType::CountMantissaNib, (index, ctype));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib);

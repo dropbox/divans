@@ -48,6 +48,11 @@ macro_rules! define_prior_struct {
                                                             define_prior_struct_helper_select_dim!(&billing; 1; $($args),*),
                                                             define_prior_struct_helper_select_dim!(&billing; 2; $($args),*));
                 let offset_index = expanded_index.0 + expanded_dim.0 * (expanded_index.1 + expanded_dim.1 * expanded_index.2);
+                if I::num_dimensions() > 1 {
+                    assert!(expanded_index.0 < expanded_dim.0 &&
+                            expanded_index.1 < expanded_dim.1 &&
+                            expanded_index.2 < expanded_dim.2, "Index out of bounds");
+                }
                 assert!(offset_index < $name::<T, AllocT>::num_prior(&billing), "Offset from the index is out of bounds");
                 assert!(offset_type + offset_index < $name::<T, AllocT>::num_all_priors());
                 &mut self.priors.slice_mut()[offset_type + offset_index]
