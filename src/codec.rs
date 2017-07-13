@@ -76,6 +76,7 @@ pub enum CopySubstate {
     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
     CountDecoded,
     DistanceLengthMnemonic, // references a recent distance cached value
+    DistanceLengthMnemonicTwo, // references a recent distance cached value
     DistanceLengthFirst,
     DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
@@ -210,9 +211,28 @@ impl CopyState {
                         nibble_prob.blend(beg_nib);
                     }
                     if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthFirst;
+                        self.state = CopySubstate::DistanceMnemonicTwo;
                     } else {
                         self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
+                        self.state = CopySubstate::FullyDecoded;
+                    }
+                },
+                CopySubstate::DistanceLengthMnemonicTwo => {
+                    let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance);
+                    let dtype = superstate.bk.get_distance_block_type();
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceMnemonicTwo,
+                            dtype);
+                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                        nibble_prob.blend(beg_nib);
+                    }
+                    if beg_nib == 15 {
+                        self.state = CopySubstate::DistanceLengthFirst;
+                    } else {
+                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
@@ -743,6 +763,7 @@ enum CopyCommandNibblePriorType {
     DistanceBegNib,
     DistanceLastNib,
     DistanceMnemonic,
+    DistanceMnemonicTwo,
     DistanceMantissaNib,
     CountBegNib,
     CountLastNib,
@@ -790,6 +811,15 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     btype_lru: [[u8;2];3],
 }
 
+
+fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
+    if val >= sub {
+        val - sub
+    } else {
+        val + add
+    }
+}
+
 impl<Cdf16:CDF16,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
@@ -827,6 +857,34 @@ impl<Cdf16:CDF16,
             btype_lru:[[0,1];3],
         }
     }
+    fn get_distance_from_mnemonic_code_two(&self, code:u8) -> u32 {
+        match code {
+            0 => self.distance_lru[2] + 1,
+            1 => self.distance_lru[3] + 1,
+            2 => sub_or_add(self.distance_lru[2], 1, 3),
+            3 => sub_or_add(self.distance_lru[3], 1, 3),
+            4 => self.distance_lru[0] + 4,
+            5 => sub_or_add(self.distance_lru[0], 4, 7),
+            6 => self.distance_lru[1] + 4,
+            7 => sub_or_add(self.distance_lru[1], 3, 6),
+            8 => self.distance_lru[0] + 5,
+            9 => sub_or_add(self.distance_lru[0], 5, 8),
+            10 => self.distance_lru[1] + 5,
+            11 => sub_or_add(self.distance_lru[1], 4, 7),
+            12 => self.distance_lru[0] + 6,
+            13 => sub_or_add(self.distance_lru[0], 6, 9),
+            14 => self.distance_lru[1] + 6,
+            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
+        }
+    }
+    fn distance_mnemonic_code_two(&self, d: u32) -> u8 {
+        for i in 0..15 {
+            if self.get_distance_from_mnemonic_code_two(i as u8) == d {
+                return i as u8;
+            }
+        }
+        15
+    }
 
     fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
         match code {
@@ -835,64 +893,25 @@ impl<Cdf16:CDF16,
             2 => self.distance_lru[2],
             3 => self.distance_lru[3],
             4 => self.distance_lru[0] + 1,
-            5 => self.distance_lru[0].wrapping_sub(1),
+            5 => sub_or_add(self.distance_lru[0], 1, 4),
             6 => self.distance_lru[1] + 1,
-            7 => self.distance_lru[1].wrapping_sub(1),
+            7 => sub_or_add(self.distance_lru[1], 1, 3),
             8 => self.distance_lru[0] + 2,
-            9 => self.distance_lru[0].wrapping_sub(2),
+            9 => sub_or_add(self.distance_lru[0], 2, 5),
             10 => self.distance_lru[1] + 2,
-            11 => self.distance_lru[1].wrapping_sub(2),
+            11 => sub_or_add(self.distance_lru[1], 2, 4),
             12 => self.distance_lru[0] + 3,
-            13 => self.distance_lru[0].wrapping_sub(3),
+            13 => sub_or_add(self.distance_lru[0], 3, 6),
             14 => self.distance_lru[1] + 3,
             _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
         }
     }
     fn distance_mnemonic_code(&self, d: u32) -> u8 {
-        if d == self.distance_lru[0] {
-            return 0;
-        }
-        if d == self.distance_lru[1] {
-            return 1;
-        }
-        if d == self.distance_lru[2] {
-            return 2;
-        }
-        if d == self.distance_lru[3] {
-            return 3;
-        }
-        if d == self.distance_lru[0] + 1 {
-            return 4;
-        }
-        if d == self.distance_lru[0].wrapping_sub(1) {
-            return 5;
-        }
-        if d == self.distance_lru[1] + 1 {
-            return 6;
-        }
-        if d == self.distance_lru[1].wrapping_sub(1) {
-            return 7;
-        }
-        if d == self.distance_lru[0] + 2 {
-            return 8;
-        }
-        if d == self.distance_lru[0].wrapping_sub(2) {
-            return 9;
-        }
-        if d == self.distance_lru[1] + 2 {
-            return 10;
-        }
-        if d == self.distance_lru[1].wrapping_sub(2) {
-            return 11;
-        }
-        if d == self.distance_lru[0] + 3 {
-            return 12;
-        }
-        if d == self.distance_lru[0].wrapping_sub(3) {
-            return 13;
-        }
-        if d == self.distance_lru[1] + 3 {
-            return 14;
+        let candidate = 15u8;
+        for i in 0..15 {
+            if self.get_distance_from_mnemonic_code(i as u8) == d {
+                return i as u8;
+            }
         }
         15
     }
