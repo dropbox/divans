@@ -128,4 +128,7 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
     fn close(&mut self) -> BrotliResult {
         self.coder.close()
     }
+    fn debug_print(&self, byte_size: usize) {
+        self.print_compression_ratio(byte_size);
+    }
 }

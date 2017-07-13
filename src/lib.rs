@@ -219,8 +219,9 @@ fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u
 }
 
 #[cfg(feature="billing")]
-fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(decompressor :&D, bytes_written: usize) {
-   decompressor.print_compression_ratio(bytes_written);
+fn print_decompression_result<D: ArithmeticEncoderOrDecoder, AllocU8:Allocator<u8>>(decompressor :&D,
+                                                                                    bytes_written: usize) {
+    decompressor.debug_print(bytes_written);
 }
 
 pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,

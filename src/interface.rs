@@ -174,4 +174,5 @@ pub trait ArithmeticEncoderOrDecoder {
     }
 
     fn close(&mut self) -> BrotliResult;
+    fn debug_print(&self, size:usize);
 }
