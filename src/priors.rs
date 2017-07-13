@@ -38,8 +38,8 @@ macro_rules! define_prior_struct {
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
                 let expected_dim = $name::<T, AllocT>::num_dimensions(&billing);
-                assert!(I::num_dimensions() <= expected_dim,
-                           "Index has {} dimensions but at most {} is expected", I::num_dimensions(), expected_dim);
+                debug_assert!(I::num_dimensions() <= expected_dim,
+                              "Index has {} dimensions but at most {} is expected", I::num_dimensions(), expected_dim);
                 // Compute the offset into the array for this billing type.
                 let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 // Compute the offset arising from the index.
@@ -49,12 +49,12 @@ macro_rules! define_prior_struct {
                                                             define_prior_struct_helper_select_dim!(&billing; 2; $($args),*));
                 let offset_index = expanded_index.0 + expanded_dim.0 * (expanded_index.1 + expanded_dim.1 * expanded_index.2);
                 if I::num_dimensions() > 1 {
-                    assert!(expanded_index.0 < expanded_dim.0 &&
-                            expanded_index.1 < expanded_dim.1 &&
-                            expanded_index.2 < expanded_dim.2, "Index out of bounds");
+                    debug_assert!(expanded_index.0 < expanded_dim.0 &&
+                                  expanded_index.1 < expanded_dim.1 &&
+                                  expanded_index.2 < expanded_dim.2, "Index out of bounds");
                 }
-                assert!(offset_index < $name::<T, AllocT>::num_prior(&billing), "Offset from the index is out of bounds");
-                assert!(offset_type + offset_index < $name::<T, AllocT>::num_all_priors());
+                debug_assert!(offset_index < $name::<T, AllocT>::num_prior(&billing), "Offset from the index is out of bounds");
+                debug_assert!(offset_type + offset_index < $name::<T, AllocT>::num_all_priors());
                 &mut self.priors.slice_mut()[offset_type + offset_index]
             }
             // TODO: technically this does not depend on the template paramters.
