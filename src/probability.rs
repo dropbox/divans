@@ -134,41 +134,33 @@ pub struct BlendCDF16 {
 impl Default for BlendCDF16 {
     fn default() -> Self {
         BlendCDF16 {
-            cdf: [(1 * CDF_LIMIT / 16) as Prob,
-                  (2 * CDF_LIMIT / 16) as Prob,
-                  (3 * CDF_LIMIT / 16) as Prob,
-                  (4 * CDF_LIMIT / 16) as Prob,
-                  (5 * CDF_LIMIT / 16) as Prob,
-                  (6 * CDF_LIMIT / 16) as Prob,
-                  (7 * CDF_LIMIT / 16) as Prob,
-                  (8 * CDF_LIMIT / 16) as Prob,
-                  (9 * CDF_LIMIT / 16) as Prob,
-                  (10 * CDF_LIMIT / 16) as Prob,
-                  (11 * CDF_LIMIT / 16) as Prob,
-                  (12 * CDF_LIMIT / 16) as Prob,
-                  (13 * CDF_LIMIT / 16) as Prob,
-                  (14 * CDF_LIMIT / 16) as Prob,
-                  (15 * CDF_LIMIT / 16) as Prob,
-                  CDF_LIMIT as Prob],
-            mix_rate: (1 << 11) + (1 << 9), // chosen as (1 << 15) divided by 16.
+            cdf: [0; 16],
+            mix_rate: (1 << 10) + (1 << 9),
         }
     }
 }
 
 impl CDF16 for BlendCDF16 {
     fn valid(&self) -> bool {
-        for item in self.cdf.split_at(15).0.iter() {
-            if *item <= 0 || !(*item <= CDF_MAX) {
+        for item in self.cdf.iter() {
+            if *item < 0 || !(*item <= CDF_MAX) {
                 return false;
             }
         }
-        assert_eq!(self.cdf[15], CDF_LIMIT as Prob);
         return true;
     }
     fn blend(&mut self, symbol:u8) {
         self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
         // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
         self.mix_rate -= self.mix_rate >> 7;
+
+        // Reduce the weight of bias in the first few iterations.
+        if self.cdf[15] < CDF_MAX - (self.cdf[15] >> 1) {
+            let initial_bias = CDF_MAX - self.cdf[15] as i16;
+            for i in 0..16 {
+                self.cdf[i] += self.cdf[i] >> 1;
+            }
+        }
     }
     fn max(&self) -> Prob {
         CDF_MAX as Prob
@@ -179,7 +171,12 @@ impl CDF16 for BlendCDF16 {
     fn cdf(&self, symbol: u8) -> Prob {
         match symbol {
             15 => self.max(),
-            _ => self.cdf[symbol as usize]
+            _ => {
+                // We want self.cdf[15] to be normalized to CDF_MAX, so take the difference to 
+                // be the latent bias term coming from a uniform distribution.
+                let bias = CDF_MAX - self.cdf[15] as i16;
+                self.cdf[symbol as usize] as Prob + (((bias as i32) * ((symbol + 1) as i32)) >> 4) as Prob
+            }
         }
     }
 }
@@ -308,13 +305,13 @@ pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [P
     const SCALE :i32 = 1i32 << BLEND_FIXED_POINT_PRECISION;
     let to_blend = to_blend_lut(symbol);
     let mut epi32:[i32;8] = [to_blend[0] as i32,
-                        to_blend[1] as i32,
-                        to_blend[2] as i32,
-                        to_blend[3] as i32,
-                        to_blend[4] as i32,
-                        to_blend[5] as i32,
-                        to_blend[6] as i32,
-                        to_blend[7] as i32];
+                             to_blend[1] as i32,
+                             to_blend[2] as i32,
+                             to_blend[3] as i32,
+                             to_blend[4] as i32,
+                             to_blend[5] as i32,
+                             to_blend[6] as i32,
+                             to_blend[7] as i32];
     let scale_minus_blend = SCALE - blend;
     for i in 0..8 {
         epi32[i] *= blend;
@@ -343,41 +340,37 @@ pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [P
         epi32[i - 8] += baseline[i] as i32 * scale_minus_blend + bias;
         retval[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as Prob;
     }
-    retval[15] = CDF_LIMIT as Prob;
     retval
 }
 
 fn to_blend(symbol: u8) -> [Prob;16] {
-    let delta: Prob = CDF_MAX - 15;
     const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
-    const BASELINE : [Prob;16] =[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
     let symbol16 = [symbol as Prob; 16];
-    let delta16 = [delta; 16];
+    let delta16 = [CDF_MAX; 16];
     let mask_symbol = each16bin!(CDF_INDEX, symbol16, gte);
     let add_mask = each16bin!(delta16, mask_symbol, and);
-    let to_blend = each16bin!(BASELINE, add_mask, add);
-    to_blend
+    add_mask
 }
 
 fn to_blend_lut(symbol: u8) -> [Prob;16] {
     const DEL: Prob = CDF_MAX - 15;
     static CDF_SELECTOR : [[Prob;16];16] = [
-        [1+DEL,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2+DEL,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3+DEL,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4+DEL,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5+DEL,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6+DEL,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7+DEL,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8+DEL,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9+DEL,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10+DEL,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11+DEL,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11,12+DEL,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11,12,13+DEL,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11,12,13,14+DEL,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15+DEL, CDF_LIMIT as Prob],
-        [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15, CDF_LIMIT as Prob]];
+        [CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX as Prob]];
     CDF_SELECTOR[symbol as usize]
 }
 
@@ -435,7 +428,7 @@ mod test {
             let abs_delta = (expected - actual).abs();
             let rel_delta = abs_delta / expected;  // may be nan
             // TODO: These bounds should be tightened.
-            assert!(rel_delta < 0.16f32 || abs_delta < 0.014f32);
+            assert!(rel_delta < 0.15f32 || abs_delta < 0.014f32);
         }
     }
     #[test]
