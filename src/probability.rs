@@ -173,7 +173,7 @@ impl CDF16 for BlendCDF16 {
             _ => {
                 // We want self.cdf[15] to be normalized to CDF_MAX, so take the difference to 
                 // be the latent bias term coming from a uniform distribution.
-                let bias = CDF_MAX - self.cdf[15] as i16;
+                let bias = core::cmp::max(CDF_MAX - self.cdf[15] as i16, 16);
                 self.cdf[symbol as usize] as Prob + (((bias as i32) * ((symbol + 1) as i32)) >> 4) as Prob
             }
         }
@@ -449,5 +449,17 @@ mod test {
                          (1,8), (0,1), (0,1), (0,1),
                          (1,5), (1,5), (1,5), (3,20)],
                         1000000);
+    }
+    #[test]
+    fn test_blend_cdf_nonzero_pdf() {
+        // This is a regression test
+        let mut prob_state = super::BlendCDF16::default();
+        for n in 0..1000000 {
+            prob_state.blend(15);
+        }
+        for i in 0..14 {
+            let p = prob_state.pdf(i);
+            assert!(p > 4, "{} {}", i, p);
+        }
     }
 }
