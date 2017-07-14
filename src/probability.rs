@@ -171,9 +171,10 @@ impl CDF16 for BlendCDF16 {
         match symbol {
             15 => self.max(),
             _ => {
-                // We want self.cdf[15] to be normalized to CDF_MAX, so take the difference to 
+                // We want self.cdf[15] to be normalized to CDF_MAX, so take the difference to
                 // be the latent bias term coming from a uniform distribution.
-                let bias = core::cmp::max(CDF_MAX - self.cdf[15] as i16, 16);
+                let bias = CDF_MAX - self.cdf[15] as i16;
+                debug_assert!(bias >= 16);
                 self.cdf[symbol as usize] as Prob + (((bias as i32) * ((symbol + 1) as i32)) >> 4) as Prob
             }
         }
@@ -343,33 +344,37 @@ pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [P
 }
 
 fn to_blend(symbol: u8) -> [Prob;16] {
+    // The returned distribution has a max of DEL = CDF_MAX - 16, which guarantees that
+    // by mixing only such distributions, we'll have at least 16 as the bias weight,
+    // which is required to guarantee nonzero PDF everywhere.
     const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
+    const DEL: Prob = CDF_MAX - 16;
     let symbol16 = [symbol as Prob; 16];
-    let delta16 = [CDF_MAX; 16];
+    let delta16 = [DEL; 16];
     let mask_symbol = each16bin!(CDF_INDEX, symbol16, gte);
     let add_mask = each16bin!(delta16, mask_symbol, and);
     add_mask
 }
 
 fn to_blend_lut(symbol: u8) -> [Prob;16] {
-    const DEL: Prob = CDF_MAX - 15;
+    const DEL: Prob = CDF_MAX - 16;
     static CDF_SELECTOR : [[Prob;16];16] = [
-        [CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX,CDF_MAX as Prob],
-        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,CDF_MAX as Prob]];
+        [DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,DEL as Prob]];
     CDF_SELECTOR[symbol as usize]
 }
 
