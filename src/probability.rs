@@ -156,7 +156,6 @@ impl CDF16 for BlendCDF16 {
 
         // Reduce the weight of bias in the first few iterations.
         if self.cdf[15] < CDF_MAX - (self.cdf[15] >> 1) {
-            let initial_bias = CDF_MAX - self.cdf[15] as i16;
             for i in 0..16 {
                 self.cdf[i] += self.cdf[i] >> 1;
             }
