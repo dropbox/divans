@@ -458,7 +458,7 @@ mod test {
             prob_state.blend(15);
         }
         for i in 0..14 {
-            assert!(prob_stae.pdf(i) > 0);
+            assert!(prob_state.pdf(i) > 0);
         }
     }
 }
