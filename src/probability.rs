@@ -458,8 +458,7 @@ mod test {
             prob_state.blend(15);
         }
         for i in 0..14 {
-            let p = prob_state.pdf(i);
-            assert!(p > 4, "{} {}", i, p);
+            assert!(prob_stae.pdf(i) > 0);
         }
     }
 }
