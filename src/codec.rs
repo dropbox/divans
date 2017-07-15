@@ -436,7 +436,7 @@ impl DictState {
                 }
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
-                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform, 1);
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform, 1 + (self.dc.transform as usize >>5));
                     superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
                     nibble_prob.blend(low_nib);
                     self.dc.transform |= low_nib;
@@ -806,7 +806,7 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::Index, NUM_ORGANIC_DICT_DISTANCE_PRIORS, NUM_BLOCK_TYPES),
-                     (DictCommandNibblePriorType::Transform, 2));
+                     (DictCommandNibblePriorType::Transform, 17));
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
