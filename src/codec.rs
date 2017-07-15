@@ -88,6 +88,7 @@ pub enum CopySubstate {
     DistanceLengthFirst,
     DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
+    DistanceMantissaBits(u8, u8, u32), // nibble count (up to 6), intermediate result
     FullyDecoded,
 }
 struct CopyState {
@@ -253,7 +254,12 @@ impl CopyState {
                             self.cc.distance = 1;
                             self.state = CopySubstate::FullyDecoded;
                         } else {
-                            self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib),  1 << beg_nib);
+                            let num_bits_with_nibbles = round_up_mod_4(beg_nib);
+                            if num_bits_with_nibbles == beg_nib {
+                                self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib),  1 << beg_nib);
+                            } else {
+                                self.state = CopySubstate::DistanceMantissaBits(0, beg_nib,  1 << beg_nib);
+                            }
                         }
                     }
                 },
@@ -266,7 +272,12 @@ impl CopyState {
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
-                    self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
+                    let num_bits_with_nibbles = round_up_mod_4(last_nib + 15);
+                    if num_bits_with_nibbles == last_nib + 15 {
+                        self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
+                    } else {
+                        self.state = CopySubstate::DistanceMantissaBits(0, last_nib + 15,  1 << (last_nib + 15));
+                    }
                 },
                 CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
@@ -290,6 +301,38 @@ impl CopyState {
                             len_decoded + 4,
                             next_len_remaining,
                             next_decoded_so_far);
+                    }
+                },
+                CopySubstate::DistanceMantissaBits(len_decoded, len_remaining, decoded_so_far) => {
+                    let next_len_remaining = len_remaining - 1;
+                    let last_bit_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
+                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
+                    let mut last_bit = last_bit_as_u32 != 0;
+                    let index = len_remaining as usize;
+                    let dtype = superstate.bk.get_distance_block_type();
+                    //assert_eq!(last_bit_as_u32 & (!1), 0); // make sure this is zero or one (only would work for encode)
+                    let mut bit_prob = superstate.bk.dist_bit_priors.get(
+                        DistBitPriorType::DistanceMantissaBit, (index, dtype));
+                    superstate.coder.get_or_put_bit(&mut last_bit, bit_prob.prob, billing);
+                    let next_decoded_so_far = decoded_so_far | ((last_bit as u32) << next_len_remaining);
+                    bit_prob.blend(last_bit);
+
+                    if next_len_remaining == 0 {
+                        //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
+                        self.cc.distance = next_decoded_so_far;
+                        self.state = CopySubstate::FullyDecoded;
+                    } else {
+                        if (next_len_remaining & 3) == 0 {
+                            self.state  = CopySubstate::DistanceMantissaNibbles(
+                                len_decoded + 1,
+                                next_len_remaining,
+                                next_decoded_so_far);
+                        } else {
+                            self.state  = CopySubstate::DistanceMantissaBits(
+                                len_decoded + 1,
+                                next_len_remaining,
+                                next_decoded_so_far);
+                        }
                     }
                 },
                 CopySubstate::FullyDecoded => {
@@ -759,7 +802,13 @@ enum CopyCommandNibblePriorType {
     CountLastNib,
     CountMantissaNib,
 }
+enum DistBitPriorType {
+    DistanceMantissaBit,
+}
 const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
+define_prior_struct!(DistPriors, DistBitPriorType,
+                     (DistPriorType::DistanceBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES)
+                     );
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::DistanceMnemonic, 1, NUM_BLOCK_TYPES),
@@ -797,6 +846,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     legacy_cc_priors: CrossCommandPriors<CDF2, AllocCDF2>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
+    dist_bit_priors: DistPriors<CDF2, AllocCDF2>,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
@@ -810,6 +860,7 @@ impl<Cdf16:CDF16,
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            legacy_cc_prior: AllocCDF2::AllocatedMemory,
+           dist_bit_prior: AllocCDF2::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
@@ -822,6 +873,9 @@ impl<Cdf16:CDF16,
             },
             cc_priors: CrossCommandPriors {
                 priors: cc_prior
+            },
+            dist_bit_priors: DistPriors {
+                priors: dist_bit_prior
             },
             legacy_cc_priors: CrossCommandPriors {
                 priors: legacy_cc_prior
@@ -1015,6 +1069,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let legacy_cc_priors = mcdf2.alloc_cell(CrossCommandPriors::<CDF2, AllocCDF2>::num_all_priors());
+        let dist_bit_priors = mcdf2.alloc_cell(DistPriors::<CDF2, AllocCDF2>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -1028,7 +1083,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, legacy_cc_priors, copy_priors, dict_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, legacy_cc_priors, dist_bit_priors, copy_priors, dict_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
