@@ -147,7 +147,7 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = (superstate.bk.last_dlen >> 3) as usize;
+                    let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes.wrapping_sub(2)) as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -166,7 +166,7 @@ impl CopyState {
                 },
                 CopySubstate::CountLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, clen.wrapping_sub(4));
-                    let index = (superstate.bk.last_dlen >> 3) as usize;
+                    let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountBegNib, (index, ctype));
@@ -182,7 +182,7 @@ impl CopyState {
                 },
                 CopySubstate::CountLengthGreater18Less25 => {
                     let mut last_nib = clen.wrapping_sub(19);
-                    let index = (superstate.bk.last_dlen >> 3) as usize;
+                    let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountLastNib, (index, ctype));
@@ -219,7 +219,7 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthMnemonic => {
                     let mut beg_nib = superstate.bk.distance_mnemonic_code(in_cmd.distance);
-                    //let index = (superstate.bk.last_clen >> 3) as usize;
+                    //let index = 0;
                     let dtype = superstate.bk.get_distance_block_type();
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -239,7 +239,7 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    let index = (superstate.bk.last_clen >> 3) as usize;
+                    let index = 0;
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceBegNib, (index, dtype));
@@ -259,7 +259,7 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
-                    let index = (superstate.bk.last_clen >> 3) as usize;
+                    let index = 0;
                     let dtype = superstate.bk.get_distance_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceLastNib, (index, dtype));
@@ -512,7 +512,7 @@ impl<AllocU8:Allocator<u8>,
                     self.state = LiteralSubstate::LiteralCountSmall;
                 },
                 LiteralSubstate::LiteralCountSmall => {
-                    //let index = (superstate.bk.last_dlen >> 3) as usize;
+                    //let index = 0;
                     let index = 0usize;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, literal_len) as u8;
