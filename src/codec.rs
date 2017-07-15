@@ -462,6 +462,7 @@ impl DictState {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralSubstate {
     Begin,
+    LiteralCountSmall,
     LiteralCountFirst,
     LiteralCountLengthGreater14Less25,
     LiteralCountMantissaNibbles(u8, u32),
@@ -508,7 +509,25 @@ impl<AllocU8:Allocator<u8>,
             });
             match self.state {
                 LiteralSubstate::Begin => {
-                    self.state = LiteralSubstate::LiteralCountFirst;
+                    self.state = LiteralSubstate::LiteralCountSmall;
+                },
+                LiteralSubstate::LiteralCountSmall => {
+                    //let index = (superstate.bk.last_dlen >> 3) as usize;
+                    let index = 0usize;
+                    let ctype = superstate.bk.get_command_block_type();
+                    let mut shortcut_nib = core::cmp::min(15, literal_len) as u8;
+                    let mut nibble_prob = superstate.bk.lit_priors.get(
+                        LiteralNibblePriorType::CountSmall, (index, ctype));
+                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    nibble_prob.blend(shortcut_nib);
+
+                    if shortcut_nib == 15 {
+                        self.state = LiteralSubstate::LiteralCountFirst;
+                    } else {
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(shortcut_nib as usize),
+                                                                        shortcut_nib as usize);
+                        self.state = LiteralSubstate::LiteralNibbleIndex(0);
+                    }
                 },
                 LiteralSubstate::LiteralCountFirst => {
                     let mut beg_nib = core::cmp::min(15, lllen);
@@ -520,6 +539,8 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(beg_nib as usize),
+                                                                        beg_nib as usize);
                         self.lc.data = superstate.specialization.alloc_literal_buffer(&mut superstate.m8,
                                                                                       beg_nib as usize);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
@@ -735,6 +756,7 @@ define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
 enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
+    CountSmall,
     SizeBegNib,
     SizeLastNib,
     SizeMantissaNib,
@@ -744,6 +766,7 @@ const NUM_LITERAL_ORGANIC_PRIORS :usize = 65536;
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SecondNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::CountSmall, 16, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, 1, NUM_BLOCK_TYPES));
