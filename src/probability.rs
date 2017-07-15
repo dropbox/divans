@@ -3,9 +3,54 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
-pub trait CDFDebug {
+// Common interface for CDF2 and CDF16, with optional methods.
+pub trait BaseCDF {
+
+    // the cardinality of symbols supported. Typical implementation values are 2 and 16.
+    fn num_symbols() -> u8;
+
+    // the cumulative distribution function evaluated at the given symbol.
+    fn cdf(&self, symbol: u8) -> Prob;
+
+    // the probability distribution function evaluated at the given symbol.
+    fn pdf(&self, symbol: u8) -> Prob {
+        debug_assert!(symbol < Self::num_symbols());
+        if symbol == 0 {
+            self.cdf(symbol)
+        } else {
+            self.cdf(symbol) - self.cdf(symbol - 1)
+        }
+    }
+
+    // the maximum value relative to which cdf() and pdf() values should be normalized.
+    fn max(&self) -> Prob;
+
+    // the base-2 logarithm of max(), if available, to support bit-shifting.
+    fn log_max(&self) -> Option<i8>;
+
+    // returns true if used.
     fn used(&self) -> bool { false }
-    fn entropy(&self) -> f64;
+
+    // returns true if valid.
+    fn valid(&self) -> bool { false }
+
+    // returns the entropy of the current distribution.
+    fn entropy(&self) -> f64 {
+        let mut sum = 0.0f64;
+        for i in 0..Self::num_symbols() {
+            let v = self.pdf(i as u8);
+            sum += if v == 0 { 0.0f64 } else {
+                let v_f64 = (v as f64) / (self.max() as f64);
+                v_f64 * (-v_f64.log2())
+            };
+        }
+        sum
+    }
+
+    // These methods are optional because implementing them requires nontrivial bookkeeping.
+    // Only CDFs that are intended for debugging should support them.
+    fn true_entropy(&self) -> Option<f64> { None }
+    fn num_samples(&self) -> Option<u32> { None }
 }
 
 #[derive(Clone, Copy)]
@@ -23,17 +68,23 @@ impl Default for CDF2 {
     }
 }
 
-impl CDFDebug for CDF2 {
-    fn entropy(&self) -> f64 {
-        if self.prob == 0 || (self.prob as i64) == self.max() {
-            0.0f64
-        } else {
-            let prob_f64 = (self.prob as f64) / (self.max() as f64);
-            -(prob_f64 * prob_f64.log2() + (1.0 - prob_f64) * (1.0 - prob_f64).log2())
+impl BaseCDF for CDF2 {
+    fn num_symbols() -> u8 { 2 }
+    fn cdf(&self, symbol: u8) -> Prob {
+        match symbol {
+            0 => self.prob as Prob,
+            1 => 256 - self.prob as Prob,
+            _ => { panic!("Symbol out of range"); }
         }
     }
     fn used(&self) -> bool {
         self.counts[0] != 1 || self.counts[1] != 1
+    }
+    fn max(&self) -> Prob {
+        return 256;
+    }
+    fn log_max(&self) -> Option<i8> {
+        return Some(8);
     }
 }
 
@@ -63,34 +114,10 @@ impl CDF2 {
             self.prob = (((self.counts[0] as u16) << 8) / (fcount as u16 + tcount as u16 + 1)) as u8;
         }
     }
-    pub fn max(&self) -> i64 {
-        return 256;
-    }
-    pub fn log_max(&self) -> Option<i8> {
-        return Some(8);
-    }
 }
 
-pub trait CDF16:Sized+Default+Copy {
+pub trait CDF16: Sized + Default + Copy + BaseCDF {
     fn blend(&mut self, symbol: u8);
-    fn valid(&self) -> bool;
-
-    fn cdf(&self, symbol: u8) -> Prob;
-    fn pdf(&self, symbol: u8) -> Prob {
-        if symbol == 0 {
-            self.cdf(symbol)
-        } else {
-            self.cdf(symbol) - self.cdf(symbol - 1)
-        }
-    }
-
-    // the maximum value relative to which cdf() and pdf() values should be normalized.
-    fn max(&self) -> Prob;
-
-    // the base-2 logarithm of max(), if available, to support bit-shifting.
-    fn log_max(&self) -> Option<i8> {
-        None
-    }
 
     // TODO: this convenience function should probably live elsewhere.
     fn float_array(&self) -> [f32; 16] {
@@ -101,25 +128,6 @@ pub trait CDF16:Sized+Default+Copy {
         ret
     }
 }
-
-impl<T> CDFDebug for T where T: CDF16 {
-    fn entropy(&self) -> f64 {
-        let mut sum = 0.0f64;
-        for i in 0..16 {
-            let v = self.pdf(i as u8);
-            sum += if v == 0 { 0.0f64 } else {
-                let v_f64 = (v as f64) / (self.max() as f64);
-                v_f64 * (-v_f64.log2())
-            };
-        }
-        sum
-    }
-    fn used(&self) -> bool {
-        // FIXME: a pretty primitive check.
-        self.entropy() != T::default().entropy()
-    }
-}
-
 
 const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
@@ -140,26 +148,15 @@ impl Default for BlendCDF16 {
     }
 }
 
-impl CDF16 for BlendCDF16 {
-    fn valid(&self) -> bool {
-        for item in self.cdf.iter() {
-            if *item < 0 || !(*item <= CDF_MAX) {
-                return false;
+impl BaseCDF for BlendCDF16 {
+    fn num_symbols() -> u8 { 16 }
+    fn used(&self) -> bool {
+        for i in 0..16 {
+            if self.cdf[i] > 0 {
+                return true;
             }
         }
-        return true;
-    }
-    fn blend(&mut self, symbol:u8) {
-        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
-        // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
-        self.mix_rate -= self.mix_rate >> 7;
-
-        // Reduce the weight of bias in the first few iterations.
-        if self.cdf[15] < CDF_MAX - (self.cdf[15] >> 1) {
-            for i in 0..16 {
-                self.cdf[i] += self.cdf[i] >> 1;
-            }
-        }
+        false
     }
     fn max(&self) -> Prob {
         CDF_MAX as Prob
@@ -176,6 +173,29 @@ impl CDF16 for BlendCDF16 {
                 let bias = CDF_MAX - self.cdf[15] as i16;
                 debug_assert!(bias >= 16);
                 self.cdf[symbol as usize] as Prob + (((bias as i32) * ((symbol + 1) as i32)) >> 4) as Prob
+            }
+        }
+    }
+    fn valid(&self) -> bool {
+        for item in self.cdf.iter() {
+            if *item < 0 || !(*item <= CDF_MAX) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+impl CDF16 for BlendCDF16 {
+    fn blend(&mut self, symbol:u8) {
+        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
+        // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
+        self.mix_rate -= self.mix_rate >> 7;
+
+        // Reduce the weight of bias in the first few iterations.
+        if self.cdf[15] < CDF_MAX - (self.cdf[15] >> 1) {
+            for i in 0..16 {
+                self.cdf[i] += self.cdf[i] >> 1;
             }
         }
     }
@@ -247,6 +267,30 @@ fn srl(a:Prob) -> Prob {
     a >> 1
 }
 
+impl BaseCDF for FrequentistCDF16 {
+    fn num_symbols() -> u8 { 16 }
+    fn used(&self) -> bool {
+        self.entropy() != Self::default().entropy()
+    }
+    fn max(&self) -> Prob {
+        self.cdf[15]
+    }
+    fn log_max(&self) -> Option<i8> { None }
+    fn cdf(&self, symbol: u8) -> Prob {
+        self.cdf[symbol as usize]
+    }
+    fn valid(&self) -> bool {
+        let mut prev = 0;
+        for item in self.cdf.split_at(15).0.iter() {
+            if *item <= prev {
+                return false;
+            }
+            prev = *item;
+        }
+        return true;
+    }
+}
+
 impl CDF16 for FrequentistCDF16 {
     fn blend(&mut self, symbol: u8) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
@@ -260,22 +304,6 @@ impl CDF16 for FrequentistCDF16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 1;
             }
         }
-    }
-    fn valid(&self) -> bool {
-        let mut prev = 0;
-        for item in self.cdf.split_at(15).0.iter() {
-            if *item <= prev {
-                return false;
-            }
-            prev = *item;
-        }
-        return true;
-    }
-    fn max(&self) -> Prob {
-        self.cdf[15]
-    }
-    fn cdf(&self, symbol: u8) -> Prob {
-        self.cdf[symbol as usize]
     }
 }
 
@@ -378,8 +406,68 @@ fn to_blend_lut(symbol: u8) -> [Prob;16] {
     CDF_SELECTOR[symbol as usize]
 }
 
+#[cfg(feature="debug_entropy")]
+#[derive(Clone,Copy,Default)]
+pub struct DebugWrapperCDF16<Cdf16: CDF16> {
+    pub cdf: Cdf16,
+    pub counts: [u32; 16]
+}
+
+#[cfg(feature="debug_entropy")]
+impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
+    fn blend(&mut self, symbol: u8) {
+        self.counts[symbol as usize] += 1;
+        self.cdf.blend(symbol);
+    }
+    fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
+}
+
+#[cfg(feature="debug_entropy")]
+impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
+    fn num_symbols() -> u8 { 16 }
+    fn cdf(&self, symbol: u8) -> Prob { self.cdf.cdf(symbol) }
+    fn pdf(&self, symbol: u8) -> Prob { self.cdf.pdf(symbol) }
+    fn max(&self) -> Prob { self.cdf.max() }
+    fn log_max(&self) -> Option<i8> { self.cdf.log_max() }
+    fn entropy(&self) -> f64 { self.cdf.entropy() }
+    fn valid(&self) -> bool { self.cdf.valid() }
+
+    fn true_entropy(&self) -> Option<f64> {
+        let num_samples = self.num_samples().unwrap();
+        if num_samples > 0 {
+            let mut sum : f64 = 0.0;
+            for i in 0..16 {
+                sum += if self.counts[i] == 0 { 0.0f64 } else {
+                    let p = (self.counts[i] as f64) / (num_samples as f64);
+                    p * (-p.log2())
+                };
+            }
+            Some(sum)
+        } else {
+            None
+        }
+    }
+    fn num_samples(&self) -> Option<u32> {
+        let mut sum : u32 = 0;
+        for i in 0..16 {
+            sum += self.counts[i];
+        }
+        Some(sum)
+    }
+    fn used(&self) -> bool {
+        self.num_samples().unwrap() > 0
+    }
+}
+
+#[cfg(feature="debug_entropy")]
+impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
+    fn new(cdf: Cdf16) -> Self {
+        DebugWrapperCDF16::<Cdf16> { cdf: cdf, counts: [0; 16] }
+    }
+}
+
 mod test {
-    use super::CDF16;
+    use super::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16};
 
     #[test]
     fn test_blend_lut() {
@@ -404,7 +492,7 @@ mod test {
     #[cfg(test)]
     fn test_random_cdf<C: CDF16>(mut prob_state: C,
                                  rand_table : [(u32, u32); 16],
-                                 num_trials: usize) {
+                                 num_trials: usize) -> C {
         let mut cutoffs : [u32; 16] = [0; 16];
         let mut sum_prob : f32 = 0.0f32;
         for i in 0..16 {
@@ -434,11 +522,12 @@ mod test {
             // TODO: These bounds should be tightened.
             assert!(rel_delta < 0.15f32 || abs_delta < 0.014f32);
         }
+        prob_state
     }
     #[test]
     fn test_stationary_probability_blend_cdf() {
         let rm = RAND_MAX as u32;
-        test_random_cdf(super::BlendCDF16::default(),
+        test_random_cdf(BlendCDF16::default(),
                         [(0,1), (0,1), (1,16), (0,1),
                          (1,32), (1,32), (0,1), (0,1),
                          (1,8), (0,1), (0,1), (0,1),
@@ -448,17 +537,30 @@ mod test {
     #[test]
     fn test_stationary_probability_frequentist_cdf() {
         let rm = RAND_MAX as u32;
-        test_random_cdf(super::FrequentistCDF16::default(),
+        test_random_cdf(FrequentistCDF16::default(),
                         [(0,1), (0,1), (1,16), (0,1),
                          (1,32), (1,32), (0,1), (0,1),
                          (1,8), (0,1), (0,1), (0,1),
                          (1,5), (1,5), (1,5), (3,20)],
                         1000000);
     }
+    #[cfg(feature="debug_entropy")]
+    #[test]
+    fn test_stationary_probability_debug_cdf() {
+        let rm = RAND_MAX as u32;
+        let wrapper_cdf = test_random_cdf(super::DebugWrapperCDF16::<FrequentistCDF16>::default(),
+                                          [(0,1), (0,1), (1,16), (0,1),
+                                           (1,32), (1,32), (0,1), (0,1),
+                                           (1,8), (0,1), (0,1), (0,1),
+                                           (1,5), (1,5), (1,5), (3,20)],
+                                          1000000);
+        assert!(wrapper_cdf.num_samples().is_some());
+        assert_eq!(wrapper_cdf.num_samples().unwrap(), 1000000);
+    }
     #[test]
     fn test_blend_cdf_nonzero_pdf() {
         // This is a regression test
-        let mut prob_state = super::BlendCDF16::default();
+        let mut prob_state = BlendCDF16::default();
         for n in 0..1000000 {
             prob_state.blend(15);
         }

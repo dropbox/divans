@@ -1,7 +1,7 @@
 #![allow(unused)]
 #![macro_escape]
 use core;
-use super::probability::{CDF2, CDF16, CDFDebug};
+use super::probability::{BaseCDF, CDF2, CDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 pub trait PriorMultiIndex {
@@ -30,10 +30,10 @@ macro_rules! define_prior_struct {
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.
-        struct $name<T: CDFDebug + Default, AllocT: Allocator<T>> {
+        struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T: CDFDebug + Default, AllocT: Allocator<T>> $name<T, AllocT> {
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
             #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
@@ -75,8 +75,9 @@ macro_rules! define_prior_struct {
                 count_expr!($($args),*) as usize
             }
         }
+        #[cfg(feature="billing")]
         #[cfg(feature="debug_entropy")]
-        impl<T: CDFDebug + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 // Check for proper initialization.
                 if self.priors.slice().len() != $name::<T, AllocT>::num_all_priors() {
@@ -93,8 +94,11 @@ macro_rules! define_prior_struct {
                             break;
                         }
                         let cdf = self.get(billing.clone(), i);
-                        if cdf.used() {
-                            println!("  {:?}[{}] : {}", billing, i, cdf.entropy());
+                        let true_entropy = cdf.true_entropy();
+                        let num_samples = cdf.num_samples();
+                        if cdf.used() && true_entropy.is_some() && num_samples.is_some() {
+                            println!("  {:?}[{}] : {} (True entropy: {:1.5}, #: {})",
+                                     billing, i, cdf.entropy(), true_entropy.unwrap(), num_samples.unwrap());
                             num_cdfs_printed += 1;
                         }
                     }
@@ -166,7 +170,7 @@ macro_rules! select_expr {
 }
 
 mod test {
-    use super::{Allocator, CDF2, CDFDebug, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
+    use super::{Allocator, BaseCDF, CDF2, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
     use alloc::HeapAlloc;
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]

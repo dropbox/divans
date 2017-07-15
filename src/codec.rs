@@ -20,7 +20,7 @@ macro_rules! println_stderr(
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );*/
-use super::probability::{CDF2, CDF16, CDFDebug};
+use super::probability::{BaseCDF, CDF2, CDF16};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
