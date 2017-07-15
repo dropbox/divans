@@ -515,7 +515,7 @@ impl<AllocU8:Allocator<u8>,
                     //let index = 0;
                     let index = 0usize;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut shortcut_nib = core::cmp::min(15, literal_len) as u8;
+                    let mut shortcut_nib = core::cmp::min(15, literal_len.wrapping_sub(1)) as u8;
                     let mut nibble_prob = superstate.bk.lit_priors.get(
                         LiteralNibblePriorType::CountSmall, (index, ctype));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
@@ -524,8 +524,8 @@ impl<AllocU8:Allocator<u8>,
                     if shortcut_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountFirst;
                     } else {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(shortcut_nib as usize),
-                                                                        shortcut_nib as usize);
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(shortcut_nib as usize + 1),
+                                                                        shortcut_nib as usize + 1);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     }
                 },
