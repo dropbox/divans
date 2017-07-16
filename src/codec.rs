@@ -495,7 +495,8 @@ impl<AllocU8:Allocator<u8>,
                           output_bytes:&mut [u8],
                           output_offset: &mut usize) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
-        let lllen: u8 = (core::mem::size_of_val(&literal_len) as u32 * 8 - literal_len.leading_zeros()) as u8;
+        let serialized_large_literal_len  = literal_len.wrapping_sub(16);
+        let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let ltype = superstate.bk.get_literal_block_type();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
@@ -530,7 +531,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::LiteralCountFirst => {
-                    let mut beg_nib = core::cmp::min(15, lllen);
+                    let mut beg_nib = lllen;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeBegNib, ctype);
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
@@ -539,10 +540,8 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(beg_nib as usize),
-                                                                        beg_nib as usize);
-                        self.lc.data = superstate.specialization.alloc_literal_buffer(&mut superstate.m8,
-                                                                                      beg_nib as usize);
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(16 + beg_nib as usize),
+                                                                        16 + beg_nib as usize);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
@@ -561,7 +560,7 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralCountMantissaNibbles(len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
-                    let last_nib_as_u32 = (literal_len ^ decoded_so_far) >> next_len_remaining;
+                    let last_nib_as_u32 = (serialized_large_literal_len ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
@@ -571,8 +570,8 @@ impl<AllocU8:Allocator<u8>,
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
 
                     if next_len_remaining == 0 {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize),
-                                                                      next_decoded_so_far as usize);
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize + 16),
+                                                                      next_decoded_so_far as usize+ 16);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
