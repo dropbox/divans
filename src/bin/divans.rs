@@ -139,6 +139,17 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     };
     return Ok(expected_window_size)
 }
+
+#[cfg(not(feature="block_switch"))]
+fn use_block_switch() -> bool {
+    false
+}
+
+#[cfg(feature="block_switch")]
+fn use_block_switch() -> bool {
+    true
+}
+
 fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
     if command_vec.len() == 0 {
@@ -160,6 +171,9 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
                                           msg.description()));
             }
         };
+        if !use_block_switch() {
+            return Ok(None);
+        }
         return Ok(Some(match cmd.chars().next().unwrap() {
             'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
             'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
