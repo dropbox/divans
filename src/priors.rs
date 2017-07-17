@@ -24,6 +24,16 @@ impl PriorMultiIndex for (usize, usize, usize) {
     fn num_dimensions() -> usize { 3usize }
 }
 
+pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B> {
+    fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
+    fn num_all_priors() -> usize;
+    fn num_prior(billing: &B) -> usize;
+    fn num_dimensions(billing: &B) -> usize;
+    fn num_billing_types() -> usize;
+    fn index_to_billing_type(index: usize) -> B;
+    fn summarize(&mut self) {}
+}
+
 macro_rules! define_prior_struct {
     // Syntax: define_prior_struct(StructName, BillingType,
     //                             billing_type1, count1, billing_type2, count2, ...);
@@ -33,7 +43,7 @@ macro_rules! define_prior_struct {
         struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
@@ -70,22 +80,24 @@ macro_rules! define_prior_struct {
             fn num_dimensions(billing: &$billing_type) -> usize {
                 (define_prior_struct_helper_dimensionality!(billing; $($args),*)) as usize
             }
-            #[inline]
+
             fn num_billing_types() -> usize {
                 count_expr!($($args),*) as usize
             }
-        }
-        #[cfg(feature="billing")]
-        #[cfg(feature="debug_entropy")]
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
-            fn drop(&mut self) {
+            fn index_to_billing_type(index: usize) -> $billing_type {
+                define_prior_struct_helper_select_type!(index; $($args),*)
+            }
+
+            #[cfg(feature="billing")]
+            #[cfg(feature="debug_entropy")]
+            fn summarize(&mut self) {
                 // Check for proper initialization.
                 if self.priors.slice().len() != $name::<T, AllocT>::num_all_priors() {
                     return;
                 }
                 println!("[Summary for {}]", stringify!($name));
                 for i in 0..$name::<T, AllocT>::num_billing_types() {
-                    let billing = define_prior_struct_helper_select_type!(i; $($args),*);
+                    let billing = $name::<T, AllocT>::index_to_billing_type(i as usize);
                     let count = $name::<T, AllocT>::num_prior(&billing);
                     let mut num_cdfs_printed = 0usize;
                     for i in 0..count {
@@ -108,6 +120,12 @@ macro_rules! define_prior_struct {
                             }
                     }
                 }
+            }
+        }
+        #[cfg(feature="billing")]
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+            fn drop(&mut self) {
+                self.summarize();
             }
         }
     };
@@ -175,7 +193,8 @@ macro_rules! select_expr {
 }
 
 mod test {
-    use super::{Allocator, BaseCDF, CDF2, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
+    use core;
+    use super::{Allocator, BaseCDF, CDF2, PriorCollection, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
     use alloc::HeapAlloc;
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -237,8 +256,11 @@ mod test {
     }
 
     #[test]
-    fn test_num_billing_types() {
+    fn test_billing_types() {
         assert_eq!(TestPriorSetImpl::num_billing_types(), 3);
+        assert_eq!(TestPriorSetImpl::index_to_billing_type(0), PriorType::Foo);
+        assert_eq!(TestPriorSetImpl::index_to_billing_type(1), PriorType::Bar);
+        assert_eq!(TestPriorSetImpl::index_to_billing_type(2), PriorType::Cat);
     }
 
     #[test]
