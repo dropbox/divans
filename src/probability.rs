@@ -51,6 +51,7 @@ pub trait BaseCDF {
     // Only CDFs that are intended for debugging should support them.
     fn true_entropy(&self) -> Option<f64> { None }
     fn num_samples(&self) -> Option<u32> { None }
+    fn encoding_cost(&self) -> Option<f64> { None }
 }
 
 #[derive(Clone, Copy)]
@@ -410,13 +411,16 @@ fn to_blend_lut(symbol: u8) -> [Prob;16] {
 #[derive(Clone,Copy,Default)]
 pub struct DebugWrapperCDF16<Cdf16: CDF16> {
     pub cdf: Cdf16,
-    pub counts: [u32; 16]
+    pub counts: [u32; 16],
+    pub cost: f64,
 }
 
 #[cfg(feature="debug_entropy")]
 impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn blend(&mut self, symbol: u8) {
         self.counts[symbol as usize] += 1;
+        let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
+        self.cost += -p.log2();
         self.cdf.blend(symbol);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
@@ -431,6 +435,9 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
     fn log_max(&self) -> Option<i8> { self.cdf.log_max() }
     fn entropy(&self) -> f64 { self.cdf.entropy() }
     fn valid(&self) -> bool { self.cdf.valid() }
+    fn used(&self) -> bool {
+        self.num_samples().unwrap() > 0
+    }
 
     fn true_entropy(&self) -> Option<f64> {
         let num_samples = self.num_samples().unwrap();
@@ -454,15 +461,15 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
         }
         Some(sum)
     }
-    fn used(&self) -> bool {
-        self.num_samples().unwrap() > 0
+    fn encoding_cost(&self) -> Option<f64> {
+        Some(self.cost)
     }
 }
 
 #[cfg(feature="debug_entropy")]
 impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn new(cdf: Cdf16) -> Self {
-        DebugWrapperCDF16::<Cdf16> { cdf: cdf, counts: [0; 16] }
+        DebugWrapperCDF16::<Cdf16> { cdf: cdf, counts: [0; 16], cost: 0.0 }
     }
 }
 
