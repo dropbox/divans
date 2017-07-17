@@ -8,6 +8,7 @@ use brotli_decompressor::transform::{TransformDictionaryWord};
 pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 mod test;
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>>{
+    total_offset: usize,
     input_sub_offset: usize,
     pub ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
@@ -28,7 +29,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             ring_buffer_decode_index: 0,
             ring_buffer_output_index: 0,
             input_sub_offset: 0,
+            total_offset:0,
         }
+    }
+    pub fn num_bytes_encoded(&self) -> usize {
+        self.total_offset
     }
     pub fn last_8_literals(&self) -> [u8; 8] {
         let mut ret = [0u8; 8];
@@ -274,6 +279,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                   output :&mut[u8],
                   output_offset: &mut usize) -> BrotliResult {
         loop {
+            let prev_output_offset = *output_offset;
             let res = self.parse_command(cmd);
             match res {
                 BrotliResult::ResultSuccess => {
@@ -282,18 +288,26 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                 BrotliResult::NeedsMoreOutput => {
                     match self.flush(output, output_offset) {
                         BrotliResult::ResultSuccess => {},
-                        flush_res => {return flush_res},
+                        flush_res => {
+                            self.total_offset += *output_offset - prev_output_offset;
+                            return flush_res
+                        },
                     }
                 }, // flush, and try again
                 _ => return res,
             }
         }
+        let prev_output_offset = *output_offset;
         match self.flush(output, output_offset)  {
             BrotliResult::ResultSuccess => {
                 self.input_sub_offset = 0;
+                self.total_offset += *output_offset - prev_output_offset;
                 return BrotliResult::ResultSuccess;
             },
-            res => return res,
+            res => {
+                self.total_offset += *output_offset - prev_output_offset;
+                return res;
+            },
         }
     }
 }

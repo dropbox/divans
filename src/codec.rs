@@ -230,7 +230,7 @@ impl CopyState {
                         nibble_prob.blend(beg_nib);
                     }
                     if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceMnemonicTwo;
+                        self.state = CopySubstate::DistanceLengthFirst;
                     } else {
                         self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
@@ -239,7 +239,8 @@ impl CopyState {
                     }
                 },
                 CopySubstate::DistanceLengthMnemonicTwo => {
-                    let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance);
+                    //UNUSED : haven't made this pay for itself
+                    let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance, in_cmd.num_bytes);
                     let dtype = superstate.bk.get_distance_block_type();
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -251,7 +252,8 @@ impl CopyState {
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib);
+                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib,
+                                                                                             self.cc.num_bytes);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
@@ -828,9 +830,16 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::Index, NUM_ORGANIC_DICT_DISTANCE_PRIORS, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::Transform, 17));
 
+#[derive(Copy,Clone)]
+pub struct DistanceCacheEntry {
+    distance:u32,
+    decode_byte_count:u32,
+}
+
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+    decode_byte_count: u32,
     last_8_literals: u64,
     last_4_states: u8,
     last_dlen: u8,
@@ -843,6 +852,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
+    distance_cache:[[DistanceCacheEntry;3];32],
 }
 
 
@@ -865,6 +875,13 @@ impl<Cdf16:CDF16,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
+            decode_byte_count:0,
+            distance_cache:[
+                [
+                    DistanceCacheEntry{
+                        distance:1,
+                        decode_byte_count:0,
+                    };3];32],
             last_dlen: 1,
             last_clen: 1,
             last_4_states: 0,
@@ -891,29 +908,34 @@ impl<Cdf16:CDF16,
             btype_lru:[[0,1];3],
         }
     }
-    fn get_distance_from_mnemonic_code_two(&self, code:u8) -> u32 {
+    fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
+        let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
+        return self.distance_cache[len_index][index as usize].distance + (
+            self.decode_byte_count - self.distance_cache[len_index][index as usize].decode_byte_count);
+    }
+    fn get_distance_from_mnemonic_code_two(&self, code:u8, len:u32,) -> u32 {
         match code {
-            0 => self.distance_lru[2] + 1,
-            1 => self.distance_lru[3] + 1,
-            2 => sub_or_add(self.distance_lru[2], 1, 3),
-            3 => sub_or_add(self.distance_lru[3], 1, 3),
-            4 => self.distance_lru[0] + 4,
-            5 => sub_or_add(self.distance_lru[0], 4, 7),
-            6 => self.distance_lru[1] + 4,
-            7 => sub_or_add(self.distance_lru[1], 3, 6),
-            8 => self.distance_lru[0] + 5,
-            9 => sub_or_add(self.distance_lru[0], 5, 8),
-            10 => self.distance_lru[1] + 5,
-            11 => sub_or_add(self.distance_lru[1], 4, 7),
-            12 => self.distance_lru[0] + 6,
-            13 => sub_or_add(self.distance_lru[0], 6, 9),
-            14 => self.distance_lru[1] + 6,
+            0 => sub_or_add(self.distance_lru[2], 1, 3),
+            1 => self.read_distance_cache(len, 0),
+            2 => self.read_distance_cache(len, 1),
+            3 => self.read_distance_cache(len, 2),
+            4 => self.read_distance_cache(len + 1, 0),
+            5 => self.read_distance_cache(len + 1, 1),
+            6 => self.read_distance_cache(len + 1, 2),
+            7 => self.read_distance_cache(len + 1, 0) - 1,
+            8 => self.read_distance_cache(len + 1, 1) - 1,
+            9 => self.read_distance_cache(len + 1, 2) - 1,
+            10 => self.read_distance_cache(len + 2, 0),
+            11 => self.read_distance_cache(len + 2, 1),
+            12 => self.read_distance_cache(len + 2, 2),
+            13 => self.read_distance_cache(len + 2, 0) - 1,
+            14 => self.read_distance_cache(len + 2, 1) - 1,
             _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
         }
     }
-    fn distance_mnemonic_code_two(&self, d: u32) -> u8 {
+    fn distance_mnemonic_code_two(&self, d: u32, len:u32) -> u8 {
         for i in 0..15 {
-            if self.get_distance_from_mnemonic_code_two(i as u8) == d {
+            if self.get_distance_from_mnemonic_code_two(i as u8, len) == d {
                 return i as u8;
             }
         }
@@ -941,7 +963,6 @@ impl<Cdf16:CDF16,
         }
     }
     fn distance_mnemonic_code(&self, d: u32) -> u8 {
-        let candidate = 15u8;
         for i in 0..15 {
             if self.get_distance_from_mnemonic_code(i as u8) == d {
                 return i as u8;
@@ -1554,15 +1575,18 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                   tmp_output_offset_bytes) {
                         BrotliResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
                         BrotliResult::NeedsMoreOutput => {
+                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             if self.cross_command_state.specialization.does_caller_want_original_file_bytes() {
                                 return OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput); // we need the caller to drain the buffer
                             }
                             new_state = None;
                         },
                         BrotliResult::ResultFailure => {
+                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             return OneCommandReturn::BufferExhausted(Fail());
                         },
                         BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
                             let last_8 = self.cross_command_state.recoder.last_8_literals();
                             self.cross_command_state.bk.last_8_literals =

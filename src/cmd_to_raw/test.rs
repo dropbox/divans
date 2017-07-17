@@ -22,6 +22,7 @@ impl super::SliceWrapper<u8> for ExRingBuffer {
 #[allow(unused)]
 fn make_ring_buffer_state() -> super::DivansRecodeState<ExRingBuffer>{
     super::DivansRecodeState{
+        total_offset:0,
         input_sub_offset: 0,
         ring_buffer: ExRingBuffer::default(),
         ring_buffer_decode_index:0,
