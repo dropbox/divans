@@ -95,14 +95,15 @@ macro_rules! define_prior_struct {
                         }
                         let cdf = self.get(billing.clone(), i);
                         let true_entropy = cdf.true_entropy();
+                        let rolling_entropy = cdf.rolling_entropy();
                         let num_samples = cdf.num_samples();
                         let encoding_cost = cdf.encoding_cost();
-                        if cdf.used() && true_entropy.is_some() &&
+                        if cdf.used() && true_entropy.is_some() && rolling_entropy.is_some() &&
                             num_samples.is_some() && encoding_cost.is_some() {
-                                println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
+                                println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
                                          billing, i,
                                          encoding_cost.unwrap() / (num_samples.unwrap() as f64),
-                                         true_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
+                                         true_entropy.unwrap(), rolling_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
                                 num_cdfs_printed += 1;
                             }
                     }

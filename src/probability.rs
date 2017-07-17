@@ -49,8 +49,9 @@ pub trait BaseCDF {
 
     // These methods are optional because implementing them requires nontrivial bookkeeping.
     // Only CDFs that are intended for debugging should support them.
-    fn true_entropy(&self) -> Option<f64> { None }
     fn num_samples(&self) -> Option<u32> { None }
+    fn true_entropy(&self) -> Option<f64> { None }
+    fn rolling_entropy(&self) -> Option<f64> { None }
     fn encoding_cost(&self) -> Option<f64> { None }
 }
 
@@ -412,7 +413,8 @@ fn to_blend_lut(symbol: u8) -> [Prob;16] {
 pub struct DebugWrapperCDF16<Cdf16: CDF16> {
     pub cdf: Cdf16,
     pub counts: [u32; 16],
-    pub cost: f64,
+    cost: f64,
+    rolling_entropy_sum: f64
 }
 
 #[cfg(feature="debug_entropy")]
@@ -421,6 +423,10 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         self.counts[symbol as usize] += 1;
         let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
         self.cost += -p.log2();
+        match self.true_entropy() {
+            None => {},
+            Some(e) => { self.rolling_entropy_sum += e; }
+        }
         self.cdf.blend(symbol);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
@@ -439,6 +445,13 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
         self.num_samples().unwrap() > 0
     }
 
+    fn num_samples(&self) -> Option<u32> {
+        let mut sum : u32 = 0;
+        for i in 0..16 {
+            sum += self.counts[i];
+        }
+        Some(sum)
+    }
     fn true_entropy(&self) -> Option<f64> {
         let num_samples = self.num_samples().unwrap();
         if num_samples > 0 {
@@ -454,12 +467,11 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
             None
         }
     }
-    fn num_samples(&self) -> Option<u32> {
-        let mut sum : u32 = 0;
-        for i in 0..16 {
-            sum += self.counts[i];
+    fn rolling_entropy(&self) -> Option<f64> {
+        match self.num_samples() {
+            None => None,
+            Some(n) => Some(self.rolling_entropy_sum / n as f64)
         }
-        Some(sum)
     }
     fn encoding_cost(&self) -> Option<f64> {
         Some(self.cost)
@@ -469,7 +481,12 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
 #[cfg(feature="debug_entropy")]
 impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn new(cdf: Cdf16) -> Self {
-        DebugWrapperCDF16::<Cdf16> { cdf: cdf, counts: [0; 16], cost: 0.0 }
+        DebugWrapperCDF16::<Cdf16> {
+            cdf: cdf,
+            counts: [0; 16],
+            cost: 0.0,
+            rolling_entropy_sum: 0.0
+        }
     }
 }
 
