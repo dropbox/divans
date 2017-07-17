@@ -145,7 +145,9 @@ fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..4 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:112,
-                                                  num_bytes:29}) {
+                                                   num_bytes:29,
+                                                   reused:false,
+        }) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
             res => panic!("UH OH"),
@@ -190,7 +192,9 @@ fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..4 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:15,
-                                                   num_bytes:64}) {
+                                                   num_bytes:64,
+                                                   reused:false,
+        }) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
             res => panic!("UH OH"),
@@ -221,7 +225,9 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..256 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258,
+                                                   reused:false,
+        }) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
@@ -237,7 +243,9 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..64 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258,
+                                                   reused:false,
+        }) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
@@ -261,7 +269,9 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..16 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258,
+                                                   reused:false,
+        }) {
             BrotliResult::NeedsMoreOutput=>{},
             BrotliResult::ResultSuccess=>break,
             res => panic!("uh oh"),

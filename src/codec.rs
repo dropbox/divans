@@ -1154,6 +1154,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
                             cc: CopyCommand {
                                 distance:0,
                                 num_bytes:0,
+                                reused: false,
                             },
                             state:CopySubstate::Begin,
                         }),
@@ -1416,6 +1417,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                 cc: CopyCommand {
                                     distance:0,
                                     num_bytes:0,
+                                    reused: false,
                                 },
                                 state:CopySubstate::Begin,
                             }));

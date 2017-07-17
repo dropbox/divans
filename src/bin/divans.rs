@@ -158,7 +158,7 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
     let cmd = &command_vec[0];
     if cmd == "window" {
             // FIXME validate
-            return Ok(Some(Command::Copy(CopyCommand{distance:1,num_bytes:0})));
+            return Ok(Some(Command::Copy(CopyCommand{distance:1,num_bytes:0, reused:false})));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -203,7 +203,19 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
                                           msg.description()));
             }
         };
-        return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len})));
+        let mut reused: bool = false;
+        if command_vec.len() > 4 {
+            if command_vec[4] == "unused" || command_vec[4] == "reused" {
+                if command_vec[4] == "reused" {
+                    reused = true;
+                }
+            } else if command_vec[4] != "ctx" {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          "copy command arg[4] must be {unused,reused} or empty"))
+            }
+        }
+        
+        return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len, reused:reused,})));
     } else if cmd == "dict" {
         if command_vec.len() < 6 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,

@@ -24,13 +24,15 @@ impl BlockSwitch {
 pub struct CopyCommand {
     pub distance: u32,
     pub num_bytes: u32,
+    pub reused: bool,
 }
 
 impl Nop<CopyCommand> for CopyCommand {
     fn nop() -> Self {
         CopyCommand {
             distance: 1,
-            num_bytes: 0
+            num_bytes: 0,
+            reused:false,
         }
     }
 }
