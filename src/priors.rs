@@ -109,37 +109,37 @@ macro_rules! define_prior_struct {
 }
 
 macro_rules! define_prior_struct_helper_offset {
-    ($billing: expr; ($type: expr, $($args: expr),*)) => { 0 };  // should panic if billing != type
-    ($billing: expr; ($type: expr, $($args: expr),*), $($more:tt),*) => {
-        (($billing != $type) as u32) * (product!($($args),*) + define_prior_struct_helper_offset!($billing; $($more),*))
+    ($billing: expr; ($typ: expr, $($args: expr),*)) => { 0 };  // should panic if billing != type
+    ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        (($billing != $typ) as u32) * (product!($($args),*) + define_prior_struct_helper_offset!($billing; $($more),*))
     };
 }
 
 macro_rules! define_prior_struct_helper_product {
-    ($billing: expr; ($type: expr, $($args: expr),*)) => { product!($($args),*) };  // should panic if billing != type
-    ($billing: expr; ($type: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $type { product!($($args),*) } else { define_prior_struct_helper_product!($billing; $($more),*) }
+    ($billing: expr; ($typ: expr, $($args: expr),*)) => { product!($($args),*) };  // should panic if billing != type
+    ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if *$billing == $typ { product!($($args),*) } else { define_prior_struct_helper_product!($billing; $($more),*) }
     };
 }
 
 macro_rules! define_prior_struct_helper_dimensionality {
-    ($billing: expr; ($type: expr, $($args: expr),*)) => { count_expr!($($args),*) };  // should panic if billing != type
-    ($billing: expr; ($type: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $type { count_expr!($($args),*) } else { define_prior_struct_helper_dimensionality!($billing; $($more),*) }
+    ($billing: expr; ($typ: expr, $($args: expr),*)) => { count_expr!($($args),*) };  // should panic if billing != type
+    ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if *$billing == $typ { count_expr!($($args),*) } else { define_prior_struct_helper_dimensionality!($billing; $($more),*) }
     };
 }
 
 macro_rules! define_prior_struct_helper_select_type {
-    ($index: expr; ($type: expr, $($args: expr),*)) => { $type };  // should panic if billing != type
-    ($index: expr; ($type: expr, $($args: expr),*), $($more:tt),*) => {
-        if $index == 0 { $type } else { define_prior_struct_helper_select_type!(($index - 1); $($more),*) }
+    ($index: expr; ($typ: expr, $($args: expr),*)) => { $typ };  // should panic if billing != type
+    ($index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if $index == 0 { $typ } else { define_prior_struct_helper_select_type!(($index - 1); $($more),*) }
     };
 }
 
 macro_rules! define_prior_struct_helper_select_dim {
-    ($billing: expr; $index: expr; ($type: expr, $($args: expr),*)) => { select_expr!($index; 1; $($args),*) };  // should panic if billing != type
-    ($billing: expr; $index: expr; ($type: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $type { select_expr!($index; 1; $($args),*) } else { define_prior_struct_helper_select_dim!($billing; $index; $($more),*) }
+    ($billing: expr; $index: expr; ($typ: expr, $($args: expr),*)) => { select_expr!($index; 1; $($args),*) };  // should panic if billing != type
+    ($billing: expr; $index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if *$billing == $typ { select_expr!($index; 1; $($args),*) } else { define_prior_struct_helper_select_dim!($billing; $index; $($more),*) }
     };
 }
 
