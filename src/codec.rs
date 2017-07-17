@@ -83,6 +83,7 @@ pub enum CopySubstate {
     CountLengthFirst,
     CountLengthGreater18Less25, // length not between 0 and 14 inclusive... second nibble results in 15-24
     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
+    DistanceNibbles(u8, u8, u32, u8), //nibble distance, intermediate result
     CountDecoded,
     DistanceLengthMnemonic, // references a recent distance cached value
     DistanceLengthFirst,
@@ -140,6 +141,8 @@ impl CopyState {
             let billing = BillingDesignation::CopyCommand(match self.state {
                 CopySubstate::CountMantissaNibbles(_, _, _) => CopySubstate::CountMantissaNibbles(0, 0, 0),
                 CopySubstate::DistanceMantissaNibbles(_, _, _) => CopySubstate::DistanceMantissaNibbles(0, 0, 0),
+                CopySubstate::DistanceNibbles(_, _, _, 1) => CopySubstate::DistanceNibbles(0, 0, 0, 1),
+                CopySubstate::DistanceNibbles(_, _, _, 0) => CopySubstate::DistanceNibbles(0, 0, 0, 0),
                 _ => self.state
             });
             match self.state {
@@ -228,13 +231,43 @@ impl CopyState {
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib);
                     }
-                    if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthFirst;
+                    if beg_nib == 15 || beg_nib == 14 {
+                        if beg_nib == 15 {
+                            let max = *superstate.bk.distance_recent_nibbles.iter().max().unwrap();
+                            self.state = CopySubstate::DistanceNibbles(max, max, 0, 1);
+                        } else {
+                            self.state = CopySubstate::DistanceNibbles(24, 24, 0, 0);
+                        }
                     } else {
                         self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
+                    }
+                },
+                CopySubstate::DistanceNibbles(max_len, len_remaining, decoded_so_far, is_big) => {
+                    let next_len_remaining = len_remaining - 4;
+                    let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
+                    //debug_assert!(last_nib_as_u32 < 16);// only for encoding
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    let dtype = superstate.bk.get_distance_block_type();
+                    let mut nibble_prob = superstate.bk.copy_priors.get(
+                        CopyCommandNibblePriorType::DistanceNib, ((6 * (max_len>>2) + (len_remaining>>2)) as usize,
+                                                                  dtype * 2 + is_big as usize));
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
+                    nibble_prob.blend(last_nib);
+
+                    if next_len_remaining == 0 {
+                        //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
+                        self.cc.distance = next_decoded_so_far;
+                        self.state = CopySubstate::FullyDecoded;
+                    } else {
+                        self.state  = CopySubstate::DistanceNibbles(
+                            max_len,
+                            next_len_remaining,
+                            next_decoded_so_far,
+                            is_big);
                     }
                 },
                 CopySubstate::DistanceLengthFirst => {
@@ -293,6 +326,11 @@ impl CopyState {
                     }
                 },
                 CopySubstate::FullyDecoded => {
+                    superstate.bk.distance_recent_nibbles[superstate.bk.distance_recent_nibbles_index as usize] =
+                        (((core::mem::size_of_val(&self.cc.distance) as u8 * 8 - self.cc.distance.leading_zeros() as u8 + 3) >>2)<<2) as u8;
+                    superstate.bk.distance_recent_nibbles_index += 1;
+                    superstate.bk.distance_recent_nibbles_index &= (superstate.bk.distance_recent_nibbles.len() - 1) as u8;
+                    assert_eq!((superstate.bk.distance_recent_nibbles.len() - 1) & superstate.bk.distance_recent_nibbles.len(),0);
                     return BrotliResult::ResultSuccess;
                 }
             }
@@ -776,6 +814,7 @@ enum CopyCommandNibblePriorType {
     DistanceLastNib,
     DistanceMnemonic,
     DistanceMantissaNib,
+    DistanceNib,
     CountSmall,
     CountBegNib,
     CountLastNib,
@@ -787,6 +826,7 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceMnemonic, 1, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::DistanceLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::DistanceNib, 96, 2 * NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::CountSmall, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::CountBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::CountLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
@@ -822,6 +862,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
+    distance_recent_nibbles: [u8; 8],
+    distance_recent_nibbles_index: u8,
 }
 
 impl<Cdf16:CDF16,
@@ -859,6 +901,8 @@ impl<Cdf16:CDF16,
                            Cdf16::default()];3],
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
+            distance_recent_nibbles:[12,1,1,1,1,1,1,1],//,1,1,1,1,1,1,1,1],
+            distance_recent_nibbles_index: 0,
         }
     }
 
@@ -878,11 +922,12 @@ impl<Cdf16:CDF16,
             11 => self.distance_lru[1].wrapping_sub(2),
             12 => self.distance_lru[0] + 3,
             13 => self.distance_lru[0].wrapping_sub(3),
-            14 => self.distance_lru[1] + 3,
+            14 => panic!("Logic error: nibble > 14 evaluated for nmemonic"),//self.distance_lru[1] + 3,
             _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
         }
     }
     fn distance_mnemonic_code(&self, d: u32) -> u8 {
+        
         if d == self.distance_lru[0] {
             return 0;
         }
@@ -926,9 +971,14 @@ impl<Cdf16:CDF16,
             return 13;
         }
         if d == self.distance_lru[1] + 3 {
-            return 14;
+            //return 14;
         }
-        15
+        let ld = core::mem::size_of_val(&d) as u8 * 8 - d.leading_zeros() as u8;
+        if ld > *self.distance_recent_nibbles.iter().max().unwrap() {
+            14
+        } else {
+            15
+        }
     }
     fn get_command_block_type(&self) -> usize {
         self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0] as usize
