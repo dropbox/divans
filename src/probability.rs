@@ -195,11 +195,12 @@ impl CDF16 for BlendCDF16 {
         self.mix_rate -= self.mix_rate >> 7;
 
         // Reduce the weight of bias in the first few iterations.
-        if self.cdf[15] < CDF_MAX - (self.cdf[15] >> 1) {
+        if self.cdf[15] < (CDF_MAX - 16) - (self.cdf[15] >> 1) {
             for i in 0..16 {
                 self.cdf[i] += self.cdf[i] >> 1;
             }
         }
+        debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
 }
 
