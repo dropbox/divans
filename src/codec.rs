@@ -246,7 +246,7 @@ impl CopyState {
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib);
                     if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthGreater15Less25;
+                        self.state = CopySubstate::DistanceMantissaNibbles(0, 20,  0);//CopySubstate::DistanceLengthGreater15Less25;
                     } else {
                         superstate.bk.last_dlen = beg_nib + 1;
                         if beg_nib == 0 {
@@ -273,8 +273,12 @@ impl CopyState {
                     let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let index = if len_decoded == 0 { ((superstate.bk.last_dlen % 4) + 1) as usize } else { 0usize };
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let mut index = len_remaining as usize >>2;
+                    let mut dtype = superstate.bk.get_distance_block_type();
+                    
+                    if decoded_so_far != 0 {
+                       dtype = 31 - decoded_so_far.leading_zeros() as usize;
+                    }
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceMantissaNib, (index, dtype));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
@@ -800,7 +804,7 @@ enum DictCommandNibblePriorType {
     Transform,
 }
 
-const NUM_ORGANIC_DICT_DISTANCE_PRIORS: usize = 5;
+const NUM_ORGANIC_DICT_DISTANCE_PRIORS: usize = 8192;
 define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
