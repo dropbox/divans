@@ -19,7 +19,8 @@ macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
-);*/
+);
+*/
 use super::probability::{BaseCDF, CDF2, CDF16};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -1010,7 +1011,22 @@ impl<Cdf16:CDF16,
         self.next_state();
         self.last_4_states |= 128;
     }
-    fn obs_distance(&mut self, distance:u32) {
+    fn obs_distance(&mut self, cc:&CopyCommand) {
+        if cc.num_bytes < self.distance_cache.len() as u32{
+            let nb = cc.num_bytes as usize;
+            let mut sub_index = 0usize;
+            if self.distance_cache[nb][1].decode_byte_count < self.distance_cache[nb][0].decode_byte_count {
+                sub_index = 1;
+            }
+            if self.distance_cache[nb][2].decode_byte_count < self.distance_cache[nb][sub_index].decode_byte_count {
+                sub_index = 2;
+            }
+            self.distance_cache[nb][sub_index] = DistanceCacheEntry{
+                distance: 0,//cc.distance, we're copying it to here (ha!)
+                decode_byte_count:self.decode_byte_count,
+            };
+        }
+        let distance = cc.distance;
         if distance == self.distance_lru[1] {
             self.distance_lru = [distance,
                                  self.distance_lru[0],
@@ -1512,7 +1528,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_distance(copy_state.cc.distance);
+                            self.cross_command_state.bk.obs_distance(&copy_state.cc);
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Copy(core::mem::replace(&mut copy_state.cc,
                                                                  CopyCommand::nop()))));
