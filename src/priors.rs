@@ -9,8 +9,8 @@ pub trait PriorMultiIndex {
     fn num_dimensions() -> usize;
 }
 
-impl PriorMultiIndex for usize {
-    fn expand(&self) -> (usize, usize, usize, usize) { (*self, 0usize, 0usize, 0usize) }
+impl PriorMultiIndex for (usize,) {
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, 0usize, 0usize, 0usize) }
     fn num_dimensions() -> usize { 1usize }
 }
 
@@ -31,6 +31,7 @@ impl PriorMultiIndex for (usize, usize, usize, usize) {
 
 pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B> {
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
+    fn get_with_raw_index(&mut self, billing: B, index: usize) -> &mut T;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
     fn num_dimensions(billing: &B) -> usize;
@@ -50,11 +51,20 @@ macro_rules! define_prior_struct {
         }
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             #[inline]
+            fn get_with_raw_index(&mut self, billing: $billing_type, index: usize) -> &mut T {
+                // Compute the offset into the array for this billing type.
+                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
+                debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
+                debug_assert!(offset_type + index < Self::num_all_priors());
+                &mut self.priors.slice_mut()[offset_type + index]
+            }
+            #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
                 let expected_dim = Self::num_dimensions(&billing);
-                debug_assert!(I::num_dimensions() <= expected_dim,
-                              "Index has {} dimensions but at most {} is expected", I::num_dimensions(), expected_dim);
+                debug_assert_eq!(I::num_dimensions(), expected_dim,
+                                 "Index has {} dimensions but {} is expected for {:?}",
+                                 I::num_dimensions(), expected_dim, billing);
                 // Compute the offset into the array for this billing type.
                 let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 // Compute the offset arising from the index.
@@ -114,7 +124,7 @@ macro_rules! define_prior_struct {
                             println!("  {:?}[...] : omitted", billing);
                             break;
                         }
-                        let cdf = self.get(billing.clone(), i);
+                        let cdf = self.get_with_raw_index(billing.clone(), i);
                         let true_entropy = cdf.true_entropy();
                         let rolling_entropy = cdf.rolling_entropy();
                         let num_samples = cdf.num_samples();
@@ -292,7 +302,7 @@ mod test {
         let reference = FrequentistCDF16::default();
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
-                let cdf = prior_set.get(t, i);
+                let cdf = prior_set.get_with_raw_index(t, i);
                 for j in 0..16 {
                     assert_eq!(cdf.cdf(j), reference.cdf(j));
                 }
@@ -302,7 +312,7 @@ mod test {
         // Use the priors, updating them by varying degrees.
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
-                let mut cdf = prior_set.get(t, i);
+                let mut cdf = prior_set.get_with_raw_index(t, i);
                 for j in 0..i {
                     cdf.blend((j as u8) % 16, Speed::MED);
                 }
@@ -312,7 +322,7 @@ mod test {
         // Ascertain that the priors were updated the proper # of times.
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
-                let cdf = prior_set.get(t, i);
+                let cdf = prior_set.get_with_raw_index(t, i);
                 let mut baseline = FrequentistCDF16::default();
                 for j in 0..i {
                     baseline.blend((j as u8) % 16, Speed::MED);
