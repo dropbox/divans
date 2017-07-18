@@ -5,23 +5,28 @@ use super::probability::{BaseCDF, CDF2, CDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 pub trait PriorMultiIndex {
-    fn expand(&self) -> (usize, usize, usize);
+    fn expand(&self) -> (usize, usize, usize, usize);
     fn num_dimensions() -> usize;
 }
 
 impl PriorMultiIndex for usize {
-    fn expand(&self) -> (usize, usize, usize) { (*self, 0usize, 0usize) }
+    fn expand(&self) -> (usize, usize, usize, usize) { (*self, 0usize, 0usize, 0usize) }
     fn num_dimensions() -> usize { 1usize }
 }
 
 impl PriorMultiIndex for (usize, usize) {
-    fn expand(&self) -> (usize, usize, usize) { (self.0, self.1, 0usize) }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, 0usize, 0usize) }
     fn num_dimensions() -> usize { 2usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize) { *self }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, self.2, 0usize) }
     fn num_dimensions() -> usize { 3usize }
+}
+
+impl PriorMultiIndex for (usize, usize, usize, usize) {
+    fn expand(&self) -> (usize, usize, usize, usize) { *self }
+    fn num_dimensions() -> usize { 4usize }
 }
 
 pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B> {
@@ -54,14 +59,18 @@ macro_rules! define_prior_struct {
                 let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 // Compute the offset arising from the index.
                 let expanded_index = index.expand();
-                let expanded_dim : (usize, usize, usize) = (define_prior_struct_helper_select_dim!(&billing; 0; $($args),*),
-                                                            define_prior_struct_helper_select_dim!(&billing; 1; $($args),*),
-                                                            define_prior_struct_helper_select_dim!(&billing; 2; $($args),*));
-                let offset_index = expanded_index.0 + expanded_dim.0 * (expanded_index.1 + expanded_dim.1 * expanded_index.2);
+                let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(&billing; 0; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(&billing; 1; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(&billing; 2; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(&billing; 3; $($args),*));
+                let offset_index = expanded_index.0 +
+                    expanded_dim.0 * (expanded_index.1 +
+                                      expanded_dim.1 * (expanded_index.2 + expanded_dim.2 * expanded_index.3));
                 if I::num_dimensions() > 1 {
                     debug_assert!(expanded_index.0 < expanded_dim.0 &&
                                   expanded_index.1 < expanded_dim.1 &&
-                                  expanded_index.2 < expanded_dim.2, "Index out of bounds");
+                                  expanded_index.2 < expanded_dim.2 &&
+                                  expanded_index.3 < expanded_dim.3, "Index out of bounds");
                 }
                 debug_assert!(offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
                 debug_assert!(offset_type + offset_index < Self::num_all_priors());

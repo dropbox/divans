@@ -536,7 +536,6 @@ impl<AllocU8:Allocator<u8>,
                     self.state = LiteralSubstate::LiteralCountSmall;
                 },
                 LiteralSubstate::LiteralCountSmall => {
-                    //let index = 0;
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, literal_len.wrapping_sub(1)) as u8;
@@ -619,10 +618,9 @@ impl<AllocU8:Allocator<u8>,
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     {
                         let nibble_index_truncated = if nibble_index < 2 { nibble_index } else { 2 };
-                        let index : usize = (k0 | (k1 << 4)) + (nibble_index_truncated as usize) * 256; /* | (k2 << 8) | (k3 << 0xc)*/ ;
                         let mut nibble_prob = superstate.bk.lit_priors.get(
                             if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
-                            (index, ltype));
+                            (ltype, k0 as usize, k1 as usize, nibble_index_truncated as usize));
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                         nibble_prob.blend(cur_nibble, Speed::SLOW);
                     }
@@ -785,10 +783,9 @@ enum LiteralNibblePriorType {
     SizeMantissaNib,
 }
 
-const NUM_LITERAL_ORGANIC_PRIORS :usize = 65536;
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SecondNibble, NUM_LITERAL_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
                      (LiteralNibblePriorType::CountSmall, 16, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeBegNib, 1, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, 1, NUM_BLOCK_TYPES),
