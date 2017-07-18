@@ -332,7 +332,7 @@ impl CDF16 for FrequentistCDF16 {
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }
-        let limit: Prob = 32767 - 32 - increment;
+        let limit: Prob = 32767 - 16 - 384 /* XXX: max possible increment */;
         if self.cdf[15] >= limit {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
