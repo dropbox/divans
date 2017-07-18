@@ -91,7 +91,7 @@ impl BaseCDF for CDF2 {
 }
 
 impl CDF2 {
-    pub fn blend(&mut self, symbol: bool) {
+    pub fn blend(&mut self, symbol: bool, _speed: Speed) {
         let fcount = self.counts[0];
         let tcount = self.counts[1];
         debug_assert!(fcount != 0);
@@ -118,8 +118,19 @@ impl CDF2 {
     }
 }
 
+pub enum Speed {
+    GEOLOGIC,
+    GLACIAL,
+    MUD,
+    SLOW,
+    MED,
+    FAST,
+    PLANE,
+    ROCKET,
+}
+
 pub trait CDF16: Sized + Default + Copy + BaseCDF {
-    fn blend(&mut self, symbol: u8);
+    fn blend(&mut self, symbol: u8, dyn:Speed);
 
     // TODO: this convenience function should probably live elsewhere.
     fn float_array(&self) -> [f32; 16] {
@@ -189,7 +200,7 @@ impl BaseCDF for BlendCDF16 {
 }
 
 impl CDF16 for BlendCDF16 {
-    fn blend(&mut self, symbol:u8) {
+    fn blend(&mut self, symbol:u8, _speed: Speed) {
         self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
         // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
         self.mix_rate -= self.mix_rate >> 7;
@@ -295,14 +306,24 @@ impl BaseCDF for FrequentistCDF16 {
 }
 
 impl CDF16 for FrequentistCDF16 {
-    fn blend(&mut self, symbol: u8) {
+    fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-        const INCREMENT : Prob = 48;
+        let increment : Prob =
+            match speed {
+                Speed::GEOLOGIC => 1,
+                Speed::GLACIAL => 4,
+                Speed::MUD => 16,
+                Speed::SLOW => 32,
+                Speed::MED => 48,
+                Speed::FAST => 96,
+                Speed::PLANE => 128,
+                Speed::ROCKET => 384,
+            };
         for i in (symbol as usize)..16 {
-            self.cdf[i] = self.cdf[i].wrapping_add(INCREMENT);
+            self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }
-        const LIMIT: Prob = 32767 - 32 - INCREMENT;
-        if self.cdf[15] >= LIMIT {
+        let limit: Prob = 32767 - 32 - increment;
+        if self.cdf[15] >= limit {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
             }
@@ -492,7 +513,7 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
 }
 
 mod test {
-    use super::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16};
+    use super::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16, Speed};
 
     #[test]
     fn test_blend_lut() {
@@ -532,7 +553,7 @@ mod test {
             for j in 0..16 {
                 if rand_num < cutoffs[j] {
                     // we got an j as the next symbol
-                    prob_state.blend(j as u8);
+                    prob_state.blend(j as u8, Speed::MED);
                     assert!(prob_state.valid());
                     break;
                 }
@@ -587,7 +608,7 @@ mod test {
         // This is a regression test
         let mut prob_state = BlendCDF16::default();
         for n in 0..1000000 {
-            prob_state.blend(15);
+            prob_state.blend(15, Speed::MED);
         }
         for i in 0..14 {
             assert!(prob_state.pdf(i) > 0);

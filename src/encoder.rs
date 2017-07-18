@@ -237,7 +237,7 @@ mod test {
     use super::{EntropyEncoder, EntropyDecoder};
     use super::super::BrotliResult;
     #[allow(unused_imports)]
-    use probability::{CDF16, FrequentistCDF16, BlendCDF16};
+    use probability::{CDF16, FrequentistCDF16, BlendCDF16, Speed};
     #[allow(unused)]
     struct MockByteQueue{}
     impl ByteQueue for MockByteQueue {
@@ -329,8 +329,8 @@ mod test {
         let mut bcdf = BlendCDF16::default();
         for i in 0..16 {
             for j in 0..i {
-                cdf.blend(j as u8);
-                bcdf.blend(j as u8);
+                cdf.blend(j as u8, Speed::MED);
+                bcdf.blend(j as u8, Speed::MED);
             }
         }
         println!("{:?}", cdf.float_array());
@@ -369,8 +369,8 @@ mod test {
         let mut bcdf = BlendCDF16::default();
         for i in 0..16 {
             for j in 0..i {
-                cdf.blend(j as u8);
-                bcdf.blend(j as u8);
+                cdf.blend(j as u8, Speed::MED);
+                bcdf.blend(j as u8, Speed::MED);
             }
         }
         println!("{:?}", cdf.float_array());

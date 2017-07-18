@@ -195,6 +195,7 @@ macro_rules! select_expr {
 mod test {
     use core;
     use super::{Allocator, BaseCDF, CDF2, PriorCollection, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
+    use probability::Speed;
     use alloc::HeapAlloc;
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -283,7 +284,7 @@ mod test {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
                 let mut cdf = prior_set.get(t, i);
                 for j in 0..i {
-                    cdf.blend(true);
+                    cdf.blend(true, Speed::MED);
                 }
             }
         }
@@ -294,7 +295,7 @@ mod test {
                 let cdf = prior_set.get(t, i);
                 let mut baseline = CDF2::default();
                 for j in 0..i {
-                    baseline.blend(true);
+                    baseline.blend(true, Speed::MED);
                 }
                 assert_eq!(cdf.prob, baseline.prob);
             }
@@ -313,18 +314,18 @@ mod test {
                     let mut cdf = prior_set.get(PriorType::Foo, (i, j, k));
                     let mut baseline = CDF2::default();
                     for l in 0..i {
-                        cdf.blend(true);
-                        baseline.blend(true);
+                        cdf.blend(true, Speed::MED);
+                        baseline.blend(true, Speed::MED);
                         assert_eq!(cdf.prob, baseline.prob);
                     }
                     for l in 0..j {
-                        cdf.blend(false);
-                        baseline.blend(false);
+                        cdf.blend(false, Speed::MED);
+                        baseline.blend(false, Speed::MED);
                         assert_eq!(cdf.prob, baseline.prob);
                     }
                     for l in 0..k {
-                        cdf.blend(true);
-                        baseline.blend(true);
+                        cdf.blend(true, Speed::MED);
+                        baseline.blend(true, Speed::MED);
                         assert_eq!(cdf.prob, baseline.prob);
                     }
                 }
