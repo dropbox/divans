@@ -21,7 +21,7 @@ macro_rules! println_stderr(
     } }
 );
 */
-use super::probability::{BaseCDF, CDF2, CDF16, Speed};
+use super::probability::{BaseCDF, CDF2, CDF16, ConcreteCDF16, Speed};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
@@ -114,7 +114,7 @@ fn Fail() -> BrotliResult {
 impl CopyState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
+                        Cdf16:ConcreteCDF16,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,
@@ -365,7 +365,7 @@ const DICT_BITS:[u8;25] = [
 impl DictState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
+                        Cdf16:ConcreteCDF16,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,
@@ -498,7 +498,7 @@ impl<AllocU8:Allocator<u8>,
                          > LiteralState<AllocU8> {
     fn encode_or_decode<ISlice: SliceWrapper<u8>,
                         ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                        Cdf16:CDF16,
+                        Cdf16:ConcreteCDF16,
                         Specialization:EncoderOrDecoderSpecialization,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>
@@ -658,7 +658,7 @@ enum BlockTypeState {
 impl BlockTypeState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
+                        Cdf16:ConcreteCDF16,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(
@@ -830,7 +830,7 @@ pub struct DistanceCacheEntry {
     decode_byte_count:u32,
 }
 
-pub struct CrossCommandBookKeeping<Cdf16:CDF16,
+pub struct CrossCommandBookKeeping<Cdf16:CDF16+Default+Copy,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     decode_byte_count: u32,
@@ -860,7 +860,7 @@ fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
     }
 }
 
-impl<Cdf16:CDF16,
+impl<Cdf16:CDF16+Default+Copy,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
                                                           AllocCDF2,
@@ -1063,7 +1063,7 @@ impl<Cdf16:CDF16,
 
 pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
-                             Cdf16:CDF16,
+                             Cdf16:ConcreteCDF16,
                              AllocU8:Allocator<u8>,
                              AllocCDF2:Allocator<CDF2>,
                              AllocCDF16:Allocator<Cdf16>> {
@@ -1078,7 +1078,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
 
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
       Specialization:EncoderOrDecoderSpecialization,
-      Cdf16:CDF16,
+      Cdf16:ConcreteCDF16,
                              AllocU8:Allocator<u8>,
                              AllocCDF2:Allocator<CDF2>,
                              AllocCDF16:Allocator<Cdf16>
@@ -1177,7 +1177,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
-                       Cdf16:CDF16,
+                       Cdf16:ConcreteCDF16,
                        AllocU8: Allocator<u8>,
                        AllocCDF2:Allocator<CDF2>,
                        AllocCDF16:Allocator<Cdf16>> {
@@ -1197,7 +1197,7 @@ pub enum OneCommandReturn {
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
-     Cdf16:CDF16,
+     Cdf16:ConcreteCDF16,
      AllocU8: Allocator<u8>,
      AllocCDF2: Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {

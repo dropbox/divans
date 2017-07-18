@@ -237,7 +237,7 @@ mod test {
     use super::{EntropyEncoder, EntropyDecoder};
     use super::super::BrotliResult;
     #[allow(unused_imports)]
-    use probability::{CDF16, FrequentistCDF16, BlendCDF16, Speed};
+    use probability::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16, Speed};
     #[allow(unused)]
     struct MockByteQueue{}
     impl ByteQueue for MockByteQueue {
@@ -277,6 +277,14 @@ mod test {
         fn flush(&mut self) -> BrotliResult {
             BrotliResult::ResultSuccess
         }
+    }
+    #[cfg(test)]
+    fn float_array_from_cdf<C: CDF16>(cdf: &C) -> [f32; 16] {
+        let mut ret = [0.0f32; 16];
+        for i in 0..16 {
+            ret[i] = (cdf.cdf(i as u8) as f32) / (cdf.max() as f32);
+        }
+        ret
     }
     #[allow(unused)]
     fn test_get_prob<C: CDF16>(cdf: &C,
@@ -333,7 +341,7 @@ mod test {
                 bcdf.blend(j as u8, Speed::MED);
             }
         }
-        println!("{:?}", cdf.float_array());
+        println!("{:?}", float_array_from_cdf(&cdf));
         let mut mock_encoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,
@@ -373,7 +381,7 @@ mod test {
                 bcdf.blend(j as u8, Speed::MED);
             }
         }
-        println!("{:?}", cdf.float_array());
+        println!("{:?}", float_array_from_cdf(&cdf));
         let mut mock_decoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,

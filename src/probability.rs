@@ -22,6 +22,9 @@ pub trait BaseCDF {
         }
     }
 
+    // Add the given symbol to the distribution being tracked.
+    fn blend(&mut self, symbol: u8, speed: Speed);
+
     // the maximum value relative to which cdf() and pdf() values should be normalized.
     fn max(&self) -> Prob;
 
@@ -88,24 +91,21 @@ impl BaseCDF for CDF2 {
     fn log_max(&self) -> Option<i8> {
         return Some(8);
     }
-}
-
-impl CDF2 {
-    pub fn blend(&mut self, symbol: bool, _speed: Speed) {
+    fn blend(&mut self, symbol: u8, _speed: Speed) {
         let fcount = self.counts[0];
         let tcount = self.counts[1];
         debug_assert!(fcount != 0);
         debug_assert!(tcount != 0);
 
-        let obs = if symbol == true {1} else {0};
+        let obs = if symbol != 0 {1} else {0};
         let overflow = self.counts[obs] == 0xff;
         self.counts[obs] = self.counts[obs].wrapping_add(1);
         if overflow {
-            let not_obs = if symbol == true {0} else {1};
+            let not_obs = if symbol != 0 {0} else {1};
             let neverseen = self.counts[not_obs] == 1;
             if neverseen {
                 self.counts[obs] = 0xff;
-                self.prob = if symbol {0} else {0xff};
+                self.prob = if symbol != 0 {0} else {0xff};
             } else {
                 self.counts[0] = ((1 + (fcount as u16)) >> 1) as u8;
                 self.counts[1] = ((1 + (tcount as u16)) >> 1) as u8;
@@ -129,18 +129,8 @@ pub enum Speed {
     ROCKET,
 }
 
-pub trait CDF16: Sized + Default + Copy + BaseCDF {
-    fn blend(&mut self, symbol: u8, dyn:Speed);
-
-    // TODO: this convenience function should probably live elsewhere.
-    fn float_array(&self) -> [f32; 16] {
-        let mut ret = [0.0f32; 16];
-        for i in 0..16 {
-            ret[i] = (self.cdf(i as u8) as f32) / (self.max() as f32);
-       }
-        ret
-    }
-}
+pub trait CDF16: BaseCDF {}
+pub trait ConcreteCDF16: Sized + Copy + Default + CDF16 {}
 
 const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
@@ -197,9 +187,6 @@ impl BaseCDF for BlendCDF16 {
         }
         return true;
     }
-}
-
-impl CDF16 for BlendCDF16 {
     fn blend(&mut self, symbol:u8, speed: Speed) {
         let _mix_rate = match speed {
                 Speed::GEOLOGIC => 32,
@@ -225,6 +212,9 @@ impl CDF16 for BlendCDF16 {
     }
 }
 
+impl CDF16 for BlendCDF16 {}
+impl ConcreteCDF16 for BlendCDF16 {}
+
 #[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
@@ -237,6 +227,9 @@ impl Default for FrequentistCDF16 {
         }
     }
 }
+
+impl CDF16 for FrequentistCDF16 {}
+impl ConcreteCDF16 for FrequentistCDF16 {}
 
 #[allow(unused)]
 macro_rules! each16{
@@ -313,9 +306,6 @@ impl BaseCDF for FrequentistCDF16 {
         }
         return true;
     }
-}
-
-impl CDF16 for FrequentistCDF16 {
     fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let increment : Prob =
@@ -442,7 +432,7 @@ fn to_blend_lut(symbol: u8) -> [Prob;16] {
 
 #[cfg(feature="debug_entropy")]
 #[derive(Clone,Copy,Default)]
-pub struct DebugWrapperCDF16<Cdf16: CDF16> {
+pub struct DebugWrapperCDF16<Cdf16: ConcreteCDF16> {
     pub cdf: Cdf16,
     pub counts: [u32; 16],
     cost: f64,
@@ -450,22 +440,13 @@ pub struct DebugWrapperCDF16<Cdf16: CDF16> {
 }
 
 #[cfg(feature="debug_entropy")]
-impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
-    fn blend(&mut self, symbol: u8, speed: Speed) {
-        self.counts[symbol as usize] += 1;
-        let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
-        self.cost += -p.log2();
-        match self.true_entropy() {
-            None => {},
-            Some(e) => { self.rolling_entropy_sum += e; }
-        }
-        self.cdf.blend(symbol, speed);
-    }
-    fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
-}
+impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {}
 
 #[cfg(feature="debug_entropy")]
-impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
+impl<Cdf16> ConcreteCDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {}
+
+#[cfg(feature="debug_entropy")]
+impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {
     fn num_symbols() -> u8 { 16 }
     fn cdf(&self, symbol: u8) -> Prob { self.cdf.cdf(symbol) }
     fn pdf(&self, symbol: u8) -> Prob { self.cdf.pdf(symbol) }
@@ -475,6 +456,16 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
     fn valid(&self) -> bool { self.cdf.valid() }
     fn used(&self) -> bool {
         self.num_samples().unwrap() > 0
+    }
+    fn blend(&mut self, symbol: u8, speed: Speed) {
+        self.counts[symbol as usize] += 1;
+        let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
+        self.cost += -p.log2();
+        match self.true_entropy() {
+            None => {},
+            Some(e) => { self.rolling_entropy_sum += e; }
+        }
+        self.cdf.blend(symbol, speed);
     }
 
     fn num_samples(&self) -> Option<u32> {
@@ -511,7 +502,7 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
 }
 
 #[cfg(feature="debug_entropy")]
-impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
+impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {
     fn new(cdf: Cdf16) -> Self {
         DebugWrapperCDF16::<Cdf16> {
             cdf: cdf,
