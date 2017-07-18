@@ -256,7 +256,7 @@ impl CopyState {
                         self.cc.reused = beg_nib == 14;
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        self.state = CopySubstate::CopyCacheNibbleRead(beg_nib, index as u32, 0, 8);
+                        self.state = CopySubstate::CopyCacheNibbleRead(beg_nib, index as u32, 0, 4);
                         //self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib,
                         //                                                                     self.cc.num_bytes);
                         //self.state = CopySubstate::FullyDecoded;
@@ -888,7 +888,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
-    copy_cache:[[CopyCacheEntry;256];32],
+    copy_cache:[[CopyCacheEntry;16];32],
     copy_cache_occupancy:[usize;32],
 }
 
@@ -918,7 +918,7 @@ impl<Cdf16:CDF16,
                     CopyCacheEntry{
                         distance:1,
                         decode_byte_count:0,
-                    };256];32],
+                    };16];32],
             copy_cache_occupancy:[0;32],
             last_dlen: 1,
             last_clen: 1,
@@ -1093,7 +1093,7 @@ impl<Cdf16:CDF16,
         self.last_4_states |= 128;
     }
     fn obs_distance(&mut self, cc:&CopyCommand) {
-        if cc.num_bytes < self.copy_cache.len() as u32{
+        if cc.num_bytes < self.copy_cache.len() as u32 && cc.reused{
             let nb = cc.num_bytes as usize;
             if self.copy_cache_occupancy[nb] < self.copy_cache[nb].len() {
                 self.copy_cache[nb][self.copy_cache_occupancy[nb]] = CopyCacheEntry {
