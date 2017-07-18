@@ -47,7 +47,7 @@ macro_rules! define_prior_struct {
             #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
-                let expected_dim = $name::<T, AllocT>::num_dimensions(&billing);
+                let expected_dim = Self::num_dimensions(&billing);
                 debug_assert!(I::num_dimensions() <= expected_dim,
                               "Index has {} dimensions but at most {} is expected", I::num_dimensions(), expected_dim);
                 // Compute the offset into the array for this billing type.
@@ -63,8 +63,8 @@ macro_rules! define_prior_struct {
                                   expanded_index.1 < expanded_dim.1 &&
                                   expanded_index.2 < expanded_dim.2, "Index out of bounds");
                 }
-                debug_assert!(offset_index < $name::<T, AllocT>::num_prior(&billing), "Offset from the index is out of bounds");
-                debug_assert!(offset_type + offset_index < $name::<T, AllocT>::num_all_priors());
+                debug_assert!(offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
+                debug_assert!(offset_type + offset_index < Self::num_all_priors());
                 &mut self.priors.slice_mut()[offset_type + offset_index]
             }
             // TODO: technically this does not depend on the template paramters.
@@ -92,13 +92,13 @@ macro_rules! define_prior_struct {
             #[cfg(feature="debug_entropy")]
             fn summarize(&mut self) {
                 // Check for proper initialization.
-                if self.priors.slice().len() != $name::<T, AllocT>::num_all_priors() {
+                if self.priors.slice().len() != Self::num_all_priors() {
                     return;
                 }
                 println!("[Summary for {}]", stringify!($name));
-                for i in 0..$name::<T, AllocT>::num_billing_types() {
-                    let billing = $name::<T, AllocT>::index_to_billing_type(i as usize);
-                    let count = $name::<T, AllocT>::num_prior(&billing);
+                for i in 0..Self::num_billing_types() {
+                    let billing = Self::index_to_billing_type(i as usize);
+                    let count = Self::num_prior(&billing);
                     let mut num_cdfs_printed = 0usize;
                     for i in 0..count {
                         if num_cdfs_printed == 16 {

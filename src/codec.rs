@@ -179,7 +179,7 @@ impl CopyState {
                         self.state = CopySubstate::CountLengthGreater18Less25;
                     } else {
                         superstate.bk.last_clen = beg_nib + 4;
-                        self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib - 1 + 4),  1 << (beg_nib - 1 + 4));
+                        self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib - 1 + 4), 1 << (beg_nib - 1 + 4));
                     }
                 },
                 CopySubstate::CountLengthGreater18Less25 => {
@@ -191,7 +191,7 @@ impl CopyState {
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_clen = last_nib + 15;
-                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 14),  1 << (last_nib + 14));
+                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 14), 1 << (last_nib + 14));
                 },
                 CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
@@ -276,7 +276,7 @@ impl CopyState {
                             self.cc.distance = 1;
                             self.state = CopySubstate::FullyDecoded;
                         } else {
-                            self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib),  1 << beg_nib);
+                            self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib), 1 << beg_nib);
                         }
                     }
                 },
@@ -289,7 +289,7 @@ impl CopyState {
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib);
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
-                    self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15),  1 << (last_nib + 15));
+                    self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15), 1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
