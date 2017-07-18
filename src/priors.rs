@@ -203,8 +203,16 @@ macro_rules! select_expr {
 
 mod test {
     use core;
-    use super::{Allocator, BaseCDF, CDF2, PriorCollection, PriorMultiIndex, SliceWrapper, SliceWrapperMut};
-    use probability::Speed;
+    use super::{
+        Allocator,
+        BaseCDF,
+        CDF16,
+        PriorCollection,
+        PriorMultiIndex,
+        SliceWrapper,
+        SliceWrapperMut
+    };
+    use probability::{FrequentistCDF16, Speed};
     use alloc::HeapAlloc;
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -212,19 +220,19 @@ mod test {
     define_prior_struct!(TestPriorSet, PriorType,
                          (PriorType::Foo, 5, 8, 2), (PriorType::Bar, 6, 2), (PriorType::Cat, 3));
 
-    type TestPriorSetImpl = TestPriorSet<CDF2, HeapAlloc<CDF2>>;
+    type TestPriorSetImpl = TestPriorSet<FrequentistCDF16, HeapAlloc<FrequentistCDF16>>;
 
     #[test]
     fn test_macro_product() {
         assert_eq!(product!(5), 5);
-        assert_eq!(product!(2, 3, 4), 24);
+        assert_eq!(product!(2, 3, 4), 2 * 3 * 4);
     }
 
     #[test]
     fn test_macro_sum_product_cdr() {
-        assert_eq!(sum_product_cdr!((1, 2)), 2);
-        assert_eq!(sum_product_cdr!((1, 2, 3)), 6);
-        assert_eq!(sum_product_cdr!((1, 2, 3), (2, 3, 4)), 18);
+        assert_eq!(sum_product_cdr!(("a", 2)), 2);
+        assert_eq!(sum_product_cdr!(("a", 2, 3)), 2 * 3);
+        assert_eq!(sum_product_cdr!(("a", 2, 3), ("b", 3, 4)), 2 * 3 + 3 * 4);
     }
 
     #[test]
@@ -275,16 +283,19 @@ mod test {
 
     #[test]
     fn test_get() {
-        let mut allocator = HeapAlloc::<CDF2>::new(CDF2::default());
+        let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
         let prior_types : [PriorType; 3] = [PriorType::Foo, PriorType::Bar, PriorType::Cat];
         // Check that all priors are initialized to default.
+        let reference = FrequentistCDF16::default();
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
                 let cdf = prior_set.get(t, i);
-                assert_eq!(cdf.prob, 128u8);
+                for j in 0..16 {
+                    assert_eq!(cdf.cdf(j), reference.cdf(j));
+                }
             }
         }
 
@@ -293,7 +304,7 @@ mod test {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
                 let mut cdf = prior_set.get(t, i);
                 for j in 0..i {
-                    cdf.blend(true, Speed::MED);
+                    cdf.blend((j as u8) % 16, Speed::MED);
                 }
             }
         }
@@ -302,18 +313,20 @@ mod test {
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
                 let cdf = prior_set.get(t, i);
-                let mut baseline = CDF2::default();
+                let mut baseline = FrequentistCDF16::default();
                 for j in 0..i {
-                    baseline.blend(true, Speed::MED);
+                    baseline.blend((j as u8) % 16, Speed::MED);
                 }
-                assert_eq!(cdf.prob, baseline.prob);
+                for j in 0..16 {
+                    assert_eq!(cdf.cdf(j), baseline.cdf(j));
+                }
             }
         }
     }
 
     #[test]
     fn test_get_tuple() {
-        let mut allocator = HeapAlloc::<CDF2>::new(CDF2::default());
+        let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
@@ -321,21 +334,27 @@ mod test {
             for j in 0..8 {
                 for k in 0..2 {
                     let mut cdf = prior_set.get(PriorType::Foo, (i, j, k));
-                    let mut baseline = CDF2::default();
+                    let mut baseline = FrequentistCDF16::default();
                     for l in 0..i {
-                        cdf.blend(true, Speed::MED);
-                        baseline.blend(true, Speed::MED);
-                        assert_eq!(cdf.prob, baseline.prob);
+                        cdf.blend(l as u8, Speed::MED);
+                        baseline.blend(l as u8, Speed::MED);
+                        for symbol in 0..16 {
+                            assert_eq!(cdf.cdf(symbol), baseline.cdf(symbol));
+                        }
                     }
                     for l in 0..j {
-                        cdf.blend(false, Speed::MED);
-                        baseline.blend(false, Speed::MED);
-                        assert_eq!(cdf.prob, baseline.prob);
+                        cdf.blend((l ^ 0xf) as u8, Speed::MED);
+                        baseline.blend((l ^ 0xf) as u8, Speed::MED);
+                        for symbol in 0..16 {
+                            assert_eq!(cdf.cdf(symbol), baseline.cdf(symbol));
+                        }
                     }
                     for l in 0..k {
-                        cdf.blend(true, Speed::MED);
-                        baseline.blend(true, Speed::MED);
-                        assert_eq!(cdf.prob, baseline.prob);
+                        cdf.blend(l as u8, Speed::MED);
+                        baseline.blend(l as u8, Speed::MED);
+                        for symbol in 0..16 {
+                            assert_eq!(cdf.cdf(symbol), baseline.cdf(symbol));
+                        }
                     }
                 }
             }
@@ -345,7 +364,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_get_bad_tuple_index() {
-        let mut allocator = HeapAlloc::<CDF2>::new(CDF2::default());
+        let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
@@ -355,7 +374,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_get_bad_tuple_dimensionality() {
-        let mut allocator = HeapAlloc::<CDF2>::new(CDF2::default());
+        let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
