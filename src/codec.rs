@@ -989,8 +989,10 @@ impl<Cdf16:CDF16,
                             ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
     }
     fn get_command_type_prob<'a>(&'a mut self) -> &'a mut Cdf16 {
+        //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
-                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS)))
+                           ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
+                           ((self.last_8_literals>>0x3c) as usize &0xf)))
     }
     fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
         self.legacy_cc_priors.get(CrossCommandBilling::DictIndicator,
