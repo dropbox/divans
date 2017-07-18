@@ -451,7 +451,7 @@ pub struct DebugWrapperCDF16<Cdf16: CDF16> {
 
 #[cfg(feature="debug_entropy")]
 impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
-    fn blend(&mut self, symbol: u8) {
+    fn blend(&mut self, symbol: u8, speed: Speed) {
         self.counts[symbol as usize] += 1;
         let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
         self.cost += -p.log2();
@@ -459,7 +459,7 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
             None => {},
             Some(e) => { self.rolling_entropy_sum += e; }
         }
-        self.cdf.blend(symbol);
+        self.cdf.blend(symbol, speed);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
 }
