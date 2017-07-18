@@ -200,7 +200,17 @@ impl BaseCDF for BlendCDF16 {
 }
 
 impl CDF16 for BlendCDF16 {
-    fn blend(&mut self, symbol:u8, _speed: Speed) {
+    fn blend(&mut self, symbol:u8, speed: Speed) {
+        let _mix_rate = match speed {
+                Speed::GEOLOGIC => 32,
+                Speed::GLACIAL => 64,
+                Speed::MUD => 160,
+                Speed::SLOW => 512,
+                Speed::MED => 192,
+                Speed::FAST => 256,
+                Speed::PLANE => 384,
+                Speed::ROCKET => 1100,
+        };
         self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
         // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
         self.mix_rate -= self.mix_rate >> 7;
