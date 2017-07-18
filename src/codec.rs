@@ -87,6 +87,7 @@ pub enum CopySubstate {
     CountDecoded,
     DistanceLengthMnemonic, // references a recent distance cached value
     DistanceLengthMnemonicTwo, // references a recent distance cached value
+    CopyCacheNibbleRead(u8, u32, u32, u32),
     DistanceLengthFirst,
     DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
@@ -141,6 +142,7 @@ impl CopyState {
             }
             let billing = BillingDesignation::CopyCommand(match self.state {
                 CopySubstate::CountMantissaNibbles(_, _, _) => CopySubstate::CountMantissaNibbles(0, 0, 0),
+                CopySubstate::CopyCacheNibbleRead(_, _, _, _) => CopySubstate::CopyCacheNibbleRead(0, 0, 0, 0),
                 CopySubstate::DistanceMantissaNibbles(_, _, _) => CopySubstate::DistanceMantissaNibbles(0, 0, 0),
                 _ => self.state
             });
@@ -231,7 +233,7 @@ impl CopyState {
                         nibble_prob.blend(beg_nib);
                     }
                     if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthFirst;
+                        self.state = CopySubstate::DistanceLengthMnemonicTwo;
                     } else {
                         self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
@@ -241,7 +243,7 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthMnemonicTwo => {
                     //UNUSED : haven't made this pay for itself
-                    let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance, in_cmd.num_bytes);
+                    let (mut beg_nib, index) = superstate.bk.distance_mnemonic_code_two(in_cmd);
                     let dtype = superstate.bk.get_distance_block_type();
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -250,14 +252,45 @@ impl CopyState {
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib);
                     }
-                    if beg_nib == 15 {
+                    if beg_nib >= 14 {
+                        self.cc.reused = beg_nib == 14;
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib,
-                                                                                             self.cc.num_bytes);
+                        self.state = CopySubstate::CopyCacheNibbleRead(beg_nib, index as u32, 0, 8);
+                        //self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib,
+                        //                                                                     self.cc.num_bytes);
+                        //self.state = CopySubstate::FullyDecoded;
+                    }
+                },
+                CopySubstate::CopyCacheNibbleRead(mnemonic_code, in_index, deserialized_index, bits_to_code) => {
+                    assert_eq!(bits_to_code&3, 0); // needs to be a multiple of 4 for nibble based decode
+                    let next_len_remaining = bits_to_code - 4;
+                    let last_nib_as_u32 = (in_index ^ deserialized_index) >>next_len_remaining;
+                    let mut last_nib = last_nib_as_u32 as u8;
+                    let next_decoded_so_far:u32;
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::CopyCacheIndexNib, (deserialized_index as usize >> 4, next_len_remaining as usize >>2));
+                        superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                        next_decoded_so_far = deserialized_index | ((last_nib as u32) << next_len_remaining);
+                        nibble_prob.blend(last_nib);
+                    }
+
+                    if next_len_remaining == 0 {
+                        //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
+                        self.cc.distance = superstate.bk.get_and_purge_copy_cache_value(self.cc.num_bytes,
+                                                                                        mnemonic_code,
+                                                                                        next_decoded_so_far as usize);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
+                        //assert_eq!(self.cc.distance, in_cmd.distance)
+                    } else {
+                        self.state  = CopySubstate::CopyCacheNibbleRead(
+                            mnemonic_code,
+                            in_index,
+                            next_decoded_so_far,
+                            next_len_remaining);
                     }
                 },
                 CopySubstate::DistanceLengthFirst => {
@@ -800,6 +833,7 @@ enum CopyCommandNibblePriorType {
     DistanceMnemonic,
     DistanceMnemonicTwo,
     DistanceMantissaNib,
+    CopyCacheIndexNib,
     CountSmall,
     CountBegNib,
     CountLastNib,
@@ -811,6 +845,7 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceMnemonic, 1, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::DistanceLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::CopyCacheIndexNib, 16, 16),
                      (CopyCommandNibblePriorType::CountSmall, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::CountBegNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
                      (CopyCommandNibblePriorType::CountLastNib, NUM_COPY_COMMAND_ORGANIC_PRIORS, NUM_BLOCK_TYPES),
@@ -832,7 +867,7 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::Transform, 17));
 
 #[derive(Copy,Clone)]
-pub struct DistanceCacheEntry {
+pub struct CopyCacheEntry {
     distance:u32,
     decode_byte_count:u32,
 }
@@ -853,7 +888,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
-    distance_cache:[[DistanceCacheEntry;3];32],
+    copy_cache:[[CopyCacheEntry;256];32],
+    copy_cache_occupancy:[usize;32],
 }
 
 
@@ -877,12 +913,13 @@ impl<Cdf16:CDF16,
            dict_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             decode_byte_count:0,
-            distance_cache:[
+            copy_cache:[
                 [
-                    DistanceCacheEntry{
+                    CopyCacheEntry{
                         distance:1,
                         decode_byte_count:0,
-                    };3];32],
+                    };256];32],
+            copy_cache_occupancy:[0;32],
             last_dlen: 1,
             last_clen: 1,
             last_4_states: 0,
@@ -909,38 +946,82 @@ impl<Cdf16:CDF16,
             btype_lru:[[0,1];3],
         }
     }
-    fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
-        let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
-        return self.distance_cache[len_index][index as usize].distance + (
-            self.decode_byte_count - self.distance_cache[len_index][index as usize].decode_byte_count);
-    }
-    fn get_distance_from_mnemonic_code_two(&self, code:u8, len:u32,) -> u32 {
-        match code {
-            0 => sub_or_add(self.distance_lru[2], 1, 3),
-            1 => self.read_distance_cache(len, 0),
-            2 => self.read_distance_cache(len, 1),
-            3 => self.read_distance_cache(len, 2),
-            4 => self.read_distance_cache(len + 1, 0),
-            5 => self.read_distance_cache(len + 1, 1),
-            6 => self.read_distance_cache(len + 1, 2),
-            7 => self.read_distance_cache(len + 1, 0) - 1,
-            8 => self.read_distance_cache(len + 1, 1) - 1,
-            9 => self.read_distance_cache(len + 1, 2) - 1,
-            10 => self.read_distance_cache(len + 2, 0),
-            11 => self.read_distance_cache(len + 2, 1),
-            12 => self.read_distance_cache(len + 2, 2),
-            13 => self.read_distance_cache(len + 2, 0) - 1,
-            14 => self.read_distance_cache(len + 2, 1) - 1,
-            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
-        }
-    }
-    fn distance_mnemonic_code_two(&self, d: u32, len:u32) -> u8 {
-        for i in 0..15 {
-            if self.get_distance_from_mnemonic_code_two(i as u8, len) == d {
-                return i as u8;
+    fn read_copy_cache(&self, len:u32, dist_offset: usize, cmd: &CopyCommand) -> Option<usize> {
+        let len_index = core::cmp::min(len as usize, self.copy_cache.len() - 1) as usize;
+        for (cache_index, item) in self.copy_cache[len_index][..self.copy_cache_occupancy[len_index]].iter().enumerate() {
+            if item.distance + (self.decode_byte_count - item.decode_byte_count) - dist_offset as u32 == cmd.distance {
+                return Some(cache_index);
             }
         }
-        15
+        None
+    }
+    fn get_and_purge_copy_cache_value(&mut self, num_bytes: u32, mnemonic_code:u8, index:usize) -> u32 {
+        let (mut length_index, offset) = match mnemonic_code {
+            0 => (num_bytes as usize, 0),//sub_or_add(self.distance_lru[2], 1, 3),
+            1 => (num_bytes as usize + 1, 0),
+            2 => (num_bytes as usize + 1, 1),
+            3 => (num_bytes as usize + 2, 0),
+            4 => (num_bytes as usize + 2, 1),
+            5 => (num_bytes as usize + 2, 2),
+            6 => panic!("unused"), //FIXME: really handle this case and react appropriately
+            7 => panic!("unused"),
+            8 => panic!("unused"),
+            9 => panic!("unused"),
+            10 => panic!("unused"),
+            11 => panic!("unused"),
+            12 => panic!("unused"),
+            13 => panic!("unused"),
+            14 => panic!("Logic error: nibble >= 14 evaluated for nmemonic"),
+            _ => panic!("Logic error: nibble >= 14 evaluated for nmemonic"),
+        };
+        if length_index >= self.copy_cache.len() {
+            length_index = self.copy_cache.len() - 1;
+        }
+        let retval = self.copy_cache[length_index][index].distance + (self.decode_byte_count
+                                                                      - self.copy_cache[length_index][index].decode_byte_count) - offset;
+        //println_stderr!("({},{}) Got {} + ({} - {}) - {} == {}",
+        //               length_index,index,
+        //                self.copy_cache[length_index][index].distance, self.decode_byte_count,
+        //                self.copy_cache[length_index][index].decode_byte_count, offset,
+        //                retval);
+        self.copy_cache_occupancy[length_index] -= 1; // wipe out the cache
+        self.copy_cache[length_index][index] = self.copy_cache[length_index][self.copy_cache_occupancy[length_index]];
+        retval
+    }
+    fn get_copy_cache_index_from_mnemonic_code_two(&self, code:u8, cmd: &CopyCommand) -> Option<usize> {
+        match code {
+            0 => return self.read_copy_cache(cmd.num_bytes, 0, cmd),//sub_or_add(self.distance_lru[2], 1, 3),
+            1 => return self.read_copy_cache(cmd.num_bytes + 1, 0, cmd),
+            2 => return self.read_copy_cache(cmd.num_bytes + 1, 1, cmd),
+            3 => return self.read_copy_cache(cmd.num_bytes + 2, 0, cmd),
+            4 => return self.read_copy_cache(cmd.num_bytes + 2, 1, cmd),
+            5 => return self.read_copy_cache(cmd.num_bytes + 2, 2, cmd),
+            6 => return None,
+            7 => return None,
+            8 => return None,
+            9 => return None,
+            10 => return None,
+            11 => return None,
+            12 => return None,
+            13 => return None,
+            14 => panic!("Logic error: nibble >= 14 evaluated for nmemonic"),
+            _ => panic!("Logic error: nibble >= 14 evaluated for nmemonic"),
+        }
+    }
+    fn distance_mnemonic_code_two(&self, command: &CopyCommand) -> (u8, usize) {
+        for i in 0..14 {
+            match self.get_copy_cache_index_from_mnemonic_code_two(i as u8, command) {
+                None => {},
+                Some(index) => {
+                    return (i as u8, index);
+                }
+            }
+        }
+        if command.reused {
+            return (14, 0);
+        } else {
+            return (15, 0);
+        }
     }
 
     fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
@@ -1012,19 +1093,15 @@ impl<Cdf16:CDF16,
         self.last_4_states |= 128;
     }
     fn obs_distance(&mut self, cc:&CopyCommand) {
-        if cc.num_bytes < self.distance_cache.len() as u32{
+        if cc.num_bytes < self.copy_cache.len() as u32{
             let nb = cc.num_bytes as usize;
-            let mut sub_index = 0usize;
-            if self.distance_cache[nb][1].decode_byte_count < self.distance_cache[nb][0].decode_byte_count {
-                sub_index = 1;
+            if self.copy_cache_occupancy[nb] < self.copy_cache[nb].len() {
+                self.copy_cache[nb][self.copy_cache_occupancy[nb]] = CopyCacheEntry {
+                    distance:0,
+                    decode_byte_count:self.decode_byte_count,
+                };
+                self.copy_cache_occupancy[nb] += 1; 
             }
-            if self.distance_cache[nb][2].decode_byte_count < self.distance_cache[nb][sub_index].decode_byte_count {
-                sub_index = 2;
-            }
-            self.distance_cache[nb][sub_index] = DistanceCacheEntry{
-                distance: 0,//cc.distance, we're copying it to here (ha!)
-                decode_byte_count:self.decode_byte_count,
-            };
         }
         let distance = cc.distance;
         if distance == self.distance_lru[1] {
