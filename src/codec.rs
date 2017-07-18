@@ -842,6 +842,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     decode_byte_count: u32,
+    command_count:u32,
     last_8_literals: u64,
     last_4_states: u8,
     last_dlen: u8,
@@ -879,6 +880,7 @@ impl<Cdf16:CDF16,
            dict_prior: AllocCDF16::AllocatedMemory) -> Self {
         CrossCommandBookKeeping{
             decode_byte_count:0,
+            command_count:0,
             distance_cache:[
                 [
                     DistanceCacheEntry{
@@ -995,7 +997,7 @@ impl<Cdf16:CDF16,
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
-                           ((self.last_8_literals>>0x3c) as usize &0xf)))
+                           ((self.last_8_literals>>0x3e) as usize &0xf)))
     }
     fn get_dict_type_prob<'a>(&'a mut self) -> &'a mut CDF2 {
         self.legacy_cc_priors.get(CrossCommandBilling::DictIndicator,
@@ -1436,7 +1438,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                 &mut command_type_code,
                                 command_type_prob,
                                 BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
-                            command_type_prob.blend(command_type_code, Speed::PLANE);
+                            command_type_prob.blend(command_type_code, Speed::ROCKET);
                         }
                         let command_state = get_command_state_from_nibble(command_type_code);
                         match command_state {
@@ -1607,6 +1609,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             return OneCommandReturn::BufferExhausted(Fail());
                         },
                         BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.command_count += 1;
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
                             let last_8 = self.cross_command_state.recoder.last_8_literals();
