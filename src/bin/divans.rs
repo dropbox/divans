@@ -764,10 +764,6 @@ fn main() {
                 do_recode = true;
                 continue;
             }
-            if argument == "--legacy" {
-                unsafe {divans::COMMAND_LINE_ENFORCE_LEGACY_ENCODING = true;}
-                continue;
-            }
             if argument == "-c" {
                 do_compress = true;
                 continue;
