@@ -878,7 +878,7 @@ impl<Cdf16:CDF16,
            legacy_cc_prior: AllocCDF2::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory) -> Self {
-        CrossCommandBookKeeping{
+        let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
             distance_cache:[
@@ -912,7 +912,25 @@ impl<Cdf16:CDF16,
                            Cdf16::default()];3],
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
+        };
+        for i in 0..4 {
+            for j in 0..0x10 {
+                let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
+                                             (i, j));
+                for _samp in 0..1 {
+                    prob.blend(0x1, Speed::FAST);
+                    prob.blend(0x1, Speed::FAST);
+                    prob.blend(0x2, Speed::FAST);
+                    prob.blend(0x1, Speed::FAST);
+                    prob.blend(0x1, Speed::FAST);
+                    prob.blend(0x1, Speed::FAST);
+                    prob.blend(0x2, Speed::FAST);
+                    prob.blend(0x3, Speed::FAST);
+                    prob.blend(0x3, Speed::FAST);
+                }
+            }
         }
+        ret
     }
     fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
         let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
