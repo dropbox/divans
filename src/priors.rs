@@ -35,7 +35,8 @@ impl PriorMultiIndex for (usize, usize, usize, usize) {
 }
 
 pub trait PriorCollection<T: CDF16, AllocT: Allocator<T>, B> {
-    fn get<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T>;
+    fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
+    fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T>;
     fn get_with_raw_index(&mut self, billing: B, index: usize) -> &mut T;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
@@ -60,6 +61,24 @@ macro_rules! define_prior_struct {
                 let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 &mut self.priors.slice_mut()[offset_type..(offset_type + Self::num_prior(&billing))]
             }
+            #[inline]
+            fn flatten_expanded_index(billing: &$billing_type, expanded_index: (usize, usize, usize, usize)) -> usize {
+                let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(billing; 0; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 1; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 2; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 3; $($args),*));
+                debug_assert!(expanded_index.0 <= expanded_dim.0 &&
+                              expanded_index.1 <= expanded_dim.1 &&
+                              expanded_index.2 <= expanded_dim.2 &&
+                              expanded_index.3 <= expanded_dim.3,
+                              "Index out of bounds for {:?}", billing);
+                let offset_index = expanded_index.0 +
+                    (expanded_dim.0 + 1) * (expanded_index.1 +
+                                            (expanded_dim.1 + 1) * (expanded_index.2 + (expanded_dim.2 + 1) * expanded_index.3));
+                debug_assert!(offset_index < Self::num_prior(&billing),
+                              "Offset from the index is out of bounds for {:?}", billing);
+                return offset_index;
+            }
         }
         impl<T: CDF16, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             #[inline]
@@ -67,35 +86,25 @@ macro_rules! define_prior_struct {
                 &mut self.get_prior_slice(billing)[index]
             }
             #[inline]
-            fn get<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T> {
+            fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
                 let expected_dim = Self::num_dimensions(&billing);
                 debug_assert_eq!(I::num_dimensions(), expected_dim,
                                  "Index has {} dimensions but {} is expected for {:?}",
                                  I::num_dimensions(), expected_dim, billing);
                 // Compute the offset arising from the index.
-                let expanded_index = index.expand();
-                let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(&billing; 0; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 1; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 2; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 3; $($args),*));
-                let offset_index = expanded_index.0 +
-                    (expanded_dim.0 + 1) * (expanded_index.1 +
-                                            (expanded_dim.1 + 1) * (expanded_index.2 + (expanded_dim.2 + 1) * expanded_index.3));
-                if I::num_dimensions() > 0 {
-                    debug_assert!(expanded_index.0 <= expanded_dim.0 &&
-                                  expanded_index.1 <= expanded_dim.1 &&
-                                  expanded_index.2 <= expanded_dim.2 &&
-                                  expanded_index.3 <= expanded_dim.3, "Index out of bounds");
-                }
-                debug_assert!(offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-
-                let expanded_parent_index = index.expand_into_parent();
-                let parent_offset_index = expanded_parent_index.0 + (expanded_dim.0 + 1) *
-                    (expanded_parent_index.1 + (expanded_dim.1 + 1) * expanded_parent_index.2);
-
-                debug_assert!(parent_offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-
+                let offset_index = Self::flatten_expanded_index(&billing, index.expand());
+                &mut self.get_prior_slice(billing)[offset_index]
+            }
+            #[inline]
+            fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T> {
+                // Check the dimensionality.
+                let expected_dim = Self::num_dimensions(&billing);
+                debug_assert_eq!(I::num_dimensions(), expected_dim,
+                                 "Index has {} dimensions but {} is expected for {:?}",
+                                 I::num_dimensions(), expected_dim, billing);
+                let offset_index = Self::flatten_expanded_index(&billing, index.expand());
+                let parent_offset_index = Self::flatten_expanded_index(&billing, index.expand_into_parent());
                 let priors = self.get_prior_slice(billing);
                 let active: bool = priors[offset_index].num_samples().unwrap_or(0) > 4;
                 SliceRefCDF16::<'a, T>::new(priors,
