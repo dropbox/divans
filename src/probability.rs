@@ -118,6 +118,7 @@ impl BaseCDF for CDF2 {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Speed {
     GEOLOGIC,
     GLACIAL,
@@ -513,8 +514,55 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {
     }
 }
 
+pub struct SliceRefCDF16<'a, Cdf16: 'a + CDF16> {
+    pub slice: &'a mut [Cdf16],
+    active_index: usize,
+    passive_index: usize,
+}
+
+impl<'a, Cdf16: 'a + CDF16> SliceRefCDF16<'a, Cdf16> {
+    pub fn new(slice: &'a mut [Cdf16],
+               active_index: usize,
+               passive_index: usize) -> Self {
+        SliceRefCDF16::<'a, Cdf16> {
+            slice: slice,
+            active_index: active_index,
+            passive_index: passive_index,
+        }
+    }
+    pub fn get_active_mut(&mut self) -> &mut Cdf16 {
+        &mut self.slice[self.active_index]
+    }
+
+    pub fn get_active(&self) -> &Cdf16 {
+        &self.slice[self.active_index]
+    }
+}
+
+impl<'a, Cdf16: 'a + CDF16> CDF16 for SliceRefCDF16<'a, Cdf16> {}
+
+impl<'a, Cdf16: 'a + CDF16> BaseCDF for SliceRefCDF16<'a, Cdf16> {
+    fn num_symbols() -> u8 { 16 }
+    fn used(&self) -> bool { self.get_active().used() }
+    fn max(&self) -> Prob { self.get_active().max() }
+    fn log_max(&self) -> Option<i8> { self.get_active().log_max() }
+    fn valid(&self) -> bool { self.get_active().valid() }
+    fn cdf(&self, symbol: u8) -> Prob { self.get_active().cdf(symbol) }
+    fn blend(&mut self, symbol: u8, speed: Speed) {
+        self.slice[self.active_index].blend(symbol, speed);
+        self.slice[self.passive_index].blend(symbol, speed);
+    }
+
+    // XXX: the analysis isn't quite correct since the pairing is not structurally
+    // persistent.
+    fn num_samples(&self) -> Option<u32> { self.get_active().num_samples() }
+    fn true_entropy(&self) -> Option<f64> { self.get_active().true_entropy() }
+    fn rolling_entropy(&self) -> Option<f64> { self.get_active().rolling_entropy() }
+    fn encoding_cost(&self) -> Option<f64> { self.get_active().encoding_cost() }
+}
+
 mod test {
-    use super::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16, Speed};
+    use super::{BaseCDF, BlendCDF16, CDF16, FrequentistCDF16, SliceRefCDF16, Speed};
 
     #[test]
     fn test_blend_lut() {
@@ -613,6 +661,47 @@ mod test {
         }
         for i in 0..14 {
             assert!(prob_state.pdf(i) > 0);
+        }
+    }
+    #[test]
+    fn test_slice_ref_cdf16_blend() {
+        // Test that blend affects each member of the pair.
+        let mut cdfs : [FrequentistCDF16; 2] = [FrequentistCDF16::default(),
+                                                FrequentistCDF16::default()];
+        let mut reference = FrequentistCDF16::default();
+        {
+            let mut pair = SliceRefCDF16::new(&mut cdfs, 0, 1);
+            for i in 0..16 {
+                for j in 0..(i+1) {
+                    pair.blend(j as u8, Speed::MED);
+                    reference.blend(j as u8, Speed::MED);
+                }
+            }
+        }
+        assert_eq!(cdfs[0].cdf, reference.cdf);
+        assert_eq!(cdfs[1].cdf, reference.cdf);
+    }
+    #[test]
+    fn test_paired_ref_cdf16_active() {
+        // Test that cdf(...) samples from the active member of the pair.
+        let mut cdfs : [FrequentistCDF16; 2] = [FrequentistCDF16::default(),
+                                                FrequentistCDF16::default()];
+        let mut reference = FrequentistCDF16::default();
+        for i in 0..16 {
+            for j in 0..(i+1) {
+                cdfs[0].blend(j as u8, Speed::MED);
+            }
+        }
+        assert_ne!(cdfs[0].cdf, cdfs[1].cdf);
+        let mut cdf_from_pair : [super::Prob; 16] = [0; 16];
+        {
+            let pair = SliceRefCDF16::new(&mut cdfs, 1, 0);
+            for i in 0..16 {
+                cdf_from_pair[i] = pair.cdf(i as u8);
+            }
+        }
+        for i in 0..16 {
+            assert_eq!(cdf_from_pair[i], cdfs[1].cdf(i as u8));
         }
     }
 }

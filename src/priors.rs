@@ -1,36 +1,41 @@
 #![allow(unused)]
 #![macro_escape]
 use core;
-use super::probability::{BaseCDF, CDF2, CDF16};
+use super::probability::{BaseCDF, CDF2, CDF16, SliceRefCDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 pub trait PriorMultiIndex {
     fn expand(&self) -> (usize, usize, usize, usize);
+    fn expand_into_parent(&self) -> (usize, usize, usize, usize);
     fn num_dimensions() -> usize;
 }
 
 impl PriorMultiIndex for (usize,) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, 0usize, 0usize, 0usize) }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, 0, 0, 0) }
+    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (0, 0, 0, 0) }
     fn num_dimensions() -> usize { 1usize }
 }
 
 impl PriorMultiIndex for (usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, 0usize, 0usize) }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, 0, 0) }
+    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, 0, 0, 0) }
     fn num_dimensions() -> usize { 2usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, self.2, 0usize) }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
+    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, 0, 0) }
     fn num_dimensions() -> usize { 3usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { *self }
+    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, self.3 + 1) }
+    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
     fn num_dimensions() -> usize { 4usize }
 }
 
-pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B> {
-    fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
+pub trait PriorCollection<T: CDF16, AllocT: Allocator<T>, B> {
+    fn get<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T>;
     fn get_with_raw_index(&mut self, billing: B, index: usize) -> &mut T;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
@@ -46,27 +51,28 @@ macro_rules! define_prior_struct {
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.
-        struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
+        struct $name<T: CDF16, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
+        impl<T: CDF16, AllocT: Allocator<T>> $name<T, AllocT> {
+            #[inline]
+            fn get_prior_slice(&mut self, billing: $billing_type) -> &mut [T] {
+                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
+                &mut self.priors.slice_mut()[offset_type..(offset_type + Self::num_prior(&billing))]
+            }
+        }
+        impl<T: CDF16, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             #[inline]
             fn get_with_raw_index(&mut self, billing: $billing_type, index: usize) -> &mut T {
-                // Compute the offset into the array for this billing type.
-                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
-                debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                debug_assert!(offset_type + index < Self::num_all_priors());
-                &mut self.priors.slice_mut()[offset_type + index]
+                &mut self.get_prior_slice(billing)[index]
             }
             #[inline]
-            fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
+            fn get<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T> {
                 // Check the dimensionality.
                 let expected_dim = Self::num_dimensions(&billing);
                 debug_assert_eq!(I::num_dimensions(), expected_dim,
                                  "Index has {} dimensions but {} is expected for {:?}",
                                  I::num_dimensions(), expected_dim, billing);
-                // Compute the offset into the array for this billing type.
-                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 // Compute the offset arising from the index.
                 let expanded_index = index.expand();
                 let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(&billing; 0; $($args),*),
@@ -74,26 +80,36 @@ macro_rules! define_prior_struct {
                                                                    define_prior_struct_helper_select_dim!(&billing; 2; $($args),*),
                                                                    define_prior_struct_helper_select_dim!(&billing; 3; $($args),*));
                 let offset_index = expanded_index.0 +
-                    expanded_dim.0 * (expanded_index.1 +
-                                      expanded_dim.1 * (expanded_index.2 + expanded_dim.2 * expanded_index.3));
-                if I::num_dimensions() > 1 {
-                    debug_assert!(expanded_index.0 < expanded_dim.0 &&
-                                  expanded_index.1 < expanded_dim.1 &&
-                                  expanded_index.2 < expanded_dim.2 &&
-                                  expanded_index.3 < expanded_dim.3, "Index out of bounds");
+                    (expanded_dim.0 + 1) * (expanded_index.1 +
+                                            (expanded_dim.1 + 1) * (expanded_index.2 + (expanded_dim.2 + 1) * expanded_index.3));
+                if I::num_dimensions() > 0 {
+                    debug_assert!(expanded_index.0 <= expanded_dim.0 &&
+                                  expanded_index.1 <= expanded_dim.1 &&
+                                  expanded_index.2 <= expanded_dim.2 &&
+                                  expanded_index.3 <= expanded_dim.3, "Index out of bounds");
                 }
                 debug_assert!(offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                debug_assert!(offset_type + offset_index < Self::num_all_priors());
-                &mut self.priors.slice_mut()[offset_type + offset_index]
+
+                let expanded_parent_index = index.expand_into_parent();
+                let parent_offset_index = expanded_parent_index.0 + (expanded_dim.0 + 1) *
+                    (expanded_parent_index.1 + (expanded_dim.1 + 1) * expanded_parent_index.2);
+
+                debug_assert!(parent_offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
+
+                let priors = self.get_prior_slice(billing);
+                let active: bool = priors[offset_index].num_samples().unwrap_or(0) > 4;
+                SliceRefCDF16::<'a, T>::new(priors,
+                                            if active { offset_index } else { parent_offset_index },
+                                            if active { parent_offset_index } else { offset_index })
             }
             // TODO: technically this does not depend on the template paramters.
             #[inline]
             fn num_all_priors() -> usize {
-                sum_product_cdr!($($args),*) as usize
+                sum_product_cdr_post_increment!($($args),*) as usize
             }
             #[inline]
             fn num_prior(billing: &$billing_type) -> usize {
-                (define_prior_struct_helper_product!(billing; $($args),*)) as usize
+                (define_prior_struct_helper_product_post_increment!(billing; $($args),*)) as usize
             }
             #[inline]
             fn num_dimensions(billing: &$billing_type) -> usize {
@@ -142,7 +158,7 @@ macro_rules! define_prior_struct {
             }
         }
         #[cfg(feature="billing")]
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+        impl<T: CDF16, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 self.summarize();
             }
@@ -153,28 +169,35 @@ macro_rules! define_prior_struct {
 macro_rules! define_prior_struct_helper_offset {
     ($billing: expr; ($typ: expr, $($args: expr),*)) => { 0 };  // should panic if billing != type
     ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        (($billing != $typ) as u32) * (product!($($args),*) + define_prior_struct_helper_offset!($billing; $($more),*))
+        (($billing != $typ) as u32) * (product_post_increment!($($args),*) +
+                                       define_prior_struct_helper_offset!($billing; $($more),*))
     };
 }
 
-macro_rules! define_prior_struct_helper_product {
-    ($billing: expr; ($typ: expr, $($args: expr),*)) => { product!($($args),*) };  // should panic if billing != type
+macro_rules! define_prior_struct_helper_product_post_increment {
+    ($billing: expr; ($typ: expr, $($args: expr),*)) => { product_post_increment!($($args),*) };  // should panic if billing != type
     ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $typ { product!($($args),*) } else { define_prior_struct_helper_product!($billing; $($more),*) }
+        if *$billing == $typ { product_post_increment!($($args),*) } else {
+            define_prior_struct_helper_product_post_increment!($billing; $($more),*)
+        }
     };
 }
 
 macro_rules! define_prior_struct_helper_dimensionality {
     ($billing: expr; ($typ: expr, $($args: expr),*)) => { count_expr!($($args),*) };  // should panic if billing != type
     ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $typ { count_expr!($($args),*) } else { define_prior_struct_helper_dimensionality!($billing; $($more),*) }
+        if *$billing == $typ { count_expr!($($args),*) } else {
+            define_prior_struct_helper_dimensionality!($billing; $($more),*)
+        }
     };
 }
 
 macro_rules! define_prior_struct_helper_select_type {
     ($index: expr; ($typ: expr, $($args: expr),*)) => { $typ };  // should panic if billing != type
     ($index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if $index == 0 { $typ } else { define_prior_struct_helper_select_type!(($index - 1); $($more),*) }
+        if $index == 0 { $typ } else {
+            define_prior_struct_helper_select_type!(($index - 1); $($more),*)
+        }
     };
 }
 
@@ -187,15 +210,16 @@ macro_rules! define_prior_struct_helper_select_dim {
 
 // Given a list of tuples, compute the product of all but the first number for each tuple,
 // and report the sum of the said products.
-macro_rules! sum_product_cdr {
-    (($a: expr, $($args: expr),*)) => { product!($($args),*) };
-    (($a: expr, $($args: expr),*), $($more: tt),*) => { product!($($args),*) + sum_product_cdr!($($more),*) };
+macro_rules! sum_product_cdr_post_increment {
+    (($a: expr, $($args: expr),*)) => { product_post_increment!($($args),*) };
+    (($a: expr, $($args: expr),*), $($more: tt),*) => {
+        product_post_increment!($($args),*) + sum_product_cdr_post_increment!($($more),*) };
 }
 
-macro_rules! product {
-    ($a: expr) => { ($a as u32) };
-    ($a: expr, $b: expr) => { (($a * $b) as u32) };
-    ($a: expr, $($args: expr),*) => { ($a as u32) * product!($($args),*) };
+macro_rules! product_post_increment {
+    ($a: expr) => { ($a as u32 + 1) };
+    ($a: expr, $b: expr) => { ((($a + 1) * ($b + 1)) as u32) };
+    ($a: expr, $($args: expr),*) => { ($a as u32 + 1) * product_post_increment!($($args),*) };
 }
 
 macro_rules! count_expr {
@@ -219,6 +243,7 @@ mod test {
         CDF16,
         PriorCollection,
         PriorMultiIndex,
+        SliceRefCDF16,
         SliceWrapper,
         SliceWrapperMut
     };
@@ -233,16 +258,17 @@ mod test {
     type TestPriorSetImpl = TestPriorSet<FrequentistCDF16, HeapAlloc<FrequentistCDF16>>;
 
     #[test]
-    fn test_macro_product() {
-        assert_eq!(product!(5), 5);
-        assert_eq!(product!(2, 3, 4), 2 * 3 * 4);
+    fn test_macro_product_post_increment() {
+        assert_eq!(product_post_increment!(5), 6);
+        assert_eq!(product_post_increment!(2, 3, 4), 3 * 4 * 5);
     }
 
     #[test]
-    fn test_macro_sum_product_cdr() {
-        assert_eq!(sum_product_cdr!(("a", 2)), 2);
-        assert_eq!(sum_product_cdr!(("a", 2, 3)), 2 * 3);
-        assert_eq!(sum_product_cdr!(("a", 2, 3), ("b", 3, 4)), 2 * 3 + 3 * 4);
+    fn test_macro_sum_product_cdr_post_increment() {
+        assert_eq!(sum_product_cdr_post_increment!(("a", 2)), 3);
+        assert_eq!(sum_product_cdr_post_increment!(("a", 2, 3)), 3 * 4);
+        assert_eq!(sum_product_cdr_post_increment!(("a", 2, 3), ("b", 3, 4)),
+                   (3 * 4) + (4 * 5));
     }
 
     #[test]
@@ -262,9 +288,9 @@ mod test {
 
     #[test]
     fn test_num_prior() {
-        let cases : [(PriorType, usize); 3] = [(PriorType::Foo, 5 * 8 * 2),
-                                               (PriorType::Bar, 6 * 2),
-                                               (PriorType::Cat, 3)];
+        let cases : [(PriorType, usize); 3] = [(PriorType::Foo, (5+1) * (8+1) * (2+1)),
+                                               (PriorType::Bar, (6+1) * (2+1)),
+                                               (PriorType::Cat, (3+1))];
         let mut expected_sum = 0usize;
         for &(t, expected_count) in cases.iter() {
             assert_eq!(TestPriorSetImpl::num_prior(&t), expected_count);
@@ -292,7 +318,7 @@ mod test {
     }
 
     #[test]
-    fn test_get() {
+    fn test_get_with_raw_index() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
