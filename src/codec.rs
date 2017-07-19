@@ -996,11 +996,11 @@ impl<Cdf16:CDF16+Default+Copy,
         self.last_8_literals >>= 0x4;
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
-    fn get_command_type_prob<'a>(&'a mut self) -> SliceRefCDF16<'a, Cdf16> {
+    fn get_command_type_prob<'a>(&'a mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
-        self.cc_priors.get_chained(CrossCommandBilling::FullSelection,
-                                   ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
-                                    ((self.last_8_literals>>0x3e) as usize &0xf)))
+        self.cc_priors.get(CrossCommandBilling::FullSelection,
+                           ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
+                            ((self.last_8_literals>>0x3e) as usize &0xf)))
     }
 
     fn next_state(&mut self) {
@@ -1375,7 +1375,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         let mut command_type_prob = self.cross_command_state.bk.get_command_type_prob();
                         self.cross_command_state.coder.get_or_put_nibble(
                             &mut command_type_code,
-                            &command_type_prob,
+                            command_type_prob,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
                         command_type_prob.blend(command_type_code, Speed::ROCKET);
                     }
