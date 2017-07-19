@@ -682,7 +682,7 @@ mod test {
         assert_eq!(cdfs[1].cdf, reference.cdf);
     }
     #[test]
-    fn test_paired_ref_cdf16_active() {
+    fn test_slice_ref_cdf16_active() {
         // Test that cdf(...) samples from the active member of the pair.
         let mut cdfs : [FrequentistCDF16; 2] = [FrequentistCDF16::default(),
                                                 FrequentistCDF16::default()];
