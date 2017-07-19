@@ -456,7 +456,7 @@ impl DictState {
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
-                                                                        (1 + (self.dc.transform as usize >> 5),));
+                                                                        (1 + (self.dc.transform as usize >> 4),));
                     superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
                     nibble_prob.blend(low_nib, Speed::FAST);
                     self.dc.transform |= low_nib;
