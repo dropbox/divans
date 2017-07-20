@@ -216,12 +216,12 @@ mod test {
     use probability::{
         BaseCDF,
         CDF16,
-	};
-	use super:: {
+    };
+    use super::{
         PriorCollection,
         PriorMultiIndex,
-	};
-	use alloc::{
+    };
+    use alloc::{
         Allocator,
         SliceWrapper,
         SliceWrapperMut
