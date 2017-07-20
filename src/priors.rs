@@ -4,33 +4,35 @@ use core;
 use super::probability::{BaseCDF, CDF2, CDF16, SliceRefCDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
+pub type PriorMultiIndexExpanded = (usize, usize, usize, usize);
+
 pub trait PriorMultiIndex {
-    fn expand(&self) -> (usize, usize, usize, usize);
-    fn expand_into_parent(&self) -> (usize, usize, usize, usize);
+    fn expand(&self) -> PriorMultiIndexExpanded;
+    fn expand_into_parent(&self) -> PriorMultiIndexExpanded;
     fn num_dimensions() -> usize;
 }
 
 impl PriorMultiIndex for (usize,) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, 0, 0, 0) }
-    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (0, 0, 0, 0) }
+    fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, 0, 0, 0) }
+    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (0, 0, 0, 0) }
     fn num_dimensions() -> usize { 1usize }
 }
 
 impl PriorMultiIndex for (usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, 0, 0) }
-    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, 0, 0, 0) }
+    fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, 0, 0) }
+    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, 0, 0, 0) }
     fn num_dimensions() -> usize { 2usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
-    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, 0, 0) }
+    fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
+    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, 0, 0) }
     fn num_dimensions() -> usize { 3usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, self.3 + 1) }
-    fn expand_into_parent(&self) -> (usize, usize, usize, usize) { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
+    fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, self.3 + 1) }
+    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
     fn num_dimensions() -> usize { 4usize }
 }
 
@@ -62,7 +64,7 @@ macro_rules! define_prior_struct {
                 &mut self.priors.slice_mut()[offset_type..(offset_type + Self::num_prior(&billing))]
             }
             #[inline]
-            fn flatten_expanded_index(billing: &$billing_type, expanded_index: (usize, usize, usize, usize)) -> usize {
+            fn flatten(billing: &$billing_type, expanded_index: PriorMultiIndexExpanded) -> usize {
                 let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(billing; 0; $($args),*),
                                                                    define_prior_struct_helper_select_dim!(billing; 1; $($args),*),
                                                                    define_prior_struct_helper_select_dim!(billing; 2; $($args),*),
@@ -79,6 +81,18 @@ macro_rules! define_prior_struct {
                               "Offset from the index is out of bounds for {:?}", billing);
                 return offset_index;
             }
+            fn unflatten(billing: &$billing_type, index: usize) -> PriorMultiIndexExpanded {
+                debug_assert!(index < Self::num_prior(billing),
+                              "Index out of bounds for {:?}", billing);
+                let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(billing; 0; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 1; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 2; $($args),*),
+                                                                   define_prior_struct_helper_select_dim!(billing; 3; $($args),*));
+                ((index % (expanded_dim.0 + 1)),
+                 (index / (expanded_dim.0 + 1)) % (expanded_dim.1 + 1),
+                 (index / ((expanded_dim.0 + 1) * (expanded_dim.1 + 1))) % (expanded_dim.2 + 1),
+                 (index / ((expanded_dim.0 + 1) * (expanded_dim.1 + 1) * (expanded_dim.2 + 1))))
+            }
         }
         impl<T: CDF16, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             #[inline]
@@ -93,7 +107,7 @@ macro_rules! define_prior_struct {
                                  "Index has {} dimensions but {} is expected for {:?}",
                                  I::num_dimensions(), expected_dim, billing);
                 // Compute the offset arising from the index.
-                let offset_index = Self::flatten_expanded_index(&billing, index.expand());
+                let offset_index = Self::flatten(&billing, index.expand());
                 &mut self.get_prior_slice(billing)[offset_index]
             }
             #[inline]
@@ -103,8 +117,8 @@ macro_rules! define_prior_struct {
                 debug_assert_eq!(I::num_dimensions(), expected_dim,
                                  "Index has {} dimensions but {} is expected for {:?}",
                                  I::num_dimensions(), expected_dim, billing);
-                let offset_index = Self::flatten_expanded_index(&billing, index.expand());
-                let parent_offset_index = Self::flatten_expanded_index(&billing, index.expand_into_parent());
+                let offset_index = Self::flatten(&billing, index.expand());
+                let parent_offset_index = Self::flatten(&billing, index.expand_into_parent());
                 let priors = self.get_prior_slice(billing);
                 let active: bool = priors[offset_index].num_samples().unwrap_or(0) > 4;
                 SliceRefCDF16::<'a, T>::new(priors,
@@ -156,8 +170,8 @@ macro_rules! define_prior_struct {
                         let encoding_cost = cdf.encoding_cost();
                         if cdf.used() && true_entropy.is_some() && rolling_entropy.is_some() &&
                             num_samples.is_some() && encoding_cost.is_some() {
-                                println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
-                                         billing, i,
+                                println!("  {:?}[{:?}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
+                                         billing, Self::unflatten(&billing, i),
                                          encoding_cost.unwrap() / (num_samples.unwrap() as f64),
                                          true_entropy.unwrap(), rolling_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
                                 num_cdfs_printed += 1;
@@ -252,6 +266,7 @@ mod test {
         CDF16,
         PriorCollection,
         PriorMultiIndex,
+        PriorMultiIndexExpanded,
         SliceRefCDF16,
         SliceWrapper,
         SliceWrapperMut
@@ -424,5 +439,14 @@ mod test {
             priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
         };
         prior_set.get(PriorType::Bar, (0, 0, 0));
+    }
+
+    #[test]
+    fn test_flatten() {
+        for i in 0..TestPriorSetImpl::num_prior(&PriorType::Bar) {
+            let expanded_index = TestPriorSetImpl::unflatten(&PriorType::Bar, i);
+            assert_eq!(i as usize,
+                       TestPriorSetImpl::flatten(&PriorType::Bar, expanded_index));
+        }
     }
 }

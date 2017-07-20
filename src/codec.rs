@@ -5,7 +5,7 @@ use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDic
 use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
-use priors::{PriorCollection, PriorMultiIndex};
+use priors::{PriorCollection, PriorMultiIndex, PriorMultiIndexExpanded};
 
 use interface::{
     BillingDesignation,
