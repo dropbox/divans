@@ -7,38 +7,44 @@ use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 pub type PriorMultiIndexExpanded = (usize, usize, usize, usize);
 
 pub trait PriorMultiIndex {
+    type Shorter : PriorMultiIndex;
     fn expand(&self) -> PriorMultiIndexExpanded;
-    fn expand_into_parent(&self) -> PriorMultiIndexExpanded;
+    fn chop(&self) -> Option<Self::Shorter>;
     fn num_dimensions() -> usize;
 }
 
 impl PriorMultiIndex for (usize,) {
+    type Shorter = (usize,);  // Does not conform to recursion since this is the base case.
     fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, 0, 0, 0) }
-    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (0, 0, 0, 0) }
+    fn chop(&self) -> Option<Self::Shorter> { None }
     fn num_dimensions() -> usize { 1usize }
 }
 
 impl PriorMultiIndex for (usize, usize) {
+    type Shorter = (usize,);
     fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, 0, 0) }
-    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, 0, 0, 0) }
+    fn chop(&self) -> Option<Self::Shorter> { Some((self.0,)) }
     fn num_dimensions() -> usize { 2usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize) {
+    type Shorter = (usize, usize);
     fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
-    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, 0, 0) }
+    fn chop(&self) -> Option<Self::Shorter> { Some((self.0, self.1)) }
     fn num_dimensions() -> usize { 3usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize, usize) {
+    type Shorter = (usize, usize, usize);
     fn expand(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, self.3 + 1) }
-    fn expand_into_parent(&self) -> PriorMultiIndexExpanded { (self.0 + 1, self.1 + 1, self.2 + 1, 0) }
+    fn chop(&self) -> Option<Self::Shorter> { Some((self.0, self.1, self.2)) }
     fn num_dimensions() -> usize { 4usize }
 }
 
 pub trait PriorCollection<T: CDF16, AllocT: Allocator<T>, B> {
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
-    fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T>;
+    fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T, [usize;1]>;
+    fn get_triple_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: B, index: I) -> SliceRefCDF16<'a, T, [usize;2]>;
     fn get_with_raw_index(&mut self, billing: B, index: usize) -> &mut T;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
@@ -111,19 +117,39 @@ macro_rules! define_prior_struct {
                 &mut self.get_prior_slice(billing)[offset_index]
             }
             #[inline]
-            fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T> {
+            fn get_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T, [usize;1]> {
                 // Check the dimensionality.
                 let expected_dim = Self::num_dimensions(&billing);
                 debug_assert_eq!(I::num_dimensions(), expected_dim,
                                  "Index has {} dimensions but {} is expected for {:?}",
                                  I::num_dimensions(), expected_dim, billing);
                 let offset_index = Self::flatten(&billing, index.expand());
-                let parent_offset_index = Self::flatten(&billing, index.expand_into_parent());
+                let parent_offset_index = Self::flatten(&billing, index.chop().unwrap().expand());
                 let priors = self.get_prior_slice(billing);
                 let active: bool = priors[offset_index].num_samples().unwrap_or(0) > 4;
-                SliceRefCDF16::<'a, T>::new(priors,
-                                            if active { offset_index } else { parent_offset_index },
-                                            if active { parent_offset_index } else { offset_index })
+                SliceRefCDF16::<'a, T, [usize;1]>::new(priors,
+                                                       if active { offset_index } else { parent_offset_index },
+                                                       [if !active { offset_index } else { parent_offset_index }])
+            }
+            #[inline]
+            fn get_triple_chained<'a, I: PriorMultiIndex>(&'a mut self, billing: $billing_type, index: I) -> SliceRefCDF16<'a, T, [usize;2]> {
+                // Check the dimensionality.
+                let expected_dim = Self::num_dimensions(&billing);
+                debug_assert_eq!(I::num_dimensions(), expected_dim,
+                                 "Index has {} dimensions but {} is expected for {:?}",
+                                 I::num_dimensions(), expected_dim, billing);
+                let offset_index = Self::flatten(&billing, index.expand());
+                let parent_offset_index = Self::flatten(&billing, index.chop().unwrap().expand());
+                let gparent_offset_index = Self::flatten(&billing, index.chop().unwrap().chop().unwrap().expand());
+                let priors = self.get_prior_slice(billing);
+                let active: bool = priors[offset_index].num_samples().unwrap_or(0) > 8;
+                let parent_active: bool = priors[parent_offset_index].num_samples().unwrap_or(0) > 8;
+
+                let active_index : usize = if active { offset_index } else {
+                    if parent_active { parent_offset_index } else { gparent_offset_index } };
+                let passive_indices : [usize; 2] = [ if active { parent_offset_index } else { offset_index },
+                                                     if active || parent_active { gparent_offset_index } else { parent_offset_index } ];
+                SliceRefCDF16::<'a, T, [usize;2]>::new(priors, active_index, passive_indices)
             }
             // TODO: technically this does not depend on the template paramters.
             #[inline]

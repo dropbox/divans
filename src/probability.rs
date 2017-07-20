@@ -514,34 +514,57 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: ConcreteCDF16 {
     }
 }
 
-pub struct SliceRefCDF16<'a, Cdf16: 'a + CDF16> {
-    pub slice: &'a mut [Cdf16],
-    active_index: usize,
-    passive_index: usize,
+pub trait SelectiveArrayVisitor {
+    // Given an array and a closure, run the closure on a particular subset of the array.
+    fn visit<T, F>(&self, array: &mut [T], f: F) where F: Fn(&mut T);
 }
 
-impl<'a, Cdf16: 'a + CDF16> SliceRefCDF16<'a, Cdf16> {
+impl SelectiveArrayVisitor for [usize;1] {
+    fn visit<T, F>(&self, array: &mut [T], f: F) where F: Fn(&mut T) {
+        f(&mut array[self[0]]);
+    }
+}
+
+impl SelectiveArrayVisitor for [usize;2] {
+    fn visit<T, F>(&self, array: &mut [T], f: F) where F: Fn(&mut T) {
+        f(&mut array[self[0]]);
+        f(&mut array[self[1]]);
+    }
+}
+
+impl SelectiveArrayVisitor for [usize;3] {
+    fn visit<T, F>(&self, array: &mut [T], f: F) where F: Fn(&mut T) {
+        f(&mut array[self[0]]);
+        f(&mut array[self[1]]);
+        f(&mut array[self[2]]);
+    }
+}
+
+// A wrapper around a CDF that also blends into one or more "passive" CDFs that live in the same array.
+pub struct SliceRefCDF16<'a, Cdf16: 'a + CDF16, T: SelectiveArrayVisitor + Copy> {
+    pub slice: &'a mut [Cdf16],
+    active_index: usize,
+    passive_indices: T,
+}
+
+impl<'a, Cdf16: 'a + CDF16, T: SelectiveArrayVisitor + Copy> SliceRefCDF16<'a, Cdf16, T> {
     pub fn new(slice: &'a mut [Cdf16],
                active_index: usize,
-               passive_index: usize) -> Self {
-        SliceRefCDF16::<'a, Cdf16> {
+               passive_indices: T) -> Self {
+        SliceRefCDF16::<'a, Cdf16, T> {
             slice: slice,
             active_index: active_index,
-            passive_index: passive_index,
+            passive_indices: passive_indices
         }
     }
-    pub fn get_active_mut(&mut self) -> &mut Cdf16 {
-        &mut self.slice[self.active_index]
-    }
-
-    pub fn get_active(&self) -> &Cdf16 {
+    fn get_active(&self) -> &Cdf16 {
         &self.slice[self.active_index]
     }
 }
 
-impl<'a, Cdf16: 'a + CDF16> CDF16 for SliceRefCDF16<'a, Cdf16> {}
+impl<'a, Cdf16: 'a + CDF16, T: SelectiveArrayVisitor + Copy> CDF16 for SliceRefCDF16<'a, Cdf16, T> {}
 
-impl<'a, Cdf16: 'a + CDF16> BaseCDF for SliceRefCDF16<'a, Cdf16> {
+impl<'a, Cdf16: 'a + CDF16, T: SelectiveArrayVisitor + Copy> BaseCDF for SliceRefCDF16<'a, Cdf16, T> {
     fn num_symbols() -> u8 { 16 }
     fn used(&self) -> bool { self.get_active().used() }
     fn max(&self) -> Prob { self.get_active().max() }
@@ -550,7 +573,8 @@ impl<'a, Cdf16: 'a + CDF16> BaseCDF for SliceRefCDF16<'a, Cdf16> {
     fn cdf(&self, symbol: u8) -> Prob { self.get_active().cdf(symbol) }
     fn blend(&mut self, symbol: u8, speed: Speed) {
         self.slice[self.active_index].blend(symbol, speed);
-        self.slice[self.passive_index].blend(symbol, speed);
+        let p = self.passive_indices.clone();
+        p.visit(self.slice, |cdf| cdf.blend(symbol, speed));
     }
 
     // XXX: the analysis isn't quite correct since the pairing is not structurally
@@ -665,12 +689,13 @@ mod test {
     }
     #[test]
     fn test_slice_ref_cdf16_blend() {
-        // Test that blend affects each member of the pair.
-        let mut cdfs : [FrequentistCDF16; 2] = [FrequentistCDF16::default(),
+        // Test that blend affects each specified member of the triple.
+        let mut cdfs : [FrequentistCDF16; 3] = [FrequentistCDF16::default(),
+                                                FrequentistCDF16::default(),
                                                 FrequentistCDF16::default()];
         let mut reference = FrequentistCDF16::default();
         {
-            let mut pair = SliceRefCDF16::new(&mut cdfs, 0, 1);
+            let mut pair = SliceRefCDF16::new(&mut cdfs, 0, [2]); // don't touch cdfs[1]
             for i in 0..16 {
                 for j in 0..(i+1) {
                     pair.blend(j as u8, Speed::MED);
@@ -679,29 +704,34 @@ mod test {
             }
         }
         assert_eq!(cdfs[0].cdf, reference.cdf);
-        assert_eq!(cdfs[1].cdf, reference.cdf);
+        assert_ne!(cdfs[1].cdf, reference.cdf);
+        assert_eq!(cdfs[2].cdf, reference.cdf);
     }
     #[test]
     fn test_slice_ref_cdf16_active() {
-        // Test that cdf(...) samples from the active member of the pair.
-        let mut cdfs : [FrequentistCDF16; 2] = [FrequentistCDF16::default(),
+        // Test that cdf(...) samples from the active member of the triple.
+        let mut cdfs : [FrequentistCDF16; 3] = [FrequentistCDF16::default(),
+                                                FrequentistCDF16::default(),
                                                 FrequentistCDF16::default()];
         let mut reference = FrequentistCDF16::default();
         for i in 0..16 {
             for j in 0..(i+1) {
                 cdfs[0].blend(j as u8, Speed::MED);
+                cdfs[1].blend((j + 1) & 0xf as u8, Speed::MED);
+                cdfs[2].blend((j + 2) & 0xf as u8, Speed::MED);
             }
         }
         assert_ne!(cdfs[0].cdf, cdfs[1].cdf);
-        let mut cdf_from_pair : [super::Prob; 16] = [0; 16];
+        assert_ne!(cdfs[0].cdf, cdfs[2].cdf);
+        let mut cdf_from_triple : [super::Prob; 16] = [0; 16];
         {
-            let pair = SliceRefCDF16::new(&mut cdfs, 1, 0);
+            let triple = SliceRefCDF16::new(&mut cdfs, 1, [0, 2]);
             for i in 0..16 {
-                cdf_from_pair[i] = pair.cdf(i as u8);
+                cdf_from_triple[i] = triple.cdf(i as u8);
             }
         }
         for i in 0..16 {
-            assert_eq!(cdf_from_pair[i], cdfs[1].cdf(i as u8));
+            assert_eq!(cdf_from_triple[i], cdfs[1].cdf(i as u8));
         }
     }
 }

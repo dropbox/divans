@@ -607,7 +607,7 @@ impl<AllocU8:Allocator<u8>,
                                           >> shift) & 0xf;
                     let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
-                    let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
+                    let k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
                     let _k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
                     let _k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
                     let _k5 = ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize;
@@ -616,9 +616,9 @@ impl<AllocU8:Allocator<u8>,
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     {
                         let nibble_index_truncated = if nibble_index < 2 { nibble_index } else { 2 };
-                        let mut nibble_prob = superstate.bk.lit_priors.get_chained(
+                        let mut nibble_prob = superstate.bk.lit_priors.get_triple_chained(
                             if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
-                            (ltype, k0 as usize, nibble_index_truncated as usize, k1));
+                            (k0 as usize, nibble_index_truncated as usize, k1, k2));
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, &nibble_prob, billing);
                         nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
                     }
@@ -780,8 +780,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 3, 16),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 3, 16),
+                     (LiteralNibblePriorType::FirstNibble, 16, 3, 16, 16),
+                     (LiteralNibblePriorType::SecondNibble, 16, 3, 16, 16),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
@@ -905,7 +905,7 @@ impl<Cdf16:ConcreteCDF16,
         };
         for i in 0..4 {
             for j in 0..0x10 {
-                let mut prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
+                let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
                                              (i, j));
                 for _samp in 0..1 {
                     prob.blend(0x1, Speed::FAST);
@@ -997,13 +997,12 @@ impl<Cdf16:ConcreteCDF16,
         self.last_8_literals >>= 0x4;
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
-    fn get_command_type_prob<'a>(&'a mut self) -> &mut Cdf16 {
+    fn get_command_type_prob<'a>(&'a mut self) -> &'a mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
                             ((self.last_8_literals>>0x3e) as usize &0xf)))
     }
-
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
