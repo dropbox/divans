@@ -168,7 +168,7 @@ impl CopyState {
                 },
                 CopySubstate::CountLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, clen.wrapping_sub(4));
-                    let index = (superstate.bk.last_clen.wrapping_sub(1) >> 2) as usize;
+                    let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountBegNib, (ctype, index));
@@ -447,7 +447,8 @@ impl DictState {
                 },
                 DictSubstate::TransformHigh => {
                     let mut high_nib = in_cmd.transform >> 4;
-                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform, (0,));
+                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
+                                                                        (0, self.dc.word_size as usize >> 1));
                     superstate.coder.get_or_put_nibble(&mut high_nib, nibble_prob, billing);
                     nibble_prob.blend(high_nib, Speed::FAST);
                     self.dc.transform = high_nib << 4;
@@ -456,7 +457,7 @@ impl DictState {
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
-                                                                        (1 + (self.dc.transform as usize >> 5),));
+                                                                        (1, self.dc.transform as usize >> 4));
                     superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
                     nibble_prob.blend(low_nib, Speed::FAST);
                     self.dc.transform |= low_nib;
@@ -619,7 +620,7 @@ impl<AllocU8:Allocator<u8>,
                             if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
                             (ltype, k0 as usize, nibble_index_truncated as usize, k1));
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, &nibble_prob, billing);
-                        nibble_prob.blend(cur_nibble, Speed::SLOW);
+                        nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
                     }
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << shift;
                     superstate.bk.push_literal_nibble(cur_nibble);
@@ -822,7 +823,7 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (DictCommandNibblePriorType::Index, NUM_BLOCK_TYPES, NUM_ORGANIC_DICT_DISTANCE_PRIORS),
-                     (DictCommandNibblePriorType::Transform, 17));
+                     (DictCommandNibblePriorType::Transform, 2, 25));
 
 #[derive(Copy,Clone)]
 pub struct DistanceCacheEntry {
