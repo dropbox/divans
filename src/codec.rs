@@ -621,7 +621,7 @@ impl<AllocU8:Allocator<u8>,
                             if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
                             (k0 as usize, nibble_index_truncated as usize, k1, k2));
                         superstate.coder.get_or_put_nibble(&mut cur_nibble, &nibble_prob, billing);
-                        nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
+                        nibble_prob.blend(cur_nibble, if high_nibble { Speed::MED } else { Speed::MUD });
                     }
                     self.lc.data.slice_mut()[byte_index] |= cur_nibble << shift;
                     superstate.bk.push_literal_nibble(cur_nibble);
