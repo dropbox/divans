@@ -151,7 +151,7 @@ impl CopyState {
                 CopySubstate::CountSmall => {
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes.wrapping_sub(2)) as u8;
+                    let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
@@ -160,13 +160,14 @@ impl CopyState {
                     if shortcut_nib == 15 {
                         self.state = CopySubstate::CountLengthFirst;
                     } else {
-                        self.cc.num_bytes = (shortcut_nib + 2) as u32;
+                        self.cc.num_bytes = shortcut_nib as u32;
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
                                                    - (self.cc.num_bytes).leading_zeros()) as u8;
                         self.state = CopySubstate::CountDecoded;
                     }
                 },
                 CopySubstate::CountLengthFirst => {
+                    // at this point, num_bytes is at least 15, so clen is at least 4.
                     let mut beg_nib = core::cmp::min(15, clen.wrapping_sub(4));
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
@@ -179,7 +180,7 @@ impl CopyState {
                         self.state = CopySubstate::CountLengthGreater18Less25;
                     } else {
                         superstate.bk.last_clen = beg_nib + 4;
-                        self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib - 1 + 4), 1 << (beg_nib - 1 + 4));
+                        self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib + 4 - 1), 1 << (beg_nib + 4 - 1));
                     }
                 },
                 CopySubstate::CountLengthGreater18Less25 => {
@@ -551,7 +552,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::LiteralCountFirst => {
-                    let mut beg_nib = lllen;
+                    let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeBegNib, (ctype,));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
