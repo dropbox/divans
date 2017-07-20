@@ -830,7 +830,7 @@ pub struct DistanceCacheEntry {
     decode_byte_count:u32,
 }
 
-pub struct CrossCommandBookKeeping<Cdf16:CDF16+Default+Copy,
+pub struct CrossCommandBookKeeping<Cdf16:ConcreteCDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     decode_byte_count: u32,
@@ -860,7 +860,7 @@ fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
     }
 }
 
-impl<Cdf16:CDF16+Default+Copy,
+impl<Cdf16:ConcreteCDF16,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
                                                           AllocCDF2,
