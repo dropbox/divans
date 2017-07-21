@@ -192,3 +192,18 @@ fn test_e2e_64x() {
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
 }
+
+#[test]
+fn test_e2e_262145_at() {
+   let sbuf = ['@' as u8; 262145];
+   let raw_text_buffer = UnlimitedBuffer::new(&sbuf[..]);
+   let ir_buffer = UnlimitedBuffer::new(b"window 22 len 262145\ninsert 1 40\ncopy 262144 from 1 ctx 3\n");
+   let mut dv_buffer = UnlimitedBuffer::new(&[]);
+   let mut buf_ir = BufReader::new(ir_buffer);
+   let mut rt_buffer = UnlimitedBuffer::new(&[]);
+   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   let a =  rt_buffer.data;
+   let b = raw_text_buffer.data;
+   assert_eq!(a, b);
+}

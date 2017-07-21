@@ -158,7 +158,7 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
     let cmd = &command_vec[0];
     if cmd == "window" {
             // FIXME validate
-            return Ok(Some(Command::Copy(CopyCommand{distance:1,num_bytes:0})));
+            return Ok(None);
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -203,6 +203,9 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
                                           msg.description()));
             }
         };
+	if expected_len == 0 {
+	   return Ok(None);
+	}
         return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len})));
     } else if cmd == "dict" {
         if command_vec.len() < 6 {

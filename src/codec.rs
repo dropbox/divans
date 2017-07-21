@@ -191,8 +191,8 @@ impl CopyState {
                         CopyCommandNibblePriorType::CountLastNib, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::FAST);
-                    superstate.bk.last_clen = last_nib + 15;
-                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 14), 1 << (last_nib + 14));
+                    superstate.bk.last_clen = last_nib + 19;
+                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 18), 1 << (last_nib + 18));
                 },
                 CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;

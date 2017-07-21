@@ -141,6 +141,7 @@ const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 pub struct BlendCDF16 {
     pub cdf: [Prob; 16],
     mix_rate: i32,
+    count: i32,
 }
 
 impl Default for BlendCDF16 {
@@ -148,6 +149,7 @@ impl Default for BlendCDF16 {
         BlendCDF16 {
             cdf: [0; 16],
             mix_rate: (1 << 10) + (1 << 9),
+            count: 0,
         }
     }
 }
@@ -189,6 +191,7 @@ impl BaseCDF for BlendCDF16 {
         return true;
     }
     fn blend(&mut self, symbol:u8, speed: Speed) {
+        self.count = self.count.wrapping_add(1);
         let _mix_rate = match speed {
                 Speed::GEOLOGIC => 32,
                 Speed::GLACIAL => 64,
@@ -199,7 +202,7 @@ impl BaseCDF for BlendCDF16 {
                 Speed::PLANE => 384,
                 Speed::ROCKET => 1100,
         };
-        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, 0);
+        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, (self.count & 0xf) << (BLEND_FIXED_POINT_PRECISION - 4));
         // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
         self.mix_rate -= self.mix_rate >> 7;
 

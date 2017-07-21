@@ -286,14 +286,18 @@ macro_rules! select_expr {
 
 mod test {
     use core;
-    use super::{
-        Allocator,
+    use probability::{
         BaseCDF,
         CDF16,
+    };
+    use super::{
         PriorCollection,
         PriorMultiIndex,
         PriorMultiIndexExpanded,
         SliceRefCDF16,
+    };
+    use alloc::{
+        Allocator,
         SliceWrapper,
         SliceWrapperMut
     };
