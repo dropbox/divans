@@ -6,7 +6,7 @@ use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
 use priors::{PriorCollection, PriorMultiIndex};
-
+use super::constants;
 use interface::{
     BillingDesignation,
     CrossCommandBilling,
@@ -29,6 +29,10 @@ use super::interface::{
     DictCommand,
     LiteralCommand,
     LiteralPredictionModeNibble,
+    LITERAL_PREDICTION_MODE_SIGN,
+    LITERAL_PREDICTION_MODE_UTF8,
+    LITERAL_PREDICTION_MODE_MSB6,
+    LITERAL_PREDICTION_MODE_LSB6,
 };
 
 pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
@@ -670,8 +674,21 @@ impl<AllocU8:Allocator<u8>,
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         {
-                            let prev_byte = (superstate.bk.last_8_literals >> 0x38) & 0xff;
-                            let prev_prev_byte = (superstate.bk.last_8_literals >> 0x30) & 0xff;
+                            let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
+                            let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
+                            let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
+                                | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
+                            let sign_context = (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) +
+                                 (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize] << 3);
+                            let msb_context = prev_byte >> 2;
+                            let lsb_context = prev_byte & 0x3f;
+                            let selected_context = match superstate.bk.literal_prediction_mode {
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
+                                _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
+                            } as usize;
                             //if shift != 0 {
                             //println_stderr!("___{}{}{}",
                             //                prev_prev_byte as u8 as char,
@@ -681,14 +698,12 @@ impl<AllocU8:Allocator<u8>,
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (ltype,
-                                                              k0,
-                                                              k1))
+                                                              selected_context))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (ltype,
                                                               (*cur_byte >> 4) as usize,
-                                                              k0,
-                                                              k1))
+                                                              selected_context))
                             };
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
@@ -857,8 +872,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 16),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 64),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 64),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),

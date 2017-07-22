@@ -20,9 +20,13 @@ impl BlockSwitch {
     }
 }
 
+pub const LITERAL_PREDICTION_MODE_SIGN: u8 = 3;
+pub const LITERAL_PREDICTION_MODE_UTF8: u8 = 2;
+pub const LITERAL_PREDICTION_MODE_MSB6: u8 = 1;
+pub const LITERAL_PREDICTION_MODE_LSB6: u8 = 0;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LiteralPredictionModeNibble(u8);
+pub struct LiteralPredictionModeNibble(pub u8);
 
 impl LiteralPredictionModeNibble {
     pub fn new(prediction_mode: u8) -> Result<Self, ()> {
@@ -33,6 +37,18 @@ impl LiteralPredictionModeNibble {
     }
     pub fn prediction_mode(&self) -> u8 {
         self.0
+    }
+    pub fn signed() -> Self {
+        LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN)
+    }
+    pub fn utf8() -> Self {
+        LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8)
+    }
+    pub fn msb6() -> Self {
+        LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6)
+    }
+    pub fn lsb6() -> Self {
+        LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6)
     }
 }
 
