@@ -678,8 +678,9 @@ impl<AllocU8:Allocator<u8>,
                             let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
                             let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
                                 | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
-                            let sign_context = (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) +
-                                 (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize] << 3);
+                            let sign_context =
+                                (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) |
+                                constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
                             let msb_context = prev_byte >> 2;
                             let lsb_context = prev_byte & 0x3f;
                             let selected_context = match superstate.bk.literal_prediction_mode {
