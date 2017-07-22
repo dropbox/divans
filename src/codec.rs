@@ -670,7 +670,6 @@ impl<AllocU8:Allocator<u8>,
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         {
-                            let nibble_index_truncated = if nibble_index < 2 { nibble_index } else { 2 };
                             let prev_byte = (superstate.bk.last_8_literals >> 0x38) & 0xff;
                             let prev_prev_byte = (superstate.bk.last_8_literals >> 0x30) & 0xff;
                             //if shift != 0 {
@@ -679,9 +678,18 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
-                            let mut nibble_prob = superstate.bk.lit_priors.get(
-                                if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
-                                (if high_nibble {ltype} else { (*cur_byte >> shift) as usize}, if high_nibble{k0 as usize} else {0}/*FIXME*/, k1 as usize, nibble_index_truncated as usize));
+                            let mut nibble_prob = if high_nibble {
+                                superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                             (ltype,
+                                                              k0,
+                                                              k1))
+                            } else {
+                                superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                             (ltype,
+                                                              (*cur_byte >> 4) as usize,
+                                                              k0,
+                                                              k1))
+                            };
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
                         }
@@ -849,8 +857,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 16),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
