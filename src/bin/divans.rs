@@ -16,6 +16,7 @@ use std::vec::Vec;
 use divans::BlockSwitch;
 use divans::CopyCommand;
 use divans::LiteralCommand;
+use divans::LiteralPredictionModeNibble;
 use divans::Command;
 use divans::DictCommand;
 use divans::BrotliResult;
@@ -159,6 +160,20 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
     if cmd == "window" {
             // FIXME validate
             return Ok(None);
+    } else if cmd == "prediction" {
+        if command_vec.len() != 2 {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "prediction needs 1 argument"));
+        }
+        let ret = Command::PredictionMode(LiteralPredictionModeNibble::new(match command_vec[1].as_ref() {
+          "utf8" => 2,
+          "sign" => 3,
+          "lsb6" => 0,
+          "msb6" => 1,
+          _ => return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                         "invalid prediction mode; not {utf8,sign,lsb6,msb6}")),
+        }).unwrap());
+        return Ok(Some(ret));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,

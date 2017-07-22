@@ -1,7 +1,7 @@
 use alloc::{SliceWrapper, Allocator};
 use brotli_decompressor::BrotliResult;
 use super::probability::CDF16;
-use super::codec::{CopySubstate, DictSubstate, LiteralSubstate};
+use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
 
 // Commands that can instantiate as a no-op should implement this.
 pub trait Nop<T> {
@@ -19,6 +19,24 @@ impl BlockSwitch {
         self.0
     }
 }
+
+
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LiteralPredictionModeNibble(u8);
+
+impl LiteralPredictionModeNibble {
+    pub fn new(prediction_mode: u8) -> Result<Self, ()> {
+        if prediction_mode < 16 {
+            return Ok(LiteralPredictionModeNibble(prediction_mode));
+        }
+        return Err(());
+    }
+    pub fn prediction_mode(&self) -> u8 {
+        self.0
+    }
+}
+
+
 
 #[derive(Debug)]
 pub struct CopyCommand {
@@ -77,6 +95,7 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     BlockSwitchCommand(BlockSwitch),
     BlockSwitchLiteral(BlockSwitch),
     BlockSwitchDistance(BlockSwitch),
+    PredictionMode(LiteralPredictionModeNibble),
 }
 
 
@@ -129,6 +148,7 @@ pub enum BillingDesignation {
     DictCommand(DictSubstate),
     LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
+    LiteralPredictionModeCommand(PredictionModeState),
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]

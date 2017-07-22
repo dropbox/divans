@@ -28,6 +28,7 @@ use super::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
+    LiteralPredictionModeNibble,
 };
 
 pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
@@ -342,6 +343,57 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
      fn from(ll: LiteralState<AllocU8>) -> Self {
         Command::Literal(ll.lc)
      }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PredictionModeState {
+    Begin,
+    FullyDecoded(LiteralPredictionModeNibble),
+}
+
+impl PredictionModeState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  Cdf16,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>,
+                                               in_cmd: &LiteralPredictionModeNibble,
+                                               input_bytes:&[u8],
+                                               input_offset: &mut usize,
+                                               output_bytes:&mut [u8],
+                                               output_offset: &mut usize) -> BrotliResult {
+
+        loop {
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
+            let billing = BillingDesignation::LiteralPredictionModeCommand(self.clone());
+            match self {
+               &mut PredictionModeState::Begin => {
+                   let mut beg_nib = in_cmd.prediction_mode();
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
+                   superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                   nibble_prob.blend(beg_nib, Speed::MED);
+                   let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
+                      Err(_) => return BrotliResult::ResultFailure,
+                      Ok(pred_mode) => pred_mode,
+                   };
+                   *self = PredictionModeState::FullyDecoded(pred_mode);
+               },
+               &mut PredictionModeState::FullyDecoded(_) => {
+                   return BrotliResult::ResultSuccess;
+               }
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -744,6 +796,7 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     BlockSwitchLiteral(BlockTypeState),
     BlockSwitchCommand(BlockTypeState),
     BlockSwitchDistance(BlockTypeState),
+    PredictionMode(PredictionModeState),
     PopulateRingBuffer(Command<AllocatedMemoryPrefix<AllocU8>>),
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
@@ -787,6 +840,17 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
+
+#[derive(PartialEq, Debug, Clone)]
+enum PredictionModePriorType {
+    Only,
+}
+
+define_prior_struct!(PredictionModePriors, PredictionModePriorType,
+                     (PredictionModePriorType::Only, 1)
+                     );
+
 
 #[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
@@ -842,10 +906,12 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_dlen: u8,
     last_clen: u8,
     last_llen: u8,
+    literal_prediction_mode: LiteralPredictionModeNibble,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
+    prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
@@ -870,7 +936,8 @@ impl<Cdf16:CDF16,
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
-           dict_prior: AllocCDF16::AllocatedMemory) -> Self {
+           dict_prior: AllocCDF16::AllocatedMemory,
+           pred_prior: AllocCDF16::AllocatedMemory) -> Self {
         let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
@@ -883,8 +950,12 @@ impl<Cdf16:CDF16,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
-            last_4_states: 0,
+            last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
+            literal_prediction_mode: LiteralPredictionModeNibble::default(),
+            prediction_priors: PredictionModePriors {
+                priors: pred_prior,
+            },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
             },
@@ -908,7 +979,9 @@ impl<Cdf16:CDF16,
             for j in 0..0x10 {
                 let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
                                              (i, j));
-                for _samp in 0..1 {
+                if j == 0x3 { // starting situation
+                    prob.blend(0x7, Speed::ROCKET);
+                } else {
                     prob.blend(0x1, Speed::FAST);
                     prob.blend(0x1, Speed::FAST);
                     prob.blend(0x2, Speed::FAST);
@@ -1007,6 +1080,10 @@ impl<Cdf16:CDF16,
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
+    fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) {
+       self.next_state();
+       self.literal_prediction_mode = new_mode;
+    }
     fn obs_dict_state(&mut self) {
         self.next_state();
         self.last_4_states |= 192;
@@ -1053,12 +1130,15 @@ impl<Cdf16:CDF16,
         }
     }
     fn obs_btypel(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0]];
     }
     fn obs_btypec(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0]];
     }
     fn obs_btyped(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0]];
     }
 }
@@ -1100,6 +1180,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -1113,7 +1194,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors, dict_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -1144,6 +1225,7 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         &Command::BlockSwitchCommand(_) => return 0x4,
         &Command::BlockSwitchLiteral(_) => return 0x5,
         &Command::BlockSwitchDistance(_) => return 0x6,
+        &Command::PredictionMode(_) => return 0x7,
     }
 }
 #[cfg(feature="bitcmdselect")]
@@ -1172,6 +1254,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
      4 => EncodeOrDecodeState::BlockSwitchLiteral(BlockTypeState::Begin),
      5 => EncodeOrDecodeState::BlockSwitchCommand(BlockTypeState::Begin),
      6 => EncodeOrDecodeState::BlockSwitchDistance(BlockTypeState::Begin),
+     7 => EncodeOrDecodeState::PredictionMode(PredictionModeState::Begin),
      0xf => EncodeOrDecodeState::DivansSuccess,
       _ => panic!("unimpl"),
    }
@@ -1388,6 +1471,29 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         _ => {},
                     }
                     new_state = Some(command_state);
+                },
+                &mut EncodeOrDecodeState::PredictionMode(ref mut prediction_mode_state) => {
+                    let src_pred_mode = match input_cmd {
+                        &Command::PredictionMode(pm) => pm.clone(),
+                        _ => LiteralPredictionModeNibble::default(),
+                     };
+                     match prediction_mode_state.encode_or_decode(&mut self.cross_command_state,
+                                                                  &src_pred_mode,
+                                                                  input_bytes,
+                                                                  input_bytes_offset,
+                                                                  output_bytes,
+                                                                  output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.obs_pred_mode(match prediction_mode_state {
+                                &mut PredictionModeState::FullyDecoded(pm) => pm,
+                                _ => panic!("illegal output state"),
+                            });
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                        },
+                        retval => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }              
                 },
                 &mut EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match input_cmd {

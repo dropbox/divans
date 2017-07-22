@@ -92,19 +92,19 @@ macro_rules! define_prior_struct {
                 sum_product_cdr!($($args),*) as usize
             }
             #[inline]
-            fn num_prior(billing: &$billing_type) -> usize {
-                (define_prior_struct_helper_product!(billing; $($args),*)) as usize
+            fn num_prior(_billing: &$billing_type) -> usize {
+                (define_prior_struct_helper_product!(_billing; $($args),*)) as usize
             }
             #[inline]
-            fn num_dimensions(billing: &$billing_type) -> usize {
-                (define_prior_struct_helper_dimensionality!(billing; $($args),*)) as usize
+            fn num_dimensions(_billing: &$billing_type) -> usize {
+                (define_prior_struct_helper_dimensionality!(_billing; $($args),*)) as usize
             }
 
             fn num_billing_types() -> usize {
                 count_expr!($($args),*) as usize
             }
-            fn index_to_billing_type(index: usize) -> $billing_type {
-                define_prior_struct_helper_select_type!(index; $($args),*)
+            fn index_to_billing_type(_index: usize) -> $billing_type {
+                define_prior_struct_helper_select_type!(_index; $($args),*)
             }
 
             #[cfg(feature="billing")]
