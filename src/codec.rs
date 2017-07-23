@@ -696,18 +696,51 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
-                            let mut nibble_prob = if high_nibble {
-                                superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                            let mut nibble_probs = if high_nibble {
+                                [superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (ltype,
-                                                              selected_context))
+                                                              lsb_context as usize)),
+                                 superstate.bk.lit_priors_msb6.get(LiteralNibblePriorType::FirstNibble,
+                                                             (ltype,
+                                                              msb_context as usize)),
+                                 superstate.bk.lit_priors_utf8.get(LiteralNibblePriorType::FirstNibble,
+                                                             (ltype,
+                                                              utf_context as usize)),
+                                 superstate.bk.lit_priors_sign.get(LiteralNibblePriorType::FirstNibble,
+                                                             (ltype,
+                                                              sign_context as usize))]
+                                 
                             } else {
-                                superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                [superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (ltype,
                                                               (*cur_byte >> 4) as usize,
-                                                              selected_context))
+                                                              lsb_context as usize)),
+                                 superstate.bk.lit_priors_msb6.get(LiteralNibblePriorType::SecondNibble,
+                                                             (ltype,
+                                                              (*cur_byte >> 4) as usize,
+                                                              msb_context as usize)),
+                                 superstate.bk.lit_priors_utf8.get(LiteralNibblePriorType::SecondNibble,
+                                                             (ltype,
+                                                              (*cur_byte >> 4) as usize,
+                                                              utf_context as usize)),
+                                 superstate.bk.lit_priors_sign.get(LiteralNibblePriorType::SecondNibble,
+                                                             (ltype,
+                                                              (*cur_byte >> 4) as usize,
+                                                              sign_context as usize))]
                             };
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
-                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
+                            let mut selected_nibble_prob_index = 2;
+                            let mut best_entropy = nibble_probs[2].entropy(); // FIXME: floating point math--beware
+                            for (index, nibble_prob) in nibble_probs[1..].iter_mut().enumerate() {
+                                let en = nibble_prob.entropy();
+                                if en < best_entropy && nibble_prob.num_samples().unwrap() > 5 {
+                                    best_entropy = en;
+                                    selected_nibble_prob_index = index;
+                                }
+                            }
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_probs[selected_nibble_prob_index], billing);
+                            for nibble_prob in nibble_probs.iter_mut() {
+                                nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
+                            }
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -947,6 +980,9 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_llen: u8,
     literal_prediction_mode: LiteralPredictionModeNibble,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    lit_priors_utf8: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    lit_priors_sign: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    lit_priors_msb6: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -973,6 +1009,9 @@ impl<Cdf16:CDF16,
                                                           AllocCDF2,
                                                           AllocCDF16> {
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
+           lit_prior_a: AllocCDF16::AllocatedMemory,
+           lit_prior_b: AllocCDF16::AllocatedMemory,
+           lit_prior_c: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
@@ -997,6 +1036,15 @@ impl<Cdf16:CDF16,
             },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
+            },
+            lit_priors_msb6: LiteralCommandPriors {
+                priors: lit_prior_a
+            },
+            lit_priors_utf8: LiteralCommandPriors {
+                priors: lit_prior_b
+            },
+            lit_priors_sign: LiteralCommandPriors {
+                priors: lit_prior_c
             },
             cc_priors: CrossCommandPriors {
                 priors: cc_prior
@@ -1220,6 +1268,9 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let lit_priors_a = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let lit_priors_b = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let lit_priors_c = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1237,7 +1288,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
+            bk:CrossCommandBookKeeping::new(lit_priors, lit_priors_a, lit_priors_b, lit_priors_c,
+                                            cc_priors, copy_priors, dict_priors, pred_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
