@@ -662,8 +662,8 @@ impl<AllocU8:Allocator<u8>,
                     let shift : u8 = if high_nibble { 4 } else { 0 };
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
                                           >> shift) & 0xf;
-                    let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
-                    let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
+                    let _k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
+                    let _k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
                     let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
                     let _k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
                     let _k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
@@ -706,8 +706,21 @@ impl<AllocU8:Allocator<u8>,
                                                               (*cur_byte >> 4) as usize,
                                                               selected_context))
                             };
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
+                            let mut adv_nibble_prob = if high_nibble {
+                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
+                                                             (selected_context,
+                                                              prev_byte as usize))
+                            } else {
+                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
+                                                             ((*cur_byte >> 4) as usize,
+                                                              selected_context,
+                                                              prev_byte as usize))
+                            };
+                            
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 4096 {
+                            adv_nibble_prob} else {nibble_prob}, billing);
                             nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
+                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -880,6 +893,17 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
+#[derive(PartialEq, Debug, Clone)]
+enum AdvancedLiteralNibblePriorType {
+    AdvFirstNibble,
+    AdvSecondNibble,
+}
+
+define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorType,
+                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, 64, 256),
+                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, 16, 64, 256)
+                     );
+
 
 #[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {
@@ -945,7 +969,9 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_dlen: u8,
     last_clen: u8,
     last_llen: u8,
+    num_literals_coded: u32,
     literal_prediction_mode: LiteralPredictionModeNibble,
+    adv_lit_priors: AdvancedLiteralCommandPriors<Cdf16, AllocCDF16>,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
@@ -972,7 +998,8 @@ impl<Cdf16:CDF16,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
                                                           AllocCDF2,
                                                           AllocCDF16> {
-    fn new(lit_prior: AllocCDF16::AllocatedMemory,
+    fn new(adv_lit_priors: AllocCDF16::AllocatedMemory,
+           lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
@@ -980,6 +1007,7 @@ impl<Cdf16:CDF16,
         let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
+            num_literals_coded:0,
             distance_cache:[
                 [
                     DistanceCacheEntry{
@@ -997,6 +1025,9 @@ impl<Cdf16:CDF16,
             },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
+            },
+            adv_lit_priors: AdvancedLiteralCommandPriors {
+                priors: adv_lit_priors
             },
             cc_priors: CrossCommandPriors {
                 priors: cc_prior
@@ -1111,6 +1142,7 @@ impl<Cdf16:CDF16,
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
     fn push_literal_byte(&mut self, b: u8) {
+        self.num_literals_coded += 1;
         self.last_8_literals >>= 0x8;
         self.last_8_literals |= (b as u64) << 0x38;
     }
@@ -1220,6 +1252,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let adv_lit_priors = mcdf16.alloc_cell(AdvancedLiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1237,7 +1270,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
+            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
