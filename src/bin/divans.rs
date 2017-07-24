@@ -1,6 +1,9 @@
 extern crate core;
 extern crate divans;
 extern crate alloc_no_stdlib as alloc;
+
+include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
 #[cfg(test)]
 extern crate brotli_decompressor;
 
@@ -60,7 +63,7 @@ fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
                 continue;
             } else {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, s.clone()));
-        }        
+        }
         rem += 1;
         if rem == 2 {
             rem = 0;
@@ -218,9 +221,9 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
                                           msg.description()));
             }
         };
-	if expected_len == 0 {
-	   return Ok(None);
-	}
+        if expected_len == 0 {
+           return Ok(None);
+        }
         return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len})));
     } else if cmd == "dict" {
         if command_vec.len() < 6 {
@@ -373,7 +376,7 @@ fn recode_inner<Reader:std::io::BufRead,
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop()];
-    
+
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
     loop {
@@ -467,7 +470,7 @@ fn compress_inner<Reader:std::io::BufRead,
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop()];
-    
+
     let mut i_read_index = 0usize;
     loop {
         buffer.clear();
@@ -671,7 +674,7 @@ fn decompress<Reader:std::io::Read,
     m8.free_cell(obuffer);
     Ok(())
 }
-                
+
 fn recode<Reader:std::io::BufRead,
           Writer:std::io::Write>(
     mut r:&mut Reader,
@@ -789,7 +792,11 @@ fn main() {
             if argument == "-h" || argument == "-help" || argument == "--help" {
                 println_stderr!("Decompression:\ndivans [input_file] [output_file]\nCompression:brotli -c [input_file] [output_file]\n");
                 return;
-      }
+            }
+            if argument == "-v" || argument == "-version" || argument == "--version" {
+                println_stderr!("Divans {}", sha());
+                continue;
+            }
             if filenames[0] == "" {
                 filenames[0] = argument.clone();
                 continue;

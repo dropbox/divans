@@ -10,6 +10,7 @@ license = "BSD-3-Clause/MIT or Apache"
 documentation = "tbd"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
+build = "build.rs"
 
 [[bin]]
 doc = false
@@ -17,6 +18,9 @@ name = "divans"
 
 [profile.release]
 lto=true
+
+[build-dependencies]
+vergen = "0.1"
 
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
