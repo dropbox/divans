@@ -1,7 +1,11 @@
 [package]
 name = "divans"
 version = "0.0.1"
-authors = ["Daniel Reiter Horn <danielrh@dropbox.com>"]
+authors = [
+    "Daniel Reiter Horn <danielrh@dropbox.com>",
+    "Jongmin Baek <jongmin@dropbox.com>",
+    "Anatoly Yakovenko <anatoly@dropbox.com>"
+]
 license = "BSD-3-Clause/MIT or Apache"
 documentation = "tbd"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
