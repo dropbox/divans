@@ -674,7 +674,7 @@ impl<AllocU8:Allocator<u8>,
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         {
-                            let nibble_index_truncated = core::cmp::min(nibble_index as usize, 2);
+                            let nibble_index_truncated = core::cmp::min(nibble_index as usize, 0);
                             let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
                             let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
                             let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
