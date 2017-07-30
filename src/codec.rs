@@ -575,7 +575,7 @@ impl<AllocU8:Allocator<u8>,
         let literal_len = in_cmd.data.slice().len() as u32;
         let serialized_large_literal_len  = literal_len.wrapping_sub(16);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
-        let ltype = superstate.bk.get_literal_block_type();
+        let _ltype = superstate.bk.get_literal_block_type();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -699,13 +699,13 @@ impl<AllocU8:Allocator<u8>,
                             //                }
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (ltype,
+                                                             (selected_context,
                                                               k0,
                                                               k1,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (ltype,
+                                                             (selected_context,
                                                               (*cur_byte >> 4) as usize,
                                                               k1,
                                                               nibble_index_truncated))
@@ -713,20 +713,21 @@ impl<AllocU8:Allocator<u8>,
                             let mut adv_nibble_prob = if high_nibble {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
                                                              (selected_context,
-                                                              prev_byte as usize,
-                                                             nibble_index_truncated))
+                                                              k0,
+                                                              k1,
+                                                              nibble_index_truncated))
                             } else {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
-                                                             ((*cur_byte >> 4) as usize,
-                                                              selected_context,
-                                                              prev_byte as usize,
+                                                             (selected_context,
+                                                              (*cur_byte >> 4) as usize,
+                                                              k1,
                                                               nibble_index_truncated))
                             };
                             
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 4096 * 1024 {
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
                             adv_nibble_prob} else {nibble_prob}, billing);
-                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
-                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::MUD });
+                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::SLOW });
+                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -892,8 +893,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, 64, 16, 16, 3),
+                     (LiteralNibblePriorType::SecondNibble, 64, 16, 16, 3),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
@@ -906,8 +907,8 @@ enum AdvancedLiteralNibblePriorType {
 }
 
 define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorType,
-                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, 64, 256, 3),
-                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, 16, 64, 256, 3)
+                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, NUM_BLOCK_TYPES, 16, 16, 3)
                      );
 
 
