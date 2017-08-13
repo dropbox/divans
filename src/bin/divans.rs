@@ -45,7 +45,7 @@ macro_rules! println_stderr(
 
 
 use std::path::Path;
-fn hex_string_to_vec(s: &String) -> Result<Vec<u8>, io::Error> {
+fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
     let mut output = Vec::with_capacity(s.len() >> 1);
     let mut rem = 0;
     let mut buf : u8 = 0;
@@ -155,11 +155,11 @@ fn use_block_switch() -> bool {
 }
 
 fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
-    let command_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
+    let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
     }
-    let cmd = &command_vec[0];
+    let cmd = command_vec[0];
     if cmd == "window" {
             // FIXME validate
             return Ok(None);
@@ -212,7 +212,7 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
         };
         if command_vec[2] != "from" {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      s + "needs a from statement in the 2nd arg"));
+                                      s.to_string() + "needs a from statement in the 2nd arg"));
         }
         let distance = match command_vec[3].parse::<u32>() {
             Ok(el) => el,
@@ -239,12 +239,12 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
         } as u8;
         if command_vec[2] != "word" {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      s + " needs a word after the expected len"));
+                                      s.to_string() + " needs a word after the expected len"));
         }
         let word_id : Vec<String> = command_vec[3].split(',').map(|s| s.to_string()).collect();
         if word_id.len() != 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      s + " needs a comma separated word value"));
+                                      s.to_string() + " needs a comma separated word value"));
         }
         let word_len = match word_id[0].parse::<u32>() {
             Ok(el) => el,
