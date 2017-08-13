@@ -20,6 +20,7 @@ use divans::BlockSwitch;
 use divans::CopyCommand;
 use divans::LiteralCommand;
 use divans::LiteralPredictionModeNibble;
+use divans::PredictionModeContextMap;
 use divans::Command;
 use divans::DictCommand;
 use divans::BrotliResult;
@@ -164,19 +165,66 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
             // FIXME validate
             return Ok(None);
     } else if cmd == "prediction" {
-        if command_vec.len() != 2 {
+        if command_vec.len() < 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "prediction needs 1 argument"));
         }
-        let ret = Command::PredictionMode(match command_vec[1].as_ref() {
+        let pmode = match command_vec[1].as_ref() {
           "utf8" => LiteralPredictionModeNibble::utf8(),
           "sign" => LiteralPredictionModeNibble::signed(),
           "lsb6" => LiteralPredictionModeNibble::lsb6(),
           "msb6" => LiteralPredictionModeNibble::msb6(),
           _ => return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                          "invalid prediction mode; not {utf8,sign,lsb6,msb6}")),
-        });
-        return Ok(Some(ret));
+        };
+        let mut ret = PredictionModeContextMap::<ItemVec<u8> > {
+            literal_prediction_mode: pmode,
+            literal_context_map: ItemVec::<u8>::default(),
+            distance_context_map: ItemVec::<u8>::default(),
+        };
+        match command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
+            Some((index, _)) => {
+                for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
+                    match literal_context_map_val.parse::<i64>() {
+                        Ok(el) => {
+                            if el <= 255 && el >= 0 {
+                                ret.literal_context_map.0.push(el as u8);
+                            } else {
+                                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                          literal_context_map_val.to_string() +
+                                                          " literal context mp val must be u8"));
+                            }
+                        },
+                        Err(_) => {
+                            break;
+                        },
+                    }
+                }
+            },
+            None =>{},
+        }
+        match command_vec.iter().enumerate().find(|r| *r.1 == "dcontextmap") {
+            Some((index, _)) => {
+                for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
+                    match distance_context_map_val.parse::<i64>() {
+                        Ok(el) => {
+                            if el <= 255 && el >= 0 {
+                                ret.distance_context_map.0.push(el as u8);
+                            } else {
+                                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                          distance_context_map_val.to_string() +
+                                                          " distance context map val must be u8"));
+                            }
+                        },
+                        Err(_) => {
+                            break;
+                        },
+                    }
+                }
+            },
+            None =>{},
+        }
+        return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,

@@ -29,6 +29,7 @@ use super::interface::{
     DictCommand,
     LiteralCommand,
     LiteralPredictionModeNibble,
+    PredictionModeContextMap,
     LITERAL_PREDICTION_MODE_SIGN,
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
@@ -348,10 +349,17 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
         Command::Literal(ll.lc)
      }
 }
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ContextMapType {
+    Literal,
+    Distance
+}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
+    ContextMapMnemonic(u32, ContextMapType, LiteralPredictionModeNibble),
+    ContextMapFirstNibble(u32, ContextMapType, LiteralPredictionModeNibble),
+    ContextMapSecondNibble(u32, ContextMapType, LiteralPredictionModeNibble, u8),
     FullyDecoded(LiteralPredictionModeNibble),
 }
 
@@ -361,14 +369,15 @@ impl PredictionModeState {
                         Cdf16:CDF16,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
-                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                        AllocCDF16:Allocator<Cdf16>,
+                        SliceType:SliceWrapper<u8>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   Cdf16,
                                                                                   AllocU8,
                                                                                   AllocCDF2,
                                                                                   AllocCDF16>,
-                                               in_cmd: &LiteralPredictionModeNibble,
+                                               in_cmd: &PredictionModeContextMap<SliceType>,
                                                input_bytes:&[u8],
                                                input_offset: &mut usize,
                                                output_bytes:&mut [u8],
@@ -382,7 +391,7 @@ impl PredictionModeState {
             let billing = BillingDesignation::LiteralPredictionModeCommand(self.clone());
             match self {
                &mut PredictionModeState::Begin => {
-                   let mut beg_nib = in_cmd.prediction_mode();
+                   let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                    nibble_prob.blend(beg_nib, Speed::MED);
@@ -390,7 +399,84 @@ impl PredictionModeState {
                       Err(_) => return BrotliResult::ResultFailure,
                       Ok(pred_mode) => pred_mode,
                    };
-                   *self = PredictionModeState::FullyDecoded(pred_mode);
+                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal, pred_mode);
+               },
+               &mut PredictionModeState::ContextMapMnemonic(index, context_map_type, pred_mode) => {
+                   let cur_context_map = match context_map_type {
+                       ContextMapType::Literal => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                   };
+                   let mut mnemonic_nibble = if index as usize >= cur_context_map.len() {
+                       // encode nothing
+                       14 // eof
+                   } else {
+                       15 // fall back to dual nibble encoding
+                   };
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
+                       superstate.coder.get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
+                       nibble_prob.blend(mnemonic_nibble, Speed::MED);
+                   }
+                   if mnemonic_nibble == 14 {
+                       match context_map_type {
+                           ContextMapType::Literal => { // switch to distance context map
+                               *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance, pred_mode);
+                           },
+                           ContextMapType::Distance => { // finished
+                               *self = PredictionModeState::FullyDecoded(pred_mode);
+                           }
+                       }
+                   } else if mnemonic_nibble == 15 {
+                       *self = PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode);
+                   } else {
+                       let val = 0u8;//FIXME <-- need to read the cache
+                       match superstate.bk.obs_context_map(context_map_type, index, val) {
+                           BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                           _ =>{},
+                       }
+                       *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type, pred_mode);
+                       panic!("UNIMPL");
+                   }
+               },
+               &mut PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode) => {
+                   let cur_context_map = match context_map_type {
+                       ContextMapType::Literal => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                   };
+                   let mut msn_nib = if index as usize >= cur_context_map.len() {
+                       // encode nothing
+                       0
+                   } else {
+                       cur_context_map[index as usize] >> 4
+                   };
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
+                   superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
+                   nibble_prob.blend(msn_nib, Speed::MED);
+                   *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, pred_mode, msn_nib);
+               },
+               &mut PredictionModeState::ContextMapSecondNibble(index, context_map_type, pred_mode, most_significant_nibble) => {
+                   let cur_context_map = match context_map_type {
+                       ContextMapType::Literal => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                   };
+                   let mut lsn_nib = if index as usize >= cur_context_map.len() {
+                       // encode nothing
+                       0
+                   } else {
+                       cur_context_map[index as usize] & 0xf
+                   };
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (0,));
+                       // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
+                       // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
+                       superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
+                       nibble_prob.blend(lsn_nib, Speed::MED);
+                   }
+                   match superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
+                       BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                       _ =>{},
+                   }
+                   *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type, pred_mode);
                },
                &mut PredictionModeState::FullyDecoded(_) => {
                    return BrotliResult::ResultSuccess;
@@ -915,6 +1001,9 @@ define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorTyp
 #[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {
     Only,
+    Mnemonic,
+    FirstNibble,
+    SecondNibble,
 }
 
 define_prior_struct!(PredictionModePriors, PredictionModePriorType,
@@ -967,6 +1056,7 @@ pub struct DistanceCacheEntry {
 }
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
+                                   AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     decode_byte_count: u32,
@@ -978,6 +1068,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_llen: u8,
     num_literals_coded: u32,
     literal_prediction_mode: LiteralPredictionModeNibble,
+    literal_context_map: AllocU8::AllocatedMemory,
+    distance_context_map: AllocU8::AllocatedMemory,
     adv_lit_priors: AdvancedLiteralCommandPriors<Cdf16, AllocCDF16>,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
@@ -991,7 +1083,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
-
 fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
     if val >= sub {
         val - sub
@@ -1002,15 +1093,19 @@ fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
 
 impl<Cdf16:CDF16,
      AllocCDF2:Allocator<CDF2>,
-     AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
+     AllocCDF16:Allocator<Cdf16>,
+     AllocU8:Allocator<u8>> CrossCommandBookKeeping<Cdf16,
+                                                    AllocU8,
                                                           AllocCDF2,
-                                                          AllocCDF16> {
+                                                    AllocCDF16> {
     fn new(adv_lit_priors: AllocCDF16::AllocatedMemory,
            lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
-           pred_prior: AllocCDF16::AllocatedMemory) -> Self {
+           pred_prior: AllocCDF16::AllocatedMemory,
+           literal_context_map: AllocU8::AllocatedMemory,
+           distance_context_map: AllocU8::AllocatedMemory,) -> Self {
         let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
@@ -1045,6 +1140,8 @@ impl<Cdf16:CDF16,
             dict_priors: DictCommandPriors {
                 priors: dict_prior,
             },
+            literal_context_map:literal_context_map,
+            distance_context_map:distance_context_map,
             btype_prior: [[Cdf16::default(),
                            Cdf16::default(),
                            Cdf16::default()];3],
@@ -1072,6 +1169,18 @@ impl<Cdf16:CDF16,
             }
         }
         ret
+    }
+    pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
+        let target_array = match context_map_type {
+            ContextMapType::Literal => self.literal_context_map.slice_mut(),
+            ContextMapType::Distance=> self.literal_context_map.slice_mut(),
+        };
+        if index as usize >= target_array.len() {
+            return           BrotliResult::ResultFailure;
+        }
+        target_array[index as usize] = val;
+        //FIXME: update distance array
+        BrotliResult::ResultSuccess
     }
     fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
         let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
@@ -1237,7 +1346,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     m8: AllocU8,
     mcdf2: AllocCDF2,
     mcdf16: AllocCDF16,
-    bk: CrossCommandBookKeeping<Cdf16, AllocCDF2, AllocCDF16>,
+    bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
 }
 
 impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -1264,6 +1373,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let literal_context_map = m8.alloc_cell(64 * NUM_BLOCK_TYPES);
+        let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -1277,7 +1388,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
+            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors, dict_priors, pred_priors,
+                                            literal_context_map, distance_context_map),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -1556,9 +1668,14 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     new_state = Some(command_state);
                 },
                 &mut EncodeOrDecodeState::PredictionMode(ref mut prediction_mode_state) => {
+                    let default_prediction_mode_context_map = PredictionModeContextMap::<ISl> {
+                        literal_prediction_mode: LiteralPredictionModeNibble::default(),
+                        literal_context_map:ISl::default(),
+                        distance_context_map:ISl::default(),
+                    };
                     let src_pred_mode = match input_cmd {
-                        &Command::PredictionMode(pm) => pm.clone(),
-                        _ => LiteralPredictionModeNibble::default(),
+                        &Command::PredictionMode(ref pm) => pm,
+                        _ => &default_prediction_mode_context_map,
                      };
                      match prediction_mode_state.encode_or_decode(&mut self.cross_command_state,
                                                                   &src_pred_mode,
