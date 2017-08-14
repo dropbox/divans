@@ -357,10 +357,10 @@ pub enum ContextMapType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
-    ContextMapMnemonic(u32, ContextMapType, LiteralPredictionModeNibble),
-    ContextMapFirstNibble(u32, ContextMapType, LiteralPredictionModeNibble),
-    ContextMapSecondNibble(u32, ContextMapType, LiteralPredictionModeNibble, u8),
-    FullyDecoded(LiteralPredictionModeNibble),
+    ContextMapMnemonic(u32, ContextMapType),
+    ContextMapFirstNibble(u32, ContextMapType),
+    ContextMapSecondNibble(u32, ContextMapType, u8),
+    FullyDecoded,
 }
 
 impl PredictionModeState {
@@ -388,21 +388,37 @@ impl PredictionModeState {
                 BrotliResult::ResultSuccess => {},
                 need_something => return need_something,
             }
-            let billing = BillingDesignation::LiteralPredictionModeCommand(self.clone());
+            let billing = BillingDesignation::PredModeCtxMap(match self.clone() {
+                PredictionModeState::ContextMapMnemonic(
+                    _, context_map_type) => PredictionModeState::ContextMapMnemonic(0,
+                                                                                    context_map_type),
+                PredictionModeState::ContextMapFirstNibble(
+                    _, context_map_type) => PredictionModeState::ContextMapFirstNibble(0,
+                                                                                                  context_map_type),
+                PredictionModeState::ContextMapSecondNibble(
+                    _, context_map_type, _) => PredictionModeState::ContextMapSecondNibble(0,
+                                                                                                      context_map_type,
+                                                                                                      0),
+                a => a,
+            });
+
             match self {
                 &mut PredictionModeState::Begin => {
                    superstate.bk.reset_context_map_lru();
                    let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
-                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
-                   superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                   nibble_prob.blend(beg_nib, Speed::MED);
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       nibble_prob.blend(beg_nib, Speed::MED);
+                   }
                    let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
                       Err(_) => return BrotliResult::ResultFailure,
                       Ok(pred_mode) => pred_mode,
                    };
-                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal, pred_mode);
+                   superstate.bk.obs_pred_mode(pred_mode);
+                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                },
-               &mut PredictionModeState::ContextMapMnemonic(index, context_map_type, pred_mode) => {
+               &mut PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                        ContextMapType::Distance => in_cmd.literal_context_map.slice(),
@@ -433,14 +449,14 @@ impl PredictionModeState {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
                                superstate.bk.reset_context_map_lru(); // distance context map should start with 0..14 as lru
-                               *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance, pred_mode);
+                               *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::FullyDecoded(pred_mode);
+                               *self = PredictionModeState::FullyDecoded;
                            }
                        }
                    } else if mnemonic_nibble == 15 {
-                       *self = PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode);
+                       *self = PredictionModeState::ContextMapFirstNibble(index, context_map_type);
                    } else {
                        let val = if mnemonic_nibble == 13 {
                            superstate.bk.cmap_lru.iter().max().unwrap().wrapping_add(1)
@@ -451,10 +467,10 @@ impl PredictionModeState {
                            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
                            _ =>{},
                        }
-                       *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type, pred_mode);
+                       *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                    }
                },
-               &mut PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode) => {
+               &mut PredictionModeState::ContextMapFirstNibble(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                        ContextMapType::Distance => in_cmd.literal_context_map.slice(),
@@ -466,11 +482,12 @@ impl PredictionModeState {
                        cur_context_map[index as usize] >> 4
                    };
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
+                   
                    superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                    nibble_prob.blend(msn_nib, Speed::MED);
-                   *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, pred_mode, msn_nib);
+                   *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, msn_nib);
                },
-               &mut PredictionModeState::ContextMapSecondNibble(index, context_map_type, pred_mode, most_significant_nibble) => {
+               &mut PredictionModeState::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                        ContextMapType::Distance => in_cmd.literal_context_map.slice(),
@@ -492,9 +509,9 @@ impl PredictionModeState {
                        BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
                        _ =>{},
                    }
-                   *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type, pred_mode);
+                   *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
-               &mut PredictionModeState::FullyDecoded(_) => {
+               &mut PredictionModeState::FullyDecoded => {
                    return BrotliResult::ResultSuccess;
                }
             }
@@ -1718,17 +1735,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_pred_mode(match prediction_mode_state {
-                                &mut PredictionModeState::FullyDecoded(pm) => pm,
-                                _ => panic!("illegal output state"),
-                            });
-                            new_state = Some(EncodeOrDecodeState::Begin);
-                        },
-                        retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
-                        }
-                    }              
+                        BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::Begin),
+                        retval => return OneCommandReturn::BufferExhausted(retval),
+                    }
                 },
                 &mut EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match input_cmd {

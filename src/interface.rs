@@ -169,7 +169,7 @@ pub enum BillingDesignation {
     DictCommand(DictSubstate),
     LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
-    LiteralPredictionModeCommand(PredictionModeState),
+    PredModeCtxMap(PredictionModeState),
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
