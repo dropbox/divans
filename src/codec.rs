@@ -940,7 +940,7 @@ impl BlockTypeState {
                         &superstate.bk.btype_prior[block_type_switch_index][2],
                         BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
                     superstate.bk.btype_prior[block_type_switch_index][2].blend(second_nibble, Speed::SLOW);
-                    *self = BlockTypeState::FinalNibble((second_nibble << 4) | first_nibble);
+                    *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
                 BlockTypeState::FullyDecoded(_) =>   {
                     return BrotliResult::ResultSuccess;
