@@ -390,7 +390,8 @@ impl PredictionModeState {
             }
             let billing = BillingDesignation::LiteralPredictionModeCommand(self.clone());
             match self {
-               &mut PredictionModeState::Begin => {
+                &mut PredictionModeState::Begin => {
+                   superstate.bk.reset_context_map_lru();
                    let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
@@ -410,7 +411,18 @@ impl PredictionModeState {
                        // encode nothing
                        14 // eof
                    } else {
-                       15 // fall back to dual nibble encoding
+                       let target_val = cur_context_map[index as usize];
+
+                       let mut res = 15u8; // fallback
+                       for (index, val) in superstate.bk.cmap_lru.iter().enumerate() {
+                           if *val == target_val {
+                               res = index as u8;
+                           }
+                       }
+                       if target_val == superstate.bk.cmap_lru.iter().max().unwrap() + 1 {
+                           res = 13;
+                       }
+                       res
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
@@ -420,6 +432,7 @@ impl PredictionModeState {
                    if mnemonic_nibble == 14 {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
+                               superstate.bk.reset_context_map_lru(); // distance context map should start with 0..14 as lru
                                *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance, pred_mode);
                            },
                            ContextMapType::Distance => { // finished
@@ -429,13 +442,16 @@ impl PredictionModeState {
                    } else if mnemonic_nibble == 15 {
                        *self = PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode);
                    } else {
-                       let val = 0u8;//FIXME <-- need to read the cache
+                       let val = if mnemonic_nibble == 13 {
+                           superstate.bk.cmap_lru.iter().max().unwrap().wrapping_add(1)
+                       } else {
+                           superstate.bk.cmap_lru[mnemonic_nibble as usize]
+                       };
                        match superstate.bk.obs_context_map(context_map_type, index, val) {
                            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
                            _ =>{},
                        }
                        *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type, pred_mode);
-                       panic!("UNIMPL");
                    }
                },
                &mut PredictionModeState::ContextMapFirstNibble(index, context_map_type, pred_mode) => {
@@ -1054,7 +1070,7 @@ pub struct DistanceCacheEntry {
     distance:u32,
     decode_byte_count:u32,
 }
-
+const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
@@ -1076,6 +1092,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
     prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
+    cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
@@ -1122,6 +1139,7 @@ impl<Cdf16:CDF16,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
+            cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
             },
@@ -1170,6 +1188,9 @@ impl<Cdf16:CDF16,
         }
         ret
     }
+    pub fn reset_context_map_lru(&mut self) {
+        self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    }
     pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
         let target_array = match context_map_type {
             ContextMapType::Literal => self.literal_context_map.slice_mut(),
@@ -1178,8 +1199,22 @@ impl<Cdf16:CDF16,
         if index as usize >= target_array.len() {
             return           BrotliResult::ResultFailure;
         }
+        
         target_array[index as usize] = val;
-        //FIXME: update distance array
+        match self.cmap_lru.iter().enumerate().find(|x| *x.1 == val) {
+            Some((index, _)) => {
+                if index != 0 {
+                    let tmp = self.cmap_lru.clone();
+                    self.cmap_lru[1..index + 1].clone_from_slice(&tmp[..index]);
+                    self.cmap_lru[index + 1..].clone_from_slice(&tmp[(index + 1)..]);
+                }
+            },
+            None => {
+                let tmp = self.cmap_lru.clone();
+                self.cmap_lru[1..].clone_from_slice(&tmp[..(tmp.len() - 1)]);
+            },
+        }
+        self.cmap_lru[0] = val;
         BrotliResult::ResultSuccess
     }
     fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
