@@ -511,7 +511,7 @@ impl PredictionModeState {
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
-               &mut PredictionModeState::FullyDecoded => {
+                &mut PredictionModeState::FullyDecoded => {
                    return BrotliResult::ResultSuccess;
                }
             }
@@ -810,6 +810,8 @@ impl<AllocU8:Allocator<u8>,
                                 LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
                                 _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
                             } as usize;
+                            let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
+                            let actual_context = superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize;
                             //if shift != 0 {
                             //println_stderr!("___{}{}{}",
                             //                prev_prev_byte as u8 as char,
@@ -818,26 +820,26 @@ impl<AllocU8:Allocator<u8>,
                             //                }
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (selected_context,
+                                                             (actual_context,
                                                               k0,
                                                               k1,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (selected_context,
+                                                             (actual_context,
                                                               (*cur_byte >> 4) as usize,
                                                               k1,
                                                               nibble_index_truncated))
                             };
                             let mut adv_nibble_prob = if high_nibble {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
-                                                             (selected_context,
+                                                             (actual_context,
                                                               k0,
                                                               k1,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
-                                                             (selected_context,
+                                                             (actual_context,
                                                               (*cur_byte >> 4) as usize,
                                                               k1,
                                                               nibble_index_truncated))
@@ -1012,8 +1014,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, 64, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, 64, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
