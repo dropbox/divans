@@ -795,7 +795,7 @@ fn main() {
             }
             if argument == "-v" || argument == "-version" || argument == "--version" {
                 println_stderr!("Divans {}", sha());
-                continue;
+                return;
             }
             if filenames[0] == "" {
                 filenames[0] = argument.clone();
