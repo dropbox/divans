@@ -421,7 +421,7 @@ impl PredictionModeState {
                &mut PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
                    };
                    let mut mnemonic_nibble = if index as usize >= cur_context_map.len() {
                        // encode nothing
@@ -473,7 +473,7 @@ impl PredictionModeState {
                &mut PredictionModeState::ContextMapFirstNibble(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
                    };
                    let mut msn_nib = if index as usize >= cur_context_map.len() {
                        // encode nothing
@@ -490,7 +490,7 @@ impl PredictionModeState {
                &mut PredictionModeState::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.literal_context_map.slice(),
+                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
                    };
                    let mut lsn_nib = if index as usize >= cur_context_map.len() {
                        // encode nothing
