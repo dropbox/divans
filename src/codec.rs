@@ -792,6 +792,8 @@ impl<AllocU8:Allocator<u8>,
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
+                        let selected_context:usize;
+                        let actual_context: usize;
                         {
                             let nibble_index_truncated = core::cmp::min(nibble_index as usize, 0);
                             let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
@@ -803,7 +805,7 @@ impl<AllocU8:Allocator<u8>,
                                 constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
                             let msb_context = prev_byte >> 2;
                             let lsb_context = prev_byte & 0x3f;
-                            let selected_context = match superstate.bk.literal_prediction_mode {
+                            selected_context = match superstate.bk.literal_prediction_mode {
                                 LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
                                 LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
                                 LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
@@ -811,7 +813,7 @@ impl<AllocU8:Allocator<u8>,
                                 _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
                             } as usize;
                             let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
-                            let actual_context = superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize;
+                            actual_context = superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize;
                             //if shift != 0 {
                             //println_stderr!("___{}{}{}",
                             //                prev_prev_byte as u8 as char,
@@ -853,8 +855,11 @@ impl<AllocU8:Allocator<u8>,
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
                             superstate.bk.push_literal_byte(*cur_byte);
-                                //println_stderr!("Pushing {} ({})\n", *cur_byte as u8 as char,
-                                //               superstate.specialization.get_literal_byte(in_cmd, byte_index) as u8 as char);
+                            //println_stderr!("L {:},{:} = {:} for {:02x}",
+                            //                selected_context,
+                            //                superstate.bk.get_literal_block_type(),
+                            //                actual_context,
+                            //                *cur_byte);
                         }
                     }
 
@@ -997,8 +1002,8 @@ const NUM_BLOCK_TYPES:usize = 256;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
 const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
-const BLOCK_TYPE_COMMAND_SWITCH:usize=0;
-const BLOCK_TYPE_DISTANCE_SWITCH:usize=0;
+const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
+const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
@@ -1471,8 +1476,8 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         &Command::Copy(_) => return 0x1,
         &Command::Dict(_) => return 0x2,
         &Command::Literal(_) => return 0x3,
-        &Command::BlockSwitchCommand(_) => return 0x4,
-        &Command::BlockSwitchLiteral(_) => return 0x5,
+        &Command::BlockSwitchLiteral(_) => return 0x4,
+        &Command::BlockSwitchCommand(_) => return 0x5,
         &Command::BlockSwitchDistance(_) => return 0x6,
         &Command::PredictionMode(_) => return 0x7,
     }
