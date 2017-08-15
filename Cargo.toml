@@ -1,11 +1,16 @@
 [package]
 name = "divans"
 version = "0.0.1"
-authors = ["Daniel Reiter Horn <danielrh@dropbox.com>"]
+authors = [
+    "Daniel Reiter Horn <danielrh@dropbox.com>",
+    "Jongmin Baek <jongmin@dropbox.com>",
+    "Anatoly Yakovenko <anatoly@dropbox.com>"
+]
 license = "BSD-3-Clause/MIT or Apache"
 documentation = "tbd"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
+build = "build.rs"
 
 [[bin]]
 doc = false
@@ -13,6 +18,9 @@ name = "divans"
 
 [profile.release]
 lto=true
+
+[build-dependencies]
+vergen = "0.1"
 
 [dependencies]
 "alloc-no-stdlib" = "~1.2"

@@ -6,7 +6,7 @@ use brotli_decompressor::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use brotli_decompressor::transform::{TransformDictionaryWord};
 use priors::{PriorCollection, PriorMultiIndex, PriorMultiIndexExpanded};
-
+use super::constants;
 use interface::{
     BillingDesignation,
     CrossCommandBilling,
@@ -28,6 +28,11 @@ use super::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
+    LiteralPredictionModeNibble,
+    LITERAL_PREDICTION_MODE_SIGN,
+    LITERAL_PREDICTION_MODE_UTF8,
+    LITERAL_PREDICTION_MODE_MSB6,
+    LITERAL_PREDICTION_MODE_LSB6,
 };
 
 pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(AllocU8::AllocatedMemory, usize);
@@ -345,6 +350,57 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PredictionModeState {
+    Begin,
+    FullyDecoded(LiteralPredictionModeNibble),
+}
+
+impl PredictionModeState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:ConcreteCDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  Cdf16,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>,
+                                               in_cmd: &LiteralPredictionModeNibble,
+                                               input_bytes:&[u8],
+                                               input_offset: &mut usize,
+                                               output_bytes:&mut [u8],
+                                               output_offset: &mut usize) -> BrotliResult {
+
+        loop {
+            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                need_something => return need_something,
+            }
+            let billing = BillingDesignation::LiteralPredictionModeCommand(self.clone());
+            match self {
+               &mut PredictionModeState::Begin => {
+                   let mut beg_nib = in_cmd.prediction_mode();
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
+                   superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                   nibble_prob.blend(beg_nib, Speed::MED);
+                   let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
+                      Err(_) => return BrotliResult::ResultFailure,
+                      Ok(pred_mode) => pred_mode,
+                   };
+                   *self = PredictionModeState::FullyDecoded(pred_mode);
+               },
+               &mut PredictionModeState::FullyDecoded(_) => {
+                   return BrotliResult::ResultSuccess;
+               }
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DictSubstate {
     Begin,
     WordSizeFirst,
@@ -519,7 +575,7 @@ impl<AllocU8:Allocator<u8>,
         let literal_len = in_cmd.data.slice().len() as u32;
         let serialized_large_literal_len  = literal_len.wrapping_sub(16);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
-        let ltype = superstate.bk.get_literal_block_type();
+        let _ltype = superstate.bk.get_literal_block_type();
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -616,25 +672,83 @@ impl<AllocU8:Allocator<u8>,
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
                     {
-                        let nibble_index_truncated = if nibble_index < 2 { nibble_index } else { 2 };
-                        let mut nibble_prob = superstate.bk.lit_priors.get_triple_chained(
-                            if high_nibble { LiteralNibblePriorType::FirstNibble } else { LiteralNibblePriorType::SecondNibble },
-                            (k0 as usize, nibble_index_truncated as usize, k1, k2));
-                        superstate.coder.get_or_put_nibble(&mut cur_nibble, &nibble_prob, billing);
-                        nibble_prob.blend(cur_nibble, if high_nibble { Speed::MED } else { Speed::MUD });
+                        let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
+                        {
+                            let nibble_index_truncated = core::cmp::min(nibble_index as usize, 0);
+                            let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
+                            let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
+                            let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
+                                | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
+                            let sign_context =
+                                (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) |
+                                constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
+                            let msb_context = prev_byte >> 2;
+                            let lsb_context = prev_byte & 0x3f;
+                            let selected_context = match superstate.bk.literal_prediction_mode {
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
+                                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
+                                _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
+                            } as usize;
+                            //if shift != 0 {
+                            //println_stderr!("___{}{}{}",
+                            //                prev_prev_byte as u8 as char,
+                            //                prev_byte as u8 as char,
+                            //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
+                            //                }
+                            let mut nibble_prob = if high_nibble {
+                                superstate.bk.lit_priors.get_chained(LiteralNibblePriorType::FirstNibble,
+                                                                     (selected_context,
+                                                                      nibble_index_truncated,
+                                                                      k0,
+                                                                      k1))
+                            } else {
+                                superstate.bk.lit_priors.get_chained(LiteralNibblePriorType::SecondNibble,
+                                                                     (selected_context,
+                                                                      nibble_index_truncated,
+                                                                      (*cur_byte >> 4) as usize,
+                                                                      k1))
+                            };
+                            let mut adv_nibble_prob = if high_nibble {
+                                superstate.bk.adv_lit_priors.get_chained(AdvancedLiteralNibblePriorType::AdvFirstNibble,
+                                                                         (selected_context,
+                                                                          nibble_index_truncated,
+                                                                          k0,
+                                                                          k1))
+                            } else {
+                                superstate.bk.adv_lit_priors.get_chained(AdvancedLiteralNibblePriorType::AdvSecondNibble,
+                                                                         (selected_context,
+                                                                          nibble_index_truncated,
+                                                                          (*cur_byte >> 4) as usize,
+                                                                          k1))
+                            };
+
+                            if superstate.bk.num_literals_coded > 8192 {
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &adv_nibble_prob, billing);
+                            } else {
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &nibble_prob, billing);
+                            }
+                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::SLOW });
+                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                        }
+                        *cur_byte |= cur_nibble << shift;
+                        if !high_nibble {
+                            superstate.bk.push_literal_byte(*cur_byte);
+                                //println_stderr!("Pushing {} ({})\n", *cur_byte as u8 as char,
+                                //               superstate.specialization.get_literal_byte(in_cmd, byte_index) as u8 as char);
+                        }
                     }
-                    self.lc.data.slice_mut()[byte_index] |= cur_nibble << shift;
-                    superstate.bk.push_literal_nibble(cur_nibble);
+
                     /*
-                    if (nibble_index & 1) == 1 {
-                        println_stderr!("{}{}{}{}{}",
-                                        ((k7<<4)|k8) as u8 as char,
-                                        ((k5<<4)|k6) as u8 as char,
-                                        ((k3<<4)|k4) as u8 as char,
-                                        ((k1<<4)|k2) as u8 as char,
+                        println_stderr!("{}{}",
+                                        //((_k7<<4)|_k8) as u8 as char,
+                                        //((_k5<<4)|_k6) as u8 as char,
+                                        //((_k3<<4)|_k4) as u8 as char,
+                                        ((k0<<4)|k1) as u8 as char,
                                         self.lc.data.slice_mut()[byte_index] as char);
-                    }
-                     */
+                    */
+
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
                         return BrotliResult::ResultSuccess;
@@ -744,6 +858,7 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     BlockSwitchLiteral(BlockTypeState),
     BlockSwitchCommand(BlockTypeState),
     BlockSwitchDistance(BlockTypeState),
+    PredictionMode(PredictionModeState),
     PopulateRingBuffer(Command<AllocatedMemoryPrefix<AllocU8>>),
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
@@ -781,12 +896,34 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, 16, 3, 16, 16),
-                     (LiteralNibblePriorType::SecondNibble, 16, 3, 16, 16),
+                     (LiteralNibblePriorType::FirstNibble, 64, 3, 16, 16),
+                     (LiteralNibblePriorType::SecondNibble, 64, 3, 16, 16),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
+#[derive(PartialEq, Debug, Clone)]
+enum AdvancedLiteralNibblePriorType {
+    AdvFirstNibble,
+    AdvSecondNibble,
+}
+
+define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorType,
+                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, NUM_BLOCK_TYPES, 3, 16, 16),
+                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, NUM_BLOCK_TYPES, 3, 16, 16)
+                     );
+
+
+#[derive(PartialEq, Debug, Clone)]
+enum PredictionModePriorType {
+    Only,
+}
+
+define_prior_struct!(PredictionModePriors, PredictionModePriorType,
+                     (PredictionModePriorType::Only, 1)
+                     );
+
 
 #[derive(PartialEq, Debug, Clone)]
 enum CopyCommandNibblePriorType {
@@ -842,10 +979,14 @@ pub struct CrossCommandBookKeeping<Cdf16:ConcreteCDF16,
     last_dlen: u8,
     last_clen: u8,
     last_llen: u8,
+    num_literals_coded: u32,
+    literal_prediction_mode: LiteralPredictionModeNibble,
+    adv_lit_priors: AdvancedLiteralCommandPriors<Cdf16, AllocCDF16>,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
+    prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
     distance_lru: [u32;4],
     btype_prior: [[Cdf16;3];3],
     btype_lru: [[u8;2];3],
@@ -867,13 +1008,16 @@ impl<Cdf16:ConcreteCDF16,
      AllocCDF16:Allocator<Cdf16>> CrossCommandBookKeeping<Cdf16,
                                                           AllocCDF2,
                                                           AllocCDF16> {
-    fn new(lit_prior: AllocCDF16::AllocatedMemory,
+    fn new(adv_lit_priors: AllocCDF16::AllocatedMemory,
+           lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
-           dict_prior: AllocCDF16::AllocatedMemory) -> Self {
+           dict_prior: AllocCDF16::AllocatedMemory,
+           pred_prior: AllocCDF16::AllocatedMemory) -> Self {
         let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
+            num_literals_coded:0,
             distance_cache:[
                 [
                     DistanceCacheEntry{
@@ -883,10 +1027,17 @@ impl<Cdf16:ConcreteCDF16,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
-            last_4_states: 0,
+            last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
+            literal_prediction_mode: LiteralPredictionModeNibble::default(),
+            prediction_priors: PredictionModePriors {
+                priors: pred_prior,
+            },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
+            },
+            adv_lit_priors: AdvancedLiteralCommandPriors {
+                priors: adv_lit_priors
             },
             cc_priors: CrossCommandPriors {
                 priors: cc_prior
@@ -908,7 +1059,9 @@ impl<Cdf16:ConcreteCDF16,
             for j in 0..0x10 {
                 let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
                                              (i, j));
-                for _samp in 0..1 {
+                if j == 0x3 { // starting situation
+                    prob.blend(0x7, Speed::ROCKET);
+                } else {
                     prob.blend(0x1, Speed::FAST);
                     prob.blend(0x1, Speed::FAST);
                     prob.blend(0x2, Speed::FAST);
@@ -998,6 +1151,11 @@ impl<Cdf16:ConcreteCDF16,
         self.last_8_literals >>= 0x4;
         self.last_8_literals |= (nibble as u64) << 0x3c;
     }
+    fn push_literal_byte(&mut self, b: u8) {
+        self.num_literals_coded += 1;
+        self.last_8_literals >>= 0x8;
+        self.last_8_literals |= (b as u64) << 0x38;
+    }
     fn get_command_type_prob<'a>(&'a mut self) -> &'a mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
@@ -1006,6 +1164,10 @@ impl<Cdf16:ConcreteCDF16,
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
+    }
+    fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) {
+       self.next_state();
+       self.literal_prediction_mode = new_mode;
     }
     fn obs_dict_state(&mut self) {
         self.next_state();
@@ -1053,12 +1215,15 @@ impl<Cdf16:ConcreteCDF16,
         }
     }
     fn obs_btypel(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0]];
     }
     fn obs_btypec(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0]];
     }
     fn obs_btyped(&mut self, btype:u8) {
+        self.next_state();
         self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0]];
     }
 }
@@ -1097,9 +1262,11 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            spc: Specialization, ring_buffer_size: usize) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let adv_lit_priors = mcdf16.alloc_cell(AdvancedLiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::num_all_priors());
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             Cdf16,
@@ -1113,7 +1280,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors, dict_priors),
+            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors, dict_priors, pred_priors),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -1144,6 +1311,7 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         &Command::BlockSwitchCommand(_) => return 0x4,
         &Command::BlockSwitchLiteral(_) => return 0x5,
         &Command::BlockSwitchDistance(_) => return 0x6,
+        &Command::PredictionMode(_) => return 0x7,
     }
 }
 #[cfg(feature="bitcmdselect")]
@@ -1172,6 +1340,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
      4 => EncodeOrDecodeState::BlockSwitchLiteral(BlockTypeState::Begin),
      5 => EncodeOrDecodeState::BlockSwitchCommand(BlockTypeState::Begin),
      6 => EncodeOrDecodeState::BlockSwitchDistance(BlockTypeState::Begin),
+     7 => EncodeOrDecodeState::PredictionMode(PredictionModeState::Begin),
      0xf => EncodeOrDecodeState::DivansSuccess,
       _ => panic!("unimpl"),
    }
@@ -1388,6 +1557,29 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         _ => {},
                     }
                     new_state = Some(command_state);
+                },
+                &mut EncodeOrDecodeState::PredictionMode(ref mut prediction_mode_state) => {
+                    let src_pred_mode = match input_cmd {
+                        &Command::PredictionMode(pm) => pm.clone(),
+                        _ => LiteralPredictionModeNibble::default(),
+                     };
+                     match prediction_mode_state.encode_or_decode(&mut self.cross_command_state,
+                                                                  &src_pred_mode,
+                                                                  input_bytes,
+                                                                  input_bytes_offset,
+                                                                  output_bytes,
+                                                                  output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            self.cross_command_state.bk.obs_pred_mode(match prediction_mode_state {
+                                &mut PredictionModeState::FullyDecoded(pm) => pm,
+                                _ => panic!("illegal output state"),
+                            });
+                            new_state = Some(EncodeOrDecodeState::Begin);
+                        },
+                        retval => {
+                            return OneCommandReturn::BufferExhausted(retval);
+                        }
+                    }
                 },
                 &mut EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match input_cmd {
