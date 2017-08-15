@@ -229,13 +229,14 @@ impl CopyState {
                 CopySubstate::DistanceLengthMnemonic => {
                     let mut beg_nib = superstate.bk.distance_mnemonic_code(in_cmd.distance);
                     //let index = 0;
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMnemonic, (dtype,));
+                            CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize,));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib, Speed::MUD);
                     }
+                    //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);                   
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
@@ -248,10 +249,10 @@ impl CopyState {
                 CopySubstate::DistanceLengthMnemonicTwo => {
                     //UNUSED : haven't made this pay for itself
                     let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance, in_cmd.num_bytes);
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMnemonicTwo, (dtype,));
+                            CopyCommandNibblePriorType::DistanceMnemonicTwo, (actual_prior as usize,));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib, Speed::MED);
                     }
@@ -268,9 +269,9 @@ impl CopyState {
                 CopySubstate::DistanceLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
                     let index = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8 - self.cc.num_bytes.leading_zeros()) as usize >> 2;
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceBegNib, (dtype, index));
+                        CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::PLANE);
                     if beg_nib == 15 {
@@ -288,9 +289,9 @@ impl CopyState {
                 CopySubstate::DistanceLengthGreater15Less25 => {
                     let mut last_nib = dlen.wrapping_sub(16);
                     let index = 0;
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceLastNib, (dtype, index));
+                        CopyCommandNibblePriorType::DistanceLastNib, (actual_prior, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::ROCKET);
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
@@ -302,9 +303,9 @@ impl CopyState {
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let index = if len_decoded == 0 { ((superstate.bk.last_dlen % 4) + 1) as usize } else { 0usize };
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceMantissaNib, (dtype, index));
+                        CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | ((last_nib as u32) << next_len_remaining);
                     nibble_prob.blend(last_nib, if index > 1 {Speed::FAST} else {Speed::GLACIAL});
@@ -604,9 +605,9 @@ impl DictState {
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let index = if len_decoded == 0 { ((DICT_BITS[self.dc.word_size as usize] % 4) + 1) as usize } else { 0usize };
-                    let dtype = superstate.bk.get_distance_block_type();
+                    let actual_prior = superstate.bk.get_distance_prior(self.dc.word_size as u32);
                     let mut nibble_prob = superstate.bk.dict_priors.get(
-                        DictCommandNibblePriorType::Index, (dtype, index));
+                        DictCommandNibblePriorType::Index, (actual_prior, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
@@ -1212,13 +1213,18 @@ impl<Cdf16:CDF16,
         }
         ret
     }
+    pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
+        let dtype = self.get_distance_block_type();
+        let distance_map_index = dtype as usize * 4 + core::cmp::min(copy_len as usize - 1, 3);
+        self.distance_context_map.slice()[distance_map_index] as usize
+    }
     pub fn reset_context_map_lru(&mut self) {
         self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     }
     pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
         let target_array = match context_map_type {
             ContextMapType::Literal => self.literal_context_map.slice_mut(),
-            ContextMapType::Distance=> self.literal_context_map.slice_mut(),
+            ContextMapType::Distance=> self.distance_context_map.slice_mut(),
         };
         if index as usize >= target_array.len() {
             return           BrotliResult::ResultFailure;
