@@ -824,27 +824,27 @@ impl<AllocU8:Allocator<u8>,
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (actual_context,
-                                                              k0,
-                                                              k1,
+                                                              k0*0,
+                                                              k1*0,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (actual_context,
                                                               (*cur_byte >> 4) as usize,
-                                                              k1,
+                                                              k1*0,
                                                               nibble_index_truncated))
                             };
                             let mut adv_nibble_prob = if high_nibble {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
                                                              (actual_context,
-                                                              k0,
-                                                              k1,
+                                                              k0*0,
+                                                              k1*0,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
                                                              (actual_context,
                                                               (*cur_byte >> 4) as usize,
-                                                              k1,
+                                                              k1*0,
                                                               nibble_index_truncated))
                             };
                             
