@@ -51,7 +51,12 @@ impl LiteralPredictionModeNibble {
         LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6)
     }
 }
-
+#[derive(Debug)]
+pub struct PredictionModeContextMap<SliceType:SliceWrapper<u8>> {
+    pub literal_prediction_mode: LiteralPredictionModeNibble,
+    pub literal_context_map: SliceType,
+    pub distance_context_map: SliceType,
+}
 
 
 #[derive(Debug)]
@@ -111,7 +116,7 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     BlockSwitchCommand(BlockSwitch),
     BlockSwitchLiteral(BlockSwitch),
     BlockSwitchDistance(BlockSwitch),
-    PredictionMode(LiteralPredictionModeNibble),
+    PredictionMode(PredictionModeContextMap<SliceType>),
 }
 
 
@@ -164,7 +169,7 @@ pub enum BillingDesignation {
     DictCommand(DictSubstate),
     LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
-    LiteralPredictionModeCommand(PredictionModeState),
+    PredModeCtxMap(PredictionModeState),
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
