@@ -850,7 +850,7 @@ impl<AllocU8:Allocator<u8>,
                             
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
                             adv_nibble_prob} else {nibble_prob}, billing);
-                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::SLOW } else { Speed::SLOW });
+                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                             adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                         }
                         *cur_byte |= cur_nibble << shift;
