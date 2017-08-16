@@ -364,6 +364,16 @@ pub enum PredictionModeState {
     FullyDecoded,
 }
 
+#[cfg(feature="block_switch")]
+fn materialized_prediction_mode() -> bool {
+    true
+}
+
+#[cfg(not(feature="block_switch"))]
+fn materialized_prediction_mode() -> bool {
+    false
+}
+
 impl PredictionModeState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
@@ -417,7 +427,11 @@ impl PredictionModeState {
                       Ok(pred_mode) => pred_mode,
                    };
                    superstate.bk.obs_pred_mode(pred_mode);
-                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
+                   if materialized_prediction_mode() {
+                       *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
+                   } else {
+                       *self = PredictionModeState::FullyDecoded;
+                   }
                },
                &mut PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
@@ -814,7 +828,11 @@ impl<AllocU8:Allocator<u8>,
                                 _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
                             } as usize;
                             let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
-                            actual_context = superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize;
+                            actual_context = if materialized_prediction_mode() {
+                                superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
+                            } else {
+                                selected_context
+                            };
                             //if shift != 0 {
                             //println_stderr!("___{}{}{}",
                             //                prev_prev_byte as u8 as char,
@@ -824,33 +842,33 @@ impl<AllocU8:Allocator<u8>,
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (actual_context,
-                                                              k0*0,
-                                                              k1*0,
+                                                              if materialized_prediction_mode() {0} else {k0},
+                                                              if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (actual_context,
                                                               (*cur_byte >> 4) as usize,
-                                                              k1*0,
+                                                              if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
                             let mut adv_nibble_prob = if high_nibble {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
-                                                             (actual_context,
-                                                              k0*0,
-                                                              k1*0,
+                                                              (actual_context,
+                                                              if materialized_prediction_mode() {0} else {k0},
+                                                              if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
                                                              (actual_context,
                                                               (*cur_byte >> 4) as usize,
-                                                              k1*0,
+                                                              if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
                             
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
                             adv_nibble_prob} else {nibble_prob}, billing);
-                            nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                            nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
                             adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                         }
                         *cur_byte |= cur_nibble << shift;
