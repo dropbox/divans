@@ -236,7 +236,7 @@ impl CopyState {
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib, Speed::MUD);
                     }
-                    //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);                   
+                    //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
@@ -450,7 +450,7 @@ impl PredictionModeState {
                                res = index as u8;
                            }
                        }
-                       if target_val == superstate.bk.cmap_lru.iter().max().unwrap() + 1 {
+                       if target_val == superstate.bk.cmap_lru.iter().max().unwrap().wrapping_add(1) {
                            res = 13;
                        }
                        res
@@ -497,7 +497,7 @@ impl PredictionModeState {
                        cur_context_map[index as usize] >> 4
                    };
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
-                   
+
                    superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                    nibble_prob.blend(msn_nib, Speed::MED);
                    *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, msn_nib);
@@ -865,7 +865,7 @@ impl<AllocU8:Allocator<u8>,
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
-                            
+
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
                             adv_nibble_prob} else {nibble_prob}, billing);
                             nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
@@ -936,7 +936,7 @@ impl BlockTypeState {
         let mut varint_nibble:u8 =
             if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][1] {
                 0
-            } else if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][0] + 1 {
+            } else if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][0].wrapping_add(1) {
                 1
             } else if input_bs.block_type() <= 12 {
                 input_bs.block_type() + 2
@@ -1247,7 +1247,7 @@ impl<Cdf16:CDF16,
         if index as usize >= target_array.len() {
             return           BrotliResult::ResultFailure;
         }
-        
+
         target_array[index as usize] = val;
         match self.cmap_lru.iter().enumerate().find(|x| *x.1 == val) {
             Some((index, _)) => {
