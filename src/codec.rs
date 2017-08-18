@@ -13,6 +13,11 @@ use interface::{
     BlockSwitch,
     Nop
 };
+
+#[cfg(feature="billing")]
+#[cfg(feature="debug_entropy")]
+use priors::summarize_prior_billing;
+
 /*
 use std::io::Write;
 macro_rules! println_stderr(

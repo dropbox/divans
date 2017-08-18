@@ -29,15 +29,16 @@ impl PriorMultiIndex for (usize, usize, usize, usize) {
     fn num_dimensions() -> usize { 4usize }
 }
 
-pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B> {
+pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> {
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
-    fn get_with_raw_index(&mut self, billing: B, index: usize) -> &mut T;
+    fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
+    fn get_with_raw_index_mut(&mut self, billing: B, index: usize) -> &mut T;
+    fn initialized(&self) -> bool;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
     fn num_dimensions(billing: &B) -> usize;
     fn num_billing_types() -> usize;
     fn index_to_billing_type(index: usize) -> B;
-    fn summarize(&mut self) {}
 }
 
 macro_rules! define_prior_struct {
@@ -49,14 +50,30 @@ macro_rules! define_prior_struct {
         struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
             priors: AllocT::AllocatedMemory
         }
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
             #[inline]
-            fn get_with_raw_index(&mut self, billing: $billing_type, index: usize) -> &mut T {
+            fn prior_index_from_subindex(billing: $billing_type, index: usize) -> usize {
                 // Compute the offset into the array for this billing type.
                 let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
                 debug_assert!(offset_type + index < Self::num_all_priors());
-                &mut self.priors.slice_mut()[offset_type + index]
+                offset_type + index
+            }
+        }
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
+            #[inline]
+            fn initialized(&self) -> bool {
+                self.priors.slice().len() == Self::num_all_priors()
+            }
+            #[inline]
+            fn get_with_raw_index(&self, billing: $billing_type, index: usize) -> &T {
+                let i = Self::prior_index_from_subindex(billing, index);
+                &self.priors.slice()[i]
+            }
+            #[inline]
+            fn get_with_raw_index_mut(&mut self, billing: $billing_type, index: usize) -> &mut T {
+                let i = Self::prior_index_from_subindex(billing, index);
+                &mut self.priors.slice_mut()[i]
             }
             #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
@@ -106,45 +123,13 @@ macro_rules! define_prior_struct {
             fn index_to_billing_type(_index: usize) -> $billing_type {
                 define_prior_struct_helper_select_type!(_index; $($args),*)
             }
-
-            #[cfg(feature="billing")]
-            #[cfg(feature="debug_entropy")]
-            fn summarize(&mut self) {
-                // Check for proper initialization.
-                if self.priors.slice().len() != Self::num_all_priors() {
-                    return;
-                }
-                println!("[Summary for {}]", stringify!($name));
-                for i in 0..Self::num_billing_types() {
-                    let billing = Self::index_to_billing_type(i as usize);
-                    let count = Self::num_prior(&billing);
-                    let mut num_cdfs_printed = 0usize;
-                    for i in 0..count {
-                        if num_cdfs_printed == 16 {
-                            println!("  {:?}[...] : omitted", billing);
-                            break;
-                        }
-                        let cdf = self.get_with_raw_index(billing.clone(), i);
-                        let true_entropy = cdf.true_entropy();
-                        let rolling_entropy = cdf.rolling_entropy();
-                        let num_samples = cdf.num_samples();
-                        let encoding_cost = cdf.encoding_cost();
-                        if cdf.used() && true_entropy.is_some() && rolling_entropy.is_some() &&
-                            num_samples.is_some() && encoding_cost.is_some() {
-                                println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
-                                         billing, i,
-                                         encoding_cost.unwrap() / (num_samples.unwrap() as f64),
-                                         true_entropy.unwrap(), rolling_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
-                                num_cdfs_printed += 1;
-                            }
-                    }
-                }
-            }
         }
         #[cfg(feature="billing")]
+        #[cfg(feature="debug_entropy")]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
-                self.summarize();
+                println!("[Summary for {}]", stringify!($name));
+                summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
             }
         }
     };
@@ -211,23 +196,60 @@ macro_rules! select_expr {
     }
 }
 
+#[cfg(feature="billing")]
+#[cfg(feature="debug_entropy")]
+pub fn summarize_prior_billing<T: BaseCDF + Default,
+                               AllocT: Allocator<T>,
+                               B: core::fmt::Debug + Clone,
+                               PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
+    if !prior_collection.initialized() {
+        return;
+    }
+    use std::vec::Vec;
+    use core::iter::FromIterator;
+    for i in 0..PriorCollectionImpl::num_billing_types() {
+        let billing = PriorCollectionImpl::index_to_billing_type(i as usize);
+        let count = PriorCollectionImpl::num_prior(&billing);
+        let mut num_cdfs_printed = 0usize;
+
+        // Sort the bins first by size, then re-sort the top 16 by index.
+        const MAX_BINS_PRINTED : usize = 16;
+        let mut samples_for_cdf = Vec::from_iter(
+            (0..count).into_iter().
+                map(|i| (i, prior_collection.get_with_raw_index(billing.clone(), i).num_samples().unwrap_or(0))));
+        samples_for_cdf.sort_by_key(|&(_, count)| -(count as i32));
+
+        for j in 0..count {
+            if num_cdfs_printed == MAX_BINS_PRINTED {
+                println!("  {:?}[...] : omitted", billing);
+                break;
+            }
+            let index = samples_for_cdf[j].0;
+            let cdf = prior_collection.get_with_raw_index(billing.clone(), index);
+            let true_entropy = cdf.true_entropy();
+            let rolling_entropy = cdf.rolling_entropy();
+            let num_samples = cdf.num_samples();
+            let encoding_cost = cdf.encoding_cost();
+            if cdf.used() && true_entropy.is_some() && rolling_entropy.is_some() &&
+                num_samples.is_some() && encoding_cost.is_some() {
+                    println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
+                             billing, index,
+                             encoding_cost.unwrap() / (num_samples.unwrap() as f64),
+                                         true_entropy.unwrap(), rolling_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
+                    num_cdfs_printed += 1;
+                }
+        }
+    }
+}
+
 mod test {
     use core;
-    use probability::{
-        BaseCDF,
-        CDF16,
-    };
-    use super::{
-        PriorCollection,
-        PriorMultiIndex,
-    };
-    use alloc::{
-        Allocator,
-        SliceWrapper,
-        SliceWrapperMut
-    };
-    use probability::{FrequentistCDF16, Speed};
-    use alloc::HeapAlloc;
+    use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};
+    use super::{PriorCollection, PriorMultiIndex};
+    #[cfg(feature="billing")]
+    #[cfg(feature="debug_entropy")]
+    use super::summarize_prior_billing;
+    use alloc::{Allocator, HeapAlloc, SliceWrapper, SliceWrapperMut};
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
     enum PriorType { Foo, Bar, Cat }
@@ -316,7 +338,7 @@ mod test {
         // Use the priors, updating them by varying degrees.
         for &t in prior_types.iter() {
             for i in 0..TestPriorSetImpl::num_prior(&t) {
-                let mut cdf = prior_set.get_with_raw_index(t, i);
+                let mut cdf = prior_set.get_with_raw_index_mut(t, i);
                 for j in 0..i {
                     cdf.blend((j as u8) % 16, Speed::MED);
                 }
