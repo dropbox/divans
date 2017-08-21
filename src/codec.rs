@@ -832,8 +832,8 @@ impl<AllocU8:Allocator<u8>,
                                 LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
                                 _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
                             } as usize;
-                            let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
                             actual_context = if materialized_prediction_mode() {
+                                let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
                                 superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
                             } else {
                                 selected_context
@@ -857,6 +857,7 @@ impl<AllocU8:Allocator<u8>,
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
+                            /*
                             let mut adv_nibble_prob = if high_nibble {
                                 superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
                                                               (actual_context,
@@ -870,11 +871,9 @@ impl<AllocU8:Allocator<u8>,
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
-
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
-                            adv_nibble_prob} else {nibble_prob}, billing);
+*/
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
-                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
