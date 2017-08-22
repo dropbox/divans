@@ -958,13 +958,13 @@ impl BlockTypeState {
                 BrotliResult::ResultSuccess => {},
                 need_something => return need_something,
             }
+            let billing = BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType);
             match *self {
                 BlockTypeState::Begin => {
-                    superstate.coder.get_or_put_nibble(
-                        &mut varint_nibble,
-                        &superstate.bk.btype_prior[block_type_switch_index][0],
-                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
-                    superstate.bk.btype_prior[block_type_switch_index][0].blend(varint_nibble, Speed::SLOW);
+                    let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::Mnemonic,
+                                                                         (block_type_switch_index,));
+                    superstate.coder.get_or_put_nibble(&mut varint_nibble, nibble_prob, billing);
+                    nibble_prob.blend(varint_nibble, Speed::SLOW);
                     match varint_nibble {
                         0 => *self = BlockTypeState::FullyDecoded(
                             superstate.bk.btype_lru[block_type_switch_index][1]),
@@ -975,19 +975,17 @@ impl BlockTypeState {
                     }
                 },
                 BlockTypeState::TwoNibbleType => {
-                    superstate.coder.get_or_put_nibble(
-                        &mut first_nibble,
-                        &superstate.bk.btype_prior[block_type_switch_index][1],
-                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
-                    superstate.bk.btype_prior[block_type_switch_index][1].blend(first_nibble, Speed::SLOW);
+                    let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::FirstNibble,
+                                                                         (block_type_switch_index,));
+                    superstate.coder.get_or_put_nibble(&mut first_nibble, nibble_prob, billing);
+                    nibble_prob.blend(first_nibble, Speed::SLOW);
                     *self = BlockTypeState::FinalNibble(first_nibble);
                 },
                 BlockTypeState::FinalNibble(first_nibble) => {
-                    superstate.coder.get_or_put_nibble(
-                        &mut second_nibble,
-                        &superstate.bk.btype_prior[block_type_switch_index][2],
-                        BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType));
-                    superstate.bk.btype_prior[block_type_switch_index][2].blend(second_nibble, Speed::SLOW);
+                    let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::SecondNibble,
+                                                                         (block_type_switch_index,));
+                    superstate.coder.get_or_put_nibble(&mut second_nibble, nibble_prob, billing);
+                    nibble_prob.blend(second_nibble, Speed::SLOW);
                     *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
                 BlockTypeState::FullyDecoded(_) =>   {
@@ -1113,6 +1111,17 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
                      (DictCommandNibblePriorType::Index, NUM_BLOCK_TYPES, NUM_ORGANIC_DICT_DISTANCE_PRIORS),
                      (DictCommandNibblePriorType::Transform, 2, 25));
 
+#[derive(PartialEq, Debug, Clone)]
+enum BlockTypePriorType {
+    Mnemonic,
+    FirstNibble,
+    SecondNibble
+}
+define_prior_struct!(BlockTypePriors, BlockTypePriorType,
+                     (BlockTypePriorType::Mnemonic, 3), // 3 for each of ltype, ctype, dtype switches.
+                     (BlockTypePriorType::FirstNibble, 3),
+                     (BlockTypePriorType::SecondNibble, 3));
+
 #[derive(Copy,Clone)]
 pub struct DistanceCacheEntry {
     distance:u32,
@@ -1142,7 +1151,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
     cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     distance_lru: [u32;4],
-    btype_prior: [[Cdf16;3];3],
+    btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
     btype_lru: [[u8;2];3],
     distance_cache:[[DistanceCacheEntry;3];32],
     _legacy: core::marker::PhantomData<AllocCDF2>,
@@ -1161,7 +1170,7 @@ impl<Cdf16:CDF16,
      AllocCDF16:Allocator<Cdf16>,
      AllocU8:Allocator<u8>> CrossCommandBookKeeping<Cdf16,
                                                     AllocU8,
-                                                          AllocCDF2,
+                                                    AllocCDF2,
                                                     AllocCDF16> {
     fn new(adv_lit_priors: AllocCDF16::AllocatedMemory,
            lit_prior: AllocCDF16::AllocatedMemory,
@@ -1169,8 +1178,9 @@ impl<Cdf16:CDF16,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
            pred_prior: AllocCDF16::AllocatedMemory,
+           btype_prior: AllocCDF16::AllocatedMemory,
            literal_context_map: AllocU8::AllocatedMemory,
-           distance_context_map: AllocU8::AllocatedMemory,) -> Self {
+           distance_context_map: AllocU8::AllocatedMemory) -> Self {
         let mut ret = CrossCommandBookKeeping{
             decode_byte_count:0,
             command_count:0,
@@ -1197,20 +1207,20 @@ impl<Cdf16:CDF16,
             adv_lit_priors: AdvancedLiteralCommandPriors {
                 priors: adv_lit_priors
             },
-            cc_priors: CrossCommandPriors {
+            cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
             },
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
             },
             dict_priors: DictCommandPriors {
-                priors: dict_prior,
+                priors: dict_prior
             },
             literal_context_map:literal_context_map,
             distance_context_map:distance_context_map,
-            btype_prior: [[Cdf16::default(),
-                           Cdf16::default(),
-                           Cdf16::default()];3],
+            btype_priors: BlockTypePriors {
+                priors: btype_prior
+            },
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
@@ -1461,6 +1471,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::num_all_priors());
         let literal_context_map = m8.alloc_cell(64 * NUM_BLOCK_TYPES);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
         CrossCommandState::<ArithmeticCoder,
@@ -1476,7 +1487,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors, dict_priors, pred_priors,
+            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors,
+                                            dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map),
         }
     }
@@ -1486,11 +1498,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16e = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16b);
         self.mcdf16.free_cell(cdf16c);
         self.mcdf16.free_cell(cdf16d);
+        self.mcdf16.free_cell(cdf16e);
         (self.m8, self.mcdf2, self.mcdf16)
     }
 }
