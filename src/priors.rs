@@ -232,10 +232,12 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
             let encoding_cost = cdf.encoding_cost();
             if cdf.used() && true_entropy.is_some() && rolling_entropy.is_some() &&
                 num_samples.is_some() && encoding_cost.is_some() {
-                    println!("  {:?}[{}] : {:1.5} (True entropy: {:1.5}, Rolling entropy: {:1.5}, Final entropy: {:1.5}, #: {})",
+                    println!("  {:?}[{}] : {:1.5} (Perfect rolling entropy {:1.5}, Final true entropy: {:1.5}), #: {})",
                              billing, index,
-                             encoding_cost.unwrap() / (num_samples.unwrap() as f64),
-                                         true_entropy.unwrap(), rolling_entropy.unwrap(), cdf.entropy(), num_samples.unwrap());
+                             encoding_cost.unwrap() / (num_samples.unwrap() as f64), // actual encoding cost
+                             rolling_entropy.unwrap(), // encoding cost if we kept track of the PDF perfectly
+                             true_entropy.unwrap(), // final entropy of the perfect PDF
+                             num_samples.unwrap());
                     num_cdfs_printed += 1;
                 }
         }
