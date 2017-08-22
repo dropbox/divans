@@ -941,7 +941,7 @@ impl BlockTypeState {
         let mut varint_nibble:u8 =
             if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][1] {
                 0
-            } else if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][0].wrapping_add(1) {
+            } else if input_bs.block_type() == superstate.bk.btype_max_seen[block_type_switch_index].wrapping_add(1) {
                 1
             } else if input_bs.block_type() <= 12 {
                 input_bs.block_type() + 2
@@ -969,7 +969,7 @@ impl BlockTypeState {
                         0 => *self = BlockTypeState::FullyDecoded(
                             superstate.bk.btype_lru[block_type_switch_index][1]),
                         1 => *self = BlockTypeState::FullyDecoded(
-                            superstate.bk.btype_lru[block_type_switch_index][0] + 1),
+                            superstate.bk.btype_max_seen[block_type_switch_index].wrapping_add(1)),
                         15 => *self = BlockTypeState::TwoNibbleType,
                         val => *self = BlockTypeState::FullyDecoded(val - 2),
                     }
@@ -1153,6 +1153,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     distance_lru: [u32;4],
     btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
     btype_lru: [[u8;2];3],
+    btype_max_seen: [u8;3],
     distance_cache:[[DistanceCacheEntry;3];32],
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
@@ -1223,6 +1224,7 @@ impl<Cdf16:CDF16,
             },
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
+            btype_max_seen:[0;3],
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
         for i in 0..4 {
@@ -1418,17 +1420,19 @@ impl<Cdf16:CDF16,
                                  self.distance_lru[2]];
         }
     }
-    fn obs_btypel(&mut self, btype:u8) {
+    fn _obs_btype_helper(&mut self, btype_type: usize, btype: u8) {
         self.next_state();
-        self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0]];
+        self.btype_lru[btype_type] = [btype, self.btype_lru[btype_type][0]];
+        self.btype_max_seen[btype_type] = core::cmp::max(self.btype_max_seen[btype_type], btype);
+    }
+    fn obs_btypel(&mut self, btype:u8) {
+        self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype);
     }
     fn obs_btypec(&mut self, btype:u8) {
-        self.next_state();
-        self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0]];
+        self._obs_btype_helper(BLOCK_TYPE_COMMAND_SWITCH, btype);
     }
     fn obs_btyped(&mut self, btype:u8) {
-        self.next_state();
-        self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH] = [btype, self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0]];
+        self._obs_btype_helper(BLOCK_TYPE_DISTANCE_SWITCH, btype);
     }
 }
 
