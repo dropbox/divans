@@ -3,8 +3,11 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
+use serde::ser::Serialize;
+use serde::de::Deserialize;
+
 // Common interface for CDF2 and CDF16, with optional methods.
-pub trait BaseCDF {
+pub trait BaseCDF : Serialize {
 
     // the cardinality of symbols supported. Typical implementation values are 2 and 16.
     fn num_symbols() -> u8;
@@ -55,7 +58,7 @@ pub trait BaseCDF {
     fn encoding_cost(&self) -> Option<f64> { None }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize)]
 pub struct CDF2 {
     counts: [u8; 2],
     pub prob: u8,
@@ -146,7 +149,7 @@ const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,Deserialize,Serialize)]
 pub struct BlendCDF16 {
     pub cdf: [Prob; 16],
     mix_rate: i32,
@@ -228,7 +231,7 @@ impl CDF16 for BlendCDF16 {
     }
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,Deserialize,Serialize)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
 }

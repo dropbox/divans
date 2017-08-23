@@ -131,10 +131,14 @@ macro_rules! define_prior_struct {
             }
         }
         #[cfg(feature="billing")]
-        #[cfg(feature="debug_entropy")]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+            #[cfg(feature="debug_entropy")]
             fn drop(&mut self) {
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
+            }
+            #[cfg(feature="serialize_entropy")]
+            fn drop(&mut self) {
+                serialize_priors::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
             }
         }
     };
@@ -202,6 +206,24 @@ macro_rules! select_expr {
 }
 
 #[cfg(feature="billing")]
+#[cfg(feature="serialize_entropy")]
+pub fn serialize_priors<T: BaseCDF + Default,
+                               AllocT: Allocator<T>,
+                               B: core::fmt::Debug + Clone,
+                               PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
+    if !prior_collection.initialized() {
+        return;
+    }
+    use std::vec::Vec;
+    use core::iter::FromIterator;
+    for i in 0..PriorCollectionImpl::num_billing_types() {
+        let billing = PriorCollectionImpl::index_to_billing_type(i as usize);
+        let count = PriorCollectionImpl::num_prior(&billing);
+        println!("Hmm {:?}, {}, {}", billing, i, count);
+    }
+}
+
+#[cfg(feature="billing")]
 #[cfg(feature="debug_entropy")]
 pub fn summarize_prior_billing<T: BaseCDF + Default,
                                AllocT: Allocator<T>,
@@ -253,10 +275,15 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
 mod test {
     use core;
     use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};
+    use serde::ser::Serialize;
     use super::{PriorCollection, PriorMultiIndex};
     #[cfg(feature="billing")]
     #[cfg(feature="debug_entropy")]
     use super::summarize_prior_billing;
+    #[cfg(feature="billing")]
+    #[cfg(feature="serialize_entropy")]
+    use super::serialize_priors;
+
     use alloc::{Allocator, HeapAlloc, SliceWrapper, SliceWrapperMut};
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]

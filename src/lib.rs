@@ -10,6 +10,10 @@ extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+
 pub mod interface;
 mod probability;
 #[macro_use]
@@ -84,11 +88,11 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
 }
 
 pub trait DivansCompressorFactory<
-     AllocU8:Allocator<u8>, 
+     AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
-    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> 
+    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) ->
         DivansCompressor<Self::DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
@@ -113,7 +117,7 @@ pub trait DivansCompressorFactory<
 }
 
 pub struct DivansCompressorFactoryStruct
-    <AllocU8:Allocator<u8>, 
+    <AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
     p1: PhantomData<AllocU8>,
@@ -121,7 +125,7 @@ pub struct DivansCompressorFactoryStruct
     p3: PhantomData<AllocCDF16>,
 }
 
-impl<AllocU8:Allocator<u8>, 
+impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
     for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
@@ -135,7 +139,7 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     retval
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>>
     DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
 
     fn write_header(&mut self, output: &mut[u8],
@@ -230,7 +234,7 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
 }
 
 pub trait DivansDecompressorFactory<
-     AllocU8:Allocator<u8>, 
+     AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
@@ -242,7 +246,7 @@ pub trait DivansDecompressorFactory<
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
-                        AllocCDF16:Allocator<DefaultCDF16>>  
+                        AllocCDF16:Allocator<DefaultCDF16>>
     DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
 
     fn finish_parsing_header(&mut self, window_size: usize) -> BrotliResult {
@@ -368,7 +372,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
 }
 
 pub struct DivansDecompressorFactoryStruct
-    <AllocU8:Allocator<u8>, 
+    <AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
     p1: PhantomData<AllocU8>,
@@ -376,11 +380,9 @@ pub struct DivansDecompressorFactoryStruct
     p3: PhantomData<AllocCDF16>,
 }
 
-impl<AllocU8:Allocator<u8>, 
+impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> DivansDecompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
-
-

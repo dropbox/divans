@@ -13,10 +13,14 @@ use interface::{
     BlockSwitch,
     Nop
 };
+use serde::ser::Serialize;
 
 #[cfg(feature="billing")]
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
+#[cfg(feature="billing")]
+#[cfg(feature="serialize_entropy")]
+use priors::serialize_priors;
 
 /*
 use std::io::Write;

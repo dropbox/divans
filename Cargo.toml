@@ -25,12 +25,15 @@ vergen = "0.1"
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
 "brotli-decompressor" = "~1"
+"serde" = "1.0"
+"serde_derive" = "1.0"
 
 [features]
 default=["block_switch"]
 billing = []
 blend = []
 debug_entropy = []
+serialize_entropy = []
 bitcmdselect = []
 float64 = []
 block_switch = []
