@@ -375,7 +375,7 @@ pub enum PredictionModeState {
 
 #[cfg(feature="block_switch")]
 fn materialized_prediction_mode() -> bool {
-    true
+    panic!("Should not be running with block_switch on for this branch!");
 }
 
 #[cfg(not(feature="block_switch"))]
@@ -819,7 +819,6 @@ impl<AllocU8:Allocator<u8>,
                         let selected_context:usize;
                         let actual_context: usize;
                         {
-                            let nibble_index_truncated = core::cmp::min(nibble_index as usize, 0);
                             let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
                             let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
                             let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
@@ -840,6 +839,7 @@ impl<AllocU8:Allocator<u8>,
                                 let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
                                 superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
                             } else {
+                                debug_assert!(selected_context < 64);
                                 selected_context
                             };
                             //if shift != 0 {
@@ -852,14 +852,12 @@ impl<AllocU8:Allocator<u8>,
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (actual_context,
                                                               if materialized_prediction_mode() {0} else {k0},
-                                                              if materialized_prediction_mode() {0} else {k1},
-                                                              nibble_index_truncated))
+                                                              if materialized_prediction_mode() {0} else {k1}))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (actual_context,
                                                               (*cur_byte >> 4) as usize,
-                                                              if materialized_prediction_mode() {0} else {k1},
-                                                              nibble_index_truncated))
+                                                              if materialized_prediction_mode() {0} else {k1}))
                             };
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
@@ -1008,7 +1006,12 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
         EncodeOrDecodeState::Begin
     }
 }
+
+#[cfg(feature="serialize_entropy")]
+const NUM_BLOCK_TYPES:usize = 64; // serialize_entropy presumes no context switches for blocks, so max cardinality should be 64.
+#[cfg(not(feature="serialize_entropy"))]
 const NUM_BLOCK_TYPES:usize = 256;
+
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
 const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
@@ -1029,8 +1032,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),

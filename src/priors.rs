@@ -3,6 +3,8 @@
 use core;
 use super::probability::{BaseCDF, CDF2, CDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
+use serde::ser::Serialize;
+use serde_json;
 
 pub trait PriorMultiIndex {
     fn expand(&self) -> (usize, usize, usize, usize);
@@ -138,7 +140,9 @@ macro_rules! define_prior_struct {
             }
             #[cfg(feature="serialize_entropy")]
             fn drop(&mut self) {
-                serialize_priors::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
+                if Self::name().unwrap_or_default()  == "LiteralCommandPriors" {
+                    serialize_priors::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
+                }
             }
         }
     };
@@ -208,9 +212,9 @@ macro_rules! select_expr {
 #[cfg(feature="billing")]
 #[cfg(feature="serialize_entropy")]
 pub fn serialize_priors<T: BaseCDF + Default,
-                               AllocT: Allocator<T>,
-                               B: core::fmt::Debug + Clone,
-                               PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
+                        AllocT: Allocator<T>,
+                        B: core::fmt::Debug + Clone,
+                        PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
     if !prior_collection.initialized() {
         return;
     }
@@ -218,8 +222,16 @@ pub fn serialize_priors<T: BaseCDF + Default,
     use core::iter::FromIterator;
     for i in 0..PriorCollectionImpl::num_billing_types() {
         let billing = PriorCollectionImpl::index_to_billing_type(i as usize);
+        println!("{:?} ({}/{})", billing, i + 1, PriorCollectionImpl::num_billing_types());
         let count = PriorCollectionImpl::num_prior(&billing);
-        println!("Hmm {:?}, {}, {}", billing, i, count);
+        for j in 0..count {
+            let cdf = prior_collection.get_with_raw_index(billing.clone(), j);
+            let result = serde_json::to_string(cdf);
+            match result {
+                Ok(result) => { println!("{}", result); }
+                Err(_) => { panic!{"Serialization error!"}; }
+            };
+        }
     }
 }
 
