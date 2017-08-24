@@ -30,15 +30,18 @@ impl PriorMultiIndex for (usize, usize, usize, usize) {
 }
 
 pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> {
-    fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
-    fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
-    fn get_with_raw_index_mut(&mut self, billing: B, index: usize) -> &mut T;
+    fn name() -> Option<&'static str> { None }
+
     fn initialized(&self) -> bool;
     fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
     fn num_dimensions(billing: &B) -> usize;
     fn num_billing_types() -> usize;
     fn index_to_billing_type(index: usize) -> B;
+
+    fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
+    fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
+    fn get_with_raw_index_mut(&mut self, billing: B, index: usize) -> &mut T;
 }
 
 macro_rules! define_prior_struct {
@@ -61,6 +64,9 @@ macro_rules! define_prior_struct {
             }
         }
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
+            fn name() -> Option<&'static str> {
+                Some(stringify!($name))
+            }
             #[inline]
             fn initialized(&self) -> bool {
                 self.priors.slice().len() == Self::num_all_priors()
@@ -128,7 +134,6 @@ macro_rules! define_prior_struct {
         #[cfg(feature="debug_entropy")]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
-                println!("[Summary for {}]", stringify!($name));
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
             }
         }
@@ -202,6 +207,7 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
                                AllocT: Allocator<T>,
                                B: core::fmt::Debug + Clone,
                                PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
+    println!("[Summary for {}]", PriorCollectionImpl::name().unwrap_or("Unnamed"));
     if !prior_collection.initialized() {
         return;
     }
