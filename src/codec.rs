@@ -13,7 +13,7 @@ use interface::{
     BlockSwitch,
     Nop
 };
-use serde::ser::Serialize;
+use serde::ser::{Error, Serialize, Serializer, SerializeSeq};
 use serde_json;
 
 #[cfg(feature="billing")]
@@ -1019,7 +1019,7 @@ define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Serialize)]
 enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
@@ -1039,29 +1039,35 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 
 #[cfg(feature="billing")]
 #[cfg(feature="serialize_literal_priors")]
+impl<T: BaseCDF + Default, AllocT: Allocator<T>> Serialize for LiteralCommandPriors<T, AllocT> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if self.initialized() {
+            let count = Self::num_all_priors();
+            let mut seq = serializer.serialize_seq(Some(count))?;
+            for i in 0..Self::num_billing_types() {
+                let billing = Self::index_to_billing_type(i as usize);
+                let count = Self::num_prior(&billing);
+                for j in 0..count {
+                    let cdf = self.get_with_raw_index(billing.clone(), j);
+                    seq.serialize_element(cdf)?;
+                }
+            }
+            seq.end()
+        } else {
+            Err(S::Error::custom("Prior is uninitialized (unallocated)"))
+        }
+    }
+}
+
+#[cfg(feature="billing")]
+#[cfg(feature="serialize_literal_priors")]
 impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for LiteralCommandPriors<T, AllocT> {
     fn drop(&mut self) {
-        if !self.initialized() {
-            return;
+        let result = serde_json::to_string(self);
+        match result {
+            Ok(result) => { println!("{}", result); },
+            Err(_) => { panic!("Serialization error!"); }
         }
-        println!("{{");
-        for i in 0..Self::num_billing_types() {
-            let billing = Self::index_to_billing_type(i as usize);
-            let count = Self::num_prior(&billing);
-            println!(" \"{:?}\": [", billing);
-            for j in 0..count {
-                let cdf = self.get_with_raw_index(billing.clone(), j);
-                let result = serde_json::to_string(cdf);
-                let delimiter = if j + 1 == count { "" } else { "," };
-                match result {
-                    Ok(result) => { println!("  {}{}", result, delimiter); }
-                    Err(_) => { panic!{"Serialization error!"}; }
-                };
-            }
-            let delimiter = if i + 1 == Self::num_billing_types() { "" } else { "," };
-            println!(" ]{}", delimiter);
-        }
-        println!("}}");
     }
 }
 
