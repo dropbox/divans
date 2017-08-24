@@ -19,8 +19,8 @@ use serde::ser::Serialize;
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 #[cfg(feature="billing")]
-#[cfg(feature="serialize_entropy")]
-use priors::serialize_priors;
+#[cfg(feature="serialize_literal_priors")]
+use priors::serialize_literal_priors;
 
 /*
 use std::io::Write;
@@ -1007,9 +1007,9 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     }
 }
 
-#[cfg(feature="serialize_entropy")]
-const NUM_BLOCK_TYPES:usize = 64; // serialize_entropy presumes no context switches for blocks, so max cardinality should be 64.
-#[cfg(not(feature="serialize_entropy"))]
+#[cfg(feature="serialize_literal_priors")]
+const NUM_BLOCK_TYPES:usize = 64; // serialize_* presumes no context switches for blocks, so max cardinality should be 64.
+#[cfg(not(feature="serialize_literal_priors"))]
 const NUM_BLOCK_TYPES:usize = 256;
 
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
