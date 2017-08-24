@@ -14,13 +14,11 @@ use interface::{
     Nop
 };
 use serde::ser::Serialize;
+use serde_json;
 
 #[cfg(feature="billing")]
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
-#[cfg(feature="billing")]
-#[cfg(feature="serialize_literal_priors")]
-use priors::serialize_literal_priors;
 
 /*
 use std::io::Write;
@@ -1038,6 +1036,34 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
+#[cfg(feature="billing")]
+#[cfg(feature="serialize_literal_priors")]
+impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for LiteralCommandPriors<T, AllocT> {
+    fn drop(&mut self) {
+        if !self.initialized() {
+            return;
+        }
+        println!("{{");
+        for i in 0..Self::num_billing_types() {
+            let billing = Self::index_to_billing_type(i as usize);
+            let count = Self::num_prior(&billing);
+            println!(" \"{:?}\": [", billing);
+            for j in 0..count {
+                let cdf = self.get_with_raw_index(billing.clone(), j);
+                let result = serde_json::to_string(cdf);
+                let delimiter = if j + 1 == count { "" } else { "," };
+                match result {
+                    Ok(result) => { println!("  {}{}", result, delimiter); }
+                    Err(_) => { panic!{"Serialization error!"}; }
+                };
+            }
+            let delimiter = if i + 1 == Self::num_billing_types() { "" } else { "," };
+            println!(" ]{}", delimiter);
+        }
+        println!("}}");
+    }
+}
 
 #[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {

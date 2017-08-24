@@ -3,8 +3,6 @@
 use core;
 use super::probability::{BaseCDF, CDF2, CDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
-use serde::ser::Serialize;
-use serde_json;
 
 pub trait PriorMultiIndex {
     fn expand(&self) -> (usize, usize, usize, usize);
@@ -133,16 +131,10 @@ macro_rules! define_prior_struct {
             }
         }
         #[cfg(feature="billing")]
+        #[cfg(feature="debug_entropy")]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
-            #[cfg(feature="debug_entropy")]
             fn drop(&mut self) {
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
-            }
-            #[cfg(feature="serialize_literal_priors")]
-            fn drop(&mut self) {
-                if Self::name().unwrap_or_default() == "LiteralCommandPriors" {
-                    serialize_literal_priors::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
-                }
             }
         }
     };
@@ -210,36 +202,6 @@ macro_rules! select_expr {
 }
 
 #[cfg(feature="billing")]
-#[cfg(feature="serialize_literal_priors")]
-pub fn serialize_literal_priors<T: BaseCDF + Default,
-                                AllocT: Allocator<T>,
-                                B: core::fmt::Debug + Clone,
-                                PriorCollectionImpl: PriorCollection<T, AllocT, B>>(prior_collection: &PriorCollectionImpl) {
-    if !prior_collection.initialized() {
-        return;
-    }
-    println!("{{");
-    for i in 0..PriorCollectionImpl::num_billing_types() {
-        let billing = PriorCollectionImpl::index_to_billing_type(i as usize);
-        let count = PriorCollectionImpl::num_prior(&billing);
-        //println!("{:?} ({}/{})", billing, i + 1, PriorCollectionImpl::num_billing_types());
-        println!(" \"{:?}\": [", billing);
-        for j in 0..count {
-            let cdf = prior_collection.get_with_raw_index(billing.clone(), j);
-            let result = serde_json::to_string(cdf);
-            let delimiter = if j + 1 == count { "" } else { "," };
-            match result {
-                Ok(result) => { println!("  {}{}", result, delimiter); }
-                Err(_) => { panic!{"Serialization error!"}; }
-            };
-        }
-        let delimiter = if i + 1 == PriorCollectionImpl::num_billing_types() { "" } else { "," };
-        println!(" ]{}", delimiter);
-    }
-    println!("}}");
-}
-
-#[cfg(feature="billing")]
 #[cfg(feature="debug_entropy")]
 pub fn summarize_prior_billing<T: BaseCDF + Default,
                                AllocT: Allocator<T>,
@@ -291,14 +253,10 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
 mod test {
     use core;
     use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};
-    use serde::ser::Serialize;
     use super::{PriorCollection, PriorMultiIndex};
     #[cfg(feature="billing")]
     #[cfg(feature="debug_entropy")]
     use super::summarize_prior_billing;
-    #[cfg(feature="billing")]
-    #[cfg(feature="serialize_literal_priors")]
-    use super::serialize_literal_priors;
 
     use alloc::{Allocator, HeapAlloc, SliceWrapper, SliceWrapperMut};
 
