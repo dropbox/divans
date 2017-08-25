@@ -1041,20 +1041,15 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 #[cfg(feature="serialize_literal_priors")]
 impl<T: BaseCDF + Default, AllocT: Allocator<T>> Serialize for LiteralCommandPriors<T, AllocT> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if self.initialized() {
-            let count = Self::num_all_priors();
-            let mut seq = serializer.serialize_seq(Some(count))?;
-            for i in 0..Self::num_billing_types() {
-                let billing = Self::index_to_billing_type(i as usize);
-                let count = Self::num_prior(&billing);
-                for j in 0..count {
-                    let cdf = self.get_with_raw_index(billing.clone(), j);
-                    seq.serialize_element(cdf)?;
-                }
+        if true { //self.initialized() {
+            let cdfs = self.priors.slice();
+            let mut seq = serializer.serialize_seq(Some(cdfs.len()))?;
+            for i in 0..cdfs.len() {
+                seq.serialize_element(&cdfs[i])?;
             }
             seq.end()
         } else {
-            Err(S::Error::custom("Prior is uninitialized (unallocated)"))
+            Err(S::Error::custom("Priors are not properly initialized"))
         }
     }
 }
@@ -1233,6 +1228,35 @@ impl<Cdf16:CDF16,
             btype_max_seen:[0;3],
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
+        // XXX: insert deserialization here? if you really want?
+        /*
+        if true {
+            use std::fs::File;
+            use std::path::Path;
+            use std::string::String;
+            let mut file = match File::open(Path::new("bah2")) {
+                 Err(_) => panic!("couldn't open file"),
+                 Ok(file) => file
+             };
+            if let Ok(result) = serde_json::from_reader(file) {
+                if let serde_json::Value::Array(v) = result {
+                    let cdfs = ret.lit_priors.priors.slice_mut();
+                    if v.len() == cdfs.len() {
+                        for i in 0..cdfs.len() {
+                            cdfs[i] = Cdf16::from_deserialized_array(
+                                serde_json::from_value(v[i].clone()).unwrap());
+                        }
+                    } else {
+                        panic!("Unexpected number of CDFs ({} vs {})", v.len(), cdfs.len());
+                    }
+                } else {
+                    panic!("Unexpected prior serialization: expected an array");
+                }
+            } else {
+                panic!("Unexpected prior serialization");
+            }
+        }
+        */
         for i in 0..4 {
             for j in 0..0x10 {
                 let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
@@ -1506,13 +1530,14 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
+        // NOTE(jongmin): This is HAX to let Drop trait implementation to print the prior to stdout.
+        // let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16b);
         self.mcdf16.free_cell(cdf16c);
-        self.mcdf16.free_cell(cdf16d);
+        //self.mcdf16.free_cell(cdf16d);
         self.mcdf16.free_cell(cdf16e);
         (self.m8, self.mcdf2, self.mcdf16)
     }

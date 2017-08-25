@@ -3,8 +3,7 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
-use serde::ser::Serialize;
-use serde::de::Deserialize;
+use serde::ser::{Serialize, Serializer, SerializeSeq};
 
 // Common interface for CDF2 and CDF16, with optional methods.
 pub trait BaseCDF : Serialize {
@@ -143,17 +142,29 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
        }
         ret
     }
+
+    fn from_deserialized_array(cdf: [Prob; 16]) -> Self;
 }
 
 const CDF_BITS : usize = 15; // 15 bits
 const CDF_MAX : Prob = 32767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
 
-#[derive(Clone,Copy,Deserialize,Serialize)]
+#[derive(Clone,Copy)]
 pub struct BlendCDF16 {
     pub cdf: [Prob; 16],
     mix_rate: i32,
     count: i32,
+}
+
+impl Serialize for BlendCDF16 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut seq = serializer.serialize_seq(Some(16))?;
+        for i in 0..16 {
+            seq.serialize_element(&self.cdf[i]);
+        }
+        seq.end()
+    }
 }
 
 impl Default for BlendCDF16 {
@@ -229,11 +240,26 @@ impl CDF16 for BlendCDF16 {
         }
         debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
+    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+        let mut ret = BlendCDF16::default();
+        ret.cdf = cdf;
+        ret
+    }
 }
 
-#[derive(Clone,Copy,Deserialize,Serialize)]
+#[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
+}
+
+impl Serialize for FrequentistCDF16 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut seq = serializer.serialize_seq(Some(16))?;
+        for i in 0..16 {
+            seq.serialize_element(&self.cdf[i]);
+        }
+        seq.end()
+    }
 }
 
 impl Default for FrequentistCDF16 {
@@ -344,6 +370,11 @@ impl CDF16 for FrequentistCDF16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
             }
         }
+    }
+    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+        let mut ret = FrequentistCDF16::default();
+        ret.cdf = cdf;
+        ret
     }
 }
 
