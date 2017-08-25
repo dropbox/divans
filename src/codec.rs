@@ -20,14 +20,13 @@ use serde_json;
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 
-/*
 use std::io::Write;
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
-*/
+
 use super::probability::{BaseCDF, CDF2, CDF16, Speed};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -1041,7 +1040,7 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 #[cfg(feature="serialize_literal_priors")]
 impl<T: BaseCDF + Default, AllocT: Allocator<T>> Serialize for LiteralCommandPriors<T, AllocT> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if true { //self.initialized() {
+        if self.initialized() {
             let cdfs = self.priors.slice();
             let mut seq = serializer.serialize_seq(Some(cdfs.len()))?;
             for i in 0..cdfs.len() {
@@ -1060,7 +1059,7 @@ impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for LiteralCommandPriors<T
     fn drop(&mut self) {
         let result = serde_json::to_string(self);
         match result {
-            Ok(result) => { println!("{}", result); },
+            Ok(result) => { println_stderr!("{}", result); },
             Err(_) => { panic!("Serialization error!"); }
         }
     }
