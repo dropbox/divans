@@ -162,7 +162,7 @@ pub trait CommandDecoder {
     fn flush(&mut self) -> BrotliResult;
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum BillingDesignation {
     Unknown,
     CopyCommand(CopySubstate),
@@ -172,7 +172,7 @@ pub enum BillingDesignation {
     PredModeCtxMap(PredictionModeState),
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub enum CrossCommandBilling {
     Unknown,
     CopyIndicator,

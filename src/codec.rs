@@ -801,8 +801,8 @@ impl<AllocU8:Allocator<u8>,
                     let shift : u8 = if high_nibble { 4 } else { 0 };
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
                                           >> shift) & 0xf;
-                    let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
-                    let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
+                    let _k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
+                    let _k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
                     let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
                     let _k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
                     let _k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
@@ -810,6 +810,22 @@ impl<AllocU8:Allocator<u8>,
                     let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
+                    let k0 = [((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x14) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x0c) & 0xf) as usize,
+                              ((superstate.bk.last_8_literals >> 0x04) & 0xf) as usize];
+                    let k1 = [((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x18) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x10) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x08) & 0xf) as usize,
+                             ((superstate.bk.last_8_literals >> 0x0) & 0xf) as usize];
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         let selected_context:usize;
@@ -844,37 +860,78 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
-                            let mut nibble_prob = if high_nibble {
-                                superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (actual_context,
-                                                              if materialized_prediction_mode() {0} else {k0},
-                                                              if materialized_prediction_mode() {0} else {k1},
+                            let desired_stride = 2usize;
+                            
+                            for stride in 0..NUM_STRIDES {
+                                let mut nibble_prob = if high_nibble {
+                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              (if materialized_prediction_mode() {0} else {k0[stride]}) |
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
                                                               nibble_index_truncated))
-                            } else {
-                                superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (actual_context,
-                                                              (*cur_byte >> 4) as usize,
-                                                              if materialized_prediction_mode() {0} else {k1},
+                                } else {
+                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              ((*cur_byte >> 4) as usize)| 
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
                                                               nibble_index_truncated))
-                            };
-                            let mut adv_nibble_prob = if high_nibble {
-                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
-                                                              (actual_context,
-                                                              if materialized_prediction_mode() {0} else {k0},
-                                                              if materialized_prediction_mode() {0} else {k1},
+                                };
+                                let mut adv_nibble_prob = if high_nibble {
+                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
+                                                              (stride,
+                                                              actual_context,
+                                                              (if materialized_prediction_mode() {0} else {k0[stride]})|
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
                                                               nibble_index_truncated))
-                            } else {
-                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
-                                                             (actual_context,
-                                                              (*cur_byte >> 4) as usize,
-                                                              if materialized_prediction_mode() {0} else {k1},
+                                } else {
+                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              ((*cur_byte >> 4) as usize)|
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
                                                               nibble_index_truncated))
-                            };
-
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
-                            adv_nibble_prob} else {nibble_prob}, billing);
-                            nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
-                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                                };
+                                if stride == desired_stride {
+                                    superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
+                                       adv_nibble_prob} else {nibble_prob}, billing);
+                                }
+                            }
+                            for stride in 0..NUM_STRIDES {
+                                let mut nibble_prob = if high_nibble {
+                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              (if materialized_prediction_mode() {0} else {k0[stride]}) |
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
+                                                              nibble_index_truncated))
+                                } else {
+                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              ((*cur_byte >> 4) as usize)| 
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
+                                                              nibble_index_truncated))
+                                };
+                                let mut adv_nibble_prob = if high_nibble {
+                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
+                                                              (stride,
+                                                              actual_context,
+                                                              (if materialized_prediction_mode() {0} else {k0[stride]})|
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
+                                                              nibble_index_truncated))
+                                } else {
+                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
+                                                             (stride,
+                                                             actual_context,
+                                                              ((*cur_byte >> 4) as usize)|
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
+                                                              nibble_index_truncated))
+                                };
+                                nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
+                                adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                            }
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -886,7 +943,6 @@ impl<AllocU8:Allocator<u8>,
                             //                *cur_byte);
                         }
                     }
-
                     /*
                         println_stderr!("{}{}",
                                         //((_k7<<4)|_k8) as u8 as char,
@@ -1026,6 +1082,7 @@ const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
+const NUM_STRIDES:usize = 8;
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
@@ -1040,9 +1097,10 @@ enum LiteralNibblePriorType {
     SizeMantissaNib,
 }
 
+
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3),
+                     (LiteralNibblePriorType::SecondNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
@@ -1055,8 +1113,8 @@ enum AdvancedLiteralNibblePriorType {
 }
 
 define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorType,
-                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, NUM_BLOCK_TYPES, 16, 16, 3)
+                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3),
+                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3)
                      );
 
 

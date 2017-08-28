@@ -1,5 +1,5 @@
 extern crate vergen;
 
 fn main() {
-    vergen::vergen(vergen::OutputFns::all());
+    let _res = vergen::vergen(vergen::OutputFns::all());
 }
