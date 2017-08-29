@@ -79,6 +79,32 @@ macro_rules! DefaultDecoderType(
     () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
 );
 
+
+#[cfg(feature="billing")]
+#[derive(Clone,Default)]
+pub struct DivansCompressorDecompressorParams {
+    dict: std::collections::HashMap<&'static str, std::string::String>
+}
+
+#[cfg(not(feature="billing"))]
+#[derive(Clone,Default)]
+pub struct DivansCompressorDecompressorParams {}
+
+impl DivansCompressorDecompressorParams {
+    #[cfg(feature="billing")]
+    pub fn set_value(&mut self, key: &'static str, value: std::string::String) {
+        self.dict.insert(key, value);
+    }
+    #[cfg(not(feature="billing"))]
+    pub fn set_value<T>(&mut self, _key: &'static str, _value: T) {}
+    #[cfg(feature="billing")]
+    pub fn get_value(&self, key: &'static str) -> Option<&std::string::String> {
+        self.dict.get(key)
+    }
+    #[cfg(not(feature="billing"))]
+    pub fn get_value(&self, _key: &'static str) -> Option<&str> { None }
+}
+
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF2:Allocator<probability::CDF2>,
@@ -142,7 +168,6 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>>
     DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
-
     fn write_header(&mut self, output: &mut[u8],
                     output_offset:&mut usize) -> BrotliResult {
         let bytes_avail = output.len() - *output_offset;
@@ -365,8 +390,10 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             },
         }
         self.finish_parsing_header(window_size);
-        if *input_offset < input.len() {
-            return self.decode(input, input_offset, output, output_offset);
+        if false {  // Give control back to the caller in case we need to load priors from disk.
+            if *input_offset < input.len() {
+                return self.decode(input, input_offset, output, output_offset);
+            }
         }
         BrotliResult::NeedsMoreInput
     }
@@ -386,4 +413,45 @@ impl<AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<DefaultCDF16>> DivansDecompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
+}
+
+
+#[cfg(feature="billing")]
+pub trait SerializeLiteralPriors {
+    fn serialize_literal_priors(&self) -> std::string::String;
+    fn deserialize_literal_priors(&mut self, data: &std::string::String);
+}
+
+#[cfg(feature="billing")]
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+     AllocU8:Allocator<u8>,
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> SerializeLiteralPriors for DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
+    fn serialize_literal_priors(&self) -> std::string::String {
+        self.codec.serialize_literal_priors()
+    }
+    fn deserialize_literal_priors(&mut self, data: &std::string::String) {
+        self.codec.deserialize_literal_priors(data);
+    }
+}
+
+#[cfg(feature="billing")]
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
+     AllocU8:Allocator<u8>,
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> SerializeLiteralPriors for DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
+    fn serialize_literal_priors(&self) -> std::string::String {
+        if let &DivansDecompressor::Decode(ref codec, _) = self {
+            codec.serialize_literal_priors()
+        } else {
+            panic!("Not ready to serialize priors");
+        }
+    }
+    fn deserialize_literal_priors(&mut self, data: &std::string::String) {
+        if let &mut DivansDecompressor::Decode(ref mut codec, _) = self {
+            codec.deserialize_literal_priors(data);
+        } else {
+            panic!("Not ready to deserialize priors");
+        }
+    }
 }

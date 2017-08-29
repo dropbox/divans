@@ -30,6 +30,8 @@ use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
+use divans::DivansCompressorDecompressorParams;
+use divans::DivansDecompressor;
 use divans::DivansDecompressorFactory;
 use divans::DivansDecompressorFactoryStruct;
 use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator};
@@ -37,6 +39,9 @@ use divans::Nop;
 use std::fs::File;
 use std::error::Error;
 use std::io::{self,Write, Seek, SeekFrom, BufReader};
+
+#[cfg(feature="billing")]
+use divans::SerializeLiteralPriors;
 
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
@@ -488,6 +493,31 @@ fn recode_inner<Reader:std::io::BufRead,
 
     Ok(())
 }
+
+#[cfg(not(feature="billing"))]
+fn read_literal_priors_from_file<S, T>(mut _obj: &mut S, _filename: &T) {
+    panic!("Reading literal priors is supported only with --features=billing");
+}
+#[cfg(feature="billing")]
+fn read_literal_priors_from_file<S: SerializeLiteralPriors>(
+    mut obj: &mut S, filename: &std::string::String) {
+    let mut f = File::open(&Path::new(&filename)).expect("Unable to open file");
+    let mut data = String::new();
+    use std::io::Read;
+    f.read_to_string(&mut data).expect("Unable to read data");
+    obj.deserialize_literal_priors(&data);
+}
+#[cfg(not(feature="billing"))]
+fn write_literal_priors_to_file<S, T>(_obj: &S, _filename: &T) {
+    panic!("Writing literal priors is supported only with --features=billing");
+}
+#[cfg(feature="billing")]
+fn write_literal_priors_to_file<S: SerializeLiteralPriors>(obj: &S, filename: &std::string::String) {
+    let mut f = File::create(&Path::new(&filename)).expect("Unable to open file");
+    f.write(obj.serialize_literal_priors().as_bytes()).expect("Unable to write data");
+    drop(f);
+}
+
 fn compress_inner<Reader:std::io::BufRead,
                   Writer:std::io::Write,
                   Encoder:ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -499,7 +529,13 @@ fn compress_inner<Reader:std::io::BufRead,
                                 AllocCDF2,
                                 AllocCDF16>,
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    params: &DivansCompressorDecompressorParams) -> io::Result<()> {
+
+    if let Some(ref filename) = params.get_value("in-prior-filename") {
+        read_literal_priors_from_file(&mut state, &filename);
+    }
+
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -578,12 +614,17 @@ fn compress_inner<Reader:std::io::BufRead,
             }
         }
     }
+    if let Some(ref filename) = params.get_value("out-prior-filename") {
+        write_literal_priors_to_file(&state, &filename);
+    }
     Ok(())
 }
+
 fn compress<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    params: &DivansCompressorDecompressorParams) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -601,14 +642,14 @@ fn compress<Reader:std::io::BufRead,
             }
         }
     }
-    let state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                  ItemVecAllocator<divans::CDF2>,
-                                  ItemVecAllocator<divans::DefaultCDF16>>::new(
+    let state = DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
+                                                ItemVecAllocator<divans::CDF2>,
+                                                ItemVecAllocator<divans::DefaultCDF16>>::new(
         ItemVecAllocator::<u8>::default(),
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize);
-    compress_inner(state, r, w)
+    compress_inner(state, r, w, params)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {
@@ -621,7 +662,8 @@ fn zero_slice(sl: &mut [u8]) -> usize {
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (mut r:&mut Reader,
                                       mut w:&mut Writer,
-                                      buffer_size: usize) -> io::Result<()> {
+                                      buffer_size: usize,
+                                      params: &DivansCompressorDecompressorParams) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
@@ -633,8 +675,15 @@ fn decompress<Reader:std::io::Read,
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
-
+    let mut pending_in_prior_filename = params.get_value("in-prior-filename");
     loop {
+        if let Some(filename) = pending_in_prior_filename {
+            if let DivansDecompressor::Decode(_, _) = state {
+                read_literal_priors_from_file(&mut state, &filename);
+                pending_in_prior_filename = None;
+                println_stderr!("Read prior file...");
+            }
+        }
         match state.decode(ibuffer.slice().split_at(input_end).0,
                            &mut input_offset,
                            obuffer.slice_mut(),
@@ -719,6 +768,11 @@ fn decompress<Reader:std::io::Read,
             }
         }
     }
+
+    if let Some(ref filename) = params.get_value("out-prior-filename") {
+        write_literal_priors_to_file(&state, &filename);
+    }
+
     let mut m8 = state.free().0;
     m8.free_cell(ibuffer);
     m8.free_cell(obuffer);
@@ -815,6 +869,7 @@ fn main() {
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
+    let mut params = DivansCompressorDecompressorParams::default();
     if env::args_os().len() > 1 {
         let mut first = true;
         for argument in env::args() {
@@ -847,6 +902,20 @@ fn main() {
                 println_stderr!("Divans {}", sha());
                 return;
             }
+            let mut params_updated = false;
+            for params_key in ["in-prior-filename", "out-prior-filename"].into_iter() {
+                let prefix = format!("--{}=", &params_key);
+                if argument.starts_with(&prefix) {
+                    use core::str::FromStr;
+                    params.set_value(params_key,
+                                     String::from_str(&argument[prefix.len()..]).unwrap());
+                    params_updated = true;
+                    break;
+                }
+            }
+            if params_updated {
+                continue;
+            }
             if filenames[0] == "" {
                 filenames[0] = argument.clone();
                 continue;
@@ -870,7 +939,7 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress(&mut buffered_input, &mut output) {
+                        match compress(&mut buffered_input, &mut output, &params) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -881,7 +950,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, 65536) {
+                        match decompress(&mut input, &mut output, 65536, &params) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -896,7 +965,7 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress(&mut buffered_input, &mut io::stdout()) {
+                    match compress(&mut buffered_input, &mut io::stdout(), &params) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -905,7 +974,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), 65536) {
+                    match decompress(&mut input, &mut io::stdout(), 65536, &params) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -916,7 +985,7 @@ fn main() {
             if do_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress(&mut stdin, &mut io::stdout()) {
+                match compress(&mut stdin, &mut io::stdout(), &params) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -926,7 +995,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), 65536, &params) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -934,7 +1003,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), 65536, &params) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }

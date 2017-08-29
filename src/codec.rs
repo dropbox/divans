@@ -13,20 +13,25 @@ use interface::{
     BlockSwitch,
     Nop
 };
-use serde::ser::{Error, Serialize, Serializer, SerializeSeq};
-use serde_json;
 
 #[cfg(feature="billing")]
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 
+#[cfg(feature="billing")]
+mod billing_import {
+    pub use std::string::String;
+    pub use serde::ser::{Serialize, Serializer};
+}
+
+/*
 use std::io::Write;
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
-
+*/
 use super::probability::{BaseCDF, CDF2, CDF16, Speed};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -372,7 +377,7 @@ pub enum PredictionModeState {
 
 #[cfg(feature="block_switch")]
 fn materialized_prediction_mode() -> bool {
-    panic!("Should not be running with block_switch on for this branch!");
+    true
 }
 
 #[cfg(not(feature="block_switch"))]
@@ -1004,9 +1009,6 @@ impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
     }
 }
 
-#[cfg(feature="serialize_literal_priors")]
-const NUM_BLOCK_TYPES:usize = 64; // serialize_* presumes no context switches for blocks, so max cardinality should be 64.
-#[cfg(not(feature="serialize_literal_priors"))]
 const NUM_BLOCK_TYPES:usize = 256;
 
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
@@ -1018,7 +1020,7 @@ define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
 
-#[derive(PartialEq, Debug, Clone, Serialize)]
+#[derive(PartialEq, Debug, Clone)]
 enum LiteralNibblePriorType {
     FirstNibble,
     SecondNibble,
@@ -1037,9 +1039,9 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
 #[cfg(feature="billing")]
-#[cfg(feature="serialize_literal_priors")]
-impl<T: BaseCDF + Default, AllocT: Allocator<T>> Serialize for LiteralCommandPriors<T, AllocT> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+impl<T: BaseCDF + Default, AllocT: Allocator<T>> billing_import::Serialize for LiteralCommandPriors<T, AllocT> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: billing_import::Serializer {
+        use serde::ser::{Error, SerializeSeq};
         if self.initialized() {
             let cdfs = self.priors.slice();
             let mut seq = serializer.serialize_seq(Some(cdfs.len()))?;
@@ -1049,18 +1051,6 @@ impl<T: BaseCDF + Default, AllocT: Allocator<T>> Serialize for LiteralCommandPri
             seq.end()
         } else {
             Err(S::Error::custom("Priors are not properly initialized"))
-        }
-    }
-}
-
-#[cfg(feature="billing")]
-#[cfg(feature="serialize_literal_priors")]
-impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for LiteralCommandPriors<T, AllocT> {
-    fn drop(&mut self) {
-        let result = serde_json::to_string(self);
-        match result {
-            Ok(result) => { println_stderr!("{}", result); },
-            Err(_) => { panic!("Serialization error!"); }
         }
     }
 }
@@ -1227,35 +1217,6 @@ impl<Cdf16:CDF16,
             btype_max_seen:[0;3],
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
-        // XXX: insert deserialization here? if you really want?
-        /*
-        if true {
-            use std::fs::File;
-            use std::path::Path;
-            use std::string::String;
-            let mut file = match File::open(Path::new("bah2")) {
-                 Err(_) => panic!("couldn't open file"),
-                 Ok(file) => file
-             };
-            if let Ok(result) = serde_json::from_reader(file) {
-                if let serde_json::Value::Array(v) = result {
-                    let cdfs = ret.lit_priors.priors.slice_mut();
-                    if v.len() == cdfs.len() {
-                        for i in 0..cdfs.len() {
-                            cdfs[i] = Cdf16::from_deserialized_array(
-                                serde_json::from_value(v[i].clone()).unwrap());
-                        }
-                    } else {
-                        panic!("Unexpected number of CDFs ({} vs {})", v.len(), cdfs.len());
-                    }
-                } else {
-                    panic!("Unexpected prior serialization: expected an array");
-                }
-            } else {
-                panic!("Unexpected prior serialization");
-            }
-        }
-        */
         for i in 0..4 {
             for j in 0..0x10 {
                 let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
@@ -1529,14 +1490,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
-        // NOTE(jongmin): This is HAX to let Drop trait implementation to print the prior to stdout.
-        // let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16b);
         self.mcdf16.free_cell(cdf16c);
-        //self.mcdf16.free_cell(cdf16d);
+        self.mcdf16.free_cell(cdf16d);
         self.mcdf16.free_cell(cdf16e);
         (self.m8, self.mcdf2, self.mcdf16)
     }
@@ -2021,6 +1981,35 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 },
                 None => {},
             }
+        }
+    }
+
+    #[cfg(feature="billing")]
+    pub fn serialize_literal_priors(&self) -> billing_import::String {
+        use serde_json;
+        let result = serde_json::to_string(&self.cross_command_state.bk.lit_priors);
+        match result {
+            Ok(result) => { result },
+            Err(_) => { panic!("Serialization error!"); }
+        }
+    }
+
+    #[cfg(feature="billing")]
+    pub fn deserialize_literal_priors(&mut self, data: &billing_import::String) {
+        use serde_json;
+        let result = serde_json::from_str(data).expect("Unable to parse data");
+        if let serde_json::Value::Array(v) = result {
+            let cdfs = self.cross_command_state.bk.lit_priors.priors.slice_mut();
+            if v.len() == cdfs.len() {
+                for i in 0..cdfs.len() {
+                    cdfs[i] = Cdf16::from_deserialized_array(
+                        serde_json::from_value(v[i].clone()).unwrap());
+                }
+            } else {
+                panic!("Unexpected number of CDFs ({} vs {})", v.len(), cdfs.len());
+            }
+        } else {
+            panic!("Unexpected prior serialization: expected an array");
         }
     }
 }
