@@ -860,75 +860,44 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
-                            let desired_stride = 2usize;
-                            
-                            for stride in 0..NUM_STRIDES {
-                                let mut nibble_prob = if high_nibble {
-                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (stride,
-                                                             actual_context,
-                                                              (if materialized_prediction_mode() {0} else {k0[stride]}) |
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
-                                                              nibble_index_truncated))
-                                } else {
-                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (stride,
-                                                             actual_context,
+                            let desired_stride = 0usize;
+                            let nibble_type = if high_nibble {
+                                LiteralNibblePriorType::FirstNibble
+                            } else {
+                                LiteralNibblePriorType::SecondNibble
+                            };
+                            let adv_nibble_type = if high_nibble {
+                                AdvancedLiteralNibblePriorType::AdvFirstNibble
+                            } else {
+                                AdvancedLiteralNibblePriorType::AdvSecondNibble
+                            };
+                            let c0 = actual_context;
+                            let c1 = |stride| if high_nibble {
+                                (if materialized_prediction_mode() {0} else {k0[stride]}) | ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4)
+                            } else {
                                                               ((*cur_byte >> 4) as usize)| 
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
-                                                              nibble_index_truncated))
-                                };
-                                let mut adv_nibble_prob = if high_nibble {
-                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
-                                                              (stride,
-                                                              actual_context,
-                                                              (if materialized_prediction_mode() {0} else {k0[stride]})|
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
-                                                              nibble_index_truncated))
-                                } else {
-                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
+                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4)
+                            };
+                            let c2 = nibble_index_truncated;
+                            for stride in 0..NUM_STRIDES {
+                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
-                                                             actual_context,
-                                                              ((*cur_byte >> 4) as usize)|
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
-                                                              nibble_index_truncated))
-                                };
+                                                             c0, c1(stride), c2));
+                                let mut adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
+                                                              (stride,
+                                                              c0, c1(stride), c2));
                                 if stride == desired_stride {
                                     superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
                                        adv_nibble_prob} else {nibble_prob}, billing);
                                 }
                             }
                             for stride in 0..NUM_STRIDES {
-                                let mut nibble_prob = if high_nibble {
-                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
-                                                             actual_context,
-                                                              (if materialized_prediction_mode() {0} else {k0[stride]}) |
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
-                                                              nibble_index_truncated))
-                                } else {
-                                    superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (stride,
-                                                             actual_context,
-                                                              ((*cur_byte >> 4) as usize)| 
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4),
-                                                              nibble_index_truncated))
-                                };
-                                let mut adv_nibble_prob = if high_nibble {
-                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
+                                                             c0, c1(stride), c2));
+                                let mut adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
                                                               (stride,
-                                                              actual_context,
-                                                              (if materialized_prediction_mode() {0} else {k0[stride]})|
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
-                                                              nibble_index_truncated))
-                                } else {
-                                    superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
-                                                             (stride,
-                                                             actual_context,
-                                                              ((*cur_byte >> 4) as usize)|
-                                                              ((if materialized_prediction_mode() {0} else {k1[stride]})<<4),
-                                                              nibble_index_truncated))
-                                };
+                                                              c0, c1(stride), c2));
                                 nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
                                 adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
                             }
