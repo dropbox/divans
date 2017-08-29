@@ -670,20 +670,22 @@ fn decompress<Reader:std::io::Read,
             },
             BrotliResult::NeedsMoreInput => {
                 if input_offset == input_end {
+                    // We have exhausted all the available input, so we can reset the cursors.
                     input_offset = 0;
+                    input_end = 0;
                 }
                 loop {
-                    match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
+                    match r.read(ibuffer.slice_mut().split_at_mut(input_end).1) {
                         Ok(size) => {
                             if size == 0 {
                                 //println_stderr!("End of file.  Feeding zero's.\n");
-                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_offset).1);
-                                input_end = input_offset + len;
+                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_end).1);
+                                input_end += len;
                                 //return Err(io::Error::new(
                                 //    io::ErrorKind::UnexpectedEof,
                                 //    "Divans file invalid: didn't have a terminator marker"));
                             } else {
-                                input_end = input_offset + size;
+                                input_end += size;
                             }
                             break
                         },
