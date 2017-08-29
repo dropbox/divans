@@ -13,6 +13,9 @@ use super::brotli_decompressor::HuffmanCode;
 use super::util::HeapAllocator;
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 
+#[cfg(feature="billing")]
+extern crate tempdir;
+
 struct UnlimitedBuffer {
   data: Vec<u8>,
   read_offset: usize,
@@ -135,9 +138,14 @@ fn test_asyoulik() {
    assert_eq!(raw_file, div_raw);
 }
 
-
-
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
+    let params = super::DivansCompressorDecompressorParams::default();
+    e2e_alice_with_params(buffer_size, use_serialized_priors, &params);
+}
+
+fn e2e_alice_with_params(buffer_size: usize,
+                         use_serialized_priors: bool,
+                         params: &super::DivansCompressorDecompressorParams) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
    let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
@@ -154,7 +162,6 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   let params = super::DivansCompressorDecompressorParams::default();
    super::compress(&mut buf_ir, &mut dv_buffer, &params).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &params).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
@@ -209,4 +216,23 @@ fn test_e2e_262145_at() {
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
+}
+
+#[cfg(feature="billing")]
+#[test]
+fn test_e2e_alice_with_serialized_literal_priors() {
+    let tmp_dir = tempdir::TempDir::new("literal_priors").unwrap();
+    let tmp_file = tmp_dir.path().join("tmp.prior");
+    {  // First do a run while dumping out the priors.
+        let mut params = super::DivansCompressorDecompressorParams::default();
+        let prior_path = String::from(tmp_file.to_str().unwrap());
+        params.set_value("out-prior-filename", prior_path);
+        e2e_alice_with_params(65536, true, &params);
+    }
+    { // Next do a run using the priors.
+        let mut params = super::DivansCompressorDecompressorParams::default();
+        let prior_path = String::from(tmp_file.to_str().unwrap());
+        params.set_value("in-prior-filename", prior_path);
+        e2e_alice_with_params(65536, true, &params);
+    }
 }

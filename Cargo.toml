@@ -22,6 +22,9 @@ lto=true
 [build-dependencies]
 vergen = "0.1"
 
+[dev-dependencies]
+tempdir = "0.3"
+
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
 "brotli-decompressor" = "~1"
