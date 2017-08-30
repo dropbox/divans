@@ -240,9 +240,12 @@ impl CDF16 for BlendCDF16 {
         }
         debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
-    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+    fn from_deserialized_array(pdf: [Prob; 16]) -> Self {
         let mut ret = BlendCDF16::default();
-        ret.cdf = cdf;
+        ret.cdf[0] = pdf[0];
+        for i in 1..16 {
+            ret.cdf[i] = ret.cdf[i-1] + pdf[i];
+        }
         ret
     }
 }
@@ -255,8 +258,9 @@ pub struct FrequentistCDF16 {
 impl Serialize for FrequentistCDF16 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut seq = serializer.serialize_seq(Some(16))?;
-        for i in 0..16 {
-            seq.serialize_element(&self.cdf[i]);
+        seq.serialize_element(&self.cdf[0]);
+        for i in 1..16 {
+            seq.serialize_element(&(self.cdf[i] - self.cdf[i-1]));
         }
         seq.end()
     }
@@ -371,9 +375,12 @@ impl CDF16 for FrequentistCDF16 {
             }
         }
     }
-    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+    fn from_deserialized_array(pdf: [Prob; 16]) -> Self {
         let mut ret = FrequentistCDF16::default();
-        ret.cdf = cdf;
+        ret.cdf[0] = pdf[0];
+        for i in 1..16 {
+            ret.cdf[i] = ret.cdf[i-1] + pdf[i];
+        }
         ret
     }
 }
