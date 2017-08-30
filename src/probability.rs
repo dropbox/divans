@@ -494,6 +494,13 @@ pub struct DebugWrapperCDF16<Cdf16: CDF16> {
 }
 
 #[cfg(feature="debug_entropy")]
+impl<Cdf16> Serialize for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        self.cdf.serialize(serializer)
+    }
+}
+
+#[cfg(feature="debug_entropy")]
 impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn blend(&mut self, symbol: u8, speed: Speed) {
         self.counts[symbol as usize] += 1;
@@ -506,6 +513,11 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         self.cdf.blend(symbol, speed);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
+    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+        let mut ret = Self::default();
+        ret.cdf = Cdf16::from_deserialized_array(cdf);
+        ret
+    }
 }
 
 #[cfg(feature="debug_entropy")]
