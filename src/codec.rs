@@ -18,14 +18,14 @@ use interface::{
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 
-
+/*
 use std::io::Write;
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
-
+*/
 use super::probability::{BaseCDF, CDF2, CDF16, Speed};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -881,7 +881,7 @@ impl<AllocU8:Allocator<u8>,
                             let mut best_entropy = 4.0f64;
                             let mut desired_stride = 0;
                             for stride in 0..NUM_STRIDES {
-                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
+                                let nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                                                    (stride,
                                                                                     c0, c1(stride), c2));
 
@@ -891,12 +891,12 @@ impl<AllocU8:Allocator<u8>,
                                     best_entropy = ent;
                                 }
                             }
-                            println_stderr!("Stride {}\n", desired_stride);
+                            //println_stderr!("Stride {}\n", desired_stride);
                             for stride in 0..NUM_STRIDES {
-                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
+                                let nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
                                                              c0, c1(stride), c2));
-                                let mut adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
+                                let adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
                                                               (stride,
                                                               c0, c1(stride), c2));
                                 if stride == desired_stride {
@@ -905,7 +905,7 @@ impl<AllocU8:Allocator<u8>,
                                 }
                             }
                             for stride in 0..NUM_STRIDES {
-                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
+                                let nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
                                                              c0, c1(stride), c2));
                                 let mut adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
