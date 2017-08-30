@@ -18,14 +18,14 @@ use interface::{
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 
-/*
+
 use std::io::Write;
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
-*/
+
 use super::probability::{BaseCDF, CDF2, CDF16, Speed};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -860,7 +860,6 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
-                            let desired_stride = 0usize;
                             let nibble_type = if high_nibble {
                                 LiteralNibblePriorType::FirstNibble
                             } else {
@@ -879,6 +878,20 @@ impl<AllocU8:Allocator<u8>,
                                                               ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4)
                             };
                             let c2 = nibble_index_truncated;
+                            let mut best_entropy = 4.0f64;
+                            let mut desired_stride = 0;
+                            for stride in 0..NUM_STRIDES {
+                                let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
+                                                                                   (stride,
+                                                                                    c0, c1(stride), c2));
+
+                                let ent = nibble_prob.entropy();
+                                if ent < best_entropy {
+                                    desired_stride = stride;
+                                    best_entropy = ent;
+                                }
+                            }
+                            println_stderr!("Stride {}\n", desired_stride);
                             for stride in 0..NUM_STRIDES {
                                 let mut nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
