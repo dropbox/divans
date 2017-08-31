@@ -859,7 +859,7 @@ impl<AllocU8:Allocator<u8>,
                             };
 
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
-                            nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
+                            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -1105,6 +1105,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+    literal_adaptation: Speed,
     decode_byte_count: u32,
     command_count:u32,
     last_8_literals: u64,
@@ -1154,6 +1155,7 @@ impl<Cdf16:CDF16,
            literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory) -> Self {
         let mut ret = CrossCommandBookKeeping{
+            literal_adaptation: if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW },
             decode_byte_count:0,
             command_count:0,
             num_literals_coded:0,

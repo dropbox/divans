@@ -117,7 +117,7 @@ impl CDF2 {
         }
     }
 }
-
+#[derive(Clone)]
 pub enum Speed {
     GEOLOGIC,
     GLACIAL,
