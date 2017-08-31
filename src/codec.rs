@@ -436,7 +436,7 @@ impl PredictionModeState {
                    *self = PredictionModeState::LiteralAdaptationRate;
                },
                &mut PredictionModeState::LiteralAdaptationRate => {
-                   let mut beg_nib = superstate.bk.literal_adaptation.clone() as u8;
+                   let mut beg_nib = superstate.bk.desired_literal_adaptation.clone() as u8;
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
@@ -1137,6 +1137,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     literal_adaptation: Speed,
+    desired_literal_adaptation: Speed,
     decode_byte_count: u32,
     command_count:u32,
     last_8_literals: u64,
@@ -1187,7 +1188,8 @@ impl<Cdf16:CDF16,
            distance_context_map: AllocU8::AllocatedMemory,
            literal_adaptation_speed:Speed) -> Self {
         let mut ret = CrossCommandBookKeeping{
-            literal_adaptation: literal_adaptation_speed,//
+            desired_literal_adaptation: literal_adaptation_speed,
+            literal_adaptation: default_literal_speed(),
             decode_byte_count:0,
             command_count:0,
             num_literals_coded:0,
@@ -1588,6 +1590,13 @@ pub enum OneCommandReturn {
     Advance,
     BufferExhausted(BrotliResult),
 }
+fn default_literal_speed() -> Speed {
+    if materialized_prediction_mode() {
+        Speed::MUD
+    } else {
+        Speed::SLOW
+    }
+}
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
@@ -1618,11 +1627,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      specialization,
                                                                      ring_buffer_size,
                                                                      literal_adaptation_rate.unwrap_or(
-                                                                         if materialized_prediction_mode() {
-                                                                             Speed::MUD
-                                                                         } else {
-                                                                             Speed::SLOW
-                                                                         }),
+                                                                         default_literal_speed()),
             ),
             state:EncodeOrDecodeState::Begin,
         }
