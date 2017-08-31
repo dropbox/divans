@@ -118,6 +118,7 @@ impl CDF2 {
     }
 }
 #[derive(Clone)]
+#[repr(C)]
 pub enum Speed {
     GEOLOGIC,
     GLACIAL,

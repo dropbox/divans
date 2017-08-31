@@ -363,6 +363,7 @@ pub enum ContextMapType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
+    LiteralAdaptationRate,
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
@@ -419,7 +420,7 @@ impl PredictionModeState {
             });
 
             match self {
-                &mut PredictionModeState::Begin => {
+               &mut PredictionModeState::Begin => {
                    superstate.bk.reset_context_map_lru();
                    let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
                    {
@@ -432,6 +433,34 @@ impl PredictionModeState {
                       Ok(pred_mode) => pred_mode,
                    };
                    superstate.bk.obs_pred_mode(pred_mode);
+                   *self = PredictionModeState::LiteralAdaptationRate;
+               },
+               &mut PredictionModeState::LiteralAdaptationRate => {
+                   let mut beg_nib = superstate.bk.literal_adaptation.clone() as u8;
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       nibble_prob.blend(beg_nib, Speed::MED);
+                   }
+                   const GEOLOGIC: u8 = Speed::GEOLOGIC as u8;
+                   const GLACIAL: u8 = Speed::GLACIAL as u8;
+                   const MUD:   u8 = Speed::MUD as u8;
+                   const SLOW: u8 = Speed::SLOW as u8;
+                   const MED: u8 = Speed::MED as u8;
+                   const FAST: u8 = Speed::FAST as u8;
+                   const PLANE: u8 = Speed::PLANE as u8;
+                   const ROCKET: u8 = Speed::ROCKET as u8;
+                   superstate.bk.obs_literal_adaptation_rate(match beg_nib {
+                       GEOLOGIC => Speed::GEOLOGIC,
+                       GLACIAL => Speed::GLACIAL,
+                       SLOW => Speed::SLOW,
+                       MUD => Speed::MUD,
+                       MED => Speed::MED,
+                       FAST => Speed::FAST,
+                       PLANE => Speed::PLANE,
+                       ROCKET => Speed::ROCKET,
+                       _ => return BrotliResult::ResultFailure,
+                   });
                    if materialized_prediction_mode() {
                        *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                    } else {
@@ -1036,13 +1065,15 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 #[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {
     Only,
+    LiteralSpeed,
     Mnemonic,
     FirstNibble,
     SecondNibble,
 }
 
 define_prior_struct!(PredictionModePriors, PredictionModePriorType,
-                     (PredictionModePriorType::Only, 1)
+                     (PredictionModePriorType::Only, 1),
+                     (PredictionModePriorType::LiteralSpeed, 1)
                      );
 
 
@@ -1218,6 +1249,10 @@ impl<Cdf16:CDF16,
         }
         ret
     }
+    fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
+        self.literal_adaptation = ladaptation_rate.clone();
+    }
+
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
         let dtype = self.get_distance_block_type();
         let distance_map_index = dtype as usize * 4 + core::cmp::min(copy_len as usize - 1, 3);
