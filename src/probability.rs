@@ -5,6 +5,9 @@ pub type Prob = i16; // can be i32
 
 use serde::ser::{Serialize, Serializer, SerializeSeq};
 
+#[cfg(feature="billing")]
+use serde_json;
+
 // Common interface for CDF2 and CDF16, with optional methods.
 pub trait BaseCDF : Serialize {
 
@@ -143,7 +146,8 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
         ret
     }
 
-    fn from_deserialized_array(cdf: [Prob; 16]) -> Self;
+    #[cfg(feature="billing")]
+    fn from_serde_json_value(v: &serde_json::Value) -> Self;
 }
 
 const CDF_BITS : usize = 15; // 15 bits
@@ -240,30 +244,15 @@ impl CDF16 for BlendCDF16 {
         }
         debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
-    fn from_deserialized_array(pdf: [Prob; 16]) -> Self {
-        let mut ret = BlendCDF16::default();
-        ret.cdf[0] = pdf[0];
-        for i in 1..16 {
-            ret.cdf[i] = ret.cdf[i-1] + pdf[i];
-        }
-        ret
+    #[cfg(feature="billing")]
+    fn from_serde_json_value(v: &serde_json::Value) -> Self {
+        panic!("Unimplemented");
     }
 }
 
 #[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
-}
-
-impl Serialize for FrequentistCDF16 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let mut seq = serializer.serialize_seq(Some(16))?;
-        seq.serialize_element(&self.cdf[0]);
-        for i in 1..16 {
-            seq.serialize_element(&(self.cdf[i] - self.cdf[i-1]));
-        }
-        seq.end()
-    }
 }
 
 impl Default for FrequentistCDF16 {
@@ -375,13 +364,40 @@ impl CDF16 for FrequentistCDF16 {
             }
         }
     }
-    fn from_deserialized_array(pdf: [Prob; 16]) -> Self {
-        let mut ret = FrequentistCDF16::default();
-        ret.cdf[0] = pdf[0];
-        for i in 1..16 {
-            ret.cdf[i] = ret.cdf[i-1] + pdf[i];
+    #[cfg(feature="billing")]
+    fn from_serde_json_value(v: &serde_json::Value) -> Self {
+        match v {
+            &serde_json::Value::Number(ref n) => {
+                debug_assert!(n.as_u64().unwrap_or(1) == 0);
+                Self::default()
+            },
+            &serde_json::Value::Array(_) => {
+                let pdf : [Prob; 16] = serde_json::from_value(v.clone()).unwrap();
+                let mut ret = Self::default();
+                ret.cdf[0] = pdf[0];
+                for i in 1..16 {
+                    ret.cdf[i] = ret.cdf[i-1] + pdf[i];
+                }
+                ret
+            },
+            _ => { panic!("Unexpected serialized type!"); }
         }
-        ret
+    }
+}
+
+impl Serialize for FrequentistCDF16 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let default_cdf_max = Self::default().cdf(15);
+        if self.cdf[15] <= default_cdf_max { // HAX check for default CDF
+            serializer.serialize_i32(0)
+        } else {
+            let mut seq = serializer.serialize_seq(Some(16))?;
+            seq.serialize_element(&(self.cdf[0]));
+            for i in 1..16 {
+                seq.serialize_element(&(self.cdf[i] - self.cdf[i-1]));
+            }
+            seq.end()
+        }
     }
 }
 
@@ -496,7 +512,15 @@ pub struct DebugWrapperCDF16<Cdf16: CDF16> {
 #[cfg(feature="debug_entropy")]
 impl<Cdf16> Serialize for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        self.cdf.serialize(serializer)
+        // Generally speaking, we want to avoid serializing something if it doesn't buy us much.
+        let num_samples = self.num_samples().unwrap_or(0);
+        let final_entropy = self.entropy();
+        let encoding_cost = self.encoding_cost().unwrap_or((num_samples as f64) * final_entropy);
+        if encoding_cost - (num_samples as f64) * final_entropy >= 24.0 {
+            self.cdf.serialize(serializer)
+        } else {
+            Cdf16::default().serialize(serializer)
+        }
     }
 }
 
@@ -513,9 +537,11 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         self.cdf.blend(symbol, speed);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
-    fn from_deserialized_array(cdf: [Prob; 16]) -> Self {
+
+    #[cfg(feature="billing")]
+    fn from_serde_json_value(v: &serde_json::Value) -> Self {
         let mut ret = Self::default();
-        ret.cdf = Cdf16::from_deserialized_array(cdf);
+        ret.cdf = Cdf16::from_serde_json_value(v);
         ret
     }
 }

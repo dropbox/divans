@@ -1045,13 +1045,8 @@ impl<T: BaseCDF + Default, AllocT: Allocator<T>> billing_import::Serialize for L
         if self.initialized() {
             let cdfs = self.priors.slice();
             let mut seq = serializer.serialize_seq(Some(cdfs.len()))?;
-            let default_cdf_max = T::default().cdf(15);
             for i in 0..cdfs.len() {
-                if cdfs[i].cdf(15) <= default_cdf_max { // HAX check for default CDF
-                    seq.serialize_element(&0)?;
-                } else {
-                    seq.serialize_element(&cdfs[i])?;
-                }
+                seq.serialize_element(&cdfs[i])?;
             }
             seq.end()
         } else {
@@ -2007,17 +2002,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
             let cdfs = self.cross_command_state.bk.lit_priors.priors.slice_mut();
             if v.len() == cdfs.len() {
                 for i in 0..cdfs.len() {
-                    match v[i] {
-                        serde_json::Value::Array(_) => {
-                            cdfs[i] = Cdf16::from_deserialized_array(
-                                serde_json::from_value(v[i].clone()).unwrap());
-                        },
-                        serde_json::Value::Number(ref n) => {
-                            debug_assert!(n.as_u64().unwrap_or(1) == 0);
-                            cdfs[i] = Cdf16::default();
-                        }
-                        _ => { panic!("Unexpected type encountered during deserialization"); }
-                    }
+                    cdfs[i] = Cdf16::from_serde_json_value(&v[i]);
                 }
             } else {
                 panic!("Unexpected number of CDFs ({} vs {})", v.len(), cdfs.len());
