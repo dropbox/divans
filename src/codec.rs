@@ -442,19 +442,27 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
-                   const GEOLOGIC: u8 = Speed::GEOLOGIC as u8;
-                   const GLACIAL: u8 = Speed::GLACIAL as u8;
-                   const MUD:   u8 = Speed::MUD as u8;
-                   const SLOW: u8 = Speed::SLOW as u8;
-                   const MED: u8 = Speed::MED as u8;
-                   const FAST: u8 = Speed::FAST as u8;
-                   const PLANE: u8 = Speed::PLANE as u8;
-                   const ROCKET: u8 = Speed::ROCKET as u8;
+                   const GEOLOGIC: u8 = 0;//Speed::GEOLOGIC as u8;
+                   const GLACIAL: u8 = 1;//Speed::GLACIAL as u8;
+                   const MUD:   u8 = 2;//Speed::MUD as u8;
+                   const SLOW: u8 = 3;//Speed::SLOW as u8;
+                   const MED: u8 = 4;//Speed::MED as u8;
+                   const FAST: u8 = 5;//Speed::FAST as u8;
+                   const PLANE: u8 = 6;//Speed::PLANE as u8;
+                   const ROCKET: u8 = 7;//Speed::ROCKET as u8;
+		   assert_eq!(GEOLOGIC, Speed::GEOLOGIC as u8);
+		   assert_eq!(GLACIAL, Speed::GLACIAL as u8);
+		   assert_eq!(MUD, Speed::MUD as u8);
+		   assert_eq!(SLOW, Speed::SLOW as u8);
+		   assert_eq!(MED, Speed::MED as u8);
+		   assert_eq!(FAST, Speed::FAST as u8);
+		   assert_eq!(PLANE, Speed::PLANE as u8);
+		   assert_eq!(ROCKET, Speed::ROCKET as u8);
                    superstate.bk.obs_literal_adaptation_rate(match beg_nib {
                        GEOLOGIC => Speed::GEOLOGIC,
                        GLACIAL => Speed::GLACIAL,
-                       SLOW => Speed::SLOW,
                        MUD => Speed::MUD,
+                       SLOW => Speed::SLOW,
                        MED => Speed::MED,
                        FAST => Speed::FAST,
                        PLANE => Speed::PLANE,
