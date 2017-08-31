@@ -76,7 +76,7 @@ pub fn brotli_decompress_internal(brotli_file : &[u8]) -> Result<Box<[u8]>, io::
                                     &mut brotli_state);
     match result {
       BrotliResult::NeedsMoreInput => {
-        panic!("File should have been in brotli format") 
+        panic!("File should have been in brotli format")
       }
       BrotliResult::NeedsMoreOutput => {
         try!(uncompressed_file_from_brotli.write_all(&buffer.slice()[..output_offset]));
@@ -91,15 +91,17 @@ pub fn brotli_decompress_internal(brotli_file : &[u8]) -> Result<Box<[u8]>, io::
     }
   }
   brotli_state.BrotliStateCleanup();
-  
+
   Ok(uncompressed_file_from_brotli.data.into_boxed_slice())
 }
 
 pub fn divans_decompress_internal(mut brotli_file : &[u8]) -> Result<Box<[u8]>, io::Error> {
-  let mut uncompressed_file_from_divans = UnlimitedBuffer::new(&[]);
-  try!(super::recode(&mut brotli_file,
-                &mut uncompressed_file_from_divans));
-  Ok(uncompressed_file_from_divans.data.into_boxed_slice())
+    let mut uncompressed_file_from_divans = UnlimitedBuffer::new(&[]);
+    let params = super::DivansCompressorDecompressorParams::default();
+    try!(super::recode(&mut brotli_file,
+                       &mut uncompressed_file_from_divans,
+                       &params));
+    Ok(uncompressed_file_from_divans.data.into_boxed_slice())
 }
 
 #[test]
@@ -135,9 +137,14 @@ fn test_asyoulik() {
    assert_eq!(raw_file, div_raw);
 }
 
-
-
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
+    let params = super::DivansCompressorDecompressorParams::default();
+    e2e_alice_with_params(buffer_size, use_serialized_priors, &params);
+}
+
+fn e2e_alice_with_params(buffer_size: usize,
+                         use_serialized_priors: bool,
+                         params: &super::DivansCompressorDecompressorParams) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
    let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
@@ -154,8 +161,8 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+   super::compress(&mut buf_ir, &mut dv_buffer, &params).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &params).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -186,8 +193,9 @@ fn test_e2e_64x() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   let params = super::DivansCompressorDecompressorParams::default();
+   super::compress(&mut buf_ir, &mut dv_buffer, &params).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, &params).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
@@ -201,8 +209,9 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   let params = super::DivansCompressorDecompressorParams::default();
+   super::compress(&mut buf_ir, &mut dv_buffer, &params).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, &params).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
