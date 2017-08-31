@@ -37,7 +37,7 @@ use core::marker::PhantomData;
 const HEADER_LENGTH: usize = 16;
 const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 
-
+pub use probability::Speed;
 #[cfg(feature="blend")]
 #[cfg(not(feature="debug_entropy"))]
 pub type DefaultCDF16 = probability::BlendCDF16;
@@ -88,7 +88,8 @@ pub trait DivansCompressorFactory<
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
-    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize) -> 
+    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+           literal_adaptation_rate: Option<probability::Speed>) -> 
         DivansCompressor<Self::DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
@@ -105,6 +106,7 @@ pub trait DivansCompressorFactory<
                 enc,
                 EncoderSpecialization::new(),
                 window_size,
+                literal_adaptation_rate,
             ),
             header_progress: 0,
             window_size: window_size as u8,
@@ -295,7 +297,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                                      mcdf16,
                                                                                      decoder,
                                                                                      DecoderSpecialization::new(),
-                                                                                     window_size), 0));
+                                                                                     window_size,
+                                                                                     None), 0));
         BrotliResult::ResultSuccess
     }
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {

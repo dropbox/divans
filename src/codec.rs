@@ -1184,9 +1184,10 @@ impl<Cdf16:CDF16,
            pred_prior: AllocCDF16::AllocatedMemory,
            btype_prior: AllocCDF16::AllocatedMemory,
            literal_context_map: AllocU8::AllocatedMemory,
-           distance_context_map: AllocU8::AllocatedMemory) -> Self {
+           distance_context_map: AllocU8::AllocatedMemory,
+           literal_adaptation_speed:Speed) -> Self {
         let mut ret = CrossCommandBookKeeping{
-            literal_adaptation: if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW },
+            literal_adaptation: literal_adaptation_speed,//
             decode_byte_count:0,
             command_count:0,
             num_literals_coded:0,
@@ -1472,7 +1473,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            mcdf2:AllocCDF2,
            mut mcdf16:AllocCDF16,
            coder: ArithmeticCoder,
-           spc: Specialization, ring_buffer_size: usize) -> Self {
+           spc: Specialization, ring_buffer_size: usize,
+           literal_adaptation_rate :Speed) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1497,7 +1499,9 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             mcdf16:mcdf16,
             bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
-                                            literal_context_map, distance_context_map),
+                                            literal_context_map, distance_context_map,
+                                            literal_adaptation_rate,
+            ),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -1599,7 +1603,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                mcdf16:AllocCDF16,
                coder: ArithmeticCoder,
                specialization: Specialization,
-               ring_buffer_size: usize) -> Self {
+               ring_buffer_size: usize,
+               literal_adaptation_rate: Option<Speed>) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
@@ -1611,7 +1616,14 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      mcdf16,
                                                                      coder,
                                                                      specialization,
-                                                                     ring_buffer_size),
+                                                                     ring_buffer_size,
+                                                                     literal_adaptation_rate.unwrap_or(
+                                                                         if materialized_prediction_mode() {
+                                                                             Speed::MUD
+                                                                         } else {
+                                                                             Speed::SLOW
+                                                                         }),
+            ),
             state:EncodeOrDecodeState::Begin,
         }
     }
