@@ -363,6 +363,7 @@ pub enum ContextMapType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
+    LiteralAdaptationRate,
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
@@ -419,7 +420,7 @@ impl PredictionModeState {
             });
 
             match self {
-                &mut PredictionModeState::Begin => {
+               &mut PredictionModeState::Begin => {
                    superstate.bk.reset_context_map_lru();
                    let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
                    {
@@ -432,6 +433,34 @@ impl PredictionModeState {
                       Ok(pred_mode) => pred_mode,
                    };
                    superstate.bk.obs_pred_mode(pred_mode);
+                   *self = PredictionModeState::LiteralAdaptationRate;
+               },
+               &mut PredictionModeState::LiteralAdaptationRate => {
+                   let mut beg_nib = superstate.bk.literal_adaptation.clone() as u8;
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       nibble_prob.blend(beg_nib, Speed::MED);
+                   }
+                   const GEOLOGIC: u8 = Speed::GEOLOGIC as u8;
+                   const GLACIAL: u8 = Speed::GLACIAL as u8;
+                   const MUD:   u8 = Speed::MUD as u8;
+                   const SLOW: u8 = Speed::SLOW as u8;
+                   const MED: u8 = Speed::MED as u8;
+                   const FAST: u8 = Speed::FAST as u8;
+                   const PLANE: u8 = Speed::PLANE as u8;
+                   const ROCKET: u8 = Speed::ROCKET as u8;
+                   superstate.bk.obs_literal_adaptation_rate(match beg_nib {
+                       GEOLOGIC => Speed::GEOLOGIC,
+                       GLACIAL => Speed::GLACIAL,
+                       SLOW => Speed::SLOW,
+                       MUD => Speed::MUD,
+                       MED => Speed::MED,
+                       FAST => Speed::FAST,
+                       PLANE => Speed::PLANE,
+                       ROCKET => Speed::ROCKET,
+                       _ => return BrotliResult::ResultFailure,
+                   });
                    if materialized_prediction_mode() {
                        *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                    } else {
@@ -865,11 +894,6 @@ impl<AllocU8:Allocator<u8>,
                             } else {
                                 LiteralNibblePriorType::SecondNibble
                             };
-                            let adv_nibble_type = if high_nibble {
-                                AdvancedLiteralNibblePriorType::AdvFirstNibble
-                            } else {
-                                AdvancedLiteralNibblePriorType::AdvSecondNibble
-                            };
                             let c0 = actual_context;
                             let c1 = |stride| if high_nibble {
                                 (if materialized_prediction_mode() {0} else {k0[stride]}) | ((if materialized_prediction_mode() {0} else {k1[stride]}) << 4)
@@ -896,23 +920,16 @@ impl<AllocU8:Allocator<u8>,
                                 let nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
                                                              c0, c1(stride), c2));
-                                let adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
-                                                              (stride,
-                                                              c0, c1(stride), c2));
                                 if stride == desired_stride {
                                     superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
-                                       adv_nibble_prob} else {nibble_prob}, billing);
+                                       nibble_prob} else {nibble_prob}, billing);
                                 }
                             }
                             for stride in 0..NUM_STRIDES {
                                 let nibble_prob = superstate.bk.lit_priors.get(nibble_type.clone(),
                                                              (stride,
                                                              c0, c1(stride), c2));
-                                let mut adv_nibble_prob = superstate.bk.adv_lit_priors.get(adv_nibble_type.clone(),
-                                                              (stride,
-                                                              c0, c1(stride), c2));
-                                nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
-                                adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                                nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                             }
                         }
                         *cur_byte |= cur_nibble << shift;
@@ -1089,27 +1106,17 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
 #[derive(PartialEq, Debug, Clone)]
-enum AdvancedLiteralNibblePriorType {
-    AdvFirstNibble,
-    AdvSecondNibble,
-}
-
-define_prior_struct!(AdvancedLiteralCommandPriors, AdvancedLiteralNibblePriorType,
-                     (AdvancedLiteralNibblePriorType::AdvFirstNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3),
-                     (AdvancedLiteralNibblePriorType::AdvSecondNibble, NUM_STRIDES, NUM_BLOCK_TYPES, 16 * 16, 3)
-                     );
-
-
-#[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {
     Only,
+    LiteralSpeed,
     Mnemonic,
     FirstNibble,
     SecondNibble,
 }
 
 define_prior_struct!(PredictionModePriors, PredictionModePriorType,
-                     (PredictionModePriorType::Only, 1)
+                     (PredictionModePriorType::Only, 1),
+                     (PredictionModePriorType::LiteralSpeed, 1)
                      );
 
 
@@ -1172,6 +1179,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+    literal_adaptation: Speed,
     decode_byte_count: u32,
     command_count:u32,
     last_8_literals: u64,
@@ -1183,7 +1191,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     literal_prediction_mode: LiteralPredictionModeNibble,
     literal_context_map: AllocU8::AllocatedMemory,
     distance_context_map: AllocU8::AllocatedMemory,
-    adv_lit_priors: AdvancedLiteralCommandPriors<Cdf16, AllocCDF16>,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
@@ -1213,16 +1220,17 @@ impl<Cdf16:CDF16,
                                                     AllocU8,
                                                     AllocCDF2,
                                                     AllocCDF16> {
-    fn new(adv_lit_priors: AllocCDF16::AllocatedMemory,
-           lit_prior: AllocCDF16::AllocatedMemory,
+    fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
            pred_prior: AllocCDF16::AllocatedMemory,
            btype_prior: AllocCDF16::AllocatedMemory,
            literal_context_map: AllocU8::AllocatedMemory,
-           distance_context_map: AllocU8::AllocatedMemory) -> Self {
+           distance_context_map: AllocU8::AllocatedMemory,
+           literal_adaptation_speed:Speed) -> Self {
         let mut ret = CrossCommandBookKeeping{
+            literal_adaptation: literal_adaptation_speed,//
             decode_byte_count:0,
             command_count:0,
             num_literals_coded:0,
@@ -1244,9 +1252,6 @@ impl<Cdf16:CDF16,
             },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
-            },
-            adv_lit_priors: AdvancedLiteralCommandPriors {
-                priors: adv_lit_priors
             },
             cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
@@ -1288,6 +1293,10 @@ impl<Cdf16:CDF16,
         }
         ret
     }
+    fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
+        self.literal_adaptation = ladaptation_rate.clone();
+    }
+
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
         let dtype = self.get_distance_block_type();
         let distance_map_index = dtype as usize * 4 + core::cmp::min(copy_len as usize - 1, 3);
@@ -1507,10 +1516,10 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            mcdf2:AllocCDF2,
            mut mcdf16:AllocCDF16,
            coder: ArithmeticCoder,
-           spc: Specialization, ring_buffer_size: usize) -> Self {
+           spc: Specialization, ring_buffer_size: usize,
+           literal_adaptation_rate :Speed) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let adv_lit_priors = mcdf16.alloc_cell(AdvancedLiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1531,9 +1540,11 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(adv_lit_priors, lit_priors, cc_priors, copy_priors,
+            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
-                                            literal_context_map, distance_context_map),
+                                            literal_context_map, distance_context_map,
+                                            literal_adaptation_rate,
+            ),
         }
     }
     fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
@@ -1635,7 +1646,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                mcdf16:AllocCDF16,
                coder: ArithmeticCoder,
                specialization: Specialization,
-               ring_buffer_size: usize) -> Self {
+               ring_buffer_size: usize,
+               literal_adaptation_rate: Option<Speed>) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
@@ -1647,7 +1659,14 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      mcdf16,
                                                                      coder,
                                                                      specialization,
-                                                                     ring_buffer_size),
+                                                                     ring_buffer_size,
+                                                                     literal_adaptation_rate.unwrap_or(
+                                                                         if materialized_prediction_mode() {
+                                                                             Speed::MUD
+                                                                         } else {
+                                                                             Speed::SLOW
+                                                                         }),
+            ),
             state:EncodeOrDecodeState::Begin,
         }
     }

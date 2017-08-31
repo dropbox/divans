@@ -117,7 +117,8 @@ impl CDF2 {
         }
     }
 }
-
+#[derive(Clone)]
+#[repr(C)]
 pub enum Speed {
     GEOLOGIC,
     GLACIAL,
@@ -127,6 +128,23 @@ pub enum Speed {
     FAST,
     PLANE,
     ROCKET,
+}
+
+impl core::str::FromStr for Speed {
+    type Err = ();
+    fn from_str(inp:&str) -> Result<Speed, Self::Err> {
+        match inp {
+            "GEOLOGIC" => Ok(Speed::GEOLOGIC),
+            "GLACIAL" => Ok(Speed::GLACIAL),
+            "MUD" => Ok(Speed::MUD),
+            "SLOW" => Ok(Speed::SLOW),
+            "MED" => Ok(Speed::MED),
+            "FAST" => Ok(Speed::FAST),
+            "PLANE" => Ok(Speed::PLANE),
+            "ROCKET" => Ok(Speed::ROCKET),
+            _ => Err(()),
+        }
+    }
 }
 
 pub trait CDF16: Sized + Default + Copy + BaseCDF {

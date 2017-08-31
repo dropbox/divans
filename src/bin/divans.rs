@@ -26,6 +26,7 @@ use divans::DictCommand;
 use divans::BrotliResult;
 use divans::Compressor;
 use divans::Decompressor;
+use divans::Speed;
 use divans::CMD_BUFFER_SIZE;
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
@@ -583,7 +584,8 @@ fn compress_inner<Reader:std::io::BufRead,
 fn compress<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    literal_adaptation_speed: Option<Speed>) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -607,7 +609,9 @@ fn compress<Reader:std::io::BufRead,
         ItemVecAllocator::<u8>::default(),
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
-        window_size as usize);
+        window_size as usize,
+        literal_adaptation_speed,
+   );
     compress_inner(state, r, w)
 }
 
@@ -670,20 +674,22 @@ fn decompress<Reader:std::io::Read,
             },
             BrotliResult::NeedsMoreInput => {
                 if input_offset == input_end {
+                    // We have exhausted all the available input, so we can reset the cursors.
                     input_offset = 0;
+                    input_end = 0;
                 }
                 loop {
-                    match r.read(ibuffer.slice_mut().split_at_mut(input_offset).1) {
+                    match r.read(ibuffer.slice_mut().split_at_mut(input_end).1) {
                         Ok(size) => {
                             if size == 0 {
                                 //println_stderr!("End of file.  Feeding zero's.\n");
-                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_offset).1);
-                                input_end = input_offset + len;
+                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_end).1);
+                                input_end += len;
                                 //return Err(io::Error::new(
                                 //    io::ErrorKind::UnexpectedEof,
                                 //    "Divans file invalid: didn't have a terminator marker"));
                             } else {
-                                input_end = input_offset + size;
+                                input_end += size;
                             }
                             break
                         },
@@ -813,6 +819,7 @@ fn main() {
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
+    let mut literal_adaptation : Option<Speed> = None;
     if env::args_os().len() > 1 {
         let mut first = true;
         for argument in env::args() {
@@ -836,6 +843,18 @@ fn main() {
             if argument == "-c" {
                 do_compress = true;
                 continue;
+            }
+            if argument.starts_with("-speed=") {
+                literal_adaptation = Some(argument.trim_matches(
+                    '-').trim_matches(
+                    's').trim_matches(
+                    'p').trim_matches(
+                    'e').trim_matches(
+                    'e').trim_matches(
+                    'd').trim_matches(
+                    '=').parse::<Speed>().unwrap());
+                continue
+                
             }
             if argument == "-h" || argument == "-help" || argument == "--help" {
                 println_stderr!("Decompression:\ndivans [input_file] [output_file]\nCompression:brotli -c [input_file] [output_file]\n");
@@ -868,7 +887,7 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress(&mut buffered_input, &mut output) {
+                        match compress(&mut buffered_input, &mut output, literal_adaptation.clone()) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -894,7 +913,7 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress(&mut buffered_input, &mut io::stdout()) {
+                    match compress(&mut buffered_input, &mut io::stdout(), literal_adaptation) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -914,7 +933,7 @@ fn main() {
             if do_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress(&mut stdin, &mut io::stdout()) {
+                match compress(&mut stdin, &mut io::stdout(), literal_adaptation) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
