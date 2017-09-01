@@ -99,10 +99,12 @@ pub fn brotli_decompress_internal(brotli_file : &[u8]) -> Result<Box<[u8]>, io::
 }
 
 pub fn divans_decompress_internal(mut brotli_file : &[u8]) -> Result<Box<[u8]>, io::Error> {
-  let mut uncompressed_file_from_divans = UnlimitedBuffer::new(&[]);
-  try!(super::recode(&mut brotli_file,
-                &mut uncompressed_file_from_divans));
-  Ok(uncompressed_file_from_divans.data.into_boxed_slice())
+    let mut uncompressed_file_from_divans = UnlimitedBuffer::new(&[]);
+    let params = super::DivansCompressorDecompressorParams::default();
+    try!(super::recode(&mut brotli_file,
+                       &mut uncompressed_file_from_divans,
+                       &params));
+    Ok(uncompressed_file_from_divans.data.into_boxed_slice())
 }
 
 #[test]

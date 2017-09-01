@@ -79,7 +79,6 @@ macro_rules! DefaultDecoderType(
     () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
 );
 
-
 #[cfg(feature="billing")]
 #[derive(Clone,Default)]
 pub struct DivansCompressorDecompressorParams {
@@ -414,7 +413,6 @@ impl<AllocU8:Allocator<u8>,
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
-
 
 #[cfg(feature="billing")]
 pub trait SerializeLiteralPriors {

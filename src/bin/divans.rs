@@ -410,7 +410,9 @@ fn recode_inner<Reader:std::io::BufRead,
                 Writer:std::io::Write,
                 RingBuffer:core::default::Default+SliceWrapper<u8>+SliceWrapperMut<u8>>(
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    _params: &DivansCompressorDecompressorParams) -> io::Result<()> {
+
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -625,6 +627,7 @@ fn compress<Reader:std::io::BufRead,
     mut r:&mut Reader,
     mut w:&mut Writer,
     params: &DivansCompressorDecompressorParams) -> io::Result<()> {
+
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -649,7 +652,7 @@ fn compress<Reader:std::io::BufRead,
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize);
-    compress_inner(state, r, w, params)
+    compress_inner(state, r, w, &params)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {
@@ -782,7 +785,9 @@ fn decompress<Reader:std::io::Read,
 fn recode<Reader:std::io::BufRead,
           Writer:std::io::Write>(
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    params: &DivansCompressorDecompressorParams) -> io::Result<()> {
+
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -802,65 +807,50 @@ fn recode<Reader:std::io::BufRead,
     }
     match window_size {
         10 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer10>(&mut r,
-                                               &mut w),
+                             Writer,
+                             util::StaticHeapBuffer10>(&mut r, &mut w, &params),
         11 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer11>(&mut r,
-                                               &mut w),
+                             Writer,
+                             util::StaticHeapBuffer11>(&mut r, &mut w, &params),
         12 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer12>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer12>(&mut r, &mut w, &params),
         13 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer13>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer13>(&mut r, &mut w, &params),
         14 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer14>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer14>(&mut r, &mut w, &params),
         15 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer15>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer15>(&mut r, &mut w, &params),
         16 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer16>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer16>(&mut r, &mut w, &params),
         17 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer17>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer17>(&mut r, &mut w, &params),
         18 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer18>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer18>(&mut r, &mut w, &params),
         19 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer19>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer19>(&mut r, &mut w, &params),
         20 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer20>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer20>(&mut r, &mut w, &params),
         21 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer21>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer21>(&mut r, &mut w, &params),
         22 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer22>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer22>(&mut r, &mut w, &params),
         23 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer23>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer23>(&mut r, &mut w, &params),
         24 => recode_inner::<Reader,
-                     Writer,
-                     util::StaticHeapBuffer24>(&mut r,
-                                         &mut w),
+                             Writer,
+                             util::StaticHeapBuffer24>(&mut r, &mut w, &params),
         _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Window size must be <=24 >= 10")),
     }
 }
@@ -946,8 +936,7 @@ fn main() {
                         input = buffered_input.into_inner();
                     } else if do_recode {
                         let mut buffered_input = BufReader::new(input);
-                        recode(&mut buffered_input,
-                               &mut output).unwrap();
+                        recode(&mut buffered_input, &mut output, &params).unwrap();
                         input = buffered_input.into_inner();
                     } else {
                         match decompress(&mut input, &mut output, 65536, &params) {
@@ -971,8 +960,7 @@ fn main() {
                     }
                 } else if do_recode {
                     let mut buffered_input = BufReader::new(input);
-                    recode(&mut buffered_input,
-                           &mut io::stdout()).unwrap()
+                    recode(&mut buffered_input, &mut io::stdout(), &params).unwrap()
                 } else {
                     match decompress(&mut input, &mut io::stdout(), 65536, &params) {
                         Ok(_) => {}
@@ -992,8 +980,7 @@ fn main() {
             } else if do_recode {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                recode(&mut stdin,
-                       &mut io::stdout()).unwrap()
+                recode(&mut stdin, &mut io::stdout(), &params).unwrap()
             } else {
                 match decompress(&mut io::stdin(), &mut io::stdout(), 65536, &params) {
                     Ok(_) => return,
