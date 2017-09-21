@@ -227,6 +227,48 @@ impl CDF16 for BlendCDF16 {
         debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
 }
+#[derive(Clone,Copy)]
+pub struct ExternalProbCDF16 {
+    pub cdf: [Prob; 16],
+    pub  nibble: u8,
+}
+impl Default for ExternalProbCDF16 {
+    fn default() -> Self {
+        FrequentistCDF16 {
+            cdf: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+    }
+}
+impl struct ExternalProbCDF16 {
+    fn init(&mut self, nibble: u8, prob: u8) {
+        self.cdf[nibble] = prob;
+        self.nibble = nibble;
+    }
+}
+
+impl BaseCDF for ExternalProbCDF16 {
+    fn num_symbols() -> u8 { 16 }
+    fn used(&self) -> bool {
+        self.entropy() != Self::default().entropy()
+    }
+    fn max(&self) -> Prob {
+        self.cdf[self.nibble]
+    }
+    fn log_max(&self) -> Option<i8> { None }
+    fn cdf(&self, symbol: u8) -> Prob {
+        self.cdf[symbol as usize]
+    }
+    fn valid(&self) -> bool {
+        return true;
+    }
+}
+
+impl CDF16 for ExternalProbCDF16 {
+    fn blend(&mut self, symbol: u8, speed: Speed) {
+        return;
+    }
+}
+
 
 #[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {

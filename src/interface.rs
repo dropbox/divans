@@ -98,6 +98,7 @@ impl Nop<DictCommand> for DictCommand {
 #[derive(Debug)]
 pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
     pub data: SliceType,
+    pub prob: SliceType,
 }
 
 impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for LiteralCommand<SliceType> {
