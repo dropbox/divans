@@ -24,9 +24,9 @@ macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
-);
+
 */
-use super::probability::{BaseCDF, CDF2, CDF16, Speed};
+use super::probability::{BaseCDF, CDF2, CDF16, Speed, ExternalProbCDF16};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
@@ -857,24 +857,34 @@ impl<AllocU8:Allocator<u8>,
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
-                            let mut adv_nibble_prob = if high_nibble {
-                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvFirstNibble,
-                                                              (actual_context,
-                                                              if materialized_prediction_mode() {0} else {k0},
-                                                              if materialized_prediction_mode() {0} else {k1},
-                                                              nibble_index_truncated))
-                            } else {
-                                superstate.bk.adv_lit_priors.get(AdvancedLiteralNibblePriorType::AdvSecondNibble,
-                                                             (actual_context,
-                                                              (*cur_byte >> 4) as usize,
-                                                              if materialized_prediction_mode() {0} else {k1},
-                                                              nibble_index_truncated))
-                            };
+                            let mut ecdf = ExternalProbCDF16::default();
+                            let en = byte_index * 8 + shift as usize + 4;
+                            if en < self.lc.prob.slice().len() {
+                                let nibble = (self.lc.data.slice()[byte_index] >> shift) & 0xff;
+                                let st = en - 4;
+                                let mut prob = 1f64;
+                                //probability of this nibble occuring given the nibble and the
+                                //exact probs
+                                for i in [0..4] {
+                                    let pv = self.lc.prob.slice()[st  + 1];
+                                    let bit = (1<<(3 - i)) & nibble;
+                                    let p = if bit != 0 {
+                                            (pv as f64)/256f64
+                                        } else  {
+                                            1f64 - (pv as f64)/256f64
+                                        };
+                                    prob = prob * p;
+                                }
+                                ecdf.init(nibble, prob, nibble_prob);
+                            }
 
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if superstate.bk.num_literals_coded > 8192 {
-                            adv_nibble_prob} else {nibble_prob}, billing);
-                            nibble_prob.blend(cur_nibble, if materialized_prediction_mode() { Speed::MUD } else { Speed::SLOW });
-                            adv_nibble_prob.blend(cur_nibble, if high_nibble { Speed::GLACIAL } else { Speed::GLACIAL });
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
+                            nibble_prob.blend(cur_nibble,
+                                              if materialized_prediction_mode() { 
+                                                  Speed::MUD 
+                                              } else { 
+                                                  Speed::SLOW 
+                                              });
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {

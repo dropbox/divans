@@ -227,23 +227,35 @@ impl CDF16 for BlendCDF16 {
         debug_assert!(self.cdf[15] <= CDF_MAX - 16);
     }
 }
+
 #[derive(Clone,Copy)]
 pub struct ExternalProbCDF16 {
     pub cdf: [Prob; 16],
-    pub  nibble: usize,
+    pub nibble: usize,
+    maxp: Prob,
 }
+
 impl Default for ExternalProbCDF16 {
     fn default() -> Self {
         ExternalProbCDF16 {
-            cdf: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            nibble: 0
+            cdf: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            nibble: 0,
+            maxp:  (1<<15 - 1)
         }
     }
 }
+
 impl ExternalProbCDF16 {
-    fn init(&mut self, nibble: u8, prob: u8) {
+    fn init<T: BaseCDF>(&mut self, nibble: u8, prob: f64, mix: T) {
         self.nibble = nibble as usize;
-        self.cdf[self.nibble] = prob as i16;
+        let p = mix.cdf(nibble);
+        let m = mix.max(); 
+        let r = ((((p as f64 / (m as f64)) + prob)/2f64) * (self.maxp as f64)) as Prob;
+        let i = (self.maxp - r) / 15;
+        for v in self.cdf.iter_mut() {
+            *v = i;
+        }
+        self.cdf[self.nibble] = r
     }
 }
 
@@ -253,10 +265,11 @@ impl BaseCDF for ExternalProbCDF16 {
         self.entropy() != Self::default().entropy()
     }
     fn max(&self) -> Prob {
-        self.cdf[self.nibble]
+        self.maxp
     }
     fn log_max(&self) -> Option<i8> { None }
     fn cdf(&self, symbol: u8) -> Prob {
+        assert!(symbol as usize == self.nibble);
         self.cdf[symbol as usize]
     }
     fn valid(&self) -> bool {
@@ -269,7 +282,6 @@ impl CDF16 for ExternalProbCDF16 {
         return;
     }
 }
-
 
 #[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
