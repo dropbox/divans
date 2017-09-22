@@ -230,19 +230,20 @@ impl CDF16 for BlendCDF16 {
 #[derive(Clone,Copy)]
 pub struct ExternalProbCDF16 {
     pub cdf: [Prob; 16],
-    pub  nibble: u8,
+    pub  nibble: usize,
 }
 impl Default for ExternalProbCDF16 {
     fn default() -> Self {
-        FrequentistCDF16 {
-            cdf: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ExternalProbCDF16 {
+            cdf: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            nibble: 0
         }
     }
 }
-impl struct ExternalProbCDF16 {
+impl ExternalProbCDF16 {
     fn init(&mut self, nibble: u8, prob: u8) {
-        self.cdf[nibble] = prob;
-        self.nibble = nibble;
+        self.nibble = nibble as usize;
+        self.cdf[self.nibble] = prob as i16;
     }
 }
 

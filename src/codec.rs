@@ -1549,6 +1549,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
       3 => EncodeOrDecodeState::Literal(LiteralState {
                                 lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
                                     data:AllocatedMemoryPrefix::default(),
+                                    prob:AllocatedMemoryPrefix::default(),
                                 },
                                 state:LiteralSubstate::Begin,
                             }),

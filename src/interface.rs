@@ -104,7 +104,8 @@ pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
 impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for LiteralCommand<SliceType> {
     fn nop() -> Self {
         LiteralCommand {
-            data: SliceType::default()
+            data: SliceType::default(),
+            prob: SliceType::default()
         }
     }
 }
