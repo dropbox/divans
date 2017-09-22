@@ -875,9 +875,12 @@ impl<AllocU8:Allocator<u8>,
                                     prob = prob * p;
                                 }
                                 ecdf.init(cur_nibble, prob, nibble_prob);
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, ecdf, billing);
+                            } else {
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             }
+                            
 
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             nibble_prob.blend(cur_nibble,
                                               if materialized_prediction_mode() { 
                                                   Speed::MUD 
