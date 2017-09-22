@@ -247,6 +247,7 @@ impl Default for ExternalProbCDF16 {
 
 impl ExternalProbCDF16 {
     pub fn init<T: BaseCDF>(&mut self, nibble: u8, prob: f64, mix: &T) {
+        //average the two probabilities
         self.nibble = nibble as usize;
         let p = mix.cdf(nibble);
         let m = mix.max(); 

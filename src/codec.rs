@@ -860,14 +860,13 @@ impl<AllocU8:Allocator<u8>,
                             let mut ecdf = ExternalProbCDF16::default();
                             let en = byte_index * 8 + shift as usize + 4;
                             if en < self.lc.prob.slice().len() {
-                                let nibble = cur_nibble;
                                 let st = en - 4;
                                 let mut prob = 1f64;
                                 //probability of this nibble occuring given the nibble and the
                                 //exact probs
                                 for i in 0..4 {
                                     let pv = self.lc.prob.slice()[st  + 1];
-                                    let bit = (1<<(3 - i)) & nibble;
+                                    let bit = (1<<(3 - i)) & cur_nibble;
                                     let p = if bit != 0 {
                                             (pv as f64)/256f64
                                         } else  {
@@ -875,7 +874,7 @@ impl<AllocU8:Allocator<u8>,
                                         };
                                     prob = prob * p;
                                 }
-                                ecdf.init(nibble, prob, nibble_prob);
+                                ecdf.init(cur_nibble, prob, nibble_prob);
                             }
 
                             superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
