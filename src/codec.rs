@@ -810,6 +810,7 @@ impl<AllocU8:Allocator<u8>,
                     let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
+                    assert!(self.lc.prob.slice().len() == 0 || (self.lc.prob.slice().len() * 8 == self.lc.data.slice().len()));
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         let selected_context:usize;

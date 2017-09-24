@@ -347,7 +347,7 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
         let data = try!(hex_string_to_vec(&command_vec[2]));
         let prob = if command_vec.len() > 3 {
             let prob = try!(hex_string_to_vec(&command_vec[3]));
-            assert!(data.len() == expected_len * 16);
+            assert!(prob.len() == expected_len * 8);
             prob
         } else {
             Vec::<u8>::new()
