@@ -877,6 +877,7 @@ impl<AllocU8:Allocator<u8>,
                                 }
                                 ecdf.init(cur_nibble, prob, nibble_prob);
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
+                                assert!(false);
                             } else {
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             }
