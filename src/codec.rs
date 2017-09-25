@@ -18,14 +18,24 @@ use interface::{
 #[cfg(feature="debug_entropy")]
 use priors::summarize_prior_billing;
 
-/*
+
+#[cfg(test)]
 use std::io::Write;
+#[cfg(test)]
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
+);
 
-*/
+#[cfg(not(test))]
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+
+
 use super::probability::{BaseCDF, CDF2, CDF16, Speed, ExternalProbCDF16};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -859,14 +869,17 @@ impl<AllocU8:Allocator<u8>,
                                                               nibble_index_truncated))
                             };
                             let mut ecdf = ExternalProbCDF16::default();
-                            let en = byte_index * 8 + shift as usize + 4;
+                            let en = byte_index*8 + shift as usize + 4;
+                            println_stderr!("prob length {:}\n", self.lc.prob.slice().len());
+                            assert!(false);
                             if en < self.lc.prob.slice().len() {
+                                assert!(false);
                                 let st = en - 4;
                                 let mut prob = 1f64;
                                 //probability of this nibble occuring given the nibble and the
                                 //exact probs
                                 for i in 0..4 {
-                                    let pv = self.lc.prob.slice()[st  + 1];
+                                    let pv = self.lc.prob.slice()[st + i];
                                     let bit = (1<<(3 - i)) & cur_nibble;
                                     let p = if bit != 0 {
                                             (pv as f64)/256f64
