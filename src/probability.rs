@@ -3,21 +3,21 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
-#[cfg(feature="billing")]
-use std::io::Write;
-#[cfg(feature="billing")]
-macro_rules! println_stderr(
-    ($($val:tt)*) => { {
-        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
-    } }
-);
-
-#[cfg(not(feature="billing"))]
-macro_rules! println_stderr(
-    ($($val:tt)*) => { {
+//#[cfg(feature="billing")]
+//use std::io::Write;
+//#[cfg(feature="billing")]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
 //        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
-    } }
-);
+//    } }
+//);
+//
+//#[cfg(not(feature="billing"))]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
+////        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+//    } }
+//);
 
 
 // Common interface for CDF2 and CDF16, with optional methods.
@@ -264,18 +264,18 @@ impl Default for ExternalProbCDF16 {
 
 impl ExternalProbCDF16 {
     pub fn init<T: BaseCDF>(&mut self, _n: u8, probs: &[u8], mix: &T) {
-        println_stderr!("init for {:x}", _n);
-        println_stderr!("init for {:x} {:x} {:x} {:x}", probs[0], probs[1], probs[2], probs[3]);
+        //println_stderr!("init for {:x}", _n);
+        //println_stderr!("init for {:x} {:x} {:x} {:x}", probs[0], probs[1], probs[2], probs[3]);
         //average the two probabilities
         assert!(probs.len() == 4);
         self.nibble = _n as usize;
         let mut pcdf = [1f64;16];
         for nibble in 0..16 {
-            println_stderr!("setting for {:x}", nibble);
+            //println_stderr!("setting for {:x}", nibble);
             for bit in 0..4 {
                 let p1 = (probs[bit] as f64) / (u8::max_value() as f64);
                 let isone = (nibble & (1<<(3 - bit))) != 0;
-                println_stderr!("bit {:} is {:} {:}", bit, isone, p1);
+                //println_stderr!("bit {:} is {:} {:}", bit, isone, p1);
                 if isone {
                     pcdf[nibble] = pcdf[nibble] * p1;
                 } else {
@@ -294,7 +294,7 @@ impl ExternalProbCDF16 {
             let ave = (p + m) / 2f64;
             let res = (ave * (self.maxp as f64)) as Prob;
             self.cdf[nibble] = core::cmp::max(res, 1);
-            println_stderr!("cdf set {:x} {:x} {:}", nibble, self.cdf[nibble], p);
+            //println_stderr!("cdf set {:x} {:x} {:}", nibble, self.cdf[nibble], p);
         }
     }
 }
@@ -309,7 +309,7 @@ impl BaseCDF for ExternalProbCDF16 {
     }
     fn log_max(&self) -> Option<i8> { None }
     fn cdf(&self, symbol: u8) -> Prob {
-        println_stderr!("cdf for {:x} have {:x}", symbol, self.nibble);
+        //println_stderr!("cdf for {:x} have {:x}", symbol, self.nibble);
         self.cdf[symbol as usize]
     }
     fn valid(&self) -> bool {
