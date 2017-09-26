@@ -868,10 +868,11 @@ impl<AllocU8:Allocator<u8>,
                                                               nibble_index_truncated))
                             };
                             let mut ecdf = ExternalProbCDF16::default();
-                            let en = byte_index*8 + shift as usize + 4;
+                            let shift_offset = if shift != 0 { 0usize } else { 4usize };
+                            let en = byte_index*8 + shift_offset + 4;
                             if en <= in_cmd.prob.slice().len() {
                                 let st = en - 4;
-                                let probs = [in_cmd.prob.slice()[st], in_cmd.prob.slice()[st + 1],
+                                let probs = [in_cmd.prob.slice()[st + 0], in_cmd.prob.slice()[st + 1],
                                              in_cmd.prob.slice()[st + 2], in_cmd.prob.slice()[st + 3]];
                                 ecdf.init(cur_nibble, &probs, nibble_prob);
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);

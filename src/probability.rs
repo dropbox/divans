@@ -3,6 +3,23 @@ use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
 
+#[cfg(feature="billing")]
+use std::io::Write;
+#[cfg(feature="billing")]
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+
+#[cfg(not(feature="billing"))]
+macro_rules! println_stderr(
+    ($($val:tt)*) => { {
+//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+
+
 // Common interface for CDF2 and CDF16, with optional methods.
 pub trait BaseCDF {
 
@@ -246,20 +263,38 @@ impl Default for ExternalProbCDF16 {
 }
 
 impl ExternalProbCDF16 {
-    pub fn init<T: BaseCDF>(&mut self, nibble: u8, probs: &[u8], mix: &T) {
+    pub fn init<T: BaseCDF>(&mut self, _n: u8, probs: &[u8], mix: &T) {
+        println_stderr!("init for {:x}", _n);
+        println_stderr!("init for {:x} {:x} {:x} {:x}", probs[0], probs[1], probs[2], probs[3]);
         //average the two probabilities
-        let bit0 = 7;
-        let bit1 = (nibble & 8) + 3;
-        let bit2 = (nibble & 12) + 1;
-        let bit3 = nibble & 14;
-        let bits = [bit0, bit1, bit2, bit3];
-        let mut p = 1f64;
         assert!(probs.len() == 4);
-        for (prob, bit) in probs.iter().zip(bits.iter()) {
-            p = p * (*prob as f64)/256f64;
-            let v = (mix.cdf(*bit) as f64) / (mix.max() as f64);
-            let ave = (p + v) / 2f64;
-            self.cdf[(*bit) as usize] = (ave * (self.maxp as f64)) as Prob;
+        self.nibble = _n as usize;
+        let mut pcdf = [1f64;16];
+        for nibble in 0..16 {
+            println_stderr!("setting for {:x}", nibble);
+            for bit in 0..4 {
+                let p1 = (probs[bit] as f64) / (u8::max_value() as f64);
+                let isone = (nibble & (1<<(3 - bit))) != 0;
+                println_stderr!("bit {:} is {:} {:}", bit, isone, p1);
+                if isone {
+                    pcdf[nibble] = pcdf[nibble] * p1;
+                } else {
+                    pcdf[nibble] = pcdf[nibble] * (1f64 - p1);
+                }
+            }
+        }
+        let mut sum = 0f64;
+        for nibble in 0..16 {
+            sum = pcdf[nibble] + sum;
+            pcdf[nibble] = sum; 
+        }
+        for nibble in 0..16 {
+            let p = pcdf[nibble];
+            let m = p; //(mix.cdf(nibble) as f64) / (mix.max() as f64);
+            let ave = (p + m) / 2f64;
+            let res = (ave * (self.maxp as f64)) as Prob;
+            self.cdf[nibble] = core::cmp::max(res, 1);
+            println_stderr!("cdf set {:x} {:x} {:}", nibble, self.cdf[nibble], p);
         }
     }
 }
@@ -274,7 +309,7 @@ impl BaseCDF for ExternalProbCDF16 {
     }
     fn log_max(&self) -> Option<i8> { None }
     fn cdf(&self, symbol: u8) -> Prob {
-        assert!(self.cdf[symbol as usize] != 0);
+        println_stderr!("cdf for {:x} have {:x}", symbol, self.nibble);
         self.cdf[symbol as usize]
     }
     fn valid(&self) -> bool {
