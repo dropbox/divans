@@ -19,22 +19,21 @@ use interface::{
 use priors::summarize_prior_billing;
 
 
-#[cfg(test)]
-use std::io::Write;
-#[cfg(test)]
-macro_rules! println_stderr(
-    ($($val:tt)*) => { {
-        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
-    } }
-);
-
-#[cfg(not(test))]
-macro_rules! println_stderr(
-    ($($val:tt)*) => { {
+//#[cfg(feature="billing")]
+//use std::io::Write;
+//#[cfg(feature="billing")]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
 //        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
-    } }
-);
-
+//    } }
+//);
+//
+//#[cfg(not(feature="billing"))]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
+////        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+//    } }
+//);
 
 use super::probability::{BaseCDF, CDF2, CDF16, Speed, ExternalProbCDF16};
 use super::interface::{
@@ -820,7 +819,7 @@ impl<AllocU8:Allocator<u8>,
                     let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
                     let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
                     let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
-                    assert!(self.lc.prob.slice().len() == 0 || (self.lc.prob.slice().len() * 8 == self.lc.data.slice().len()));
+                    assert!(in_cmd.prob.slice().len() == 0 || (in_cmd.prob.slice().len() == 8 * in_cmd.data.slice().len()));
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         let selected_context:usize;
@@ -870,27 +869,12 @@ impl<AllocU8:Allocator<u8>,
                             };
                             let mut ecdf = ExternalProbCDF16::default();
                             let en = byte_index*8 + shift as usize + 4;
-                            println_stderr!("prob length {:}\n", self.lc.prob.slice().len());
-                            assert!(false);
-                            if en < self.lc.prob.slice().len() {
-                                assert!(false);
+                            if en <= in_cmd.prob.slice().len() {
                                 let st = en - 4;
-                                let mut prob = 1f64;
-                                //probability of this nibble occuring given the nibble and the
-                                //exact probs
-                                for i in 0..4 {
-                                    let pv = self.lc.prob.slice()[st + i];
-                                    let bit = (1<<(3 - i)) & cur_nibble;
-                                    let p = if bit != 0 {
-                                            (pv as f64)/256f64
-                                        } else  {
-                                            1f64 - (pv as f64)/256f64
-                                        };
-                                    prob = prob * p;
-                                }
-                                ecdf.init(cur_nibble, prob, nibble_prob);
+                                let probs = [in_cmd.prob.slice()[st], in_cmd.prob.slice()[st + 1],
+                                             in_cmd.prob.slice()[st + 2], in_cmd.prob.slice()[st + 3]];
+                                ecdf.init(cur_nibble, &probs, nibble_prob);
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
-                                assert!(false);
                             } else {
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
                             }

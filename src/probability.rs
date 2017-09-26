@@ -240,23 +240,27 @@ impl Default for ExternalProbCDF16 {
         ExternalProbCDF16 {
             cdf: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             nibble: 0,
-            maxp:  (1<<15 - 1)
+            maxp: Prob::max_value()
         }
     }
 }
 
 impl ExternalProbCDF16 {
-    pub fn init<T: BaseCDF>(&mut self, nibble: u8, prob: f64, mix: &T) {
+    pub fn init<T: BaseCDF>(&mut self, nibble: u8, probs: &[u8], mix: &T) {
         //average the two probabilities
-        self.nibble = nibble as usize;
-        let p = mix.cdf(nibble);
-        let m = mix.max(); 
-        let r = ((((p as f64 / (m as f64)) + prob)/2f64) * (self.maxp as f64)) as Prob;
-        let i = (self.maxp - r) / 15;
-        for v in self.cdf.iter_mut() {
-            *v = i;
+        let bit0 = 7;
+        let bit1 = (nibble & 8) + 3;
+        let bit2 = (nibble & 12) + 1;
+        let bit3 = nibble & 14;
+        let bits = [bit0, bit1, bit2, bit3];
+        let mut p = 1f64;
+        assert!(probs.len() == 4);
+        for (prob, bit) in probs.iter().zip(bits.iter()) {
+            p = p * (*prob as f64)/256f64;
+            let v = (mix.cdf(*bit) as f64) / (mix.max() as f64);
+            let ave = (p + v) / 2f64;
+            self.cdf[(*bit) as usize] = (ave * (self.maxp as f64)) as Prob;
         }
-        self.cdf[self.nibble] = r
     }
 }
 
@@ -270,7 +274,7 @@ impl BaseCDF for ExternalProbCDF16 {
     }
     fn log_max(&self) -> Option<i8> { None }
     fn cdf(&self, symbol: u8) -> Prob {
-        assert!(symbol as usize == self.nibble);
+        assert!(self.cdf[symbol as usize] != 0);
         self.cdf[symbol as usize]
     }
     fn valid(&self) -> bool {
