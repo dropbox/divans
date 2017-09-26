@@ -357,7 +357,6 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        println_stderr!("prob length {:} {:}", probs.len(), data.len());
         return Ok(Some(Command::Literal(LiteralCommand{
                 data:ItemVec(data),
                 prob:ItemVec(probs),
