@@ -147,17 +147,7 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     return Ok(expected_window_size)
 }
 
-#[cfg(not(feature="block_switch"))]
-fn use_block_switch() -> bool {
-    false
-}
-
-#[cfg(feature="block_switch")]
-fn use_block_switch() -> bool {
-    true
-}
-
-fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+fn command_parse(s : String, do_context_map:bool) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.len() == 0 {
         panic!("Unexpected");
@@ -184,6 +174,9 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
             literal_context_map: ItemVec::<u8>::default(),
             distance_context_map: ItemVec::<u8>::default(),
         };
+        if !do_context_map {
+            return Ok(Some(Command::PredictionMode(ret)));
+        }
         match command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             Some((index, _)) => {
                 for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
@@ -239,9 +232,6 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
                                           msg.description()));
             }
         };
-        if !use_block_switch() {
-            return Ok(None);
-        }
         return Ok(Some(match cmd.chars().next().unwrap() {
             'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
             'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
@@ -461,7 +451,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(line).unwrap() {
+                match command_parse(line, true).unwrap() {
                     None => {},
                     Some(c) => {
                         ibuffer[i_read_index] = c;
@@ -503,6 +493,29 @@ fn recode_inner<Reader:std::io::BufRead,
 
     Ok(())
 }
+
+fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
+    match cmd {
+       &divans::Command::BlockSwitchLiteral(lbs) => {
+           let retval = if do_context_map {
+               last_literal_switch.block_type() != lbs.block_type()
+           } else {
+               last_literal_switch.stride() != lbs.stride()
+           };
+           *last_literal_switch = lbs;
+           return retval;
+       },
+       &divans::Command::BlockSwitchDistance(_) => {
+           return do_context_map;
+       },
+       &divans::Command::BlockSwitchCommand(_) => {
+           return do_context_map;
+       },
+       _ => {},
+    }
+    true
+}
+
 fn compress_inner<Reader:std::io::BufRead,
                   Writer:std::io::Write,
                   Encoder:ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -514,7 +527,8 @@ fn compress_inner<Reader:std::io::BufRead,
                                 AllocCDF2,
                                 AllocCDF16>,
     mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    mut w:&mut Writer,
+    do_context_map: bool) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -535,6 +549,7 @@ fn compress_inner<Reader:std::io::BufRead,
                                                            Command::<ItemVec<u8>>::nop()];
 
     let mut i_read_index = 0usize;
+    let mut last_literal_switch = LiteralBlockSwitch::new(0, 0);
     loop {
         buffer.clear();
         match r.read_line(&mut buffer) {
@@ -554,11 +569,13 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(line).unwrap() {
+                match command_parse(line, do_context_map).unwrap() {
                     None => {},
                     Some(c) => {
-                        ibuffer[i_read_index] = c;
-                        i_read_index += 1;
+                        if allowed_command(&c, do_context_map, &mut last_literal_switch) {
+                            ibuffer[i_read_index] = c;
+                            i_read_index += 1;
+                        }
                     }
                 }
             }
@@ -599,7 +616,8 @@ fn compress<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     mut r:&mut Reader,
     mut w:&mut Writer,
-    literal_adaptation_speed: Option<Speed>) -> io::Result<()> {
+    literal_adaptation_speed: Option<Speed>,
+    do_context_map: bool) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -626,7 +644,7 @@ fn compress<Reader:std::io::BufRead,
         window_size as usize,
         literal_adaptation_speed,
    );
-    compress_inner(state, r, w)
+    compress_inner(state, r, w, do_context_map)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {
@@ -833,6 +851,7 @@ fn main() {
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
+    let mut use_context_map = false;
     let mut literal_adaptation : Option<Speed> = None;
     if env::args_os().len() > 1 {
         let mut first = true;
@@ -852,6 +871,10 @@ fn main() {
             }
             if argument == "-r" {
                 do_recode = true;
+                continue;
+            }
+            if argument == "-cm" || argument == "-contextmap" {
+                use_context_map = true;
                 continue;
             }
             if argument == "-c" {
@@ -901,7 +924,7 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress(&mut buffered_input, &mut output, literal_adaptation.clone()) {
+                        match compress(&mut buffered_input, &mut output, literal_adaptation.clone(), use_context_map) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -927,7 +950,7 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress(&mut buffered_input, &mut io::stdout(), literal_adaptation) {
+                    match compress(&mut buffered_input, &mut io::stdout(), literal_adaptation, use_context_map) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -947,7 +970,7 @@ fn main() {
             if do_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress(&mut stdin, &mut io::stdout(), literal_adaptation) {
+                match compress(&mut stdin, &mut io::stdout(), literal_adaptation, use_context_map) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }

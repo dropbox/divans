@@ -371,15 +371,6 @@ pub enum PredictionModeState {
     FullyDecoded,
 }
 
-#[cfg(feature="block_switch")]
-fn materialized_prediction_mode() -> bool {
-    true
-}
-
-#[cfg(not(feature="block_switch"))]
-fn materialized_prediction_mode() -> bool {
-    false
-}
 
 impl PredictionModeState {
     fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -470,11 +461,7 @@ impl PredictionModeState {
                        ROCKET => Speed::ROCKET,
                        _ => return BrotliResult::ResultFailure,
                    });
-                   if materialized_prediction_mode() {
-                       *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
-                   } else {
-                       *self = PredictionModeState::FullyDecoded;
-                   }
+                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                },
                &mut PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
@@ -866,7 +853,7 @@ impl<AllocU8:Allocator<u8>,
                                 _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
                             } as usize;
                             let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
-                            actual_context = if materialized_prediction_mode() {
+                            actual_context = if superstate.bk.materialized_prediction_mode() {
                                 superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
                             } else {
                                 selected_context
@@ -877,19 +864,20 @@ impl<AllocU8:Allocator<u8>,
                             //                prev_byte as u8 as char,
                             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
                             //                }
+                            let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (superstate.bk.stride as usize,
                                                               actual_context,
-                                                              if materialized_prediction_mode() {0} else {k0* 16} + 
-                                                              if materialized_prediction_mode() {0} else {k1},
+                                                              if materialized_prediction_mode {0} else {k0* 16} + 
+                                                              if materialized_prediction_mode {0} else {k1},
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (superstate.bk.stride as usize,
                                                               actual_context,
                                                               16 * (*cur_byte >> 4) as usize +
-                                                              if materialized_prediction_mode() {0} else {k1},
+                                                              if materialized_prediction_mode {0} else {k1},
                                                               nibble_index_truncated))
                             };
 
@@ -1222,18 +1210,10 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    stride: u8,
-    literal_adaptation: Speed,
-    desired_literal_adaptation: Speed,
+    last_8_literals: u64,
     decode_byte_count: u32,
     command_count:u32,
-    last_8_literals: u64,
-    last_4_states: u8,
-    last_dlen: u8,
-    last_clen: u8,
-    last_llen: u8,
     num_literals_coded: u32,
-    literal_prediction_mode: LiteralPredictionModeNibble,
     literal_context_map: AllocU8::AllocatedMemory,
     distance_context_map: AllocU8::AllocatedMemory,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
@@ -1244,9 +1224,18 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     distance_lru: [u32;4],
     btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
+    distance_cache:[[DistanceCacheEntry;3];32],
     btype_lru: [[u8;2];3],
     btype_max_seen: [u8;3],
-    distance_cache:[[DistanceCacheEntry;3];32],
+    stride: u8,
+    last_dlen: u8,
+    last_clen: u8,
+    last_llen: u8,
+    last_4_states: u8,
+    materialized_context_map: bool,
+    literal_prediction_mode: LiteralPredictionModeNibble,
+    literal_adaptation: Speed,
+    desired_literal_adaptation: Speed,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -1290,6 +1279,7 @@ impl<Cdf16:CDF16,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
+            materialized_context_map: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
@@ -1340,6 +1330,9 @@ impl<Cdf16:CDF16,
         }
         ret
     }
+    fn materialized_prediction_mode(&self) -> bool {
+        self.materialized_context_map
+    }
     fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
         self.literal_adaptation = ladaptation_rate.clone();
     }
@@ -1353,6 +1346,7 @@ impl<Cdf16:CDF16,
         self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     }
     pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
+        self.materialized_context_map = true;
         let target_array = match context_map_type {
             ContextMapType::Literal => self.literal_context_map.slice_mut(),
             ContextMapType::Distance=> self.distance_context_map.slice_mut(),
@@ -1680,11 +1674,7 @@ pub enum OneCommandReturn {
     BufferExhausted(BrotliResult),
 }
 fn default_literal_speed() -> Speed {
-    if materialized_prediction_mode() {
-        Speed::MUD
-    } else {
-        Speed::SLOW
-    }
+    Speed::MUD
 }
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
