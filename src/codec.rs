@@ -11,6 +11,7 @@ use interface::{
     BillingDesignation,
     CrossCommandBilling,
     BlockSwitch,
+    LiteralBlockSwitch,
     Nop
 };
 
@@ -838,15 +839,10 @@ impl<AllocU8:Allocator<u8>,
                     let shift : u8 = if high_nibble { 4 } else { 0 };
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
                                           >> shift) & 0xf;
-                    let k0 = ((superstate.bk.last_8_literals >> 0x3c) & 0xf) as usize;
-                    let k1 = ((superstate.bk.last_8_literals >> 0x38) & 0xf) as usize;
-                    let _k2 = ((superstate.bk.last_8_literals >> 0x34) & 0xf) as usize;
-                    let _k3 = ((superstate.bk.last_8_literals >> 0x30) & 0xf) as usize;
-                    let _k4 = ((superstate.bk.last_8_literals >> 0x2c) & 0xf) as usize;
-                    let _k5 = ((superstate.bk.last_8_literals >> 0x28) & 0xf) as usize;
-                    let _k6 = ((superstate.bk.last_8_literals >> 0x24) & 0xf) as usize;
-                    let _k7 = ((superstate.bk.last_8_literals >> 0x20) & 0xf) as usize;
-                    let _k8 = ((superstate.bk.last_8_literals >> 0x1c) & 0xf) as usize;
+	            let stride = core::cmp::max(1, superstate.bk.stride);
+                    let base_shift = 0x40 - stride * 8;
+                    let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
+                    let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         let selected_context:usize;
@@ -883,14 +879,16 @@ impl<AllocU8:Allocator<u8>,
                             //                }
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (actual_context,
-                                                              if materialized_prediction_mode() {0} else {k0},
+                                                             (superstate.bk.stride as usize,
+                                                              actual_context,
+                                                              if materialized_prediction_mode() {0} else {k0* 16} + 
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (actual_context,
-                                                              (*cur_byte >> 4) as usize,
+                                                             (superstate.bk.stride as usize,
+                                                              actual_context,
+                                                              16 * (*cur_byte >> 4) as usize +
                                                               if materialized_prediction_mode() {0} else {k1},
                                                               nibble_index_truncated))
                             };
@@ -1017,12 +1015,90 @@ impl BlockTypeState {
         }
     }
 }
+
+#[derive(Clone,Copy)]
+enum LiteralBlockTypeState {
+    Begin,
+    Intermediate(BlockTypeState),
+    StrideNibble(u8),
+    FullyDecoded(u8, u8),
+}
+
+impl LiteralBlockTypeState {
+    fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(
+        &mut self,
+        superstate: &mut CrossCommandState<ArithmeticCoder,
+                                           Specialization,
+                                           Cdf16,
+                                           AllocU8,
+                                           AllocCDF2,
+                                           AllocCDF16>,
+        input_bs: LiteralBlockSwitch,
+        input_bytes: &[u8],
+        input_offset: &mut usize,
+        output_bytes: &mut [u8],
+        output_offset: &mut usize) -> BrotliResult {
+        loop {
+            let billing = BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType);
+            match *self {
+                LiteralBlockTypeState::Begin => {
+                    *self = LiteralBlockTypeState::Intermediate(BlockTypeState::Begin);
+                },
+                LiteralBlockTypeState::Intermediate(bts) => {
+	            let mut local_bts = bts.clone();
+                    match local_bts.encode_or_decode(superstate,
+                      input_bs.0,
+                      BLOCK_TYPE_LITERAL_SWITCH,
+                      input_bytes,
+                      input_offset,
+                      output_bytes,
+                      output_offset) {
+                        BrotliResult::ResultSuccess => {},
+                        any => return any,
+                    }
+                    match local_bts {
+                        BlockTypeState::FullyDecoded(val) => {
+			   *self = LiteralBlockTypeState::StrideNibble(val);
+                        }
+                        any => {
+			   *self = LiteralBlockTypeState::Intermediate(any);
+                        }
+                    }
+                },
+                LiteralBlockTypeState::StrideNibble(ltype) =>   {
+                     match superstate.coder.drain_or_fill_internal_buffer(input_bytes,
+                                                                 input_offset,
+                                                                 output_bytes,
+                                                                 output_offset) {
+                         BrotliResult::ResultSuccess => {},
+                         need_something => return need_something,
+                    }
+		    let mut stride_nibble = input_bs.stride();
+                    let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::StrideNibble,
+                                                                         (0,));
+                    superstate.coder.get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);
+                    nibble_prob.blend(stride_nibble, Speed::SLOW);
+                    *self = LiteralBlockTypeState::FullyDecoded(ltype, stride_nibble);
+                },
+                LiteralBlockTypeState::FullyDecoded(_ltype, _stride) => {
+                    return BrotliResult::ResultSuccess;
+                }
+            }
+        }
+    }
+}
+
 enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Begin,
     Literal(LiteralState<AllocU8>),
     Dict(DictState),
     Copy(CopyState),
-    BlockSwitchLiteral(BlockTypeState),
+    BlockSwitchLiteral(LiteralBlockTypeState),
     BlockSwitchCommand(BlockTypeState),
     BlockSwitchDistance(BlockTypeState),
     PredictionMode(PredictionModeState),
@@ -1063,8 +1139,8 @@ enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 16, 16, 3),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 16, 16, 3),
+                     (LiteralNibblePriorType::FirstNibble, 9, NUM_BLOCK_TYPES, 256, 3),
+                     (LiteralNibblePriorType::SecondNibble, 9, NUM_BLOCK_TYPES, 256, 3),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
@@ -1127,12 +1203,14 @@ define_prior_struct!(DictCommandPriors, DictCommandNibblePriorType,
 enum BlockTypePriorType {
     Mnemonic,
     FirstNibble,
-    SecondNibble
+    SecondNibble,
+    StrideNibble,
 }
 define_prior_struct!(BlockTypePriors, BlockTypePriorType,
                      (BlockTypePriorType::Mnemonic, 3), // 3 for each of ltype, ctype, dtype switches.
                      (BlockTypePriorType::FirstNibble, 3),
-                     (BlockTypePriorType::SecondNibble, 3));
+                     (BlockTypePriorType::SecondNibble, 3),
+                     (BlockTypePriorType::StrideNibble, 1));
 
 #[derive(Copy,Clone)]
 pub struct DistanceCacheEntry {
@@ -1144,6 +1222,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+    stride: u8,
     literal_adaptation: Speed,
     desired_literal_adaptation: Speed,
     decode_byte_count: u32,
@@ -1207,6 +1286,7 @@ impl<Cdf16:CDF16,
                         distance:1,
                         decode_byte_count:0,
                     };3];32],
+            stride: 0,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
@@ -1441,8 +1521,9 @@ impl<Cdf16:CDF16,
         self.btype_lru[btype_type] = [btype, self.btype_lru[btype_type][0]];
         self.btype_max_seen[btype_type] = core::cmp::max(self.btype_max_seen[btype_type], btype);
     }
-    fn obs_btypel(&mut self, btype:u8) {
-        self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype);
+    fn obs_btypel(&mut self, btype:LiteralBlockSwitch) {
+        self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype.block_type());
+        self.stride = btype.stride();
     }
     fn obs_btypec(&mut self, btype:u8) {
         self._obs_btype_helper(BLOCK_TYPE_COMMAND_SWITCH, btype);
@@ -1570,7 +1651,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
                                 },
                                 state:LiteralSubstate::Begin,
                             }),
-     4 => EncodeOrDecodeState::BlockSwitchLiteral(BlockTypeState::Begin),
+     4 => EncodeOrDecodeState::BlockSwitchLiteral(LiteralBlockTypeState::Begin),
      5 => EncodeOrDecodeState::BlockSwitchCommand(BlockTypeState::Begin),
      6 => EncodeOrDecodeState::BlockSwitchDistance(BlockTypeState::Begin),
      7 => EncodeOrDecodeState::PredictionMode(PredictionModeState::Begin),
@@ -1825,18 +1906,17 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 &mut EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match input_cmd {
                         &Command::BlockSwitchLiteral(bs) => bs,
-                        _ => BlockSwitch::default(),
+                        _ => LiteralBlockSwitch::default(),
                     };
                     match block_type_state.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_literal,
-                                                            BLOCK_TYPE_LITERAL_SWITCH,
                                                             input_bytes,
                                                             input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
                             self.cross_command_state.bk.obs_btypel(match block_type_state {
-                                &mut BlockTypeState::FullyDecoded(btype) => btype,
+                                &mut LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
                                 _ => panic!("illegal output state"),
                             });
                             new_state = Some(EncodeOrDecodeState::Begin);

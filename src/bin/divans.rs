@@ -18,6 +18,7 @@ use core::convert::From;
 use std::vec::Vec;
 use divans::BlockSwitch;
 use divans::CopyCommand;
+use divans::LiteralBlockSwitch;
 use divans::LiteralCommand;
 use divans::LiteralPredictionModeNibble;
 use divans::PredictionModeContextMap;
@@ -227,7 +228,7 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
         }
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
-        if command_vec.len() != 2 {
+        if command_vec.len() != 2 && (command_vec.len() != 3 || cmd != "ltype") {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "*type needs 1 argument"));
         }
@@ -244,7 +245,20 @@ fn command_parse(s : String) -> Result<Option<Command<ItemVec<u8>>>, io::Error> 
         return Ok(Some(match cmd.chars().next().unwrap() {
             'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
             'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
-            'l' => Command::BlockSwitchLiteral(BlockSwitch::new(block_type)),
+            'l' => Command::BlockSwitchLiteral(LiteralBlockSwitch::new(block_type, if command_vec.len() < 2 {0} else {match command_vec[2].parse::<u32>() {
+            Ok(stride) => {
+                 if stride > 8 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          "Strude must be <= 8"));
+
+                 }
+                 stride as u8
+            },
+            Err(msg) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          msg.description()));
+            }
+        }})),
             _ => panic!("Logic error: already checked for valid command"),
         }));
     } else if cmd == "copy" {

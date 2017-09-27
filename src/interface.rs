@@ -20,6 +20,21 @@ impl BlockSwitch {
     }
 }
 
+#[derive(Debug,Copy,Clone,Default)]
+pub struct LiteralBlockSwitch(pub BlockSwitch, u8);
+
+impl LiteralBlockSwitch {
+    pub fn new(block_type: u8, stride: u8) -> Self {
+        LiteralBlockSwitch(BlockSwitch::new(block_type), stride)
+    }
+    pub fn block_type(&self) -> u8 {
+        self.0.block_type()
+    }
+    pub fn stride(&self) -> u8 {
+        self.1
+    }
+}
+
 pub const LITERAL_PREDICTION_MODE_SIGN: u8 = 3;
 pub const LITERAL_PREDICTION_MODE_UTF8: u8 = 2;
 pub const LITERAL_PREDICTION_MODE_MSB6: u8 = 1;
@@ -114,7 +129,7 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     Dict(DictCommand),
     Literal(LiteralCommand<SliceType>),
     BlockSwitchCommand(BlockSwitch),
-    BlockSwitchLiteral(BlockSwitch),
+    BlockSwitchLiteral(LiteralBlockSwitch),
     BlockSwitchDistance(BlockSwitch),
     PredictionMode(PredictionModeContextMap<SliceType>),
 }

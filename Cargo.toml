@@ -27,7 +27,7 @@ vergen = "0.1"
 "brotli-decompressor" = "~1"
 
 [features]
-default=["block_switch"]
+default= []#["block_switch"]
 billing = []
 blend = []
 debug_entropy = []
