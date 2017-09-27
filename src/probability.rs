@@ -8,7 +8,7 @@ use std::io::Write;
 #[cfg(feature="billing")]
 macro_rules! println_stderr(
     ($($val:tt)*) => { {
-        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
 
