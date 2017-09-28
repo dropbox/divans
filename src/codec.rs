@@ -869,20 +869,32 @@ impl<AllocU8:Allocator<u8>,
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (superstate.bk.stride as usize,
                                                               actual_context,
-                                                              if materialized_prediction_mode {0} else {k0* 16} + 
-                                                              if materialized_prediction_mode {0} else {k1},
+                                                              k0 * 16 + k1,
                                                               nibble_index_truncated))
                             } else {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (superstate.bk.stride as usize,
                                                               actual_context,
-                                                              16 * (*cur_byte >> 4) as usize +
-                                                              if materialized_prediction_mode {0} else {k1},
+                                                              16 * (*cur_byte >> 4) as usize + k1,
+                                                              nibble_index_truncated))
+                            };
+                            let mut cm_prob = if high_nibble {
+                                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                             (0,
+                                                              actual_context,
+                                                              0,
+                                                              nibble_index_truncated))
+                            } else {
+                                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                             (0,
+                                                              actual_context,
+                                                              16 * (*cur_byte >> 4) as usize,
                                                               nibble_index_truncated))
                             };
 
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if materialized_prediction_mode {cm_prob} else {nibble_prob}, billing);
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+                            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {
@@ -1217,6 +1229,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     literal_context_map: AllocU8::AllocatedMemory,
     distance_context_map: AllocU8::AllocatedMemory,
     lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    lit_cm_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -1233,6 +1246,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_llen: u8,
     last_4_states: u8,
     materialized_context_map: bool,
+    combine_literal_predictions: bool,
     literal_prediction_mode: LiteralPredictionModeNibble,
     literal_adaptation: Speed,
     desired_literal_adaptation: Speed,
@@ -1255,6 +1269,7 @@ impl<Cdf16:CDF16,
                                                     AllocCDF2,
                                                     AllocCDF16> {
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
+           cm_lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
@@ -1280,12 +1295,16 @@ impl<Cdf16:CDF16,
             last_llen: 1,
             last_clen: 1,
             materialized_context_map: false,
+            combine_literal_predictions: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
+            },
+            lit_cm_priors: LiteralCommandPriors {
+                priors: cm_lit_prior
             },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
@@ -1518,6 +1537,11 @@ impl<Cdf16:CDF16,
     fn obs_btypel(&mut self, btype:LiteralBlockSwitch) {
         self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype.block_type());
         self.stride = btype.stride();
+        if self.stride != 0 && self.materialized_context_map {
+            self.combine_literal_predictions = true;
+        } else {
+            self.combine_literal_predictions = false;
+        }
     }
     fn obs_btypec(&mut self, btype:u8) {
         self._obs_btype_helper(BLOCK_TYPE_COMMAND_SWITCH, btype);
@@ -1562,6 +1586,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            literal_adaptation_rate :Speed) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1582,7 +1607,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: m8,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cc_priors, copy_priors,
+            bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             literal_adaptation_rate,
