@@ -353,23 +353,24 @@ impl BaseCDF for FrequentistCDF16 {
 
 impl CDF16 for FrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
-        if self.max() < 32 && other.max() > 32 {
-             return other.clone();
+        if self.max() < 64 && other.max() > 64 {
+             //return other.clone();
         } 
-        if self.max() > 32 && other.max() < 32 {
-             return self.clone();
+        if self.max() > 64 && other.max() < 64 {
+             //return self.clone();
         }
         if self.entropy() > other.entropy() {
              //return other.clone();
         }
         //return self.clone();
         let mut retval = self.clone();
-        let ourmax = self.max() as u64;
-        let othermax = other.max() as u64;
-        let maxmax = core::cmp::max(ourmax, othermax) as u64;
+        let ourmax = self.max() as i64;
+        let othermax = other.max() as i64;
+        let maxmax = core::cmp::min(ourmax, othermax) as i64;
+        let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-	    *s = ((((*s  as u64) * mix_rate as u64*othermax + (*o as u64) * inv_mix_rate as u64 * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) / maxmax) as Prob;
+	    *s = ((((*s  as i64) * mix_rate as i64*othermax + (*o as i64) * inv_mix_rate as i64 * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         }
         retval
     }
@@ -377,7 +378,7 @@ impl CDF16 for FrequentistCDF16 {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let increment : Prob =
             match speed {
-                Speed::GEOLOGIC => 1,
+                Speed::GEOLOGIC => 2,
                 Speed::GLACIAL => 4,
                 Speed::MUD => 16,
                 Speed::SLOW => 32,
