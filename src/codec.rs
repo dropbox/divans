@@ -27,7 +27,7 @@ macro_rules! println_stderr(
     } }
 );
 */
-use super::probability::{BaseCDF, CDF2, CDF16, Speed};
+use super::probability::{BaseCDF, CDF2, CDF16, Speed, BLEND_FIXED_POINT_PRECISION};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
@@ -891,10 +891,18 @@ impl<AllocU8:Allocator<u8>,
                                                               16 * (*cur_byte >> 4) as usize,
                                                               nibble_index_truncated))
                             };
-
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, if materialized_prediction_mode {cm_prob} else {nibble_prob}, billing);
+                            let prob = if materialized_prediction_mode {
+                                if superstate.bk.combine_literal_predictions {
+                                    cm_prob.average(nibble_prob, (1<<BLEND_FIXED_POINT_PRECISION)>>1)
+                                } else {
+                                    cm_prob.clone()
+                                }
+                            } else {
+                                nibble_prob.clone()
+                            };
+                            superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing);
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
-                            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+                            cm_prob.blend(cur_nibble, Speed::GLACIAL);
                         }
                         *cur_byte |= cur_nibble << shift;
                         if !high_nibble {

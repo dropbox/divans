@@ -158,6 +158,7 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
        }
         ret
     }
+    fn average(&self, other: &Self, mix_rate: i32) ->Self;
 }
 
 const CDF_BITS : usize = 15; // 15 bits
@@ -171,6 +172,18 @@ pub struct BlendCDF16 {
     count: i32,
 }
 
+impl BlendCDF16 {
+    fn blend_internal(&mut self, to_blend: [Prob;16], mix_rate: i32) {
+        self.cdf = mul_blend(self.cdf, to_blend, mix_rate, (self.count & 0xf) << (BLEND_FIXED_POINT_PRECISION - 4));
+        if self.cdf[15] < (CDF_MAX - 16) - (self.cdf[15] >> 1) {
+            for i in 0..16 {
+                self.cdf[i] += self.cdf[i] >> 1;
+            }
+        }
+        debug_assert!(self.cdf[15] <= CDF_MAX - 16);
+
+    }
+}
 impl Default for BlendCDF16 {
     fn default() -> Self {
         BlendCDF16 {
@@ -220,6 +233,11 @@ impl BaseCDF for BlendCDF16 {
 }
 
 impl CDF16 for BlendCDF16 {
+    fn average(&self, other: &Self, mix_rate: i32) ->Self {
+        let mut retval = self.clone();
+        retval.blend_internal(other.cdf, mix_rate);
+        retval
+    }
     fn blend(&mut self, symbol:u8, speed: Speed) {
         self.count = self.count.wrapping_add(1);
         let _mix_rate = match speed {
@@ -232,17 +250,14 @@ impl CDF16 for BlendCDF16 {
                 Speed::PLANE => 384,
                 Speed::ROCKET => 1100,
         };
-        self.cdf = mul_blend(self.cdf, symbol, self.mix_rate, (self.count & 0xf) << (BLEND_FIXED_POINT_PRECISION - 4));
-        // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
-        self.mix_rate -= self.mix_rate >> 7;
-
+        let to_blend = to_blend_lut(symbol);
+        let mr = self.mix_rate;
+        self.blend_internal(to_blend, mr);
         // Reduce the weight of bias in the first few iterations.
-        if self.cdf[15] < (CDF_MAX - 16) - (self.cdf[15] >> 1) {
-            for i in 0..16 {
-                self.cdf[i] += self.cdf[i] >> 1;
-            }
-        }
-        debug_assert!(self.cdf[15] <= CDF_MAX - 16);
+        self.mix_rate -= self.mix_rate >> 7;
+        // NOTE(jongmin): geometrically decay mix_rate until it dips below 1 << 7;
+
+
     }
 }
 
@@ -337,6 +352,27 @@ impl BaseCDF for FrequentistCDF16 {
 }
 
 impl CDF16 for FrequentistCDF16 {
+    fn average(&self, other:&Self, mix_rate:i32) -> Self {
+        if self.max() < 32 && other.max() > 32 {
+             return other.clone();
+        } 
+        if self.max() > 32 && other.max() < 32 {
+             return self.clone();
+        }
+        if self.entropy() > other.entropy() {
+             //return other.clone();
+        }
+        //return self.clone();
+        let mut retval = self.clone();
+        let ourmax = self.max() as u64;
+        let othermax = other.max() as u64;
+        let maxmax = core::cmp::max(ourmax, othermax) as u64;
+        let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
+        for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
+	    *s = ((((*s  as u64) * mix_rate as u64*othermax + (*o as u64) * inv_mix_rate as u64 * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) / maxmax) as Prob;
+        }
+        retval
+    }
     fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let increment : Prob =
@@ -382,11 +418,10 @@ fn add(a:Prob, b:Prob) -> Prob {
     a.wrapping_add(b)
 }
 
-const BLEND_FIXED_POINT_PRECISION : i8 = 15;
+pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;
 
-pub fn mul_blend(baseline: [Prob;16], symbol: u8, blend : i32, bias : i32) -> [Prob;16] {
+pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : i32, bias : i32) -> [Prob;16] {
     const SCALE :i32 = 1i32 << BLEND_FIXED_POINT_PRECISION;
-    let to_blend = to_blend_lut(symbol);
     let mut epi32:[i32;8] = [to_blend[0] as i32,
                              to_blend[1] as i32,
                              to_blend[2] as i32,
