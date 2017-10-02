@@ -154,7 +154,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer, Some(Speed::MUD), true, true).unwrap();
+   super::compress(&mut buf_ir, &mut dv_buffer, Some(Speed::MUD), true, true, None).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
@@ -186,7 +186,7 @@ fn test_e2e_64x() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer, None, true, true).unwrap();
+   super::compress(&mut buf_ir, &mut dv_buffer, None, true, true, None).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -201,7 +201,7 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress(&mut buf_ir, &mut dv_buffer, Some(Speed::ROCKET), true, true).unwrap();
+   super::compress(&mut buf_ir, &mut dv_buffer, Some(Speed::ROCKET), true, true, None).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;

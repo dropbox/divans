@@ -872,10 +872,11 @@ impl<AllocU8:Allocator<u8>,
                                                               k0 * 16 + k1,
                                                               nibble_index_truncated))
                             } else {
+                                let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (superstate.bk.stride as usize,
-                                                              actual_context,
-                                                              16 * (*cur_byte >> 4) as usize + k1,
+                                                              cur_byte_prior,
+                                                              k0 * 16 + k1,
                                                               nibble_index_truncated))
                             };
                             let mut cm_prob = if high_nibble {
@@ -885,10 +886,11 @@ impl<AllocU8:Allocator<u8>,
                                                               0,
                                                               nibble_index_truncated))
                             } else {
+                                let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (0,
                                                               actual_context,
-                                                              16 * (*cur_byte >> 4) as usize,
+                                                              cur_byte_prior,
                                                               nibble_index_truncated))
                             };
                             let prob = if materialized_prediction_mode {
