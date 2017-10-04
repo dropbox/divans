@@ -873,6 +873,7 @@ fn main() {
     let mut force_stride = false;
     let mut force_stride_value: Option<u8> = None;
     let mut literal_adaptation: Option<Speed> = None;
+    let mut buffer_size:usize = 65536;
     if env::args_os().len() > 1 {
         let mut first = true;
         for argument in env::args() {
@@ -881,6 +882,12 @@ fn main() {
                 continue;
             }
             if argument == "-d" {
+                continue;
+            }
+            if argument.starts_with("-bs") {
+                buffer_size = argument.trim_matches(
+                    '-').trim_matches(
+                    'b').trim_matches('s').parse::<usize>().unwrap();
                 continue;
             }
             if argument.starts_with("-b") {
@@ -978,7 +985,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, 65536) {
+                        match decompress(&mut input, &mut output, buffer_size) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1002,7 +1009,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), 65536) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1023,7 +1030,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1031,7 +1038,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), 65536) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }

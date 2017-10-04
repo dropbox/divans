@@ -144,7 +144,9 @@ pub trait EntropyDecoder {
         let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
         let lo_prob = prob.cdf(nibble & 14) as i32;
         let normalized_lo_prob = ((((lo_prob -  lo_min) as i32) << 8) / (lo_max - lo_min as i32)) as u8;
-        nibble | self.get_bit(normalized_lo_prob) as u8
+        let ret = nibble | self.get_bit(normalized_lo_prob) as u8;
+        //println!("P({}) {} {} {} {} b {}", count, normalized_high_bit_prob, normalized_mid_prob, normalized_lomid_prob, lo_prob, ret);
+        ret
     }
     fn get_8bit(&mut self, true_probabilities: [u8;8]) -> [bool;8] {
         let mut ret = [false; 8];

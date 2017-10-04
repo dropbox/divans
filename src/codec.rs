@@ -1061,16 +1061,16 @@ impl LiteralBlockTypeState {
                 },
                 LiteralBlockTypeState::Intermediate(bts) => {
 	            let mut local_bts = bts.clone();
-                    match local_bts.encode_or_decode(superstate,
+                    let early_ret = match local_bts.encode_or_decode(superstate,
                       input_bs.0,
                       BLOCK_TYPE_LITERAL_SWITCH,
                       input_bytes,
                       input_offset,
                       output_bytes,
                       output_offset) {
-                        BrotliResult::ResultSuccess => {},
-                        any => return any,
-                    }
+                        BrotliResult::ResultSuccess => None,
+                        any => Some(any),
+                    };
                     match local_bts {
                         BlockTypeState::FullyDecoded(val) => {
 			   *self = LiteralBlockTypeState::StrideNibble(val);
@@ -1078,6 +1078,10 @@ impl LiteralBlockTypeState {
                         any => {
 			   *self = LiteralBlockTypeState::Intermediate(any);
                         }
+                    }
+                    match early_ret {
+                       Some(val) => return val,
+                       None => {},
                     }
                 },
                 LiteralBlockTypeState::StrideNibble(ltype) =>   {
