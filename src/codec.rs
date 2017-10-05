@@ -161,7 +161,7 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = 0;
+                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * (8*core::mem::size_of_val(&superstate.bk.last_llen) - (superstate.bk.last_llen.leading_zeros() as usize));
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -820,7 +820,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    superstate.bk.last_llen = self.lc.data.slice().len() as u8;
+                    superstate.bk.last_llen = self.lc.data.slice().len() as u32;
                     let byte_index = (nibble_index as usize) >> 1;
                     let high_nibble = (nibble_index & 1) == 0;
                     let shift : u8 = if high_nibble { 4 } else { 0 };
@@ -1257,7 +1257,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     stride: u8,
     last_dlen: u8,
     last_clen: u8,
-    last_llen: u8,
+    last_llen: u32,
     last_4_states: u8,
     materialized_context_map: bool,
     combine_literal_predictions: bool,
