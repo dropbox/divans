@@ -238,7 +238,7 @@ impl CopyState {
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize,));
+                            CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize, ((superstate.bk.last_llen < 8) as usize)));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib, Speed::MUD);
                     }
@@ -1190,7 +1190,7 @@ enum CopyCommandNibblePriorType {
 const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
-                     (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES),
+                     (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES, 2),
                      (CopyCommandNibblePriorType::DistanceLastNib, NUM_BLOCK_TYPES, 1),
                      (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_BLOCK_TYPES, 5),
                      (CopyCommandNibblePriorType::CountSmall, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
