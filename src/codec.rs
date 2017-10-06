@@ -161,13 +161,13 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * (8*core::mem::size_of_val(&superstate.bk.last_llen) - (superstate.bk.last_llen.leading_zeros() as usize));
+                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * core::cmp::min(superstate.bk.last_llen as usize - 1, 3);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
-                    nibble_prob.blend(shortcut_nib, Speed::SLOW);
+                    nibble_prob.blend(shortcut_nib, Speed::MED);
 
                     if shortcut_nib == 15 {
                         self.state = CopySubstate::CountLengthFirst;
