@@ -18,6 +18,7 @@ mod priors;
 mod encoder;
 mod debug_encoder;
 mod cmd_to_raw;
+mod raw_to_cmd;
 mod codec;
 mod cmd_to_divans;
 mod divans_to_raw;
