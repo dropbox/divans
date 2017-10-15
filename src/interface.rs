@@ -1,4 +1,5 @@
 use alloc::{SliceWrapper, Allocator};
+use core;
 use brotli_decompressor::BrotliResult;
 use super::probability::CDF16;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
@@ -133,7 +134,20 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     BlockSwitchDistance(BlockSwitch),
     PredictionMode(PredictionModeContextMap<SliceType>),
 }
-
+impl<SliceType:SliceWrapper<u8>+Default> Command<SliceType> {
+    fn free<F>(&mut self, free_func: &mut F) where F: FnMut(SliceType) {
+       match self {
+          &mut Command::Literal(ref mut lit) => {
+             free_func(core::mem::replace(&mut lit.data, SliceType::default()))
+          },
+          &mut Command::PredictionMode(ref mut pm) => {
+             free_func(core::mem::replace(&mut pm.literal_context_map, SliceType::default()));
+             free_func(core::mem::replace(&mut pm.distance_context_map, SliceType::default()));
+          },
+          _ => {},
+       }
+    }
+}
 
 impl<SliceType:SliceWrapper<u8>> Default for Command<SliceType> {
     fn default() -> Self {
