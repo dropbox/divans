@@ -313,7 +313,20 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
 }
 impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for DivansRecodeState<RingBuffer> {
-    fn encode<SliceType:SliceWrapper<u8>>(&mut self,
+    fn encode(&mut self, input:&[u8], input_offset: &mut usize, output: &mut [u8], output_offset: &mut usize) -> BrotliResult {
+       let amt_to_copy = core::cmp::min(input.len() - *input_offset, output.len() - *output_offset);
+       output.split_at_mut(*output_offset).1.split_at_mut(amt_to_copy).0.clone_from_slice(input.split_at(*input_offset).1.split_at(amt_to_copy).0);
+       *input_offset += amt_to_copy;
+       *output_offset += amt_to_copy;
+       if *input_offset == input.len() {
+          return BrotliResult::ResultSuccess;
+       }
+       if *output_offset == output.len() {
+          return BrotliResult::NeedsMoreOutput;
+       }
+       BrotliResult::ResultFailure
+    }
+    fn encode_commands<SliceType:SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
                   input_offset : &mut usize,
                   output :&mut[u8],

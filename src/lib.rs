@@ -163,7 +163,14 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16>   {
-    fn encode<SliceType:SliceWrapper<u8>+Default>(&mut self,
+    fn encode(&mut self,
+              input: &[u8],
+              input_offset: &mut usize,
+              output: &mut [u8],
+              output_offset: &mut usize) -> BrotliResult {
+        BrotliResult::ResultFailure // FIXME: make this use the locally sourced ir
+    }
+    fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],

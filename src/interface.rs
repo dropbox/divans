@@ -162,7 +162,12 @@ impl<SliceType:SliceWrapper<u8>> Nop<Command<SliceType>> for Command<SliceType> 
 }
 
 pub trait Compressor {
-    fn encode<SliceType:SliceWrapper<u8>+Default>(&mut self,
+    fn encode(&mut self,
+              input:&[u8],
+              input_offset: &mut usize,
+              output:&mut[u8],
+              output_offset:&mut usize) -> BrotliResult;
+    fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],
