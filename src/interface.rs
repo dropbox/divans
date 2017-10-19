@@ -74,8 +74,21 @@ pub struct PredictionModeContextMap<SliceType:SliceWrapper<u8>> {
     pub distance_context_map: SliceType,
 }
 
+impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for PredictionModeContextMap<SliceType> {
+    fn clone(&self) -> Self {
+        PredictionModeContextMap {
+            literal_prediction_mode:self.literal_prediction_mode,
+            literal_context_map: self.literal_context_map.clone(),
+            distance_context_map: self.distance_context_map.clone(),
+        }
+    }
+}
+impl<SliceType:SliceWrapper<u8>+Default+Clone+Copy> Copy for PredictionModeContextMap<SliceType> {
+}
 
-#[derive(Debug)]
+
+
+#[derive(Debug, Clone, Copy)]
 pub struct CopyCommand {
     pub distance: u32,
     pub num_bytes: u32,
@@ -90,7 +103,7 @@ impl Nop<CopyCommand> for CopyCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct DictCommand {
     pub word_size: u8,
     pub transform: u8,
@@ -124,6 +137,15 @@ impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for Lite
     }
 }
 
+impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for LiteralCommand<SliceType> {
+    fn clone(&self) -> Self {
+        LiteralCommand {
+            data: self.data.clone()
+        }
+    }
+}
+impl<SliceType:SliceWrapper<u8>+Default+Clone+Copy> Copy for LiteralCommand<SliceType> {
+}
 #[derive(Debug)]
 pub enum Command<SliceType:SliceWrapper<u8> > {
     Copy(CopyCommand),
@@ -133,6 +155,35 @@ pub enum Command<SliceType:SliceWrapper<u8> > {
     BlockSwitchLiteral(LiteralBlockSwitch),
     BlockSwitchDistance(BlockSwitch),
     PredictionMode(PredictionModeContextMap<SliceType>),
+}
+impl<SliceType:SliceWrapper<u8>+Default+Clone+Copy> Copy for Command<SliceType> {
+}
+impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for Command<SliceType> {
+    fn clone(&self) -> Command<SliceType> {
+        match self {
+            &Command::Copy(ref cpy) => {
+                Command::Copy(cpy.clone())
+            },
+            &Command::Dict(ref dict) => {
+                Command::Dict(dict.clone())
+            },
+            &Command::Literal(ref lit) => {
+                Command::Literal(lit.clone())
+            },
+            &Command::PredictionMode(ref lit) => {
+                Command::PredictionMode(lit.clone())
+            },
+            &Command::BlockSwitchCommand(ref bs) => {
+                Command::BlockSwitchCommand(bs.clone())
+            },
+            &Command::BlockSwitchLiteral(ref bs) => {
+                Command::BlockSwitchLiteral(bs.clone())
+            },
+            &Command::BlockSwitchDistance(ref bs) => {
+                Command::BlockSwitchDistance(bs.clone())
+            },
+        }
+    }
 }
 impl<SliceType:SliceWrapper<u8>+Default> Command<SliceType> {
     fn free<F>(&mut self, free_func: &mut F) where F: FnMut(SliceType) {

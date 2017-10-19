@@ -1753,6 +1753,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub fn get_coder(&self) -> &ArithmeticCoder {
         &self.cross_command_state.coder
     }
+    pub fn get_m8(&mut self) -> &mut AllocU8 {
+        &mut self.cross_command_state.m8
+    }
     pub fn specialization(&mut self) -> &mut Specialization{
         &mut self.cross_command_state.specialization
     }

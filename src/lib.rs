@@ -11,6 +11,7 @@ extern crate alloc_no_stdlib as alloc;
 extern crate brotli_decompressor;
 
 pub mod interface;
+pub mod slice_util;
 mod probability;
 #[macro_use]
 mod priors;
@@ -77,29 +78,38 @@ macro_rules! DefaultDecoderType(
 
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
+                            AllocU32:Allocator<u32>,
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<DefaultCDF16>> {
+    m32: AllocU32,
     codec: DivansCodec<DefaultEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
+    cmd_assembler: raw_to_cmd::RawToCmdState<AllocU8::AllocatedMemory, AllocU32>,
+    cmd_array: [Command<AllocU8::AllocatedMemory>; 8],
+    cmd_offset: usize,
 }
 
 pub trait DivansCompressorFactory<
      AllocU8:Allocator<u8>, 
+     AllocU32:Allocator<u32>, 
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
-    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+    fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
            literal_adaptation_rate: Option<probability::Speed>) -> 
-        DivansCompressor<Self::DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
+        DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
         }
         if window_size > 24 {
             window_size = 24;
         }
+        let ring_buffer = m8.alloc_cell(1<<window_size);
         let enc = Self::DefaultEncoder::new(&mut m8);
-        DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
+        let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
+          DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+            m32 :m32,
             codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
@@ -109,6 +119,16 @@ pub trait DivansCompressorFactory<
                 window_size,
                 literal_adaptation_rate,
             ),
+              cmd_array:[interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),
+                         interface::Command::<AllocU8::AllocatedMemory>::default(),],
+            cmd_offset:0,
+            cmd_assembler:assembler,
             header_progress: 0,
             window_size: window_size as u8,
         }
@@ -124,9 +144,10 @@ pub struct DivansCompressorFactoryStruct
     p3: PhantomData<AllocCDF16>,
 }
 
-impl<AllocU8:Allocator<u8>, 
+impl<AllocU8:Allocator<u8>,
+     AllocU32:Allocator<u32>,
      AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocCDF2, AllocCDF16>
+     AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocU32, AllocCDF2, AllocCDF16>
     for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultEncoder = DefaultEncoderType!();
 }
@@ -138,8 +159,8 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     retval
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
-    DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16> {
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
+    DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
 
     fn write_header(&mut self, output: &mut[u8],
                     output_offset:&mut usize) -> BrotliResult {
@@ -161,14 +182,35 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
+     AllocU32:Allocator<u32>,
      AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder, AllocU8, AllocCDF2, AllocCDF16>   {
+     AllocCDF16:Allocator<DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>   {
     fn encode(&mut self,
               input: &[u8],
               input_offset: &mut usize,
               output: &mut [u8],
               output_offset: &mut usize) -> BrotliResult {
-        BrotliResult::ResultFailure // FIXME: make this use the locally sourced ir
+//        let ret = self.cmd_assembler.stream(&mut self.codec.cross_command_state.m8, input, input_offset,
+        //&mut self.cmd_array, &mut self.cmd_offset);
+        let mut ret : BrotliResult = BrotliResult::ResultFailure;
+        while true {
+            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;16] = [interface::Command::<slice_util::SliceReference<u8>>::default();16];
+            ret = self.cmd_assembler.stream(&input, input_offset,
+                                            &mut temp_bs[..], &mut self.cmd_offset);
+            match ret {
+                BrotliResult::NeedsMoreInput => {
+                    return ret;
+                },
+                BrotliResult::ResultFailure => {
+                    return ret;
+                },
+                BrotliResult::ResultSuccess => {
+                    return BrotliResult::ResultFailure; // we are never done
+                },
+                _ => {},
+            }
+        }
+        ret
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],

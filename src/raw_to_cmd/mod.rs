@@ -2,7 +2,7 @@ use core;
 mod hash_match;
 use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-
+pub use super::slice_util::SliceReference;
 pub use brotli_decompressor::{BrotliResult};
 pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
@@ -29,7 +29,89 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
     pub fn ring_buffer_full(&self) -> bool {
         self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() || self.ring_buffer_decode_index + 1 == self.ring_buffer_output_index
     }
-    pub fn stream<AllocU8:Allocator<u8>>(&mut self,
+    pub fn stream<'a>(&'a mut self,
+                                          input:&[u8],
+                                          input_offset:&mut usize,
+                                          output: &mut [Command<SliceReference<'a, u8>>],
+                                          output_offset:&mut usize) -> BrotliResult {
+        if self.ring_buffer_decode_index >= self.ring_buffer_output_index {
+            let max_copy = core::cmp::min(self.ring_buffer.slice().len() - self.ring_buffer_decode_index as usize,
+                                          input.len() - *input_offset);
+            self.ring_buffer.slice_mut()[(self.ring_buffer_decode_index as usize)..(self.ring_buffer_decode_index as usize + max_copy)].clone_from_slice(&input[*input_offset..(*input_offset + max_copy)]);
+            *input_offset += max_copy;
+            self.ring_buffer_decode_index += max_copy as u32;
+            if self.ring_buffer_output_index != 0 {
+               self.ring_buffer_decode_index = 0;
+            }
+        }
+        if self.ring_buffer_decode_index < self.ring_buffer_output_index {
+           let max_copy = core::cmp::min(self.ring_buffer_output_index as usize - 1,
+                                         input.len() - *input_offset);
+           self.ring_buffer.slice_mut()[(self.ring_buffer_decode_index as usize)..(self.ring_buffer_decode_index as usize + max_copy)].clone_from_slice(&input[*input_offset..(*input_offset + max_copy)]);
+            *input_offset += max_copy;
+            self.ring_buffer_decode_index += max_copy as u32;
+        }
+        if *output_offset < output.len() && self.ring_buffer_full() {
+            match self.flush(output, output_offset) {
+                BrotliResult::NeedsMoreOutput => {
+                  return BrotliResult::NeedsMoreOutput;
+                }
+                BrotliResult::ResultFailure => {
+                    return BrotliResult::ResultFailure;
+                },
+                _ => {
+                    if *input_offset != input.len() {
+                        // not really true: we may be able to consume more input, but ourr
+                        // ring buffer is borrowed
+                        return BrotliResult::NeedsMoreOutput;
+                    }
+                },
+            }
+        } else if *output_offset == output.len() {
+            return BrotliResult::NeedsMoreOutput;
+        }
+        assert_eq!(*input_offset, input.len());
+        BrotliResult::NeedsMoreInput
+    }
+    pub fn flush<'a>(
+              &'a mut self,
+              output: &mut [Command<SliceReference<'a, u8>>],
+              output_offset:&mut usize) -> BrotliResult {
+        if *output_offset == output.len() {
+           return BrotliResult::NeedsMoreOutput;
+        }
+        if self.ring_buffer_decode_index < self.ring_buffer_output_index {
+           let max_copy = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
+           output[*output_offset] = Command::Literal(
+               LiteralCommand::<SliceReference<'a, u8> >{
+                   data: SliceReference::<u8>::new(self.ring_buffer.slice(),
+                                                   self.ring_buffer_output_index as usize,
+                                                   max_copy),
+                   
+               });
+           *output_offset += 1;
+           if self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() {
+               self.ring_buffer_decode_index = 0;
+           }
+           self.ring_buffer_output_index = 0
+        }
+        if self.ring_buffer_decode_index != self.ring_buffer_output_index {
+           if *output_offset == output.len() {
+               return BrotliResult::NeedsMoreOutput;
+           }
+           let max_copy = self.ring_buffer_decode_index as usize - self.ring_buffer_output_index as usize;
+           output[*output_offset] = Command::Literal(
+               LiteralCommand::<SliceReference<'a, u8>>{
+                   data: SliceReference::<u8>::new(self.ring_buffer.slice(),
+                                                   self.ring_buffer_output_index as usize,
+                                                   max_copy),
+               });
+           *output_offset += 1;
+           self.ring_buffer_output_index = self.ring_buffer_decode_index
+        }
+        BrotliResult::ResultSuccess
+    }
+    pub fn stream2<AllocU8:Allocator<u8>>(&mut self,
               m8: &mut AllocU8,
               input:&[u8],
               input_offset:&mut usize,
@@ -54,7 +136,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             self.ring_buffer_decode_index += max_copy as u32;
         }
         if *output_offset < output.len() && self.ring_buffer_full() {
-           match self.flush(m8, output, output_offset) {
+           match self.flush2(m8, output, output_offset) {
               BrotliResult::NeedsMoreOutput => {
                   return BrotliResult::NeedsMoreOutput;
               }
@@ -72,7 +154,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
       }
       BrotliResult::NeedsMoreInput
     }
-    pub fn flush<AllocU8:Allocator<u8>>(
+    pub fn flush2<AllocU8:Allocator<u8>>(
               &mut self,
               m8: &mut AllocU8,
               output: &mut [Command<AllocU8::AllocatedMemory>],
