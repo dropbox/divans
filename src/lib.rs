@@ -76,6 +76,7 @@ macro_rules! DefaultDecoderType(
     () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
 );
 
+const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocU32:Allocator<u32>,
@@ -86,7 +87,7 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
     header_progress: usize,
     window_size: u8,
     cmd_assembler: raw_to_cmd::RawToCmdState<AllocU8::AllocatedMemory, AllocU32>,
-    cmd_array: [Command<AllocU8::AllocatedMemory>; 8],
+    cmd_array: [Command<slice_util::SliceReference<'static,u8>>; COMPRESSOR_CMD_BUFFER_SIZE],
     cmd_offset: usize,
 }
 
@@ -119,14 +120,7 @@ pub trait DivansCompressorFactory<
                 window_size,
                 literal_adaptation_rate,
             ),
-              cmd_array:[interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),
-                         interface::Command::<AllocU8::AllocatedMemory>::default(),],
+              cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
             cmd_offset:0,
             cmd_assembler:assembler,
             header_progress: 0,
@@ -194,17 +188,19 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         //&mut self.cmd_array, &mut self.cmd_offset);
         let mut ret : BrotliResult = BrotliResult::ResultFailure;
         while true {
-            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;16] = [interface::Command::<slice_util::SliceReference<u8>>::default();16];
+            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
+                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             ret = self.cmd_assembler.stream(&input, input_offset,
                                             &mut temp_bs[..], &mut self.cmd_offset);
             match ret {
                 BrotliResult::NeedsMoreInput => {
-                    return ret;
+                    if self.cmd_offset == 0 {
+                        // freeze dry, return
+                        //FIXME 
+                        return ret;
+                    }
                 },
-                BrotliResult::ResultFailure => {
-                    return ret;
-                },
-                BrotliResult::ResultSuccess => {
+                BrotliResult::ResultFailure | BrotliResult::ResultSuccess => {
                     return BrotliResult::ResultFailure; // we are never done
                 },
                 _ => {},
