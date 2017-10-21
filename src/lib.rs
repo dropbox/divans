@@ -156,6 +156,9 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
 
+    fn freeze_dry<SliceType:SliceWrapper<u8>+Default>(&mut self, input:&[Command<SliceType>]) {
+        
+    }
     fn write_header(&mut self, output: &mut[u8],
                     output_offset:&mut usize) -> BrotliResult {
         let bytes_avail = output.len() - *output_offset;
@@ -187,16 +190,26 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
 //        let ret = self.cmd_assembler.stream(&mut self.codec.cross_command_state.m8, input, input_offset,
         //&mut self.cmd_array, &mut self.cmd_offset);
         let mut ret : BrotliResult = BrotliResult::ResultFailure;
+        if self.cmd_offset != 0 { // we have some freeze dried items
+            /*
+            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
+                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
+            
+            match self.encode_commands(temp_bs.split_at(temp_cmd_offset).0, &mut out_cmd_offset,
+                                       output, output_offset) {
+            }*/
+        }
+        
         while true {
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
+            let mut temp_cmd_offset = 0;
             ret = self.cmd_assembler.stream(&input, input_offset,
-                                            &mut temp_bs[..], &mut self.cmd_offset);
+                                            &mut temp_bs[..], &mut temp_cmd_offset);
             match ret {
                 BrotliResult::NeedsMoreInput => {
-                    if self.cmd_offset == 0 {
-                        // freeze dry, return
-                        //FIXME 
+                    if temp_cmd_offset == 0 {
+                        // nothing to freeze dry, return
                         return ret;
                     }
                 },
@@ -205,6 +218,29 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                 },
                 _ => {},
             }
+            /* Borrow problem
+            let mut out_cmd_offset: usize = 0;
+            match self.encode_commands(temp_bs.split_at(temp_cmd_offset).0, &mut out_cmd_offset,
+                                  output, output_offset) {
+                BrotliResult::NeedsMoreInput => {
+                    match ret {
+                        BrotliResult::NeedsMoreInput => return ret,
+                        _ => {},
+                    }
+                },
+                BrotliResult::NeedsMoreOutput => {
+                    self.freeze_dry(temp_bs.split_at(temp_cmd_offset).0.split_at(out_cmd_offset).1);
+                    return BrotliResult::NeedsMoreOutput;
+                }
+                BrotliResult::ResultSuccess => {
+                    continue;
+                }
+                BrotliResult::ResultFailure => {
+                    self.freeze_dry(temp_bs.split_at(temp_cmd_offset).0.split_at(out_cmd_offset).1);
+                    return BrotliResult::ResultFailure;
+                }
+            }
+*/
         }
         ret
     }
