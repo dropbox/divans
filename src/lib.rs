@@ -198,7 +198,35 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     fn freeze_dry<'a>(&mut self, input:&[Command<slice_util::SliceReference<'a, u8>>]) {
         assert!(input.len() <= self.freeze_dried_cmd_array.len());
         for (frozen, leftover) in self.freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
-            //FIXME *frozen = *leftover;
+            *frozen = match leftover {
+                &Command::Literal(ref lit) => {
+                    Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
+                        data: lit.data.freeze_dry(),
+                    })
+                },
+                &Command::PredictionMode(ref pm) => {
+                    Command::PredictionMode(PredictionModeContextMap::<slice_util::SliceReference<'static, u8>> {
+                        literal_prediction_mode: pm.literal_prediction_mode.clone(),
+                        literal_context_map: pm.literal_context_map.freeze_dry(),
+                        distance_context_map: pm.literal_context_map.freeze_dry(),
+                    })
+                },
+                &Command::Copy(ref c) => {
+                    Command::Copy(c.clone())
+                }
+                &Command::Dict(ref d) => {
+                    Command::Dict(d.clone())
+                }
+                &Command::BlockSwitchLiteral(ref l) => {
+                    Command::BlockSwitchLiteral(l.clone())
+                }
+                &Command::BlockSwitchCommand(ref c) => {
+                    Command::BlockSwitchCommand(c.clone())
+                }
+                &Command::BlockSwitchDistance(ref d) => {
+                    Command::BlockSwitchDistance(d.clone())
+                }
+            };
         }
     }
     fn write_header(&mut self, output: &mut[u8],
@@ -241,8 +269,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
 //        let ret = self.cmd_assembler.stream(&mut self.codec.cross_command_state.m8, input, input_offset,
         //&mut self.cmd_array, &mut self.cmd_offset);
         let mut ret : BrotliResult = BrotliResult::ResultFailure;
-        
-        while true {
+        match self.flush_freeze_dried_cmds(output, output_offset) {
+            BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
+            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+            BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
+        }
+        loop {
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
