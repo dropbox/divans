@@ -26,6 +26,13 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             hash_match:HashMatch::<AllocU32>::new(m32),
         }
     }
+    /*
+    fn freeze_dry<SliceType:SliceWrapper<u8>+Default>(&mut self, input:&[Command<SliceType>]) {
+        
+    }
+    fn thaw<SliceType:SliceWrapper<u8>+Default>(&mut self, input:&[Command<SliceType>]) {
+        
+    }*/
     pub fn ring_buffer_full(&self) -> bool {
         self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() || self.ring_buffer_decode_index + 1 == self.ring_buffer_output_index
     }

@@ -28,12 +28,13 @@ mod ans;
 pub mod constants;
 pub use brotli_decompressor::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap};
+pub use interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
 pub use cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+
 use core::marker::PhantomData;
 
 const HEADER_LENGTH: usize = 16;
@@ -87,8 +88,9 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
     header_progress: usize,
     window_size: u8,
     cmd_assembler: raw_to_cmd::RawToCmdState<AllocU8::AllocatedMemory, AllocU32>,
-    cmd_array: [Command<slice_util::SliceReference<'static,u8>>; COMPRESSOR_CMD_BUFFER_SIZE],
-    cmd_offset: usize,
+    freeze_dried_cmd_array: [Command<slice_util::SliceReference<'static,u8>>; COMPRESSOR_CMD_BUFFER_SIZE],
+    freeze_dried_cmd_start: usize,
+    freeze_dried_cmd_end: usize,
 }
 
 pub trait DivansCompressorFactory<
@@ -120,8 +122,9 @@ pub trait DivansCompressorFactory<
                 window_size,
                 literal_adaptation_rate,
             ),
-              cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
-            cmd_offset:0,
+              freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
+            freeze_dried_cmd_start:0,
+            freeze_dried_cmd_end:0,
             cmd_assembler:assembler,
             header_progress: 0,
             window_size: window_size as u8,
@@ -152,12 +155,51 @@ fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {
     retval[5] = window_size;
     retval
 }
-
+fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>], ring_buffer: &'a[u8], start_index:  usize, end_index: usize) -> [Command<slice_util::SliceReference<'a, u8>>; COMPRESSOR_CMD_BUFFER_SIZE] {
+   let mut ret : [Command<slice_util::SliceReference<'a, u8>>; COMPRESSOR_CMD_BUFFER_SIZE] = [Command::<slice_util::SliceReference<u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE];
+   for (thawed, frozen) in ret[start_index..end_index].iter_mut().zip(input[start_index..end_index].iter()) {
+      *thawed = *frozen;
+   }
+   for item in ret[start_index..end_index].iter_mut() {
+       match item {
+       &mut Command::Literal(ref mut lit) => {
+           lit.data = lit.data.thaw(ring_buffer);
+       },
+       &mut Command::PredictionMode(ref mut pm) => {
+           pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
+           pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
+       },
+       _ => {},       
+       }
+//       item.apply_array(|array_item:&mut slice_util::SliceReference<'a, u8>| *array_item = array_item.thaw(ring_buffer));
+   }
+   ret
+}
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-
-    fn freeze_dry<SliceType:SliceWrapper<u8>+Default>(&mut self, input:&[Command<SliceType>]) {
-        
+    fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> BrotliResult {
+        if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
+            let mut thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
+                                                  self.freeze_dried_cmd_start, self.freeze_dried_cmd_end);
+            let mut unused: usize = 0;
+            match self.codec.encode_or_decode(&[],
+                                    &mut unused,
+                                    output,
+                                    output_offset,
+                                    thawed_buffer.split_at(self.freeze_dried_cmd_end).0,
+                                    &mut self.freeze_dried_cmd_start) {
+               BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+               BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
+               BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
+            }
+        }
+        BrotliResult::ResultSuccess
+    }
+    fn freeze_dry<'a>(&mut self, input:&[Command<slice_util::SliceReference<'a, u8>>]) {
+        assert!(input.len() <= self.freeze_dried_cmd_array.len());
+        for (frozen, leftover) in self.freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
+            //FIXME *frozen = *leftover;
+        }
     }
     fn write_header(&mut self, output: &mut[u8],
                     output_offset:&mut usize) -> BrotliResult {
@@ -175,6 +217,9 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         self.header_progress = HEADER_LENGTH;
         BrotliResult::ResultSuccess
     }
+    pub fn get_m8(&mut self) -> &mut AllocU8 {
+       self.codec.get_m8()
+    }
 }
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -187,18 +232,15 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
               input_offset: &mut usize,
               output: &mut [u8],
               output_offset: &mut usize) -> BrotliResult {
+        if self.header_progress != HEADER_LENGTH {
+            match self. write_header(output, output_offset) {
+                BrotliResult::ResultSuccess => {},
+                res => return res,
+            }
+        }
 //        let ret = self.cmd_assembler.stream(&mut self.codec.cross_command_state.m8, input, input_offset,
         //&mut self.cmd_array, &mut self.cmd_offset);
         let mut ret : BrotliResult = BrotliResult::ResultFailure;
-        if self.cmd_offset != 0 { // we have some freeze dried items
-            /*
-            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
-                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
-            
-            match self.encode_commands(temp_bs.split_at(temp_cmd_offset).0, &mut out_cmd_offset,
-                                       output, output_offset) {
-            }*/
-        }
         
         while true {
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
@@ -272,7 +314,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                 res => return res,
             }
         }
+        match self.flush_freeze_dried_cmds(output, output_offset) {
+               BrotliResult::ResultFailure => return BrotliResult::ResultFailure, 
+               BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
+               BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
+        }
         self.codec.flush(output, output_offset)
+
     }
 }
 

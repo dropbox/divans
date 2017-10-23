@@ -185,21 +185,35 @@ impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for Command<SliceType> {
         }
     }
 }
+
+/*
 impl<SliceType:SliceWrapper<u8>+Default> Command<SliceType> {
-    fn free<F>(&mut self, free_func: &mut F) where F: FnMut(SliceType) {
+    pub fn free_array<F>(&mut self, apply_func: &mut F) where F: FnMut(SliceType) {
        match self {
           &mut Command::Literal(ref mut lit) => {
-             free_func(core::mem::replace(&mut lit.data, SliceType::default()))
+             apply_func(core::mem::replace(&mut lit.data, SliceType::default()))
           },
           &mut Command::PredictionMode(ref mut pm) => {
-             free_func(core::mem::replace(&mut pm.literal_context_map, SliceType::default()));
-             free_func(core::mem::replace(&mut pm.distance_context_map, SliceType::default()));
+             apply_func(core::mem::replace(&mut pm.literal_context_map, SliceType::default()));
+             apply_func(core::mem::replace(&mut pm.distance_context_map, SliceType::default()));
           },
           _ => {},
        }
     }
 }
-
+*/
+pub fn free_cmd<SliceTypeAllocator:Allocator<u8>> (xself: &mut Command<SliceTypeAllocator::AllocatedMemory>, m8: &mut SliceTypeAllocator) {
+       match xself {
+          &mut Command::Literal(ref mut lit) => {
+             m8.free_cell(core::mem::replace(&mut lit.data, SliceTypeAllocator::AllocatedMemory::default()))
+          },
+          &mut Command::PredictionMode(ref mut pm) => {
+             m8.free_cell(core::mem::replace(&mut pm.literal_context_map, SliceTypeAllocator::AllocatedMemory::default()));
+             m8.free_cell(core::mem::replace(&mut pm.distance_context_map, SliceTypeAllocator::AllocatedMemory::default()));
+          },
+          _ => {},
+    }
+}
 impl<SliceType:SliceWrapper<u8>> Default for Command<SliceType> {
     fn default() -> Self {
         Command::<SliceType>::nop()

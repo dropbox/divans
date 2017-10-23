@@ -23,7 +23,7 @@ impl<'a, T:'a> SliceReference<'a, T> {
             len: self.len,
         }        
     }
-    pub fn reconstitute(&self, slice:&'a [T]) -> SliceReference<'a, T> {
+    pub fn thaw(&self, slice:&'a [T]) -> SliceReference<'a, T> {
         SliceReference::<'a, T> {
             data: slice.split_at(self.start).1.split_at(self.len).0,
             start: self.start,

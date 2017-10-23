@@ -29,6 +29,7 @@ use divans::Compressor;
 use divans::Decompressor;
 use divans::Speed;
 use divans::CMD_BUFFER_SIZE;
+use divans::free_cmd;
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
@@ -565,6 +566,7 @@ fn compress_inner<Reader:std::io::BufRead,
 
     let mut i_read_index = 0usize;
     let mut last_literal_switch = LiteralBlockSwitch::new(0, 0);
+    let mut m8 = ItemVecAllocator::<u8>::default();
     loop {
         buffer.clear();
         match r.read_line(&mut buffer) {
@@ -578,6 +580,10 @@ fn compress_inner<Reader:std::io::BufRead,
                 if i_read_index == ibuffer.len() || count == 0 {
                     recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
                                                &mut obuffer[..]).unwrap();
+
+                    for item in ibuffer.iter_mut() {
+                       free_cmd(item, &mut m8);
+                    }
                     i_read_index = 0
                 }
                 if count == 0 {
