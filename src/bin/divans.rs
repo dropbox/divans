@@ -635,7 +635,17 @@ fn compress_inner<Reader:std::io::BufRead,
     }
     Ok(())
 }
-fn compress<Reader:std::io::BufRead,
+fn compress_raw<Reader:std::io::Read,
+                Writer:std::io::Write>(
+    mut r:&mut Reader,
+    mut w:&mut Writer,
+    literal_adaptation_speed: Option<Speed>,
+    do_context_map: bool,
+    do_stride: bool,
+    force_stride_value:Option<u8>) -> io::Result<()> {
+    Ok(())
+}
+fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     mut r:&mut Reader,
     mut w:&mut Writer,
@@ -874,6 +884,7 @@ fn recode<Reader:std::io::BufRead,
 }
 fn main() {
     let mut do_compress = false;
+    let mut raw_compress = false;
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
@@ -905,7 +916,7 @@ fn main() {
                     'b').parse::<usize>().unwrap();
                 continue;
             }
-            if argument == "-r" {
+            if argument == "--recode" {
                 do_recode = true;
                 continue;
             }
@@ -938,6 +949,11 @@ fn main() {
             }
             if argument == "-c" {
                 do_compress = true;
+                continue;
+            }
+            if argument == "-r" {
+                do_compress = true;
+                raw_compress = true;
                 continue;
             }
             if argument.starts_with("-speed=") {
@@ -981,13 +997,18 @@ fn main() {
                     Ok(file) => file,
                 };
                 for i in 0..num_benchmarks {
-                    if do_compress {
+                    if do_compress && !raw_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress(&mut buffered_input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value) {
+                        match compress_ir(&mut buffered_input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
                         input = buffered_input.into_inner();
+                    } else if do_compress {
+                        match compress_raw(&mut input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value) {
+                            Ok(_) => {}
+                            Err(e) => panic!("Error {:?}", e),
+                        }
                     } else if do_recode {
                         let mut buffered_input = BufReader::new(input);
                         recode(&mut buffered_input,
@@ -1007,9 +1028,14 @@ fn main() {
                 drop(output);
             } else {
                 assert_eq!(num_benchmarks, 1);
-                if do_compress {
+                if do_compress && !raw_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress(&mut buffered_input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                    match compress_ir (&mut buffered_input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                        Ok(_) => {}
+                        Err(e) => panic!("Error {:?}", e),
+                    }
+                } else if do_compress {
+                    match compress_raw (&mut input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1026,10 +1052,15 @@ fn main() {
             }
         } else {
             assert_eq!(num_benchmarks, 1);
-            if do_compress {
+            if do_compress && !raw_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress(&mut stdin, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                match compress_ir(&mut stdin, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                    Ok(_) => return,
+                    Err(e) => panic!("Error {:?}", e),
+                }
+            } else if do_compress {
+                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
