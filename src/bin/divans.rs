@@ -642,7 +642,123 @@ fn compress_raw<Reader:std::io::Read,
     literal_adaptation_speed: Option<Speed>,
     do_context_map: bool,
     do_stride: bool,
-    force_stride_value:Option<u8>) -> io::Result<()> {
+    force_stride_value:Option<u8>,
+    opt_window_size:Option<i32>,
+    buffer_size: usize) -> io::Result<()> {
+    let window_size = opt_window_size.unwrap_or(21);
+    let mut m8 = ItemVecAllocator::<u8>::default();
+    let mut ibuffer = m8.alloc_cell(buffer_size);
+    let mut obuffer = m8.alloc_cell(buffer_size);
+    let mut state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
+                                  ItemVecAllocator<divans::CDF2>,
+                                  ItemVecAllocator<divans::DefaultCDF16>>::new(
+        m8,
+        ItemVecAllocator::<u32>::default(),
+        ItemVecAllocator::<divans::CDF2>::default(),
+        ItemVecAllocator::<divans::DefaultCDF16>::default(),
+        window_size as usize,
+        literal_adaptation_speed,
+    );
+    let mut ilim = 0usize;
+    let mut idec_index = 0usize;
+    let mut olim = 0usize;
+    let mut oenc_index = 0usize;
+    loop {
+        if idec_index == ilim {
+            idec_index = 0;
+            match r.read(ibuffer.slice_mut()) {
+                Ok(count) => {
+                    ilim = count;
+                    if ilim == 0 {
+                        break; // we're done reading the input
+                    }
+                },
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    let mut m8 = state.free().0;
+                    m8.free_cell(ibuffer);
+                    m8.free_cell(obuffer);
+                    return Err(e);
+                }
+            }
+        }
+        if idec_index != ilim {
+            match state.encode(ibuffer.slice().split_at(ilim).0,
+                               &mut idec_index,
+                               obuffer.slice_mut().split_at_mut(oenc_index).1,
+                               &mut olim) {
+                BrotliResult::ResultSuccess => continue,
+                BrotliResult::ResultFailure => {
+                    let mut m8 = state.free().0;
+                    m8.free_cell(ibuffer);
+                    m8.free_cell(obuffer);
+                    return Err(io::Error::new(io::ErrorKind::Other,
+                               "Failure encoding brotli"));
+                },
+                BrotliResult::NeedsMoreInput => {
+                }
+                BrotliResult::NeedsMoreOutput => {
+                }
+            }
+        }
+        while oenc_index != olim {
+            match w.write(&obuffer.slice()[oenc_index..olim]) {
+                Ok(count) => oenc_index += count,
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    let mut m8 = state.free().0;
+                    m8.free_cell(ibuffer);
+                    m8.free_cell(obuffer);
+                    return Err(e);
+                }
+            }
+        }
+        olim = 0;
+        oenc_index = 0;
+    }
+    let mut done = false;
+    while !done {
+        match state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
+                          &mut olim) {
+            BrotliResult::ResultSuccess => done = true,
+            BrotliResult::ResultFailure => {
+                let mut m8 = state.free().0;
+                m8.free_cell(ibuffer);
+                m8.free_cell(obuffer);
+                return Err(io::Error::new(io::ErrorKind::Other,
+                                          "Failure encoding brotli"));
+            },
+            BrotliResult::NeedsMoreInput => {
+                done = true; // should we assert here?
+                assert!(false);// we are flushing--should be success here
+            }
+            BrotliResult::NeedsMoreOutput => {
+            }
+        }
+        while oenc_index != olim {
+            match w.write(&obuffer.slice()[oenc_index..olim]) {
+                Ok(count) => oenc_index += count,
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    let mut m8 = state.free().0;
+                    m8.free_cell(ibuffer);
+                    m8.free_cell(obuffer);
+                    return Err(e);
+                }
+            }
+        }
+        oenc_index = 0;
+        olim = 0;
+    }
+    let mut m8 = state.free().0;
+    m8.free_cell(ibuffer);
+    m8.free_cell(obuffer);
     Ok(())
 }
 fn compress_ir<Reader:std::io::BufRead,
@@ -893,6 +1009,7 @@ fn main() {
     let mut force_stride = false;
     let mut force_stride_value: Option<u8> = None;
     let mut literal_adaptation: Option<Speed> = None;
+    let mut window_size: Option<i32> = None;
     let mut buffer_size:usize = 65536;
     if env::args_os().len() > 1 {
         let mut first = true;
@@ -1005,7 +1122,7 @@ fn main() {
                         }
                         input = buffered_input.into_inner();
                     } else if do_compress {
-                        match compress_raw(&mut input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value) {
+                        match compress_raw(&mut input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1035,7 +1152,7 @@ fn main() {
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
-                    match compress_raw (&mut input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                    match compress_raw (&mut input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1060,7 +1177,7 @@ fn main() {
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
-                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }

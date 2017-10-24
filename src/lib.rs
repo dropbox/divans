@@ -267,6 +267,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8()
     }
+    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {
+        let (m8, mcdf2, mcdf16) = self.codec.free();
+        self.cmd_assembler.free(&mut self.m32);
+        (m8, self.m32, mcdf2, mcdf16)
+    }
+
 }
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -368,8 +374,45 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
                BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
         }
+        loop {
+            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
+                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
+            let mut temp_cmd_offset = 0;
+            let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset);
+            match command_flush_ret {
+                BrotliResult::ResultSuccess => {},
+                BrotliResult::ResultFailure | BrotliResult::NeedsMoreInput => {
+                    return BrotliResult::ResultFailure; // we are never done
+                },
+                BrotliResult::NeedsMoreOutput => {},
+            }
+            let mut out_cmd_offset = 0;
+            let mut zero: usize = 0;
+            let codec_ret = self.codec.encode_or_decode(&[],
+                                                        &mut zero,
+                                                        output,
+                                                        output_offset,
+                                                        temp_bs.split_at(temp_cmd_offset).0,
+                                                        &mut out_cmd_offset);
+            match codec_ret {
+                BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => {
+                    assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
+                    match command_flush_ret {
+                        BrotliResult::ResultSuccess => break, // we've exhausted all commands and all input
+                        _ => {},
+                    }
+                },
+                BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {
+                    Self::freeze_dry(
+                        &mut self.freeze_dried_cmd_array,
+                        &mut self.freeze_dried_cmd_start,
+                        &mut self.freeze_dried_cmd_end,
+                        &temp_bs[out_cmd_offset..temp_cmd_offset]);
+                    return codec_ret;
+                }
+            }
+        }
         self.codec.flush(output, output_offset)
-
     }
 }
 
