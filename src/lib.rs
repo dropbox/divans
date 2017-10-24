@@ -195,9 +195,14 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         }
         BrotliResult::ResultSuccess
     }
-    fn freeze_dry<'a>(&mut self, input:&[Command<slice_util::SliceReference<'a, u8>>]) {
-        assert!(input.len() <= self.freeze_dried_cmd_array.len());
-        for (frozen, leftover) in self.freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
+        fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
+                          freeze_dried_cmd_start: &mut usize,
+                          freeze_dried_cmd_end: &mut usize,
+                          input:&[Command<slice_util::SliceReference<'a, u8>>]) {
+        assert!(input.len() <= freeze_dried_cmd_array.len());
+        *freeze_dried_cmd_start = 0;
+        *freeze_dried_cmd_end = freeze_dried_cmd_array.len();
+        for (frozen, leftover) in freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
             *frozen = match leftover {
                 &Command::Literal(ref lit) => {
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
@@ -266,9 +271,6 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                 res => return res,
             }
         }
-//        let ret = self.cmd_assembler.stream(&mut self.codec.cross_command_state.m8, input, input_offset,
-        //&mut self.cmd_array, &mut self.cmd_offset);
-        let mut ret : BrotliResult = BrotliResult::ResultFailure;
         match self.flush_freeze_dried_cmds(output, output_offset) {
             BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
             BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
@@ -278,45 +280,46 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
-            ret = self.cmd_assembler.stream(&input, input_offset,
-                                            &mut temp_bs[..], &mut temp_cmd_offset);
-            match ret {
+            let command_decode_ret = self.cmd_assembler.stream(&input, input_offset,
+                                                               &mut temp_bs[..], &mut temp_cmd_offset);
+            match command_decode_ret {
                 BrotliResult::NeedsMoreInput => {
                     if temp_cmd_offset == 0 {
                         // nothing to freeze dry, return
-                        return ret;
+                        return BrotliResult::NeedsMoreInput;
                     }
                 },
                 BrotliResult::ResultFailure | BrotliResult::ResultSuccess => {
                     return BrotliResult::ResultFailure; // we are never done
                 },
-                _ => {},
+                BrotliResult::NeedsMoreOutput => {},
             }
-            /* Borrow problem
-            let mut out_cmd_offset: usize = 0;
-            match self.encode_commands(temp_bs.split_at(temp_cmd_offset).0, &mut out_cmd_offset,
-                                  output, output_offset) {
-                BrotliResult::NeedsMoreInput => {
-                    match ret {
-                        BrotliResult::NeedsMoreInput => return ret,
+            let mut out_cmd_offset = 0;
+            let mut zero: usize = 0;
+            let codec_ret = self.codec.encode_or_decode(&[],
+                                                        &mut zero,
+                                                        output,
+                                                        output_offset,
+                                                        temp_bs.split_at(temp_cmd_offset).0,
+                                                        &mut out_cmd_offset);
+            match codec_ret {
+                BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {
+                    assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
+                    match command_decode_ret {
+                        BrotliResult::NeedsMoreInput => return BrotliResult::NeedsMoreInput, // we've exhausted all commands and all input
                         _ => {},
                     }
                 },
-                BrotliResult::NeedsMoreOutput => {
-                    self.freeze_dry(temp_bs.split_at(temp_cmd_offset).0.split_at(out_cmd_offset).1);
-                    return BrotliResult::NeedsMoreOutput;
-                }
-                BrotliResult::ResultSuccess => {
-                    continue;
-                }
-                BrotliResult::ResultFailure => {
-                    self.freeze_dry(temp_bs.split_at(temp_cmd_offset).0.split_at(out_cmd_offset).1);
-                    return BrotliResult::ResultFailure;
+                BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {
+                    Self::freeze_dry(
+                        &mut self.freeze_dried_cmd_array,
+                        &mut self.freeze_dried_cmd_start,
+                        &mut self.freeze_dried_cmd_end,
+                        &temp_bs[out_cmd_offset..temp_cmd_offset]);
+                    return codec_ret;
                 }
             }
-*/
         }
-        ret
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
