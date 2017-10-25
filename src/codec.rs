@@ -1891,9 +1891,6 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                   output_bytes_offset: &mut usize,
                                                   input_commands: &[Command<ISl>],
                                                   input_command_offset: &mut usize) -> BrotliResult {
-        if input_commands.len() == *input_command_offset {
-            return BrotliResult::NeedsMoreInput;
-        }
         loop {
             let i_cmd_backing = Command::<ISl>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,

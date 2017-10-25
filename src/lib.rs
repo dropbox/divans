@@ -381,7 +381,11 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             let mut temp_cmd_offset = 0;
             let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset);
             match command_flush_ret {
-                BrotliResult::ResultSuccess => {},
+                BrotliResult::ResultSuccess => {
+                    if temp_cmd_offset == 0 {
+                        break; // no output from the cmd_assembler, just plain flush the codec
+                    }
+                },
                 BrotliResult::ResultFailure | BrotliResult::NeedsMoreInput => {
                     return BrotliResult::ResultFailure; // we are never done
                 },
