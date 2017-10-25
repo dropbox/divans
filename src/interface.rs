@@ -141,12 +141,14 @@ impl Nop<DictCommand> for DictCommand {
 #[derive(Debug)]
 pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
     pub data: SliceType,
+    pub prob: SliceType,
 }
 
 impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for LiteralCommand<SliceType> {
     fn nop() -> Self {
         LiteralCommand {
-            data: SliceType::default()
+            data: SliceType::default(),
+            prob: SliceType::default(),
         }
     }
 }
@@ -154,7 +156,8 @@ impl<SliceType:SliceWrapper<u8>+Default> Nop<LiteralCommand<SliceType>> for Lite
 impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for LiteralCommand<SliceType> {
     fn clone(&self) -> Self {
         LiteralCommand {
-            data: self.data.clone()
+            data: self.data.clone(),
+            prob: self.prob.clone(),
         }
     }
 }

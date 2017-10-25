@@ -108,6 +108,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                    data: SliceReference::<u8>::new(self.ring_buffer.slice(),
                                                    self.ring_buffer_output_index as usize,
                                                    max_copy),
+                   prob: SliceReference::<u8>::default(),
                    
                });
            *output_offset += 1;
@@ -126,6 +127,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                    data: SliceReference::<u8>::new(self.ring_buffer.slice(),
                                                    self.ring_buffer_output_index as usize,
                                                    max_copy),
+                   prob: SliceReference::<u8>::default(),
                });
            *output_offset += 1;
            self.ring_buffer_output_index = self.ring_buffer_decode_index
@@ -190,6 +192,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            output[*output_offset] = Command::Literal(
                LiteralCommand::<AllocU8::AllocatedMemory>{
                   data: data_slice,
+                  prob: AllocU8::AllocatedMemory::default(),
                });
            *output_offset += 1;
            if self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() {
@@ -206,7 +209,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            data_slice.slice_mut()[..max_copy].clone_from_slice(&self.ring_buffer.slice()[(self.ring_buffer_output_index as usize)..(self.ring_buffer_decode_index as usize)]);
            output[*output_offset] = Command::Literal(
                LiteralCommand::<AllocU8::AllocatedMemory>{
-                  data: data_slice,
+                   data: data_slice,
+                   prob: AllocU8::AllocatedMemory::default(),
                });
            *output_offset += 1;
            self.ring_buffer_output_index = self.ring_buffer_decode_index

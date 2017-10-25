@@ -221,6 +221,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                 &Command::Literal(ref lit) => {
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
+                        prob: slice_util::SliceReference::<'static, u8>::default(),
                     })
                 },
                 &Command::PredictionMode(ref pm) => {

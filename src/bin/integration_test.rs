@@ -207,3 +207,19 @@ fn test_e2e_262145_at() {
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
 }
+
+#[test]
+fn test_e2e_64xp() {
+   //let raw_text_buffer = UnlimitedBuffer::new(b"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+   let ir_buffer = UnlimitedBuffer::new(b"window 22 len 64\ninsert 64 58585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858585858 01fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe01010101fe01fefe010101\n");
+   let mut dv_buffer = UnlimitedBuffer::new(&[]);
+   let mut buf_ir = BufReader::new(ir_buffer);
+   //let mut rt_buffer = UnlimitedBuffer::new(&[]);
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(Speed::SLOW), true, true, None).unwrap();
+   //super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   //let a =  rt_buffer.data;
+   //let b = raw_text_buffer.data;
+   //assert_eq!(a, b);
+}
+
+

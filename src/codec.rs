@@ -41,7 +41,23 @@ macro_rules! println_stderr(
     } }
 );
 */
-use super::probability::{BaseCDF, CDF2, CDF16, Speed, BLEND_FIXED_POINT_PRECISION};
+use super::probability::{BaseCDF, CDF2, CDF16, Speed, BLEND_FIXED_POINT_PRECISION, ExternalProbCDF16};
+
+//#[cfg(feature="billing")]
+//use std::io::Write;
+//#[cfg(feature="billing")]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
+//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+//    } }
+//);
+//
+//#[cfg(not(feature="billing"))]
+//macro_rules! println_stderr(
+//    ($($val:tt)*) => { {
+////        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+//    } }
+//);
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     Command,
@@ -844,6 +860,7 @@ impl<AllocU8:Allocator<u8>,
                     let base_shift = 0x40 - stride * 8;
                     let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
+                    assert!(in_cmd.prob.slice().len() == 0 || (in_cmd.prob.slice().len() == 8 * in_cmd.data.slice().len()));
                     {
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         let selected_context:usize;
@@ -916,7 +933,18 @@ impl<AllocU8:Allocator<u8>,
                             } else {
                                 nibble_prob.clone()
                             };
-                            superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing);
+                            let mut ecdf = ExternalProbCDF16::default();
+                            let shift_offset = if shift != 0 { 0usize } else { 4usize };
+                            let en = byte_index*8 + shift_offset + 4;
+                            if en <= in_cmd.prob.slice().len() {
+                                let st = en - 4;
+                                let probs = [in_cmd.prob.slice()[st + 0], in_cmd.prob.slice()[st + 1],
+                                             in_cmd.prob.slice()[st + 2], in_cmd.prob.slice()[st + 3]];
+                                ecdf.init(cur_nibble, &probs, nibble_prob);
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
+                            } else {
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
+                            }
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                             cm_prob.blend(cur_nibble, Speed::GLACIAL);
                         }
@@ -1695,6 +1723,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
       3 => EncodeOrDecodeState::Literal(LiteralState {
                                 lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
                                     data:AllocatedMemoryPrefix::default(),
+                                    prob:AllocatedMemoryPrefix::default(),
                                 },
                                 state:LiteralSubstate::Begin,
                             }),
@@ -1862,6 +1891,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                   output_bytes_offset: &mut usize,
                                                   input_commands: &[Command<ISl>],
                                                   input_command_offset: &mut usize) -> BrotliResult {
+        if input_commands.len() == *input_command_offset {
+            return BrotliResult::NeedsMoreInput;
+        }
         loop {
             let i_cmd_backing = Command::<ISl>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,

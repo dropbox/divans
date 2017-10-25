@@ -342,7 +342,7 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
             }
         }
     } else if cmd == "insert"{
-        if command_vec.len() != 3 {
+        if command_vec.len() < 3 {
             if command_vec.len() == 2 && command_vec[1] == "0" {
                 return Ok(None);
             }
@@ -360,11 +360,22 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
             return Ok(None);
         }
         let data = try!(hex_string_to_vec(&command_vec[2]));
+        let probs = if command_vec.len() > 3 {
+            let prob = try!(hex_string_to_vec(&command_vec[3]));
+            assert!(prob.len() == expected_len * 8);
+            prob
+        } else {
+            Vec::<u8>::new()
+        };
+
         if data.len() != expected_len {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        return Ok(Some(Command::Literal(LiteralCommand{data:ItemVec(data)})));
+        return Ok(Some(Command::Literal(LiteralCommand{
+                data:ItemVec(data),
+                prob:ItemVec(probs),
+            })));
     }
     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                               String::from("Unknown ") + &s))

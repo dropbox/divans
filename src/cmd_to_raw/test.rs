@@ -326,10 +326,11 @@ fn help_test_insert(mut state: super::DivansRecodeState<ExRingBuffer>,
     let mut last_readout = [0u8;64];
     let mut last_index = 0;
     let mut done = false;
+    let empty: [u8; 0] = [];
     while !done {
         state.flush(&mut last_readout, &mut last_index);
         if last_index == 0 {
-            match state.parse_literal(&super::LiteralCommand{data:SimpleSliceWrapper(values_to_insert)}) {
+            match state.parse_literal(&super::LiteralCommand{data:SimpleSliceWrapper(values_to_insert), prob: SimpleSliceWrapper(&empty)}) {
                 BrotliResult::NeedsMoreOutput=>{},
                 BrotliResult::ResultSuccess=>{done=true;},
                 res => panic!("uh oh"),
