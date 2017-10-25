@@ -215,7 +215,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                           input:&[Command<slice_util::SliceReference<'a, u8>>]) {
         assert!(input.len() <= freeze_dried_cmd_array.len());
         *freeze_dried_cmd_start = 0;
-        *freeze_dried_cmd_end = freeze_dried_cmd_array.len();
+        *freeze_dried_cmd_end = input.len();
         for (frozen, leftover) in freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
             *frozen = match leftover {
                 &Command::Literal(ref lit) => {
