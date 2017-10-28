@@ -22,7 +22,7 @@ extern crate std;
 #[macro_use]
 extern crate std;
 extern crate alloc_no_stdlib as alloc;
-extern crate brotli_decompressor;
+extern crate brotli as brotli_decompressor;
 
 pub mod interface;
 pub mod slice_util;

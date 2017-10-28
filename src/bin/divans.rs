@@ -5,7 +5,7 @@ extern crate alloc_no_stdlib as alloc;
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[cfg(test)]
-extern crate brotli_decompressor;
+extern crate brotli as brotli_decompressor;
 
 mod integration_test;
 mod util;
