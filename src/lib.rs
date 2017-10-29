@@ -42,7 +42,7 @@ mod ans;
 pub mod constants;
 pub use brotli::BrotliResult;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd};
+pub use interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
 pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
@@ -178,6 +178,7 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
        match item {
        &mut Command::Literal(ref mut lit) => {
            lit.data = lit.data.thaw(ring_buffer);
+           assert_eq!(lit.prob.slice().len(), 0);
        },
        &mut Command::PredictionMode(ref mut pm) => {
            pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
@@ -189,6 +190,16 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
    }
    ret
 }
+#[cfg(not(feature="external-literal-probability"))]
+fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
+    FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>::default()
+}
+
+#[cfg(feature="external-literal-probability")]
+fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
+    FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>(item.0.freeze_dry())
+}
+
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> BrotliResult {
@@ -221,7 +232,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                 &Command::Literal(ref lit) => {
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
-                        prob: slice_util::SliceReference::<'static, u8>::default(),
+                        prob: freeze_dry(&lit.prob),
                     })
                 },
                 &Command::PredictionMode(ref pm) => {

@@ -18,7 +18,7 @@ use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
 pub use brotli::BrotliResult;
-pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
+pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     AllocU32:Allocator<u32>>{
     total_offset: usize,
@@ -108,7 +108,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                    data: SliceReference::<u8>::new(self.ring_buffer.slice(),
                                                    self.ring_buffer_output_index as usize,
                                                    max_copy),
-                   prob: SliceReference::<u8>::default(),
+                   prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
                    
                });
            *output_offset += 1;
@@ -127,7 +127,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                    data: SliceReference::<u8>::new(self.ring_buffer.slice(),
                                                    self.ring_buffer_output_index as usize,
                                                    max_copy),
-                   prob: SliceReference::<u8>::default(),
+                   prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
                });
            *output_offset += 1;
            self.ring_buffer_output_index = self.ring_buffer_decode_index
@@ -192,7 +192,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            output[*output_offset] = Command::Literal(
                LiteralCommand::<AllocU8::AllocatedMemory>{
                   data: data_slice,
-                  prob: AllocU8::AllocatedMemory::default(),
+                  prob: FeatureFlagSliceType::<AllocU8::AllocatedMemory>::default(),
                });
            *output_offset += 1;
            if self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() {
@@ -210,7 +210,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            output[*output_offset] = Command::Literal(
                LiteralCommand::<AllocU8::AllocatedMemory>{
                    data: data_slice,
-                   prob: AllocU8::AllocatedMemory::default(),
+                   prob: FeatureFlagSliceType::<AllocU8::AllocatedMemory>::default(),
                });
            *output_offset += 1;
            self.ring_buffer_output_index = self.ring_buffer_decode_index

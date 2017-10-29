@@ -19,7 +19,7 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
 use brotli::TransformDictionaryWord;
-pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
+pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
 mod test;
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>>{
     total_offset: usize,

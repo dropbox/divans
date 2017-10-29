@@ -17,6 +17,7 @@ use std::env;
 use core::convert::From;
 use std::vec::Vec;
 use divans::BlockSwitch;
+use divans::FeatureFlagSliceType;
 use divans::CopyCommand;
 use divans::LiteralBlockSwitch;
 use divans::LiteralCommand;
@@ -147,6 +148,22 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
     };
     return Ok(expected_window_size)
 }
+
+#[cfg(not(feature="external-literal-probability"))]
+fn deserialize_external_probabilities(probs: std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
+    if probs.len() != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput,
+            "To parse nonzero external probabiltiy flags, compile with feature flag external-literal-probability"));
+    }
+    Ok(FeatureFlagSliceType::<ItemVec<u8>>::default())
+}
+#[cfg(feature="external-literal-probability")]
+fn deserialize_external_probabilities(probs: std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
+    Ok(FeatureFlagSliceType::<ItemVec<u8>>(ItemVec(probs)))
+}
+
+
+
 
 fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_value: Option<u8>) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
@@ -372,10 +389,17 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + &s))
         }
-        return Ok(Some(Command::Literal(LiteralCommand{
-                data:ItemVec(data),
-                prob:ItemVec(probs),
-            })));
+        match deserialize_external_probabilities(probs) {
+            Ok(external_probs) => {
+                return Ok(Some(Command::Literal(LiteralCommand{
+                        data:ItemVec(data),
+                        prob:external_probs,
+                         })));
+            },
+            Err(external_probs_err) => {
+                return Err(external_probs_err);
+            },
+        }
     }
     return Err(io::Error::new(io::ErrorKind::InvalidInput,
                               String::from("Unknown ") + &s))
@@ -589,8 +613,8 @@ fn compress_inner<Reader:std::io::BufRead,
             },
             Ok(count) => {
                 if i_read_index == ibuffer.len() || count == 0 {
-                    recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
-                                               &mut obuffer[..]).unwrap();
+                    try!(recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
+                                               &mut obuffer[..]));
 
                     for item in ibuffer.iter_mut() {
                        free_cmd(item, &mut m8);
@@ -601,7 +625,7 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(line, do_context_map, do_stride, force_stride_value).unwrap() {
+                match try!(command_parse(line, do_context_map, do_stride, force_stride_value)) {
                     None => {},
                     Some(c) => {
                         if allowed_command(&c,
@@ -792,7 +816,7 @@ fn compress_ir<Reader:std::io::BufRead,
             },
             Ok(_) => {
                 let line = buffer.trim().to_string();
-                window_size = window_parse(line).unwrap();
+                window_size = try!(window_parse(line));
                 break;
             }
         }

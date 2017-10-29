@@ -371,6 +371,7 @@ impl <AllocU8:Allocator<u8>> AllocatedMemoryPrefix<AllocU8> {
     }
 }
 
+/*
 impl<AllocU8:Allocator<u8>> From<CopyState> for Command<AllocatedMemoryPrefix<AllocU8>> {
      fn from(cp: CopyState) -> Self {
         Command::Copy(cp.cc)
@@ -385,7 +386,7 @@ impl<AllocU8:Allocator<u8>> From<LiteralState<AllocU8>> for Command<AllocatedMem
      fn from(ll: LiteralState<AllocU8>) -> Self {
         Command::Literal(ll.lc)
      }
-}
+}*/
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ContextMapType {
     Literal,
@@ -1721,10 +1722,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
                                 state: DictSubstate::Begin,
                             }),
       3 => EncodeOrDecodeState::Literal(LiteralState {
-                                lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>{
-                                    data:AllocatedMemoryPrefix::default(),
-                                    prob:AllocatedMemoryPrefix::default(),
-                                },
+                                lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop(),
                                 state:LiteralSubstate::Begin,
                             }),
      4 => EncodeOrDecodeState::BlockSwitchLiteral(LiteralBlockTypeState::Begin),

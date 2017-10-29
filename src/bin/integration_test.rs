@@ -207,6 +207,10 @@ fn test_e2e_262145_at() {
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
 }
+#[cfg(not(feature="external-literal-probability"))]
+const EXTERNAL_PROB_FEATURE:bool = false;
+#[cfg(feature="external-literal-probability")]
+const EXTERNAL_PROB_FEATURE:bool = true;
 
 #[test]
 fn test_e2e_64xp() {
@@ -215,7 +219,10 @@ fn test_e2e_64xp() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    //let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(Speed::SLOW), true, true, None).unwrap();
+   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(Speed::SLOW), true, true, None) {
+      Ok(_) => assert_eq!(EXTERNAL_PROB_FEATURE, true),
+      Err(_) => assert_eq!(EXTERNAL_PROB_FEATURE, false),
+   };
    //super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    //let a =  rt_buffer.data;
    //let b = raw_text_buffer.data;
