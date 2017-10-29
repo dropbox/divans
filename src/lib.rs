@@ -22,7 +22,7 @@ extern crate std;
 #[macro_use]
 extern crate std;
 extern crate alloc_no_stdlib as alloc;
-extern crate brotli as brotli_decompressor;
+extern crate brotli;
 
 pub mod interface;
 pub mod slice_util;
@@ -40,7 +40,7 @@ mod divans_to_raw;
 mod billing;
 mod ans;
 pub mod constants;
-pub use brotli_decompressor::{BrotliResult};
+pub use brotli::BrotliResult;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd};
 pub use cmd_to_raw::DivansRecodeState;

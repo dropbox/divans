@@ -18,7 +18,7 @@ use core::marker::PhantomData;
 use alloc::{Allocator};
 use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
 use super::probability::CDF16;
-use brotli_decompressor::BrotliResult;
+use brotli::BrotliResult;
 
 #[cfg(feature="billing")]
 mod billing {

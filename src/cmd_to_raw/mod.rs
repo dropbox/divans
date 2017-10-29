@@ -14,11 +14,11 @@
 
 use core;
 
-pub use brotli_decompressor::{BrotliResult};
+pub use brotli::{BrotliResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
+use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
-use brotli_decompressor::TransformDictionaryWord;
+use brotli::TransformDictionaryWord;
 pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 mod test;
 pub struct DivansRecodeState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>>{

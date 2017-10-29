@@ -14,7 +14,7 @@
 
 use alloc::{SliceWrapper, Allocator};
 use core;
-use brotli_decompressor::BrotliResult;
+use brotli::BrotliResult;
 use super::probability::CDF16;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
 
@@ -137,7 +137,6 @@ impl Nop<DictCommand> for DictCommand {
         }
     }
 }
-
 #[derive(Debug)]
 pub struct LiteralCommand<SliceType:SliceWrapper<u8>> {
     pub data: SliceType,

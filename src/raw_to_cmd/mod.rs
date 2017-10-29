@@ -17,7 +17,7 @@ mod hash_match;
 use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
-pub use brotli_decompressor::{BrotliResult};
+pub use brotli::BrotliResult;
 pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     AllocU32:Allocator<u32>>{

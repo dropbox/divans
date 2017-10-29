@@ -15,10 +15,10 @@
 #![allow(dead_code)]
 use core;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
-use brotli_decompressor::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
-use brotli_decompressor::BrotliResult;
+use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
+use brotli::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
-use brotli_decompressor::transform::{TransformDictionaryWord};
+use brotli::transform::{TransformDictionaryWord};
 use priors::{PriorCollection, PriorMultiIndex};
 use super::constants;
 use interface::{
