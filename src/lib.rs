@@ -39,6 +39,7 @@ mod cmd_to_divans;
 mod divans_to_raw;
 mod billing;
 mod ans;
+mod brotli_ir_gen;
 pub mod constants;
 pub use brotli::BrotliResult;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
@@ -286,6 +287,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     }
 
 }
+
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
