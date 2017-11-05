@@ -114,9 +114,33 @@ pub trait DivansCompressorFactory<
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
+     type ConstructedCompressor: Compressor;
+     type AdditionalArgs;
     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
-           literal_adaptation_rate: Option<probability::Speed>) -> 
-        DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+           literal_adaptation_rate: Option<probability::Speed>,
+           additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
+}
+
+pub struct DivansCompressorFactoryStruct
+    <AllocU8:Allocator<u8>, 
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> {
+    p1: PhantomData<AllocU8>,
+    p2: PhantomData<AllocCDF2>,
+    p3: PhantomData<AllocCDF16>,
+}
+
+impl<AllocU8:Allocator<u8>,
+     AllocU32:Allocator<u32>,
+     AllocCDF2:Allocator<probability::CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocU32, AllocCDF2, AllocCDF16>
+    for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
+     type DefaultEncoder = DefaultEncoderType!();
+     type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>;
+     type AdditionalArgs = ();
+     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+           literal_adaptation_rate: Option<probability::Speed>,
+           additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
         }
@@ -145,23 +169,6 @@ pub trait DivansCompressorFactory<
             window_size: window_size as u8,
         }
     }
-}
-
-pub struct DivansCompressorFactoryStruct
-    <AllocU8:Allocator<u8>, 
-     AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> {
-    p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF2>,
-    p3: PhantomData<AllocCDF16>,
-}
-
-impl<AllocU8:Allocator<u8>,
-     AllocU32:Allocator<u32>,
-     AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<DefaultCDF16>> DivansCompressorFactory<AllocU8, AllocU32, AllocCDF2, AllocCDF16>
-    for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
-     type DefaultEncoder = DefaultEncoderType!();
 }
 
 fn make_header(window_size: u8) -> [u8; HEADER_LENGTH] {

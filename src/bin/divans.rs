@@ -692,7 +692,7 @@ fn compress_raw<Reader:std::io::Read,
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize,
-        literal_adaptation_speed,
+        literal_adaptation_speed,(),
     );
     let mut ilim = 0usize;
     let mut idec_index = 0usize;
@@ -830,6 +830,7 @@ fn compress_ir<Reader:std::io::BufRead,
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize,
         literal_adaptation_speed,
+        (),
    );
     compress_inner(state, r, w, do_context_map, do_stride, force_stride_value)
 }
