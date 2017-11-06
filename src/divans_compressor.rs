@@ -1,3 +1,6 @@
+// this compressor generates its own IR through the raw_to_cmd command assembler
+// then it generates a valid divans bitstream using the ANS encoder
+
 use core::marker::PhantomData;
 use super::probability;
 use super::probability::{CDF2,CDF16, Speed};
@@ -82,7 +85,7 @@ impl<AllocU8:Allocator<u8>,
     }
 }
 
-fn make_header(window_size: u8) -> [u8; interface::HEADER_LENGTH] {
+pub fn make_header(window_size: u8) -> [u8; interface::HEADER_LENGTH] {
     let mut retval = [0u8; interface::HEADER_LENGTH];
     retval[0..interface::MAGIC_NUMBER.len()].clone_from_slice(&interface::MAGIC_NUMBER[..]);
     retval[5] = window_size;
@@ -187,6 +190,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                 &make_header(self.window_size)[self.header_progress..
                                               (self.header_progress + bytes_avail)]);
             *output_offset += bytes_avail;
+            self.header_progress += bytes_avail;
             return BrotliResult::NeedsMoreOutput;
         }
         output[*output_offset..(*output_offset + interface::HEADER_LENGTH - self.header_progress)].clone_from_slice(

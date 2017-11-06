@@ -35,6 +35,44 @@ impl<SelectedCDF:CDF16,
      AllocCommand:Allocator<super::brotli::enc::command::Command>,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<SelectedCDF>
+     > BrotliDivansHybridCompressor<SelectedCDF,
+                                    DefaultEncoder,
+                                    AllocU8,
+                                    AllocU16,
+                                    AllocU32,
+                                    AllocI32,
+                                    AllocCommand,
+                                    AllocCDF2,
+                                    AllocCDF16> {
+                                   
+    fn write_header(&mut self, output: &mut[u8],
+                    output_offset:&mut usize) -> BrotliResult {
+        let bytes_avail = output.len() - *output_offset;
+        if bytes_avail + self.header_progress < interface::HEADER_LENGTH {
+            output.split_at_mut(*output_offset).1.clone_from_slice(
+                &super::divans_compressor::make_header(self.window_size)[self.header_progress..
+                                              (self.header_progress + bytes_avail)]);
+            *output_offset += bytes_avail;
+            self.header_progress += bytes_avail;
+            return BrotliResult::NeedsMoreOutput;
+        }
+        output[*output_offset..(*output_offset + interface::HEADER_LENGTH - self.header_progress)].clone_from_slice(
+                &super::divans_compressor::make_header(self.window_size)[self.header_progress..]);
+        *output_offset += interface::HEADER_LENGTH - self.header_progress;
+        self.header_progress = interface::HEADER_LENGTH;
+        BrotliResult::ResultSuccess
+    }
+}
+
+impl<SelectedCDF:CDF16,
+     DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+     AllocU8:Allocator<u8>,
+     AllocU16:Allocator<u16>,
+     AllocU32:Allocator<u32>,
+     AllocI32:Allocator<i32>,
+     AllocCommand:Allocator<super::brotli::enc::command::Command>,
+     AllocCDF2:Allocator<CDF2>,
+     AllocCDF16:Allocator<SelectedCDF>
      > Compressor for BrotliDivansHybridCompressor<SelectedCDF,
                                                    DefaultEncoder,
                                                    AllocU8,
