@@ -151,3 +151,24 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> BillingCapability 
         self.print_compression_ratio(byte_size);
     }
 }
+
+#[cfg(not(feature="billing"))]
+macro_rules! DefaultEncoderType(
+    () => {super::ans::EntropyEncoderANS<AllocU8>}
+);
+
+#[cfg(not(feature="billing"))]
+macro_rules! DefaultDecoderType(
+    () => {ans::EntropyDecoderANS<AllocU8>}
+);
+
+
+#[cfg(feature="billing")]
+macro_rules! DefaultEncoderType(
+    () => { super::billing::BillingArithmeticCoder<AllocU8, super::ans::EntropyEncoderANS<AllocU8>> }
+);
+
+#[cfg(feature="billing")]
+macro_rules! DefaultDecoderType(
+    () => { billing::BillingArithmeticCoder<AllocU8, ans::EntropyDecoderANS<AllocU8>> }
+);

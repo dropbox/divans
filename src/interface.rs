@@ -15,9 +15,27 @@
 use alloc::{SliceWrapper, Allocator};
 use core;
 use brotli::BrotliResult;
-use super::probability::CDF16;
+use super::probability::{CDF2, CDF16};
+use super::probability;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
 pub use brotli::enc::interface::*;
+
+#[cfg(feature="blend")]
+#[cfg(not(feature="debug_entropy"))]
+pub type DefaultCDF16 = probability::BlendCDF16;
+#[cfg(not(feature="blend"))]
+#[cfg(not(feature="debug_entropy"))]
+pub type DefaultCDF16 = probability::FrequentistCDF16;
+#[cfg(feature="blend")]
+#[cfg(feature="debug_entropy")]
+pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::BlendCDF16>;
+#[cfg(not(feature="blend"))]
+#[cfg(feature="debug_entropy")]
+pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::FrequentistCDF16>;
+
+pub const HEADER_LENGTH: usize = 16;
+pub const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
+
 // Commands that can instantiate as a no-op should implement this.
 /*
 #[derive(Debug)]
@@ -183,4 +201,16 @@ pub trait ArithmeticEncoderOrDecoder {
     }
 
     fn close(&mut self) -> BrotliResult;
+}
+pub trait DivansCompressorFactory<
+     AllocU8:Allocator<u8>, 
+     AllocU32:Allocator<u32>, 
+     AllocCDF2:Allocator<CDF2>,
+     AllocCDF16:Allocator<DefaultCDF16>> {
+     type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
+     type ConstructedCompressor: Compressor;
+     type AdditionalArgs;
+    fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+           literal_adaptation_rate: Option<probability::Speed>,
+           additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }
