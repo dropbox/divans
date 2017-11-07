@@ -122,6 +122,27 @@ fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>
     FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>(item.0.freeze_dry())
 }
 
+pub fn write_header(header_progress: &mut usize,
+                    window_size: u8,
+                    output: &mut[u8],
+                    output_offset:&mut usize) -> BrotliResult {
+        let bytes_avail = output.len() - *output_offset;
+        if bytes_avail + *header_progress < interface::HEADER_LENGTH {
+            output.split_at_mut(*output_offset).1.clone_from_slice(
+                &make_header(window_size)[*header_progress..
+                                              (*header_progress + bytes_avail)]);
+            *output_offset += bytes_avail;
+            *header_progress += bytes_avail;
+            return BrotliResult::NeedsMoreOutput;
+        }
+        output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
+                &make_header(window_size)[*header_progress..]);
+        *output_offset += interface::HEADER_LENGTH - *header_progress;
+        *header_progress = interface::HEADER_LENGTH;
+        BrotliResult::ResultSuccess
+
+}
+
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> brotli::BrotliResult {
@@ -182,23 +203,6 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             };
         }
     }
-    fn write_header(&mut self, output: &mut[u8],
-                    output_offset:&mut usize) -> BrotliResult {
-        let bytes_avail = output.len() - *output_offset;
-        if bytes_avail + self.header_progress < interface::HEADER_LENGTH {
-            output.split_at_mut(*output_offset).1.clone_from_slice(
-                &make_header(self.window_size)[self.header_progress..
-                                              (self.header_progress + bytes_avail)]);
-            *output_offset += bytes_avail;
-            self.header_progress += bytes_avail;
-            return BrotliResult::NeedsMoreOutput;
-        }
-        output[*output_offset..(*output_offset + interface::HEADER_LENGTH - self.header_progress)].clone_from_slice(
-                &make_header(self.window_size)[self.header_progress..]);
-        *output_offset += interface::HEADER_LENGTH - self.header_progress;
-        self.header_progress = interface::HEADER_LENGTH;
-        BrotliResult::ResultSuccess
-    }
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8()
     }
@@ -226,7 +230,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
               output: &mut [u8],
               output_offset: &mut usize) -> BrotliResult {
         if self.header_progress != interface::HEADER_LENGTH {
-            match self.write_header(output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
@@ -287,7 +291,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                           output :&mut[u8],
                                           output_offset: &mut usize) -> BrotliResult{
         if self.header_progress != interface::HEADER_LENGTH {
-            match self.write_header(output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
@@ -304,7 +308,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
              output: &mut [u8],
              output_offset: &mut usize) -> BrotliResult {
         if self.header_progress != interface::HEADER_LENGTH {
-            match self.write_header(output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }

@@ -140,7 +140,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
               input_offset:&mut usize,
               output: &mut [Command<AllocU8::AllocatedMemory>],
               output_offset:&mut usize) -> BrotliResult {
-      while true {
+      loop {
         if self.ring_buffer_decode_index >= self.ring_buffer_output_index {
             let max_copy = core::cmp::min(self.ring_buffer.slice().len() - self.ring_buffer_decode_index as usize,
                                           input.len() - *input_offset);

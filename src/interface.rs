@@ -13,7 +13,6 @@
 //   limitations under the License.
 
 use alloc::{SliceWrapper, Allocator};
-use core;
 use brotli::BrotliResult;
 use super::probability::{CDF2, CDF16};
 use super::probability;
@@ -210,7 +209,7 @@ pub trait DivansCompressorFactory<
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
      type ConstructedCompressor: Compressor;
      type AdditionalArgs;
-    fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
            literal_adaptation_rate: Option<probability::Speed>,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }
