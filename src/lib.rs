@@ -23,7 +23,7 @@ extern crate std;
 extern crate std;
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli;
-
+pub mod resizable_byte_buffer;
 pub mod interface;
 pub mod slice_util;
 mod probability;

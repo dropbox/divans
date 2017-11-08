@@ -80,6 +80,42 @@ impl<SelectedCDF:CDF16,
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8()
     }
+    fn internal_encode_stream(&mut self,
+                              op: brotli::enc::encode::BrotliEncoderOperation,
+                              input:&[u8], mut input_offset: &mut usize,
+                              output :&mut [u8], mut output_offset: &mut usize) -> brotli::BrotliResult {
+        let mut available_in = input.len() - *input_offset;
+        let mut available_out = output.len() - *output_offset;
+        let mut nothing : Option<usize> = None;
+        let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| ();
+        if brotli::enc::encode::BrotliEncoderCompressStream(&mut self.brotli_encoder,
+                                                         &mut self.mf64,
+                                                         &mut self.mfv,
+                                                         &mut self.mhl,
+                                                         &mut self.mhc,
+                                                         &mut self.mhd,
+                                                         &mut self.mhp,
+                                                         &mut self.mct,
+                                                         &mut self.mht,
+                                                         op,
+                                                         &mut available_in,
+                                                         input,
+                                                         input_offset,
+                                                         &mut available_out,
+                                                         output,
+                                                         &mut output_offset,
+                                                         &mut nothing,
+                                                            &mut closure) == 0 {
+
+            if available_out != 0 {
+                return BrotliResult::NeedsMoreInput;
+            }
+            if available_out == 0 {
+                return BrotliResult::NeedsMoreOutput;
+            }
+        }
+        BrotliResult::ResultSuccess
+    }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
         let (m8, mcdf2, mcdf16) = self.codec.free();
