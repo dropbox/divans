@@ -1,6 +1,5 @@
-
-
 use core::marker::PhantomData;
+use core::cmp::min;
 use super::probability::{CDF2,CDF16, Speed};
 use super::brotli;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
@@ -8,12 +7,13 @@ pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor,
 
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+use super::resizable_byte_buffer::ResizableByteBuffer;
 use super::interface;
 use super::brotli::BrotliResult;
-use super::brotli::enc::encode::BrotliEncoderStateStruct;
+use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};
 use super::divans_compressor::write_header;
 pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
-                            DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                            ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocU16:Allocator<u16>,
                             AllocU32:Allocator<u32>,
@@ -31,7 +31,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocHT: Allocator<brotli::enc::entropy_encode::HuffmanTree>
      > {
     brotli_encoder: BrotliEncoderStateStruct<AllocU8, AllocU16, AllocU32, AllocI32, AllocCommand>,
-    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     mf64: AllocF64,
@@ -42,9 +42,15 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
     mhp: AllocHP,
     mct: AllocCT,
     mht: AllocHT,
+    brotli_data: ResizableByteBuffer<u8, AllocU8>,
+    divans_data: ResizableByteBuffer<u8, AllocU8>,
+    encoded_byte_offset: usize,
 }
+
+
+
 impl<SelectedCDF:CDF16,
-     DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+     ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
      AllocU32:Allocator<u32>,
@@ -61,7 +67,7 @@ impl<SelectedCDF:CDF16,
      AllocCT: Allocator<brotli::enc::histogram::ContextType>,
      AllocHT: Allocator<brotli::enc::entropy_encode::HuffmanTree>
      > BrotliDivansHybridCompressor<SelectedCDF,
-                                    DefaultEncoder,
+                                    ChosenEncoder,
                                     AllocU8,
                                     AllocU16,
                                     AllocU32,
@@ -80,44 +86,105 @@ impl<SelectedCDF:CDF16,
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8()
     }
-    fn internal_encode_stream(&mut self,
-                              op: brotli::enc::encode::BrotliEncoderOperation,
-                              input:&[u8], mut input_offset: &mut usize,
-                              output :&mut [u8], mut output_offset: &mut usize) -> brotli::BrotliResult {
-        let mut available_in = input.len() - *input_offset;
-        let mut available_out = output.len() - *output_offset;
-        let mut nothing : Option<usize> = None;
-        let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| ();
-        if brotli::enc::encode::BrotliEncoderCompressStream(&mut self.brotli_encoder,
-                                                         &mut self.mf64,
-                                                         &mut self.mfv,
-                                                         &mut self.mhl,
-                                                         &mut self.mhc,
-                                                         &mut self.mhd,
-                                                         &mut self.mhp,
-                                                         &mut self.mct,
-                                                         &mut self.mht,
-                                                         op,
-                                                         &mut available_in,
-                                                         input,
-                                                         input_offset,
-                                                         &mut available_out,
-                                                         output,
-                                                         &mut output_offset,
-                                                         &mut nothing,
-                                                            &mut closure) == 0 {
-
-            if available_out != 0 {
-                return BrotliResult::NeedsMoreInput;
+    fn divans_encode_commands<SliceType:SliceWrapper<u8>+Default>(cmd:&[brotli::interface::Command<SliceType>],
+                                                          header_progress: &mut usize,
+                                                          data:&mut ResizableByteBuffer<u8, AllocU8>,
+                                                          codec: &mut DivansCodec<ChosenEncoder,
+                                                                                  EncoderSpecialization,
+                                                                                  SelectedCDF,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>,
+                                                          window_size: u8) {
+        let mut cmd_offset = 0usize;
+        let mut unused = 0usize;
+        loop {
+            let ret: BrotliResult;
+            let mut output_offset = 0usize;
+            {
+                let mut output = data.checkout_next_buffer(codec.get_m8(),
+                                                           Some(interface::HEADER_LENGTH + 256));
+                if *header_progress != interface::HEADER_LENGTH {
+                    match write_header(header_progress, window_size, output, &mut output_offset) {
+                        BrotliResult::ResultSuccess => {},
+                        res => panic!("Unexpected failure writing header"),
+                    }
+                }
+                let mut unused: usize = 0;
+                ret = codec.encode_or_decode(&[],
+                                             &mut unused,
+                                             output,
+                                             &mut output_offset,
+                                             cmd,
+                                             &mut cmd_offset);
             }
-            if available_out == 0 {
-                return BrotliResult::NeedsMoreOutput;
+            match ret {
+                BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => {
+                    assert_eq!(cmd_offset, cmd.len());
+                    data.commit_next_buffer(output_offset);
+                    return;
+                },
+                BrotliResult::ResultFailure => panic!("Unexpected error code"),
+                BrotliResult::NeedsMoreOutput => {
+                    data.commit_next_buffer(output_offset);
+                }
             }
         }
-        BrotliResult::ResultSuccess
+    }
+    fn internal_encode_stream(&mut self,
+                              op: BrotliEncoderOperation,
+                              input:&[u8], mut input_offset: &mut usize) -> brotli::BrotliResult {
+        let mut nothing : Option<usize> = None;
+        let mut divans_data_ref = &mut self.divans_data;
+        let mut divans_codec_ref = &mut self.codec;
+        let mut header_progress_ref = &mut self.header_progress;
+        let window_size = self.window_size;
+        let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| Self::divans_encode_commands(a,
+                                                                                                                 header_progress_ref,
+                                                                                                                 divans_data_ref,
+                                                                                                                 divans_codec_ref,
+                                                                                                                 window_size);
+        loop {
+            let mut available_in = input.len() - *input_offset;
+            let mut brotli_out_offset = 0usize;
+            {
+                let brotli_buffer = self.brotli_data.checkout_next_buffer(&mut self.brotli_encoder.m8, Some(256));
+                let mut available_out = brotli_buffer.len();
+                
+                if BrotliEncoderCompressStream(&mut self.brotli_encoder,
+                                               &mut self.mf64,
+                                               &mut self.mfv,
+                                               &mut self.mhl,
+                                               &mut self.mhc,
+                                               &mut self.mhd,
+                                               &mut self.mhp,
+                                               &mut self.mct,
+                                               &mut self.mht,
+                                               op,
+                                               &mut available_in,
+                                               input,
+                                               input_offset,
+                                               &mut available_out,
+                                               brotli_buffer,
+                                               &mut brotli_out_offset,
+                                               &mut nothing,
+                                               &mut closure) <= 0 {
+                    return BrotliResult::ResultFailure;
+                }                
+            }
+            self.brotli_data.commit_next_buffer(brotli_out_offset);
+            if available_in == 0 {
+                if BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
+                    return BrotliResult::ResultSuccess;
+                }
+                return BrotliResult::NeedsMoreInput;
+            }
+        }
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
+        self.brotli_data.free(&mut self.brotli_encoder.m8);
+        self.divans_data.free(&mut self.codec.get_m8());
         let (m8, mcdf2, mcdf16) = self.codec.free();
         brotli::enc::encode::BrotliEncoderDestroyInstance(&mut self.brotli_encoder);
         (m8, self.brotli_encoder.m32, mcdf2, mcdf16, self.brotli_encoder.m8, self.brotli_encoder.m16,self.brotli_encoder.mi32, self.brotli_encoder.mc,
@@ -126,7 +193,7 @@ impl<SelectedCDF:CDF16,
 }
 
 impl<SelectedCDF:CDF16,
-     DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+     ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
      AllocU32:Allocator<u32>,
@@ -143,7 +210,7 @@ impl<SelectedCDF:CDF16,
      AllocCT: Allocator<brotli::enc::histogram::ContextType>,
      AllocHT: Allocator<brotli::enc::entropy_encode::HuffmanTree>
      > Compressor for BrotliDivansHybridCompressor<SelectedCDF,
-                                                   DefaultEncoder,
+                                                   ChosenEncoder,
                                                    AllocU8,
                                                    AllocU16,
                                                    AllocU32,
@@ -164,12 +231,36 @@ impl<SelectedCDF:CDF16,
               input_offset: &mut usize,
               output: &mut [u8],
               output_offset: &mut usize) -> BrotliResult {
-        BrotliResult::ResultFailure
+        match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+                                          input,
+                                          input_offset) {
+            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+            BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => return BrotliResult::NeedsMoreInput,
+            BrotliResult::NeedsMoreOutput => panic!("unexpected code"),
+        }
     }
     fn flush(&mut self,
              output: &mut [u8],
              output_offset: &mut usize) -> BrotliResult {
-        BrotliResult::ResultFailure
+        let mut zero = 0usize;
+        match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+                                          &[],
+                                          &mut zero) {
+            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+            BrotliResult::ResultSuccess => {}
+            BrotliResult::NeedsMoreOutput | BrotliResult::NeedsMoreInput => panic!("unexpected code"),
+        }
+        // we're in success area here
+        let mut destination = output.split_at_mut(*output_offset).1;
+        let src = self.divans_data.slice().split_at(self.encoded_byte_offset).1;
+        let copy_len = min(src.len(), destination.len());
+        destination.split_at_mut(copy_len).0.clone_from_slice(src.split_at(copy_len).0);
+        *output_offset += copy_len;
+        self.encoded_byte_offset += copy_len;
+        if self.encoded_byte_offset == self.divans_data.len() {
+            return BrotliResult::ResultSuccess;
+        }
+        return BrotliResult::NeedsMoreOutput;
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                            input:&[Command<SliceType>],
@@ -280,11 +371,14 @@ impl<AllocU8:Allocator<u8>,
              mhp: additional_args.9,
              mct: additional_args.10,
              mht: additional_args.11,
-            brotli_encoder: brotli::enc::encode::BrotliEncoderCreateInstance(additional_args.0,
-                                                                             additional_args.1,
-                                                                             additional_args.2,
-                                                                             m32,
-                                                                             additional_args.3),
+             brotli_data: ResizableByteBuffer::<u8, AllocU8>::new(),
+             divans_data: ResizableByteBuffer::<u8, AllocU8>::new(),
+             encoded_byte_offset:0, 
+             brotli_encoder: brotli::enc::encode::BrotliEncoderCreateInstance(additional_args.0,
+                                                                              additional_args.1,
+                                                                              additional_args.2,
+                                                                              m32,
+                                                                              additional_args.3),
             codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
