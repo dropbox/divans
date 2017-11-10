@@ -283,7 +283,7 @@ impl<SelectedCDF:CDF16,
     }
 }
 
-struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
+pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
      AllocU32:Allocator<u32>,
      AllocI32:Allocator<i32>,

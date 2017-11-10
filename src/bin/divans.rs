@@ -1,5 +1,6 @@
 extern crate core;
 extern crate divans;
+extern crate brotli;
 extern crate alloc_no_stdlib as alloc;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -405,11 +406,11 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
                               String::from("Unknown ") + &s))
 }
 
-fn recode_cmd_buffer<Writer:std::io::Write,
-          RState:Compressor>(mut state: &mut RState,
-                                cmd_buffer:&[Command<ItemVec<u8>>],
-                                mut w: &mut Writer,
-                                mut output_scratch:&mut [u8]) -> Result<usize, io::Error> {
+fn recode_cmd_buffer<RState:divans::interface::Compressor,
+                     Writer:std::io::Write,>(mut state: &mut RState,
+                                             cmd_buffer:&[Command<ItemVec<u8>>],
+                                             mut w: &mut Writer,
+                                             mut output_scratch:&mut [u8]) -> Result<usize, io::Error> {
     let mut i_processed_index = 0usize;
     let mut o_processed_index = 0usize;
     let mut ret = 0usize;
@@ -670,30 +671,14 @@ fn compress_inner<Reader:std::io::BufRead,
     }
     Ok(())
 }
-fn compress_raw<Reader:std::io::Read,
-                Writer:std::io::Write>(
-    mut r:&mut Reader,
-    mut w:&mut Writer,
-    literal_adaptation_speed: Option<Speed>,
-    do_context_map: bool,
-    do_stride: bool,
-    force_stride_value:Option<u8>,
-    opt_window_size:Option<i32>,
-    buffer_size: usize) -> io::Result<()> {
-    let window_size = opt_window_size.unwrap_or(21);
-    let mut m8 = ItemVecAllocator::<u8>::default();
-    let mut ibuffer = m8.alloc_cell(buffer_size);
-    let mut obuffer = m8.alloc_cell(buffer_size);
-    let mut state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                  ItemVecAllocator<divans::CDF2>,
-                                  ItemVecAllocator<divans::DefaultCDF16>>::new(
-        m8,
-        ItemVecAllocator::<u32>::default(),
-        ItemVecAllocator::<divans::CDF2>::default(),
-        ItemVecAllocator::<divans::DefaultCDF16>::default(),
-        window_size as usize,
-        literal_adaptation_speed,(),
-    );
+fn compress_raw_inner<Compressor: divans::interface::Compressor,
+                      Reader:std::io::Read,
+                      Writer:std::io::Write>(mut r:&mut Reader,
+                                             mut w:&mut Writer,
+                                             mut ibuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
+                                             mut obuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
+                                             mut compress_state: Compressor,
+                                             free_state: &mut Fn(Compressor)->ItemVecAllocator<u8>) -> io::Result<()> {
     let mut ilim = 0usize;
     let mut idec_index = 0usize;
     let mut olim = 0usize;
@@ -712,7 +697,7 @@ fn compress_raw<Reader:std::io::Read,
                     if e.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    let mut m8 = state.free().0;
+                    let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(e);
@@ -720,13 +705,13 @@ fn compress_raw<Reader:std::io::Read,
             }
         }
         if idec_index != ilim {
-            match state.encode(ibuffer.slice().split_at(ilim).0,
+            match compress_state.encode(ibuffer.slice().split_at(ilim).0,
                                &mut idec_index,
                                obuffer.slice_mut().split_at_mut(oenc_index).1,
                                &mut olim) {
                 BrotliResult::ResultSuccess => continue,
                 BrotliResult::ResultFailure => {
-                    let mut m8 = state.free().0;
+                    let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(io::Error::new(io::ErrorKind::Other,
@@ -745,7 +730,7 @@ fn compress_raw<Reader:std::io::Read,
                     if e.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    let mut m8 = state.free().0;
+                    let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(e);
@@ -757,11 +742,11 @@ fn compress_raw<Reader:std::io::Read,
     }
     let mut done = false;
     while !done {
-        match state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
+        match compress_state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
                           &mut olim) {
             BrotliResult::ResultSuccess => done = true,
             BrotliResult::ResultFailure => {
-                let mut m8 = state.free().0;
+                let mut m8 = free_state(compress_state);
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::Other,
@@ -781,7 +766,7 @@ fn compress_raw<Reader:std::io::Read,
                     if e.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    let mut m8 = state.free().0;
+                    let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(e);
@@ -791,10 +776,89 @@ fn compress_raw<Reader:std::io::Read,
         oenc_index = 0;
         olim = 0;
     }
-    let mut m8 = state.free().0;
+    let mut m8 = free_state(compress_state);
     m8.free_cell(ibuffer);
     m8.free_cell(obuffer);
     Ok(())
+}
+
+
+type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocator<u8>,
+                                                         ItemVecAllocator<u16>,
+                                                         ItemVecAllocator<u32>,
+                                                         ItemVecAllocator<i32>,
+                                                         ItemVecAllocator<brotli::enc::command::Command>,
+                                                         ItemVecAllocator<divans::CDF2>,
+                                                         ItemVecAllocator<divans::DefaultCDF16>,
+                                                         ItemVecAllocator<brotli::enc::util::floatX>,
+                                                         ItemVecAllocator<brotli::enc::vectorization::Mem256f>,
+                                                         ItemVecAllocator<brotli::enc::histogram::HistogramLiteral>,
+                                                         ItemVecAllocator<brotli::enc::histogram::HistogramCommand>,
+                                                         ItemVecAllocator<brotli::enc::histogram::HistogramDistance>,
+                                                         ItemVecAllocator<brotli::enc::cluster::HistogramPair>,
+                                                         ItemVecAllocator<brotli::enc::histogram::ContextType>,
+                                                         ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
+                
+fn compress_raw<Reader:std::io::Read,
+                Writer:std::io::Write>(
+    mut r:&mut Reader,
+    mut w:&mut Writer,
+    literal_adaptation_speed: Option<Speed>,
+    do_context_map: bool,
+    do_stride: bool,
+    force_stride_value:Option<u8>,
+    opt_window_size:Option<i32>,
+    buffer_size: usize,
+    use_brotli: bool) -> io::Result<()> {
+    let window_size = opt_window_size.unwrap_or(21);
+    let mut m8 = ItemVecAllocator::<u8>::default();
+    let mut ibuffer = m8.alloc_cell(buffer_size);
+    let mut obuffer = m8.alloc_cell(buffer_size);
+    if use_brotli {
+        let mut state =BrotliFactory::new(
+            m8,
+            ItemVecAllocator::<u32>::default(),
+            ItemVecAllocator::<divans::CDF2>::default(),
+            ItemVecAllocator::<divans::DefaultCDF16>::default(),
+            window_size as usize,
+            literal_adaptation_speed,
+            (ItemVecAllocator::<u8>::default(),
+             ItemVecAllocator::<u16>::default(),
+             ItemVecAllocator::<i32>::default(),
+             ItemVecAllocator::<brotli::enc::command::Command>::default(),
+             ItemVecAllocator::<brotli::enc::util::floatX>::default(),
+             ItemVecAllocator::<brotli::enc::vectorization::Mem256f>::default(),
+             ItemVecAllocator::<brotli::enc::histogram::HistogramLiteral>::default(),
+             ItemVecAllocator::<brotli::enc::histogram::HistogramCommand>::default(),
+             ItemVecAllocator::<brotli::enc::histogram::HistogramDistance>::default(),
+             ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
+             ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
+             ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default()),
+        );
+        let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
+        compress_raw_inner(r, w,
+                           ibuffer, obuffer,
+                           state,
+                           &mut free_closure)
+    } else {
+        type Factory = DivansCompressorFactoryStruct<
+                ItemVecAllocator<u8>,
+                ItemVecAllocator<divans::CDF2>,
+                ItemVecAllocator<divans::DefaultCDF16>>;
+        let mut state =Factory::new(
+            m8,
+            ItemVecAllocator::<u32>::default(),
+            ItemVecAllocator::<divans::CDF2>::default(),
+            ItemVecAllocator::<divans::DefaultCDF16>::default(),
+            window_size as usize,
+            literal_adaptation_speed,(),
+        );
+        let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
+        compress_raw_inner(r, w,
+                           ibuffer, obuffer,
+                           state,
+                           &mut free_closure)
+    }
 }
 fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
@@ -1042,6 +1106,7 @@ fn main() {
     let mut num_benchmarks = 1;
     let mut use_context_map = false;
     let mut use_stride = true;
+    let mut use_brotli = true;
     let mut force_stride = false;
     let mut force_stride_value: Option<u8> = None;
     let mut literal_adaptation: Option<Speed> = None;
@@ -1100,13 +1165,19 @@ fn main() {
                 }
                 continue;
             }
-            if argument == "-c" {
+            if argument == "-i" {
                 do_compress = true;
                 continue;
             }
-            if argument == "-r" {
+            if argument == "-c" {
                 do_compress = true;
                 raw_compress = true;
+                continue;
+            }
+            if argument == "-nobrotli" {
+                do_compress = true;
+                raw_compress = true;
+                use_brotli = false;
                 continue;
             }
             if argument.starts_with("-speed=") {
@@ -1158,7 +1229,7 @@ fn main() {
                         }
                         input = buffered_input.into_inner();
                     } else if do_compress {
-                        match compress_raw(&mut input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
+                        match compress_raw(&mut input, &mut output, literal_adaptation.clone(), use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1188,7 +1259,7 @@ fn main() {
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
-                    match compress_raw (&mut input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
+                    match compress_raw (&mut input, &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1213,7 +1284,7 @@ fn main() {
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
-                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size) {
+                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
