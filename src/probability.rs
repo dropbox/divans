@@ -106,7 +106,7 @@ impl BaseCDF for CDF2 {
     fn cdf(&self, symbol: u8) -> Prob {
         match symbol {
             0 => Prob::from(self.prob),
-            1 => 256 - Prob::from(self.prob),
+            1 => 256,
             _ => { panic!("Symbol out of range"); }
         }
     }
@@ -381,7 +381,7 @@ impl CDF16 for ExternalProbCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
         if self.max() < 64 && other.max() > 64 {
              //return other.clone();
-        } 
+        }
         if self.max() > 64 && other.max() < 64 {
              //return self.clone();
         }
@@ -396,8 +396,7 @@ impl CDF16 for ExternalProbCDF16 {
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-	    *s = (((i64::from(*s) * i64::from(mix_rate) *othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
-        }
+        *s = (((i64::from(*s) * i64::from(mix_rate) *othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgm        }
         retval
     }
     fn blend(&mut self, symbol: u8, speed: Speed) {
@@ -499,7 +498,7 @@ impl CDF16 for FrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
         if self.max() < 64 && other.max() > 64 {
              //return other.clone();
-        } 
+        }
         if self.max() > 64 && other.max() < 64 {
              //return self.clone();
         }
@@ -514,7 +513,7 @@ impl CDF16 for FrequentistCDF16 {
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-	    *s = (((i64::from(*s) * i64::from(mix_rate)*othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
+        *s = (((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         }
         retval
     }
