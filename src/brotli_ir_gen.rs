@@ -97,17 +97,16 @@ impl<SelectedCDF:CDF16,
                                                                                   AllocCDF16>,
                                                           window_size: u8) {
         let mut cmd_offset = 0usize;
-        let mut unused = 0usize;
         loop {
             let ret: BrotliResult;
             let mut output_offset = 0usize;
             {
-                let mut output = data.checkout_next_buffer(codec.get_m8(),
+                let output = data.checkout_next_buffer(codec.get_m8(),
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset) {
                         BrotliResult::ResultSuccess => {},
-                        res => panic!("Unexpected failure writing header"),
+                        _ => panic!("Unexpected failure writing header"),
                     }
                 }
                 let mut unused: usize = 0;
@@ -133,12 +132,12 @@ impl<SelectedCDF:CDF16,
     }
     fn internal_encode_stream(&mut self,
                               op: BrotliEncoderOperation,
-                              input:&[u8], mut input_offset: &mut usize) -> brotli::BrotliResult {
+                              input:&[u8], input_offset: &mut usize) -> brotli::BrotliResult {
         let mut nothing : Option<usize> = None;
         {
-            let mut divans_data_ref = &mut self.divans_data;
-            let mut divans_codec_ref = &mut self.codec;
-            let mut header_progress_ref = &mut self.header_progress;
+            let divans_data_ref = &mut self.divans_data;
+            let divans_codec_ref = &mut self.codec;
+            let header_progress_ref = &mut self.header_progress;
             let window_size = self.window_size;
             let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| Self::divans_encode_commands(a,
                                                                                                                  header_progress_ref,
@@ -197,7 +196,6 @@ impl<SelectedCDF:CDF16,
                 BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
             }
         }
-        return BrotliResult::ResultSuccess;
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
@@ -247,8 +245,8 @@ impl<SelectedCDF:CDF16,
     fn encode(&mut self,
               input: &[u8],
               input_offset: &mut usize,
-              output: &mut [u8],
-              output_offset: &mut usize) -> BrotliResult {
+              _output: &mut [u8],
+              _output_offset: &mut usize) -> BrotliResult {
         match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
                                           input,
                                           input_offset) {
@@ -269,7 +267,7 @@ impl<SelectedCDF:CDF16,
             BrotliResult::NeedsMoreOutput | BrotliResult::NeedsMoreInput => panic!("unexpected code"),
         }
         // we're in success area here
-        let mut destination = output.split_at_mut(*output_offset).1;
+        let destination = output.split_at_mut(*output_offset).1;
         let src = self.divans_data.slice().split_at(self.encoded_byte_offset).1;
         let copy_len = min(src.len(), destination.len());
         destination.split_at_mut(copy_len).0.clone_from_slice(src.split_at(copy_len).0);
@@ -325,12 +323,12 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
     p7: PhantomData<AllocCommand>,
     p8: PhantomData<AllocF64>,
     p9: PhantomData<AllocFV>,
-    pA: PhantomData<AllocHL>,
-    pB: PhantomData<AllocHC>,
-    pC: PhantomData<AllocHD>,
-    pD: PhantomData<AllocHP>,
-    pE: PhantomData<AllocCT>,
-    pF: PhantomData<AllocHT>,
+    pa: PhantomData<AllocHL>,
+    pb: PhantomData<AllocHC>,
+    pc: PhantomData<AllocHD>,
+    pd: PhantomData<AllocHP>,
+    pe: PhantomData<AllocCT>,
+    pf: PhantomData<AllocHT>,
 }
 impl<AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
@@ -369,7 +367,7 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocHT>;
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT);
-     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+     fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
            literal_adaptation_rate: Option<Speed>,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         if window_size < 10 {
@@ -378,7 +376,6 @@ impl<AllocU8:Allocator<u8>,
         if window_size > 24 {
             window_size = 24;
         }
-        let ring_buffer = m8.alloc_cell(1<<window_size);
         let enc = Self::DefaultEncoder::new(&mut m8);
          let mut ret = Self::ConstructedCompressor {
              mf64: additional_args.4,

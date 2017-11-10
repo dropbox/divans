@@ -219,7 +219,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,
                                                    self.decode_space_left_in_ring_buffer());
             let mut repeat_alloc_buffer = [0u8;REPEAT_BUFFER_MAX_SIZE as usize];
-            let mut repeat_buffer = repeat_alloc_buffer.split_at_mut(copy.distance as usize).0;
+            let repeat_buffer = repeat_alloc_buffer.split_at_mut(copy.distance as usize).0;
             self.copy_decoded_from_ring_buffer(repeat_buffer, copy.distance, copy.distance);
             let num_repeat_iter = num_bytes_to_copy / copy.distance;
             let rem_bytes = num_bytes_to_copy - num_repeat_iter * copy.distance;

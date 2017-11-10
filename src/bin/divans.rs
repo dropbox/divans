@@ -407,10 +407,10 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
 }
 
 fn recode_cmd_buffer<RState:divans::interface::Compressor,
-                     Writer:std::io::Write,>(mut state: &mut RState,
+                     Writer:std::io::Write,>(state: &mut RState,
                                              cmd_buffer:&[Command<ItemVec<u8>>],
-                                             mut w: &mut Writer,
-                                             mut output_scratch:&mut [u8]) -> Result<usize, io::Error> {
+                                             w: &mut Writer,
+                                             output_scratch:&mut [u8]) -> Result<usize, io::Error> {
     let mut i_processed_index = 0usize;
     let mut o_processed_index = 0usize;
     let mut ret = 0usize;
@@ -455,8 +455,8 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
 fn recode_inner<Reader:std::io::BufRead,
                 Writer:std::io::Write,
                 RingBuffer:core::default::Default+SliceWrapper<u8>+SliceWrapperMut<u8>>(
-    mut r:&mut Reader,
-    mut w:&mut Writer) -> io::Result<()> {
+    r:&mut Reader,
+    w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -576,8 +576,8 @@ fn compress_inner<Reader:std::io::BufRead,
                                 AllocU32,
                                 AllocCDF2,
                                 AllocCDF16>,
-    mut r:&mut Reader,
-    mut w:&mut Writer,
+    r:&mut Reader,
+    w:&mut Writer,
     do_context_map: bool,
     do_stride: bool,
     force_stride_value: Option<u8>) -> io::Result<()> {
@@ -673,8 +673,8 @@ fn compress_inner<Reader:std::io::BufRead,
 }
 fn compress_raw_inner<Compressor: divans::interface::Compressor,
                       Reader:std::io::Read,
-                      Writer:std::io::Write>(mut r:&mut Reader,
-                                             mut w:&mut Writer,
+                      Writer:std::io::Write>(r:&mut Reader,
+                                             w:&mut Writer,
                                              mut ibuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
                                              mut obuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
                                              mut compress_state: Compressor,
@@ -801,21 +801,21 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                 
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(
-    mut r:&mut Reader,
-    mut w:&mut Writer,
+    r:&mut Reader,
+    w:&mut Writer,
     literal_adaptation_speed: Option<Speed>,
-    do_context_map: bool,
-    do_stride: bool,
-    force_stride_value:Option<u8>,
+    _do_context_map: bool,
+    _do_stride: bool,
+    _force_stride_value:Option<u8>,
     opt_window_size:Option<i32>,
     buffer_size: usize,
     use_brotli: bool) -> io::Result<()> {
     let window_size = opt_window_size.unwrap_or(21);
     let mut m8 = ItemVecAllocator::<u8>::default();
-    let mut ibuffer = m8.alloc_cell(buffer_size);
-    let mut obuffer = m8.alloc_cell(buffer_size);
+    let ibuffer = m8.alloc_cell(buffer_size);
+    let obuffer = m8.alloc_cell(buffer_size);
     if use_brotli {
-        let mut state =BrotliFactory::new(
+        let state =BrotliFactory::new(
             m8,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
@@ -845,7 +845,7 @@ fn compress_raw<Reader:std::io::Read,
                 ItemVecAllocator<u8>,
                 ItemVecAllocator<divans::CDF2>,
                 ItemVecAllocator<divans::DefaultCDF16>>;
-        let mut state =Factory::new(
+        let state =Factory::new(
             m8,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
@@ -862,8 +862,8 @@ fn compress_raw<Reader:std::io::Read,
 }
 fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
-    mut r:&mut Reader,
-    mut w:&mut Writer,
+    r:&mut Reader,
+    w:&mut Writer,
     literal_adaptation_speed: Option<Speed>,
     do_context_map: bool,
     do_stride: bool,
@@ -907,8 +907,8 @@ fn zero_slice(sl: &mut [u8]) -> usize {
 }
 
 fn decompress<Reader:std::io::Read,
-              Writer:std::io::Write> (mut r:&mut Reader,
-                                      mut w:&mut Writer,
+              Writer:std::io::Write> (r:&mut Reader,
+                                      w:&mut Writer,
                                       buffer_size: usize) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
@@ -1110,7 +1110,7 @@ fn main() {
     let mut force_stride = false;
     let mut force_stride_value: Option<u8> = None;
     let mut literal_adaptation: Option<Speed> = None;
-    let mut window_size: Option<i32> = None;
+    let window_size: Option<i32> = None;
     let mut buffer_size:usize = 65536;
     if env::args_os().len() > 1 {
         let mut first = true;

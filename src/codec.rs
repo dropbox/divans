@@ -944,7 +944,7 @@ impl<AllocU8:Allocator<u8>,
                                 ecdf.init(cur_nibble, &probs, nibble_prob);
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
                             } else {
-                                superstate.coder.get_or_put_nibble(&mut cur_nibble, nibble_prob, billing);
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing);
                             }
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                             cm_prob.blend(cur_nibble, Speed::GLACIAL);

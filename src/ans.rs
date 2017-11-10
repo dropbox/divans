@@ -550,7 +550,7 @@ mod test {
         assert!(t == src.len() * 8);
         e.flush();
         {
-            let mut q = e.get_internal_buffer();
+            let q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
             q.pop_data(&mut dst[*n .. *n + qb]);
             *n = *n + qb;
@@ -560,7 +560,7 @@ mod test {
     fn decode<AllocU8: Allocator<u8>>(d: &mut EntropyDecoderANS<AllocU8>, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8]) {
         let mut t = 0;
         {
-            let mut q = d.get_internal_buffer();
+            let q = d.get_internal_buffer();
             let sz = q.num_push_bytes_avail();
             assert!(sz >= 10);
             assert!(sz <= 16);

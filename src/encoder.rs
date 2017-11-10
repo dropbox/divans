@@ -187,7 +187,7 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
                                      input_offset:&mut usize,
                                      _output_buffer:&mut [u8],
                                      _output_offset: &mut usize) -> BrotliResult {
-        let mut ibuffer = self.get_internal_buffer();
+        let ibuffer = self.get_internal_buffer();
         let coder_bytes_avail = ibuffer.num_push_bytes_avail();
         if coder_bytes_avail != 0 {
             let push_count = ibuffer.push_data(input_buffer.split_at(*input_offset).1);
@@ -220,7 +220,7 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                                              _input_offset:&mut usize,
                                              output_buffer:&mut [u8],
                                              output_offset: &mut usize) -> BrotliResult {
-                let mut ibuffer = self.get_internal_buffer();
+                let ibuffer = self.get_internal_buffer();
                 let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
                 if coder_bytes_avail != 0 {
                     let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);

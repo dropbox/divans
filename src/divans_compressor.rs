@@ -3,7 +3,6 @@
 
 use core::marker::PhantomData;
 use super::probability;
-use super::probability::{CDF2,CDF16, Speed};
 use super::brotli;
 use super::raw_to_cmd;
 use super::slice_util;
@@ -13,7 +12,6 @@ pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor,
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
 use super::interface;
-use super::brotli::enc::encode::BrotliEncoderStateStruct;
 use super::brotli::BrotliResult;
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -54,7 +52,7 @@ impl<AllocU8:Allocator<u8>,
      type AdditionalArgs = ();
      fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
            literal_adaptation_rate: Option<probability::Speed>,
-           additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+           _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;
         }
@@ -113,7 +111,7 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
    ret
 }
 #[cfg(not(feature="external-literal-probability"))]
-fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
+fn freeze_dry<'a>(_item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
     FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>::default()
 }
 
@@ -147,7 +145,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> brotli::BrotliResult {
         if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
-            let mut thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
+            let thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
                                                   self.freeze_dried_cmd_start, self.freeze_dried_cmd_end);
             let mut unused: usize = 0;
             match self.codec.encode_or_decode(&[],
