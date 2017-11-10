@@ -136,6 +136,28 @@ fn test_asyoulik() {
 }
 
 
+fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, data: &[u8],
+             ratio: f64) {
+    let mut in_buffer = UnlimitedBuffer::new(data);
+    let mut dv_buffer = UnlimitedBuffer::new(&[]);
+    let mut rt_buffer = UnlimitedBuffer::new(&[]);
+    super::compress_raw(&mut in_buffer,
+                        &mut dv_buffer,
+                        Some(Speed::GLACIAL),
+                        use_serialized_priors,
+                        true,
+                        None, // force stride
+                        Some(16), //window size
+                        buffer_size,
+                        use_brotli).unwrap();
+    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+    assert_eq!(rt_buffer.data, in_buffer.data);
+    let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
+    if !(actual_ratio <= ratio) {
+        println!("Failed: actual buffer length {} dv_buffer size: {}", in_buffer.data.len(), dv_buffer.data.len());
+    }
+    assert!(actual_ratio <= ratio);
+}
 
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
@@ -143,6 +165,8 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
    brotli_decompressor::BrotliDecompress(&mut raw_text_as_br_buffer,
         &mut raw_text_buffer).unwrap();
+   //e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.40);
+   e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
    let mut ir_as_br_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir.br"))
    } else {
