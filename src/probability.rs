@@ -71,7 +71,7 @@ pub trait BaseCDF {
         for i in 0..Self::num_symbols() {
             let v = self.pdf(i as u8);
             sum += if v == 0 { 0.0f64 } else {
-                let v_f64 = (v as f64) / (self.max() as f64);
+                let v_f64 = f64::from(v) / f64::from(self.max());
                 v_f64 * (-v_f64.log2())
             };
         }
@@ -105,8 +105,8 @@ impl BaseCDF for CDF2 {
     fn num_symbols() -> u8 { 2 }
     fn cdf(&self, symbol: u8) -> Prob {
         match symbol {
-            0 => self.prob as Prob,
-            1 => 256 - self.prob as Prob,
+            0 => Prob::from(self.prob),
+            1 => 256 - Prob::from(self.prob),
             _ => { panic!("Symbol out of range"); }
         }
     }
@@ -114,37 +114,37 @@ impl BaseCDF for CDF2 {
         self.counts[0] != 1 || self.counts[1] != 1
     }
     fn max(&self) -> Prob {
-        return 256;
+        256
     }
     fn log_max(&self) -> Option<i8> {
-        return Some(8);
+        Some(8)
     }
 }
 
 impl CDF2 {
-    pub fn blend(&mut self, symbol: bool, _speed: Speed) {
+    pub fn blend(&mut self, symbol: bool, _speed: &Speed) {
         let fcount = self.counts[0];
         let tcount = self.counts[1];
         debug_assert!(fcount != 0);
         debug_assert!(tcount != 0);
 
-        let obs = if symbol == true {1} else {0};
+        let obs = if symbol {1} else {0};
         let overflow = self.counts[obs] == 0xff;
         self.counts[obs] = self.counts[obs].wrapping_add(1);
         if overflow {
-            let not_obs = if symbol == true {0} else {1};
+            let not_obs = if symbol {0} else {1};
             let neverseen = self.counts[not_obs] == 1;
             if neverseen {
                 self.counts[obs] = 0xff;
                 self.prob = if symbol {0} else {0xff};
             } else {
-                self.counts[0] = ((1 + (fcount as u16)) >> 1) as u8;
-                self.counts[1] = ((1 + (tcount as u16)) >> 1) as u8;
+                self.counts[0] = ((1 + u16::from(fcount)) >> 1) as u8;
+                self.counts[1] = ((1 + u16::from(tcount)) >> 1) as u8;
                 self.counts[obs] = 129;
-                self.prob = (((self.counts[0] as u16) << 8) / (self.counts[0] as u16 + self.counts[1] as u16)) as u8;
+                self.prob = ((u16::from(self.counts[0]) << 8) / (u16::from(self.counts[0]) + u16::from(self.counts[1]))) as u8;
             }
         } else {
-            self.prob = (((self.counts[0] as u16) << 8) / (fcount as u16 + tcount as u16 + 1)) as u8;
+            self.prob = ((u16::from(self.counts[0]) << 8) / (u16::from(fcount) + u16::from(tcount) + 1)) as u8;
         }
     }
 }
@@ -184,8 +184,8 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
     // TODO: this convenience function should probably live elsewhere.
     fn float_array(&self) -> [f32; 16] {
         let mut ret = [0.0f32; 16];
-        for i in 0..16 {
-            ret[i] = (self.cdf(i as u8) as f32) / (self.max() as f32);
+        for (i, ret_item) in ret.iter_mut().enumerate() {
+            *ret_item = f32::from(self.cdf(i as u8)) / f32::from(self.max());
        }
         ret
     }
@@ -193,8 +193,8 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
 }
 
 const CDF_BITS : usize = 15; // 15 bits
-const CDF_MAX : Prob = 32767; // last value is implicitly 32768
-const CDF_LIMIT : i64 = CDF_MAX as i64 + 1;
+const CDF_MAX : Prob = 32_767; // last value is implicitly 32768
+const CDF_LIMIT : i64 = (CDF_MAX as i64) + 1;
 
 #[derive(Clone,Copy)]
 pub struct BlendCDF16 {
@@ -249,23 +249,23 @@ impl BaseCDF for BlendCDF16 {
                 // be the latent bias term coming from a uniform distribution.
                 let bias = CDF_MAX - self.cdf[15] as i16;
                 debug_assert!(bias >= 16);
-                self.cdf[symbol as usize] as Prob + (((bias as i32) * ((symbol + 1) as i32)) >> 4) as Prob
+                self.cdf[symbol as usize] as Prob + ((i32::from(bias) * (i32::from(symbol + 1))) >> 4) as Prob
             }
         }
     }
     fn valid(&self) -> bool {
-        for item in self.cdf.iter() {
+        for item in &self.cdf {
             if *item < 0 || !(*item <= CDF_MAX) {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
 impl CDF16 for BlendCDF16 {
     fn average(&self, other: &Self, mix_rate: i32) ->Self {
-        let mut retval = self.clone();
+        let mut retval = *self;
         retval.blend_internal(other.cdf, mix_rate);
         retval
     }
@@ -318,22 +318,22 @@ impl ExternalProbCDF16 {
         for nibble in 0..16 {
             //println_stderr!("setting for {:x}", nibble);
             for bit in 0..4 {
-                let p1 = (probs[bit] as f64) / (u8::max_value() as f64);
+                let p1 = f64::from(probs[bit]) / f64::from(u8::max_value());
                 let isone = (nibble & (1<<(3 - bit))) != 0;
                 //println_stderr!("bit {:} is {:} {:}", bit, isone, p1);
                 if isone {
-                    pcdf[nibble] = pcdf[nibble] * p1;
+                    pcdf[nibble] *= p1;
                 } else {
-                    pcdf[nibble] = pcdf[nibble] * (1f64 - p1);
+                    pcdf[nibble] *= (1f64 - p1);
                 }
             }
         }
         let mut mcdf = [1f64;16];
         for nibble in 1..16 {
             let prev = nibble - 1;
-            let c = mix.cdf(nibble) as f64;
-            let p = mix.cdf(prev) as f64;
-            let m = mix.max() as f64;
+            let c = f64::from(mix.cdf(nibble));
+            let p = f64::from(mix.cdf(prev));
+            let m = f64::from(mix.max());
             let d = (c - p) / m;
             assert!(d < 1.0);
             mcdf[nibble as usize] = d;
@@ -342,16 +342,16 @@ impl ExternalProbCDF16 {
             pcdf[nibble] = (pcdf[nibble] + mcdf[nibble])/2f64;
         }
         let mut sum = 0f64;
-        for nibble in 0..16 {
-            sum = pcdf[nibble] + sum;
-            pcdf[nibble] = sum; 
+        for pcdf_nibble in &mut pcdf {
+            sum += *pcdf_nibble;
+            *pcdf_nibble = sum; 
         }
-        for nibble in 0..16 {
-            pcdf[nibble] = pcdf[nibble]/sum;
+        for pcdf_nibble in &mut pcdf {
+            *pcdf_nibble /= sum;
         }
         for nibble in 0..16 {
             let p = pcdf[nibble];
-            let res = (p * (Prob::max_value() as f64)) as Prob;
+            let res = (p * f64::from(Prob::max_value())) as Prob;
             let least1 = core::cmp::max(res, 1);
             self.cdf[nibble] = core::cmp::min(least1, self.max() - 1);
             println_stderr!("cdf set {:x} {:x} {:}", nibble, self.cdf[nibble], p);
@@ -373,7 +373,7 @@ impl BaseCDF for ExternalProbCDF16 {
         self.cdf[symbol as usize]
     }
     fn valid(&self) -> bool {
-        return true;
+        true
     }
 }
 
@@ -389,14 +389,14 @@ impl CDF16 for ExternalProbCDF16 {
              //return other.clone();
         }
         //return self.clone();
-        let mut retval = self.clone();
-        let ourmax = self.max() as i64;
-        let othermax = other.max() as i64;
-        let maxmax = core::cmp::min(ourmax, othermax) as i64;
+        let mut retval = *self;
+        let ourmax = i64::from(self.max());
+        let othermax = i64::from(other.max());
+        let maxmax = i64::from(core::cmp::min(ourmax, othermax));
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-	    *s = ((((*s  as i64) * mix_rate as i64*othermax + (*o as i64) * inv_mix_rate as i64 * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
+	    *s = (((i64::from(*s) * i64::from(mix_rate) *othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         }
         retval
     }
@@ -491,7 +491,7 @@ impl BaseCDF for FrequentistCDF16 {
             }
             prev = *item;
         }
-        return true;
+        true
     }
 }
 
@@ -507,14 +507,14 @@ impl CDF16 for FrequentistCDF16 {
              //return other.clone();
         }
         //return self.clone();
-        let mut retval = self.clone();
-        let ourmax = self.max() as i64;
-        let othermax = other.max() as i64;
-        let maxmax = core::cmp::min(ourmax, othermax) as i64;
+        let mut retval = *self;
+        let ourmax = i64::from(self.max());
+        let othermax = i64::from(other.max());
+        let maxmax = core::cmp::min(ourmax, othermax);
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-	    *s = ((((*s  as i64) * mix_rate as i64*othermax + (*o as i64) * inv_mix_rate as i64 * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
+	    *s = (((i64::from(*s) * i64::from(mix_rate)*othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         }
         retval
     }
@@ -534,7 +534,7 @@ impl CDF16 for FrequentistCDF16 {
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }
-        let limit: Prob = 32767 - 16 - 384 /* XXX: max possible increment */;
+        let limit: Prob = 32_767 - 16 - 384 /* XXX: max possible increment */;
         if self.cdf[15] >= limit {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
@@ -567,18 +567,18 @@ pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;
 
 pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : i32, bias : i32) -> [Prob;16] {
     const SCALE :i32 = 1i32 << BLEND_FIXED_POINT_PRECISION;
-    let mut epi32:[i32;8] = [to_blend[0] as i32,
-                             to_blend[1] as i32,
-                             to_blend[2] as i32,
-                             to_blend[3] as i32,
-                             to_blend[4] as i32,
-                             to_blend[5] as i32,
-                             to_blend[6] as i32,
-                             to_blend[7] as i32];
+    let mut epi32:[i32;8] = [i32::from(to_blend[0]),
+                             i32::from(to_blend[1]),
+                             i32::from(to_blend[2]),
+                             i32::from(to_blend[3]),
+                             i32::from(to_blend[4]),
+                             i32::from(to_blend[5]),
+                             i32::from(to_blend[6]),
+                             i32::from(to_blend[7])];
     let scale_minus_blend = SCALE - blend;
     for i in 0..8 {
         epi32[i] *= blend;
-        epi32[i] += baseline[i] as i32 * scale_minus_blend + bias;
+        epi32[i] += i32::from(baseline[i]) * scale_minus_blend + bias;
         epi32[i] >>= BLEND_FIXED_POINT_PRECISION;
     }
     let mut retval : [Prob;16] =[epi32[0] as Prob,
@@ -590,17 +590,17 @@ pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : i32, bias : i
                                  epi32[6] as Prob,
                                  epi32[7] as Prob,
                                  0,0,0,0,0,0,0,0];
-    let mut epi32:[i32;8] = [to_blend[8] as i32,
-                             to_blend[9] as i32,
-                             to_blend[10] as i32,
-                             to_blend[11] as i32,
-                             to_blend[12] as i32,
-                             to_blend[13] as i32,
-                             to_blend[14] as i32,
-                             to_blend[15] as i32];
+    let mut epi32:[i32;8] = [i32::from(to_blend[8]),
+                             i32::from(to_blend[9]),
+                             i32::from(to_blend[10]),
+                             i32::from(to_blend[11]),
+                             i32::from(to_blend[12]),
+                             i32::from(to_blend[13]),
+                             i32::from(to_blend[14]),
+                             i32::from(to_blend[15])];
     for i in 8..16 {
         epi32[i - 8] *= blend;
-        epi32[i - 8] += baseline[i] as i32 * scale_minus_blend + bias;
+        epi32[i - 8] += i32::from(baseline[i]) * scale_minus_blend + bias;
         retval[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as Prob;
     }
     retval
@@ -612,11 +612,10 @@ fn to_blend(symbol: u8) -> [Prob;16] {
     // which is required to guarantee nonzero PDF everywhere.
     const CDF_INDEX : [Prob;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15];
     const DEL: Prob = CDF_MAX - 16;
-    let symbol16 = [symbol as Prob; 16];
+    let symbol16 = [Prob::from(symbol); 16];
     let delta16 = [DEL; 16];
     let mask_symbol = each16bin!(CDF_INDEX, symbol16, gte);
-    let add_mask = each16bin!(delta16, mask_symbol, and);
-    add_mask
+    each16bin!(delta16, mask_symbol, and)
 }
 
 fn to_blend_lut(symbol: u8) -> [Prob;16] {
@@ -738,11 +737,11 @@ mod test {
     }
 
     #[allow(unused)]
-    const RAND_MAX : u32 = 32767;
+    const RAND_MAX : u32 = 32_767;
     #[allow(unused)]
     fn simple_rand(state: &mut u64) -> u32 {
-        *state = (*state).wrapping_mul(1103515245).wrapping_add(12345);
-        return ((*state / 65536) as u32 % (RAND_MAX + 1)) as u32;
+        *state = (*state).wrapping_mul(1_103_515_245).wrapping_add(12_345);
+        return ((*state / 65_536) as u32 % (RAND_MAX + 1)) as u32;
     }
 
     #[allow(unused)]

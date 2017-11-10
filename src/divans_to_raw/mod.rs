@@ -19,9 +19,12 @@ use codec::EncoderOrDecoderSpecialization;
 use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
 
 use codec::AllocatedMemoryPrefix;
+
+#[derive(Default)]
 pub struct DecoderSpecialization {
     max_size: usize,    
 }
+
 impl DecoderSpecialization {
     pub fn new() -> Self {
         DecoderSpecialization{
@@ -29,6 +32,8 @@ impl DecoderSpecialization {
         }
     }
 }
+
+
 
 impl EncoderOrDecoderSpecialization for DecoderSpecialization {
     fn does_caller_want_original_file_bytes(&self) -> bool {

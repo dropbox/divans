@@ -11,8 +11,6 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
-
-#[allow(unused)]
 use core;
 use core::default::Default;
 use probability::CDF16;
@@ -53,7 +51,7 @@ impl ByteQueue for RegisterQueue {
         self.count += byte_count_to_push as u8;
         let mut reg = self.data;
         for (i, data_iter) in data.split_at(byte_count_to_push).0.iter().enumerate() {
-            reg |= (*data_iter as FixedRegister) << (offset + ((i as u8) <<3));
+            reg |= FixedRegister::from(*data_iter) << (offset + ((i as u8) <<3));
         }
         self.data = reg;
         byte_count_to_push
@@ -85,29 +83,29 @@ pub trait EntropyEncoder {
                             nibble: u8,
                             prob: &C) {
         let high_bit_prob = prob.cdf(7);
-        let cdf_max = prob.max() as i32;
+        let cdf_max = i32::from(prob.max());
         let normalized_high_bit_prob = match prob.log_max() {
-            None => ((high_bit_prob as i32) << 8) / cdf_max,
-            Some(lmax) => ((high_bit_prob as i32)<< 8) >> lmax,
+            None => (i32::from(high_bit_prob) << 8) / cdf_max,
+            Some(lmax) => (i32::from(high_bit_prob)<< 8) >> lmax,
         } as u8;
         let high_bit = nibble & 8;
         self.put_bit(high_bit != 0, normalized_high_bit_prob);
-        let mid_max = if high_bit != 0 {cdf_max} else {high_bit_prob as i32};
-        let mid_min = if high_bit != 0 {high_bit_prob as i32} else {0};
-        let mid_prob = prob.cdf((nibble & 8) + 3) as i32;
+        let mid_max = if high_bit != 0 {cdf_max} else {i32::from(high_bit_prob)};
+        let mid_min = if high_bit != 0 {i32::from(high_bit_prob)} else {0};
+        let mid_prob = i32::from(prob.cdf((nibble & 8) + 3));
         let mid_bit = nibble & 4;
         let normalized_mid_prob = (((mid_prob -  mid_min) << 8) / (mid_max - mid_min as i32)) as u8;
         self.put_bit(mid_bit != 0, normalized_mid_prob);
         let lomid_min = if mid_bit != 0 {mid_prob} else {mid_min};
         let lomid_max = if mid_bit != 0 {mid_max} else {mid_prob};
-        let lomid_prob = prob.cdf((nibble & 12) + 1) as i32;
-        let normalized_lomid_prob =((((lomid_prob -  lomid_min) as i32) << 8) / (lomid_max - lomid_min as i32)) as u8;
+        let lomid_prob = i32::from(prob.cdf((nibble & 12) + 1));
+        let normalized_lomid_prob =(((lomid_prob -  lomid_min) << 8) / (lomid_max - lomid_min)) as u8;
         let lomid_bit = (nibble as usize) & 2;
         self.put_bit(lomid_bit != 0, normalized_lomid_prob);
         let lo_min = if lomid_bit != 0 {lomid_prob} else {lomid_min};
         let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
-        let lo_prob = prob.cdf(nibble & 14) as i32;
-        let normalized_lo_prob =((((lo_prob -  lo_min) as i32) << 8) / (lo_max - lo_min as i32)) as u8;
+        let lo_prob = i32::from(prob.cdf(nibble & 14));
+        let normalized_lo_prob =(((lo_prob -  lo_min) << 8) / (lo_max - lo_min)) as u8;
         self.put_bit((nibble & 1) != 0, normalized_lo_prob);
     }
     fn put_8bit(&mut self,
@@ -135,32 +133,31 @@ pub trait EntropyDecoder {
     fn get_bit(&mut self, prob_of_false: u8) -> bool;
     fn get_nibble<C: CDF16> (&mut self, prob: &C) -> u8 {
         let high_bit_prob = prob.cdf(7);
-        let cdf_max = prob.max() as i32;
+        let cdf_max = i32::from(prob.max());
         let normalized_high_bit_prob = match prob.log_max() {
-            None => ((high_bit_prob as i32) << 8) / cdf_max,
-            Some(lmax) => ((high_bit_prob as i32) << 8) >> lmax,
+            None => (i32::from(high_bit_prob) << 8) / cdf_max,
+            Some(lmax) => (i32::from(high_bit_prob) << 8) >> lmax,
         } as u8;
         let high_bit = (self.get_bit(normalized_high_bit_prob) as i32) << 3;
         let mut nibble = high_bit as u8;
-        let mid_max = if high_bit != 0 {cdf_max} else {high_bit_prob as i32};
-        let mid_min = if high_bit != 0 {high_bit_prob as i32} else {0};
-        let mid_prob = prob.cdf((nibble & 8) + 3) as i32;
-        let normalized_mid_prob = (((mid_prob -  mid_min) << 8) / (mid_max - mid_min as i32)) as u8;
+        let mid_max = if high_bit != 0 {cdf_max} else {i32::from(high_bit_prob)};
+        let mid_min = if high_bit != 0 {i32::from(high_bit_prob)} else {0};
+        let mid_prob = i32::from(prob.cdf((nibble & 8) + 3));
+        let normalized_mid_prob = (((mid_prob -  mid_min) << 8) / (mid_max - mid_min)) as u8;
         let mid_bit = (self.get_bit(normalized_mid_prob) as i32) << 2;
         nibble |= mid_bit as u8;
         let lomid_min = if mid_bit != 0 {mid_prob} else {mid_min};
         let lomid_max = if mid_bit != 0 {mid_max} else {mid_prob};
-        let lomid_prob = prob.cdf((nibble & 12) + 1) as i32;
-        let normalized_lomid_prob =((((lomid_prob -  lomid_min) as i32) << 8) / (lomid_max - lomid_min as i32)) as u8;
+        let lomid_prob = i32::from(prob.cdf((nibble & 12) + 1));
+        let normalized_lomid_prob =(((lomid_prob -  lomid_min) << 8) / (lomid_max - lomid_min)) as u8;
         let lomid_bit = (self.get_bit(normalized_lomid_prob) as i32) << 1;
         nibble |= lomid_bit as u8;
         let lo_min = if lomid_bit != 0 {lomid_prob} else {lomid_min};
         let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
-        let lo_prob = prob.cdf(nibble & 14) as i32;
-        let normalized_lo_prob = ((((lo_prob -  lo_min) as i32) << 8) / (lo_max - lo_min as i32)) as u8;
-        let ret = nibble | self.get_bit(normalized_lo_prob) as u8;
-        //println!("P({}) {} {} {} {} b {}", count, normalized_high_bit_prob, normalized_mid_prob, normalized_lomid_prob, lo_prob, ret);
-        ret
+        let lo_prob = i32::from(prob.cdf(nibble & 14));
+        let normalized_lo_prob = (((lo_prob -  lo_min) << 8) / (lo_max - lo_min)) as u8;
+        nibble | self.get_bit(normalized_lo_prob) as u8
+        //println!("P({}) {} {} {} {} b {}", count, normalized_high_bit_prob, normalized_mid_prob, normalized_lomid_prob, lo_prob, nibble | self.get_bit(normalized_lo_prob) as u8);
     }
     fn get_8bit(&mut self, true_probabilities: [u8;8]) -> [bool;8] {
         let mut ret = [false; 8];
@@ -196,7 +193,7 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
                 return BrotliResult::NeedsMoreInput;
             }
         }
-        return BrotliResult::ResultSuccess;
+        BrotliResult::ResultSuccess
     }
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
@@ -299,19 +296,17 @@ mod test {
                                prob_start:u8,
                                prob_mid:u8,
                                prob_end:u8) -> u8 {
-        let hi;
-        if prob_end == 16 {
-            hi = cdf.max() as i64;
+        let hi = if prob_end == 16 {
+            i64::from(cdf.max())
         } else {
-            hi = cdf.cdf(prob_end as u8 - 1) as i64;
-        }
-        let lo;
-        if prob_start == 0 {
-            lo = 0;
+            i64::from(cdf.cdf(prob_end as u8 - 1))
+        };
+        let lo = if prob_start == 0 {
+            0
         } else {
-            lo = cdf.cdf(prob_start as u8 - 1) as i64;
-        }
-        let mid = cdf.cdf(prob_mid as u8 - 1) as i64;
+            i64::from(cdf.cdf(prob_start as u8 - 1))
+        };
+        let mid = i64::from(cdf.cdf(prob_mid as u8 - 1));
         //println!("Test get prob MID : {:} [{:}] HIGH {:} LO: {:} NORM {:}",
         //          mid,    ((prob_start as usize + prob_end as usize - 1)>>1),
         //          hi, lo,         (((mid - lo) << 8) / (cdf.max() - lo)) as u8);

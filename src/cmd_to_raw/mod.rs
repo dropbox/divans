@@ -98,7 +98,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if self.ring_buffer_output_index <= self.ring_buffer_decode_index {
             return self.ring_buffer_output_index + self.ring_buffer.slice().len() as u32 - 1 - self.ring_buffer_decode_index;
         }
-        return self.ring_buffer_output_index - 1 - self.ring_buffer_decode_index;
+        self.ring_buffer_output_index - 1 - self.ring_buffer_decode_index
     }
     fn copy_decoded_from_ring_buffer(&self, mut output: &mut[u8], mut distance: u32, mut amount_to_copy: u32) {
         if distance > self.ring_buffer_decode_index {
@@ -114,7 +114,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             distance = self.ring_buffer_decode_index;
             amount_to_copy -= far_amount as u32;
         }
-        if output.len() != 0 {
+        if !output.is_empty() {
             let start = self.ring_buffer_decode_index - distance;
             output.split_at_mut(amount_to_copy
                                 as usize).0.clone_from_slice(self.ring_buffer.slice().split_at(start as usize).1.split_at(amount_to_copy
@@ -197,7 +197,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     #[allow(unused)]
     fn parse_copy_simplified(&mut self, copy:&CopyCommand) -> BrotliResult {
         for i in (self.input_sub_offset as usize)..(copy.num_bytes as usize){
-            if (self.ring_buffer_decode_index + 1 & (self.ring_buffer.slice().len() as u32 - 1)) == self.ring_buffer_output_index {
+            if ((self.ring_buffer_decode_index + 1) & (self.ring_buffer.slice().len() as u32 - 1)) == self.ring_buffer_output_index {
                self.input_sub_offset = i;
                return BrotliResult::NeedsMoreOutput;
             }
@@ -211,7 +211,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             }
         }
         self.input_sub_offset = copy.num_bytes as usize;
-        return BrotliResult::ResultSuccess;
+        BrotliResult::ResultSuccess
     }
     fn parse_copy(&mut self, copy:&CopyCommand) -> BrotliResult {
         let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset as u32;
@@ -254,7 +254,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
     fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> BrotliResult {
         // dictionary words are bounded in size: make sure there's enough room for the whole word
-        let copy_len = dict_cmd.word_size as u32;
+        let copy_len = u32::from(dict_cmd.word_size);
         let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
         let word_index = (dict_cmd.word_id * copy_len) + word_len_category_index;
         let dict = &kBrotliDictionary;
@@ -263,7 +263,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         let final_len = TransformDictionaryWord(&mut transformed_word[..],
                                                 &word[..],
                                                 copy_len as i32,
-                                                dict_cmd.transform as i32);
+                                                i32::from(dict_cmd.transform));
         if self.decode_space_left_in_ring_buffer() < final_len as u32 {
             return BrotliResult::NeedsMoreOutput;
         }
@@ -279,14 +279,14 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         BrotliResult::ResultSuccess
     }
     fn parse_command<SliceType:SliceWrapper<u8>>(&mut self, cmd: &Command<SliceType>) -> BrotliResult {
-        match cmd {
-              &Command::Copy(ref copy) => self.parse_copy(copy),
-              &Command::Dict(ref dict) => self.parse_dictionary(dict),
-              &Command::Literal(ref literal) => self.parse_literal(literal),
-              &Command::PredictionMode(_) => BrotliResult::ResultSuccess,
-              &Command::BlockSwitchCommand(_)
-              | &Command::BlockSwitchDistance(_)
-              | &Command::BlockSwitchLiteral(_) => BrotliResult::ResultSuccess,
+        match *cmd {
+              Command::Copy(ref copy) => self.parse_copy(copy),
+              Command::Dict(ref dict) => self.parse_dictionary(dict),
+              Command::Literal(ref literal) => self.parse_literal(literal),
+              Command::PredictionMode(_)
+              | Command::BlockSwitchCommand(_)
+              | Command::BlockSwitchDistance(_)
+              | Command::BlockSwitchLiteral(_) => BrotliResult::ResultSuccess,
         }
     }
     pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
@@ -317,11 +317,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             BrotliResult::ResultSuccess => {
                 self.input_sub_offset = 0;
                 self.total_offset += *output_offset - prev_output_offset;
-                return BrotliResult::ResultSuccess;
+                BrotliResult::ResultSuccess
             },
             res => {
                 self.total_offset += *output_offset - prev_output_offset;
-                return res;
+                res
             },
         }
     }

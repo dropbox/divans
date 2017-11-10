@@ -31,6 +31,11 @@ impl EncoderSpecialization {
         }
     }
 }
+impl Default for EncoderSpecialization {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EncoderOrDecoderSpecialization for EncoderSpecialization {
     fn does_caller_want_original_file_bytes(&self) -> bool {
@@ -59,8 +64,8 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                             data: &'a Command<ISlice>,
                                                             backing: &'a CopyCommand) -> &'a CopyCommand {
-        match data {
-            &Command::Copy(ref cc) => cc,
+        match *data {
+            Command::Copy(ref cc) => cc,
             _ => backing,
         }
     }
@@ -69,16 +74,16 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
                                          +Default>(&self,
                                                    data: &'a Command<ISlice>,
                                                    backing: &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice> {
-        match data {
-            &Command::Literal(ref lc) => lc,
+        match *data {
+            Command::Literal(ref lc) => lc,
             _ => backing,
         }        
     }
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                             data: &'a Command<ISlice>,
                                                             backing: &'a DictCommand) -> &'a DictCommand {
-        match data {
-            &Command::Dict(ref dc) => dc,
+        match *data {
+            Command::Dict(ref dc) => dc,
             _ => backing,
         }                
     }

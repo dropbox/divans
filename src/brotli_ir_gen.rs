@@ -173,10 +173,8 @@ impl<SelectedCDF:CDF16,
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
-                if available_in == 0 {
-                    if BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
-                        break;
-                    }
+                if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
+                    break;
                 }
                 return BrotliResult::NeedsMoreInput;
             }
@@ -250,8 +248,8 @@ impl<SelectedCDF:CDF16,
         match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
                                           input,
                                           input_offset) {
-            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-            BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => return BrotliResult::NeedsMoreInput,
+            BrotliResult::ResultFailure => BrotliResult::ResultFailure,
+            BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => BrotliResult::NeedsMoreInput,
             BrotliResult::NeedsMoreOutput => panic!("unexpected code"),
         }
     }
@@ -276,7 +274,7 @@ impl<SelectedCDF:CDF16,
         if self.encoded_byte_offset == self.divans_data.len() {
             return BrotliResult::ResultSuccess;
         }
-        return BrotliResult::NeedsMoreOutput;
+        BrotliResult::NeedsMoreOutput
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                            input:&[Command<SliceType>],

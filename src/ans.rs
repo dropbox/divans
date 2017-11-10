@@ -74,7 +74,7 @@ impl ANS1 {
         self.r = 0;
     }
     pub fn update(&mut self, p1: u8) {
-        let v1 = p1 as u64;
+        let v1 = u64::from(p1);
         let v0 = (1u64<<BITS) - v1;
         assert!(v1 != 0);
         assert!(v0 != 0);
@@ -95,7 +95,7 @@ impl ANS1 {
         let x_max = ((RANS64_L >> BITS) << 32).wrapping_mul(ls);
         let x1 =
             if x >= x_max {
-                *n = *n - 4;
+                *n -= 4;
                 ANS1::write_u32(x as u32, &mut dst[*n .. *n + 4]);
                 x >> 32
             } else {
@@ -111,8 +111,8 @@ impl ANS1 {
     pub fn encode_flush(&self, dst: &mut [u8], n: &mut usize) {
         let x0 = self.r as u32;
         let x1 = (self.r >> 32) as u32;
-        *n = *n - 8;
-        ANS1::write_u32(x0, &mut dst[*n + 0 .. *n + 4]);
+        *n -= 8;
+        ANS1::write_u32(x0, &mut dst[*n .. *n + 4]);
         ANS1::write_u32(x1, &mut dst[*n + 4 .. *n + 8]);
     }
     ///dst, should have at least 4 elements left, advance this backwards
@@ -131,15 +131,15 @@ impl ANS1 {
         let bs = self.bs[bit as usize]; // frequency start
         let ls = self.ls[bit as usize]; // frequency
         let x1 = (ls * (x >> BITS)) + xm - bs;
-        return (x1, bit);
+        (x1, bit)
     }
     pub fn decode_will_advance(x1: u64) -> bool {
-        return x1 < RANS64_L;
+        x1 < RANS64_L
     }
     pub fn decode_advance(&mut self, x1: u64, src: &[u8], n: &mut usize) {
         self.r =
             if ANS1::decode_will_advance(x1) {
-                let o = ANS1::read_u32(&src[*n .. *n + 4]) as u64;
+                let o = u64::from(ANS1::read_u32(&src[*n .. *n + 4]));
                 *n = *n + 4;
                 let x2 = (x1 << 32) | o;
                 assert!(x2 >= RANS64_L);
@@ -155,12 +155,12 @@ impl ANS1 {
         o = o | ((src[1] as u32)<<16);
         o = o | ((src[2] as u32)<<8);
         o = o | (src[3] as u32);
-        return o;
+        o
     }
     pub fn read_u64(src: &[u8]) -> u64 {
         let x0 = ANS1::read_u32(&src[0 .. 4]) as u64;
         let x1 = ANS1::read_u32(&src[4 .. 8]) as u64;
-        return x0 | (x1 << 32);
+        x0 | (x1 << 32)
     }
     pub fn decode_init(&mut self, src: &[u8], n: &mut usize) {
         self.r = ANS1::read_u64(&src[*n .. *n + 8]);
@@ -170,7 +170,7 @@ impl ANS1 {
 
 impl Default for ANS1 {
     fn default() -> Self {
-        return ANS1{ls: [0,0], bs: [0,0], ss: [0,0], r: 0};
+        ANS1{ls: [0,0], bs: [0,0], ss: [0,0], r: 0}
     }
 }
 
@@ -196,10 +196,10 @@ pub struct CycleQueue {
 
 impl ByteQueue for CycleQueue {
     fn num_push_bytes_avail(&self) -> usize {
-        return self.data.len() - self.used;
+        self.data.len() - self.used
     }
     fn num_pop_bytes_avail(&self) -> usize {
-        return self.used;
+        self.used
     }
     fn push_data(&mut self, src:&[u8]) -> usize {
         let end = (self.start + self.used) % self.data.len();
@@ -209,7 +209,7 @@ impl ByteQueue for CycleQueue {
             self.data[d] = *s;
         }
         self.used = self.used + n;
-        return n;
+        n
     }
     fn pop_data(&mut self, dst:&mut [u8]) -> usize {
         let n = core::cmp::min(dst.len(), self.used);
@@ -218,13 +218,13 @@ impl ByteQueue for CycleQueue {
         }
         self.start = (self.start + n) % self.data.len();
         self.used = self.used - n;
-        return n;
+        n
     }
 }
 
 impl Default for CycleQueue {
     fn default() -> Self {
-        return  CycleQueue {data: [0u8; 16], start: 0, used: 0};
+        CycleQueue {data: [0u8; 16], start: 0, used: 0}
     }
 }
 
@@ -238,7 +238,7 @@ pub struct EntropyEncoderANS<AllocU8: Allocator<u8>>  {
 impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
     fn new(m8: &mut A) -> Self {
         let data = m8.alloc_cell(MAX_BUFFER_SIZE);
-        return ByteStack {data: data, nbytes: MAX_BUFFER_SIZE};
+        ByteStack {data: data, nbytes: MAX_BUFFER_SIZE}
     }
 }
 
@@ -248,13 +248,13 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
     }
     fn bytes(&mut self) -> &[u8] {
         let sl = self.data.slice();
-        return &sl[self.nbytes ..  sl.len()];
+        &sl[self.nbytes ..  sl.len()]
     }
     fn stack_num_bytes(&self) -> usize {
-        return self.data.slice().len() - self.nbytes;
+        self.data.slice().len() - self.nbytes
     }
     fn stack_bytes_avail(&self) -> usize {
-        return self.nbytes;
+        self.nbytes
     }
     fn stack_data(&mut self, src: &[u8]) {
         for v in src.iter().rev() {
@@ -274,14 +274,14 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
 
 impl<AllocU8: Allocator<u8>> ByteQueue for ByteStack<AllocU8> {
     fn num_push_bytes_avail(&self) -> usize {
-        return self.nbytes;
+        self.nbytes
     }
     fn num_pop_bytes_avail(&self) -> usize {
-        return self.data.slice().len() - self.nbytes;
+        self.data.slice().len() - self.nbytes
     }
     fn push_data(&mut self, _data:&[u8]) -> usize {
         assert!(false); //only pop from this queue
-        return 0;
+        0
     }
     fn pop_data(&mut self, data:&mut [u8]) -> usize {
         let n = core::cmp::min(data.len(), self.num_pop_bytes_avail());
@@ -290,7 +290,7 @@ impl<AllocU8: Allocator<u8>> ByteQueue for ByteStack<AllocU8> {
             *d = *s;
         }
         self.nbytes = self.nbytes + n;
-        return n;
+        n
     }
 }
 
@@ -300,7 +300,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyDecoderANS<A> {
         let c = ANS1::default();
         let q = CycleQueue::default();
         let p = PhantomData::<A>::default();
-        return EntropyDecoderANS{c: c, q: q, len: 0, phantom: p};
+        EntropyDecoderANS{c: c, q: q, len: 0, phantom: p}
     }
 }
 
@@ -313,7 +313,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyEncoderANS<A> {
         let p = ByteStack::<A>::new(m8);
         assert!(p.stack_bytes_avail() == MAX_BUFFER_SIZE);
         assert!(b.stack_bytes_avail() == MAX_BUFFER_SIZE);
-        return EntropyEncoderANS{c: c, q: q, bits: b, probs: p};
+        EntropyEncoderANS{c: c, q: q, bits: b, probs: p}
     }
 }
 
@@ -377,12 +377,12 @@ impl<AllocU8: Allocator<u8>> EntropyEncoderANS<AllocU8> {
 
 /// TODO(anatoly): each chunk can be run in parallel
 /// output format:
-/// [<size: u16, encoded_buffer: [u8; size]>]
+/// [<`size`: u16, `encoded_buffer`: [u8; size]>]
 /// This avoids using 2 bytes for buffers that fit into the initial 8 byte state
 impl<AllocU8: Allocator<u8>> EntropyEncoder for EntropyEncoderANS<AllocU8> {
     type Queue = ByteStack<AllocU8>;
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
-        return &mut self.q;
+        &mut self.q
     }
     fn put_bit(&mut self, bit: bool, mut prob_of_false: u8) {
         //perror!("put_bit {} {}", bit, prob_of_false);
@@ -430,7 +430,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoderANS<AllocU8> {
 impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
     type Queue = CycleQueue;
     fn get_internal_buffer(&mut self) -> &mut CycleQueue {
-        return &mut self.q;
+        &mut self.q
     }
     //TODO(anatoly): clean this up
     fn get_bit(&mut self, mut prob_of_false: u8) -> bool {
@@ -455,12 +455,12 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
         self.c.decode_advance(x1, &dst, &mut n);
         assert!(n == 4 || false == ANS1::decode_will_advance(x1));
         //perror!("get_bit {} {}", bit, prob_of_false);
-        return bit;
+        bit
     }
     fn flush(&mut self) -> BrotliResult {
         self.c.reset();
         self.len = 0;
-        return BrotliResult::ResultSuccess;
+        BrotliResult::ResultSuccess
     }
 }
 
@@ -515,7 +515,7 @@ mod test {
                 }
             }
         }
-        return ((ones<<BITS) as u64 / (src.len() as u64 * 8)) as u8;
+        ((ones<<BITS) as u64 / (src.len() as u64 * 8)) as u8
     }
 
 
