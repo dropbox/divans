@@ -324,7 +324,7 @@ impl ExternalProbCDF16 {
                 if isone {
                     pcdf[nibble] *= p1;
                 } else {
-                    pcdf[nibble] *= (1f64 - p1);
+                    pcdf[nibble] *= 1f64 - p1;
                 }
             }
         }
@@ -344,7 +344,7 @@ impl ExternalProbCDF16 {
         let mut sum = 0f64;
         for pcdf_nibble in &mut pcdf {
             sum += *pcdf_nibble;
-            *pcdf_nibble = sum; 
+            *pcdf_nibble = sum;
         }
         for pcdf_nibble in &mut pcdf {
             *pcdf_nibble /= sum;

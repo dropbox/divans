@@ -780,7 +780,7 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::cluster::HistogramPair>,
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                          ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
-                
+
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(
     r:&mut Reader,
@@ -1172,10 +1172,11 @@ fn main() {
                     'd').trim_matches(
                     '=').parse::<Speed>().unwrap());
                 continue
-                
+
             }
             if argument == "-h" || argument == "-help" || argument == "--help" {
-                println_stderr!("Decompression:\ndivans [input_file] [output_file]\nCompression:brotli -c [input_file] [output_file]\n");
+                println_stderr!("Compression: divans {{-c [raw_input_file] | -i [ir_file]}} [output_file]");
+                println_stderr!("Decompression: divans [input_file] [output_file]");
                 return;
             }
             if argument == "-v" || argument == "-version" || argument == "--version" {
