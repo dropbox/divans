@@ -135,51 +135,69 @@ impl<SelectedCDF:CDF16,
                               op: BrotliEncoderOperation,
                               input:&[u8], mut input_offset: &mut usize) -> brotli::BrotliResult {
         let mut nothing : Option<usize> = None;
-        let mut divans_data_ref = &mut self.divans_data;
-        let mut divans_codec_ref = &mut self.codec;
-        let mut header_progress_ref = &mut self.header_progress;
-        let window_size = self.window_size;
-        let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| Self::divans_encode_commands(a,
+        {
+            let mut divans_data_ref = &mut self.divans_data;
+            let mut divans_codec_ref = &mut self.codec;
+            let mut header_progress_ref = &mut self.header_progress;
+            let window_size = self.window_size;
+            let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| Self::divans_encode_commands(a,
                                                                                                                  header_progress_ref,
                                                                                                                  divans_data_ref,
                                                                                                                  divans_codec_ref,
                                                                                                                  window_size);
-        loop {
-            let mut available_in = input.len() - *input_offset;
-            let mut brotli_out_offset = 0usize;
-            {
-                let brotli_buffer = self.brotli_data.checkout_next_buffer(&mut self.brotli_encoder.m8, Some(256));
-                let mut available_out = brotli_buffer.len();
-                
-                if BrotliEncoderCompressStream(&mut self.brotli_encoder,
-                                               &mut self.mf64,
-                                               &mut self.mfv,
-                                               &mut self.mhl,
-                                               &mut self.mhc,
-                                               &mut self.mhd,
-                                               &mut self.mhp,
-                                               &mut self.mct,
-                                               &mut self.mht,
-                                               op,
-                                               &mut available_in,
-                                               input,
-                                               input_offset,
-                                               &mut available_out,
-                                               brotli_buffer,
-                                               &mut brotli_out_offset,
-                                               &mut nothing,
-                                               &mut closure) <= 0 {
-                    return BrotliResult::ResultFailure;
-                }                
-            }
-            self.brotli_data.commit_next_buffer(brotli_out_offset);
-            if available_in == 0 {
-                if BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
-                    return BrotliResult::ResultSuccess;
+            loop {
+                let mut available_in = input.len() - *input_offset;
+                let mut brotli_out_offset = 0usize;
+                {
+                    let brotli_buffer = self.brotli_data.checkout_next_buffer(&mut self.brotli_encoder.m8, Some(256));
+                    let mut available_out = brotli_buffer.len();
+
+                    if BrotliEncoderCompressStream(&mut self.brotli_encoder,
+                                                   &mut self.mf64,
+                                                   &mut self.mfv,
+                                                   &mut self.mhl,
+                                                   &mut self.mhc,
+                                                   &mut self.mhd,
+                                                   &mut self.mhp,
+                                                   &mut self.mct,
+                                                   &mut self.mht,
+                                                   op,
+                                                   &mut available_in,
+                                                   input,
+                                                   input_offset,
+                                                   &mut available_out,
+                                                   brotli_buffer,
+                                                   &mut brotli_out_offset,
+                                                   &mut nothing,
+                                                   &mut closure) <= 0 {
+                        return BrotliResult::ResultFailure;
+                    }
+                }
+                self.brotli_data.commit_next_buffer(brotli_out_offset);
+                if available_in == 0 {
+                    if BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
+                        break;
+                    }
                 }
                 return BrotliResult::NeedsMoreInput;
             }
         }
+        loop { // flush divans coder
+            let ret;
+            let mut output_offset = 0usize;
+            {
+                let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8(),
+                                                                       Some(interface::HEADER_LENGTH + 256));
+                ret = self.codec.flush(&mut output, &mut output_offset);
+            }
+            self.divans_data.commit_next_buffer(output_offset);
+            match ret {
+                            BrotliResult::ResultSuccess => return ret,
+                BrotliResult::NeedsMoreOutput => {},
+                BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+            }
+        }
+        return BrotliResult::ResultSuccess;
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
