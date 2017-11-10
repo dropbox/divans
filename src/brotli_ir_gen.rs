@@ -400,6 +400,9 @@ impl<AllocU8:Allocator<u8>,
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
                                                        10);
+        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
+                                                       1);
         ret
     }
 }
