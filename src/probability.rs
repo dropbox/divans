@@ -392,7 +392,7 @@ impl CDF16 for ExternalProbCDF16 {
         let mut retval = *self;
         let ourmax = i64::from(self.max());
         let othermax = i64::from(other.max());
-        let maxmax = i64::from(core::cmp::min(ourmax, othermax));
+        let maxmax = core::cmp::min(ourmax, othermax);
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {

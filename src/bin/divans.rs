@@ -68,7 +68,7 @@ fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
         } else if byte == b'\n'|| byte == b'\t'|| byte == b'\r' {
                 continue;
             } else {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, s.clone()));
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, s));
         }
         rem += 1;
         if rem == 2 {
@@ -91,27 +91,27 @@ impl<Item:Sized+Default> Default for ItemVec<Item> {
 }
 impl<Item:Sized+Default> alloc::SliceWrapper<Item> for ItemVec<Item> {
     fn slice(&self) -> &[Item] {
-        return &self.0[..];
+        &self.0[..]
     }
 }
 
 impl<Item:Sized+Default> alloc::SliceWrapperMut<Item> for ItemVec<Item> {
     fn slice_mut(&mut self) -> &mut [Item] {
-        return &mut self.0[..];
+        &mut self.0[..]
     }
 }
 
 impl<Item:Sized+Default> core::ops::Index<usize> for ItemVec<Item> {
     type Output = Item;
-    fn index<'a>(&'a self, index:usize) -> &'a Item {
-        return &self.0[index];
+    fn index(&self, index:usize) -> &Item {
+        &self.0[index]
     }
 }
 
 impl<Item:Sized+Default> core::ops::IndexMut<usize> for ItemVec<Item> {
 
     fn index_mut(&mut self, index:usize) -> &mut Item {
-        return &mut self.0[index];
+        &mut self.0[index]
     }
 }
 
@@ -128,9 +128,9 @@ impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item>
 
     }
 }
-fn window_parse(s : String) -> Result<i32, io::Error> {
+fn window_parse(s : &str) -> Result<i32, io::Error> {
     let window_vec : Vec<String> = s.split(' ').map(|s| s.to_string()).collect();
-    if window_vec.len() == 0 {
+    if window_vec.is_empty() {
         panic!("Unexpected");    }
     if window_vec.len() < 2 {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -147,28 +147,28 @@ fn window_parse(s : String) -> Result<i32, io::Error> {
                                       msg.description()));
         }
     };
-    return Ok(expected_window_size)
+    Ok(expected_window_size)
 }
 
 #[cfg(not(feature="external-literal-probability"))]
-fn deserialize_external_probabilities(probs: std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
-    if probs.len() != 0 {
+fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
+    if !probs.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput,
             "To parse nonzero external probabiltiy flags, compile with feature flag external-literal-probability"));
     }
     Ok(FeatureFlagSliceType::<ItemVec<u8>>::default())
 }
 #[cfg(feature="external-literal-probability")]
-fn deserialize_external_probabilities(probs: std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
+fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<FeatureFlagSliceType<ItemVec<u8>>, io::Error> {
     Ok(FeatureFlagSliceType::<ItemVec<u8>>(ItemVec(probs)))
 }
 
 
 
 
-fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_value: Option<u8>) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+fn command_parse(s : &str, do_context_map:bool, do_stride: bool, force_stride_value: Option<u8>) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
-    if command_vec.len() == 0 {
+    if command_vec.is_empty() {
         panic!("Unexpected");
     }
     let cmd = command_vec[0];
@@ -180,7 +180,7 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "prediction needs 1 argument"));
         }
-        let pmode = match command_vec[1].as_ref() {
+        let pmode = match command_vec[1] {
           "utf8" => LiteralPredictionModeNibble::utf8(),
           "sign" => LiteralPredictionModeNibble::signed(),
           "lsb6" => LiteralPredictionModeNibble::lsb6(),
@@ -196,47 +196,41 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
         if !do_context_map {
             return Ok(Some(Command::PredictionMode(ret)));
         }
-        match command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
-            Some((index, _)) => {
-                for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
-                    match literal_context_map_val.parse::<i64>() {
-                        Ok(el) => {
-                            if el <= 255 && el >= 0 {
-                                ret.literal_context_map.0.push(el as u8);
-                            } else {
-                                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                                          literal_context_map_val.to_string() +
-                                                          " literal context mp val must be u8"));
-                            }
-                        },
-                        Err(_) => {
-                            break;
-                        },
-                    }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
+            for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
+                match literal_context_map_val.parse::<i64>() {
+                    Ok(el) => {
+                        if el <= 255 && el >= 0 {
+                            ret.literal_context_map.0.push(el as u8);
+                        } else {
+                            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      literal_context_map_val.to_string() +
+                                                      " literal context mp val must be u8"));
+                        }
+                    },
+                    Err(_) => {
+                        break;
+                    },
                 }
-            },
-            None =>{},
+            }
         }
-        match command_vec.iter().enumerate().find(|r| *r.1 == "dcontextmap") {
-            Some((index, _)) => {
-                for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
-                    match distance_context_map_val.parse::<i64>() {
-                        Ok(el) => {
-                            if el <= 255 && el >= 0 {
-                                ret.distance_context_map.0.push(el as u8);
-                            } else {
-                                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                                          distance_context_map_val.to_string() +
-                                                          " distance context map val must be u8"));
-                            }
-                        },
-                        Err(_) => {
-                            break;
-                        },
-                    }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "dcontextmap") {
+            for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
+                match distance_context_map_val.parse::<i64>() {
+                    Ok(el) => {
+                        if el <= 255 && el >= 0 {
+                            ret.distance_context_map.0.push(el as u8);
+                        } else {
+                            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      distance_context_map_val.to_string() +
+                                                      " distance context map val must be u8"));
+                        }
+                    },
+                    Err(_) => {
+                        break;
+                    },
                 }
-            },
-            None =>{},
+            }
         }
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
@@ -365,7 +359,7 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
                 return Ok(None);
             }
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          String::from("insert needs 3 arguments, not (") + &s + ")"));
+                                          String::from("insert needs 3 arguments, not (") + s + ")"));
         }
         let expected_len = match command_vec[1].parse::<usize>() {
             Ok(el) => el,
@@ -377,9 +371,9 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
         if expected_len ==  0 {
             return Ok(None);
         }
-        let data = try!(hex_string_to_vec(&command_vec[2]));
+        let data = try!(hex_string_to_vec(command_vec[2]));
         let probs = if command_vec.len() > 3 {
-            let prob = try!(hex_string_to_vec(&command_vec[3]));
+            let prob = try!(hex_string_to_vec(command_vec[3]));
             assert!(prob.len() == expected_len * 8);
             prob
         } else {
@@ -388,9 +382,9 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
 
         if data.len() != expected_len {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                      String::from("Length does not match ") + &s))
+                                      String::from("Length does not match ") + s))
         }
-        match deserialize_external_probabilities(probs) {
+        match deserialize_external_probabilities(&probs) {
             Ok(external_probs) => {
                 return Ok(Some(Command::Literal(LiteralCommand{
                         data:ItemVec(data),
@@ -402,8 +396,8 @@ fn command_parse(s : String, do_context_map:bool, do_stride: bool, force_stride_
             },
         }
     }
-    return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                              String::from("Unknown ") + &s))
+    Err(io::Error::new(io::ErrorKind::InvalidInput,
+                       String::from("Unknown ") + s))
 }
 
 fn recode_cmd_buffer<RState:divans::interface::Compressor,
@@ -425,9 +419,8 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
             },
             BrotliResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
-                match w.write_all(output_scratch.split_at(o_processed_index).0) {
-                    Err(x) => return Err(x),
-                    Ok(_) => {},
+                if let Err(x) = w.write_all(output_scratch.split_at(o_processed_index).0) {
+                    return Err(x);
                 }
                 ret += o_processed_index;
                 o_processed_index = 0;
@@ -444,9 +437,8 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
             }
         }
     }
-    match w.write_all(output_scratch.split_at(o_processed_index).0) {
-        Err(x) => return Err(x),
-        Ok(_) => {},
+    if let Err(x) = w.write_all(output_scratch.split_at(o_processed_index).0) {
+        return Err(x);
     }
     ret += o_processed_index;
     Ok(ret)
@@ -458,7 +450,7 @@ fn recode_inner<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
-    let mut obuffer = [0u8;65536];
+    let mut obuffer = [0u8;65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
@@ -497,7 +489,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(line, true, true, None).unwrap() {
+                match command_parse(&line, true, true, None).unwrap() {
                     None => {},
                     Some(c) => {
                         ibuffer[i_read_index] = c;
@@ -513,18 +505,16 @@ fn recode_inner<Reader:std::io::BufRead,
                           &mut o_processed_index) {
             BrotliResult::ResultSuccess => {
                 if o_processed_index != 0 {
-                    match w.write_all(obuffer.split_at(o_processed_index).0) {
-                        Err(x) => return Err(x),
-                        Ok(_) => {},
+                    if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
+                        return Err(x);
                     }
                 }
                 break;
             },
             BrotliResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
-                match w.write_all(obuffer.split_at(o_processed_index).0) {
-                    Err(x) => return Err(x),
-                    Ok(_) => {},
+                if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
+                    return Err(x);
                 }
             }
             BrotliResult::NeedsMoreInput => {
@@ -541,9 +531,9 @@ fn recode_inner<Reader:std::io::BufRead,
 }
 
 fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, do_stride: bool, last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
-    if do_context_map == false || do_stride == false {
-        match cmd {
-           &divans::Command::BlockSwitchLiteral(lbs) => {
+    if !do_context_map || !do_stride {
+        match *cmd {
+           divans::Command::BlockSwitchLiteral(lbs) => {
                let retval = if do_context_map {
                    last_literal_switch.block_type() != lbs.block_type()
                } else {
@@ -552,10 +542,7 @@ fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, do_stride: b
                *last_literal_switch = lbs;
               return retval;
            },
-           &divans::Command::BlockSwitchDistance(_) => {
-               return do_context_map;
-           },
-           &divans::Command::BlockSwitchCommand(_) => {
+           divans::Command::BlockSwitchDistance(_) | divans::Command::BlockSwitchCommand(_) => {
                return do_context_map;
            },
            _ => {},
@@ -582,7 +569,7 @@ fn compress_inner<Reader:std::io::BufRead,
     do_stride: bool,
     force_stride_value: Option<u8>) -> io::Result<()> {
     let mut buffer = String::new();
-    let mut obuffer = [0u8;65536];
+    let mut obuffer = [0u8;65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
@@ -617,7 +604,7 @@ fn compress_inner<Reader:std::io::BufRead,
                     try!(recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
                                                &mut obuffer[..]));
 
-                    for item in ibuffer.iter_mut() {
+                    for item in &mut ibuffer {
                        free_cmd(item, &mut m8);
                     }
                     i_read_index = 0
@@ -626,7 +613,7 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match try!(command_parse(line, do_context_map, do_stride, force_stride_value)) {
+                match try!(command_parse(&line, do_context_map, do_stride, force_stride_value)) {
                     None => {},
                     Some(c) => {
                         if allowed_command(&c,
@@ -646,18 +633,16 @@ fn compress_inner<Reader:std::io::BufRead,
                           &mut o_processed_index) {
             BrotliResult::ResultSuccess => {
                 if o_processed_index != 0 {
-                    match w.write_all(obuffer.split_at(o_processed_index).0) {
-                        Err(x) => return Err(x),
-                        Ok(_) => {},
+                    if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
+                        return Err(x);
                     }
                 }
                 break;
             },
             BrotliResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
-                match w.write_all(obuffer.split_at(o_processed_index).0) {
-                    Err(x) => return Err(x),
-                    Ok(_) => {},
+                if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
+                    return Err(x);
                 }
             }
             BrotliResult::NeedsMoreInput => {
@@ -717,10 +702,7 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                     return Err(io::Error::new(io::ErrorKind::Other,
                                "Failure encoding brotli"));
                 },
-                BrotliResult::NeedsMoreInput => {
-                }
-                BrotliResult::NeedsMoreOutput => {
-                }
+                BrotliResult::NeedsMoreInput | BrotliResult::NeedsMoreOutput => {},
             }
         }
         while oenc_index != olim {
@@ -880,7 +862,7 @@ fn compress_ir<Reader:std::io::BufRead,
             },
             Ok(_) => {
                 let line = buffer.trim().to_string();
-                window_size = try!(window_parse(line));
+                window_size = try!(window_parse(&line));
                 break;
             }
         }
@@ -903,7 +885,7 @@ fn zero_slice(sl: &mut [u8]) -> usize {
     for v in sl.iter_mut() {
         *v = 0u8;
     }
-    return sl.len();
+    sl.len()
 }
 
 fn decompress<Reader:std::io::Read,
@@ -1029,7 +1011,7 @@ fn recode<Reader:std::io::BufRead,
             },
             Ok(_) => {
                 let line = buffer.trim().to_string();
-                window_size = window_parse(line).unwrap();
+                window_size = window_parse(&line).unwrap();
                 break;
             }
         }
@@ -1111,7 +1093,7 @@ fn main() {
     let mut force_stride_value: Option<u8> = None;
     let mut literal_adaptation: Option<Speed> = None;
     let window_size: Option<i32> = None;
-    let mut buffer_size:usize = 65536;
+    let mut buffer_size:usize = 65_536;
     if env::args_os().len() > 1 {
         let mut first = true;
         for argument in env::args() {

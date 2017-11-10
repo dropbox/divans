@@ -140,7 +140,7 @@ impl ANS1 {
         self.r =
             if ANS1::decode_will_advance(x1) {
                 let o = u64::from(ANS1::read_u32(&src[*n .. *n + 4]));
-                *n = *n + 4;
+                *n += 4;
                 let x2 = (x1 << 32) | o;
                 assert!(x2 >= RANS64_L);
                 x2
@@ -151,20 +151,20 @@ impl ANS1 {
 
     pub fn read_u32(src: &[u8]) -> u32 {
         let mut o: u32 = 0;
-        o = o | ((src[0] as u32)<<24);
-        o = o | ((src[1] as u32)<<16);
-        o = o | ((src[2] as u32)<<8);
-        o = o | (src[3] as u32);
+        o |= u32::from(src[0])<<24;
+        o |= u32::from(src[1])<<16;
+        o |= u32::from(src[2])<<8;
+        o |= u32::from(src[3]);
         o
     }
     pub fn read_u64(src: &[u8]) -> u64 {
-        let x0 = ANS1::read_u32(&src[0 .. 4]) as u64;
-        let x1 = ANS1::read_u32(&src[4 .. 8]) as u64;
+        let x0 = u64::from(ANS1::read_u32(&src[0 .. 4]));
+        let x1 = u64::from(ANS1::read_u32(&src[4 .. 8]));
         x0 | (x1 << 32)
     }
     pub fn decode_init(&mut self, src: &[u8], n: &mut usize) {
         self.r = ANS1::read_u64(&src[*n .. *n + 8]);
-        *n = *n + 8;
+        *n += 8;
     }
 }
 
@@ -208,7 +208,7 @@ impl ByteQueue for CycleQueue {
         for (d,s) in ixes.zip(src.iter().take(n)) {
             self.data[d] = *s;
         }
-        self.used = self.used + n;
+        self.used += n;
         n
     }
     fn pop_data(&mut self, dst:&mut [u8]) -> usize {
@@ -217,7 +217,7 @@ impl ByteQueue for CycleQueue {
             *d = *s;
         }
         self.start = (self.start + n) % self.data.len();
-        self.used = self.used - n;
+        self.used -= n;
         n
     }
 }
@@ -263,7 +263,7 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
     }
     fn stack_byte(&mut self, b: u8) {
         assert!(self.nbytes > 0);
-        self.nbytes = self.nbytes - 1;
+        self.nbytes -= 1;
         self.data.slice_mut()[self.nbytes] = b;
     }
     fn stack_u16(&mut self, s: u16) {
@@ -289,7 +289,7 @@ impl<AllocU8: Allocator<u8>> ByteQueue for ByteStack<AllocU8> {
         for (d, s) in data.iter_mut().zip(sl) {
             *d = *s;
         }
-        self.nbytes = self.nbytes + n;
+        self.nbytes += n;
         n
     }
 }
@@ -319,9 +319,9 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for EntropyEncoderANS<A> {
 
 impl<AllocU8: Allocator<u8>> EntropyEncoderANS<AllocU8> {
     fn encode_bit(c: &mut ANS1, q: &mut ByteStack<AllocU8>, bit: bool, prob_of_false: u8) {
-        assert!((prob_of_false as u64) != 1u64<<BITS);
+        assert!(u64::from(prob_of_false) != 1u64<<BITS);
         assert!(prob_of_false != 0);
-        let p1 = ((1u64<<BITS) - (prob_of_false as u64)) as u8;
+        let p1 = ((1u64<<BITS) - u64::from(prob_of_false)) as u8;
         c.update(p1);
         //TODO(anatoly): optimize to use whole words instead of arrays
         let mut dst = [0u8; 4];
@@ -419,7 +419,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoderANS<AllocU8> {
         let mut n = 0;
         assert!(self.q.num_pop_bytes_avail() >= 8);
         let b0 = self.q.pop_data(&mut dst);
-        self.len = self.len - 8;
+        self.len -= 8;
         assert!(b0 == 8);
         self.c.decode_init(&dst, &mut n);
         assert!(n == 8);
@@ -441,7 +441,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
             self.read_len();
             self.read_reg();
         }
-        let p1 = ((1<<BITS) - (prob_of_false as u64)) as u8;
+        let p1 = ((1<<BITS) - u64::from(prob_of_false)) as u8;
         self.c.update(p1);
         let (x1, bit) = self.c.decode();
         let mut dst = [0u8; 4];
@@ -450,10 +450,10 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
             assert!(self.q.num_pop_bytes_avail() >= 4);
             let p = self.q.pop_data(&mut dst);
             assert!(p == 4);
-            self.len = self.len - 4;
+            self.len -= 4;
         }
         self.c.decode_advance(x1, &dst, &mut n);
-        assert!(n == 4 || false == ANS1::decode_will_advance(x1));
+        assert!(n == 4 || !ANS1::decode_will_advance(x1));
         //perror!("get_bit {} {}", bit, prob_of_false);
         bit
     }

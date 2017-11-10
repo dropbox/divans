@@ -95,12 +95,12 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
       *thawed = *frozen;
    }
    for item in ret[start_index..end_index].iter_mut() {
-       match item {
-       &mut Command::Literal(ref mut lit) => {
+       match *item {
+       Command::Literal(ref mut lit) => {
            lit.data = lit.data.thaw(ring_buffer);
            assert_eq!(lit.prob.slice().len(), 0);
        },
-       &mut Command::PredictionMode(ref mut pm) => {
+       Command::PredictionMode(ref mut pm) => {
            pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
            pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
        },
@@ -169,34 +169,34 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         *freeze_dried_cmd_start = 0;
         *freeze_dried_cmd_end = input.len();
         for (frozen, leftover) in freeze_dried_cmd_array.split_at_mut(input.len()).0.iter_mut().zip(input.iter()) {
-            *frozen = match leftover {
-                &Command::Literal(ref lit) => {
+            *frozen = match *leftover {
+                Command::Literal(ref lit) => {
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
                         prob: freeze_dry(&lit.prob),
                     })
                 },
-                &Command::PredictionMode(ref pm) => {
+                Command::PredictionMode(ref pm) => {
                     Command::PredictionMode(PredictionModeContextMap::<slice_util::SliceReference<'static, u8>> {
-                        literal_prediction_mode: pm.literal_prediction_mode.clone(),
+                        literal_prediction_mode: pm.literal_prediction_mode,
                         literal_context_map: pm.literal_context_map.freeze_dry(),
                         distance_context_map: pm.literal_context_map.freeze_dry(),
                     })
                 },
-                &Command::Copy(ref c) => {
-                    Command::Copy(c.clone())
+                Command::Copy(ref c) => {
+                    Command::Copy(*c)
                 }
-                &Command::Dict(ref d) => {
-                    Command::Dict(d.clone())
+                Command::Dict(ref d) => {
+                    Command::Dict(*d)
                 }
-                &Command::BlockSwitchLiteral(ref l) => {
-                    Command::BlockSwitchLiteral(l.clone())
+                Command::BlockSwitchLiteral(ref l) => {
+                    Command::BlockSwitchLiteral(*l)
                 }
-                &Command::BlockSwitchCommand(ref c) => {
-                    Command::BlockSwitchCommand(c.clone())
+                Command::BlockSwitchCommand(ref c) => {
+                    Command::BlockSwitchCommand(*c)
                 }
-                &Command::BlockSwitchDistance(ref d) => {
-                    Command::BlockSwitchDistance(d.clone())
+                Command::BlockSwitchDistance(ref d) => {
+                    Command::BlockSwitchDistance(*d)
                 }
             };
         }
@@ -242,7 +242,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
-            let command_decode_ret = self.cmd_assembler.stream(&input, input_offset,
+            let command_decode_ret = self.cmd_assembler.stream(input, input_offset,
                                                                &mut temp_bs[..], &mut temp_cmd_offset);
             match command_decode_ret {
                 BrotliResult::NeedsMoreInput => {
@@ -267,9 +267,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             match codec_ret {
                 BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
-                    match command_decode_ret {
-                        BrotliResult::NeedsMoreInput => return BrotliResult::NeedsMoreInput, // we've exhausted all commands and all input
-                        _ => {},
+                    if let BrotliResult::NeedsMoreInput = command_decode_ret {
+                        return BrotliResult::NeedsMoreInput; // we've exhausted all commands and all input
                     }
                 },
                 BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {
@@ -343,9 +342,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             match codec_ret {
                 BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
-                    match command_flush_ret {
-                        BrotliResult::ResultSuccess => break, // we've exhausted all commands and all input
-                        _ => {},
+                    if let BrotliResult::ResultSuccess = command_flush_ret {
+                         break; // we've exhausted all commands and all input
                     }
                 },
                 BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {

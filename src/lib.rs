@@ -132,8 +132,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
         let mcdf16:AllocCDF16;
-        match self {
-            &mut DivansDecompressor::Header(ref mut header) => {
+        match *self {
+            DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
                     None => return BrotliResult::ResultFailure,
                     Some(m) => m,
@@ -141,8 +141,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             },
             _ => return BrotliResult::ResultFailure,
         }
-        match self {
-            &mut DivansDecompressor::Header(ref mut header) => {
+        match *self {
+            DivansDecompressor::Header(ref mut header) => {
                 mcdf2 = match core::mem::replace(&mut header.mcdf2, None) {
                     None => return BrotliResult::ResultFailure,
                     Some(m) => m,
@@ -150,8 +150,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             },
             _ => return BrotliResult::ResultFailure,
         }
-        match self {
-            &mut DivansDecompressor::Header(ref mut header) => {
+        match *self {
+            DivansDecompressor::Header(ref mut header) => {
                 mcdf16 = match core::mem::replace(&mut header.mcdf16, None) {
                     None => return BrotliResult::ResultFailure,
                     Some(m) => m,
@@ -205,8 +205,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
               output_offset: &mut usize) -> BrotliResult {
         let window_size: usize;
 
-        match self  {
-            &mut DivansDecompressor::Header(ref mut header_parser) => {
+        match *self  {
+            DivansDecompressor::Header(ref mut header_parser) => {
                 let remaining = input.len() - *input_offset;
                 let header_left = header_parser.header.len() - header_parser.read_offset;
                 if remaining >= header_left {
@@ -226,7 +226,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                     return BrotliResult::NeedsMoreInput;
                 }
             },
-            &mut DivansDecompressor::Decode(ref mut divans_parser, ref mut bytes_encoded) => {
+            DivansDecompressor::Decode(ref mut divans_parser, ref mut bytes_encoded) => {
                 let mut unused:usize = 0;
                 let old_output_offset = *output_offset;
                 let retval = divans_parser.encode_or_decode::<AllocU8::AllocatedMemory>(

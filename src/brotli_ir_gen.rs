@@ -144,7 +144,7 @@ impl<SelectedCDF:CDF16,
                                                                                                                  divans_data_ref,
                                                                                                                  divans_codec_ref,
                                                                                                                  window_size);
-            loop {
+            {
                 let mut available_in = input.len() - *input_offset;
                 let mut brotli_out_offset = 0usize;
                 {
@@ -173,10 +173,9 @@ impl<SelectedCDF:CDF16,
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
-                if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
-                    break;
+                if available_in != 0 || BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
+                    return BrotliResult::NeedsMoreInput;
                 }
-                return BrotliResult::NeedsMoreInput;
             }
         }
         loop { // flush divans coder
