@@ -146,10 +146,14 @@ impl<SelectedCDF:CDF16,
                                                                                                                  window_size);
             {
                 let mut available_in = input.len() - *input_offset;
+                if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
+                    return BrotliResult::ResultSuccess;
+                }
+                let mut available_out;
                 let mut brotli_out_offset = 0usize;
                 {
                     let brotli_buffer = self.brotli_data.checkout_next_buffer(&mut self.brotli_encoder.m8, Some(256));
-                    let mut available_out = brotli_buffer.len();
+                    available_out = brotli_buffer.len();
 
                     if BrotliEncoderCompressStream(&mut self.brotli_encoder,
                                                    &mut self.mf64,
@@ -173,7 +177,7 @@ impl<SelectedCDF:CDF16,
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
-                if available_in != 0 || BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
+                if available_out != 0 && available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
                     return BrotliResult::NeedsMoreInput;
                 }
             }
@@ -256,12 +260,15 @@ impl<SelectedCDF:CDF16,
              output: &mut [u8],
              output_offset: &mut usize) -> BrotliResult {
         let mut zero = 0usize;
-        match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
-                                          &[],
-                                          &mut zero) {
-            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-            BrotliResult::ResultSuccess => {}
-            BrotliResult::NeedsMoreOutput | BrotliResult::NeedsMoreInput => panic!("unexpected code"),
+        loop {
+            match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+                                              &[],
+                                              &mut zero) {
+                BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                BrotliResult::ResultSuccess => break,
+                BrotliResult::NeedsMoreOutput => {},
+                BrotliResult::NeedsMoreInput => panic!("unexpected code"),
+            }
         }
         // we're in success area here
         let destination = output.split_at_mut(*output_offset).1;
