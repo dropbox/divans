@@ -165,7 +165,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
    brotli_decompressor::BrotliDecompress(&mut raw_text_as_br_buffer,
         &mut raw_text_buffer).unwrap();
-   //e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.40);
+   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
    e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
    let mut ir_as_br_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir.br"))

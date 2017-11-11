@@ -62,8 +62,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             }
         }
         if self.ring_buffer_decode_index < self.ring_buffer_output_index {
-           let max_copy = core::cmp::min(self.ring_buffer_output_index as usize - 1,
+           let max_copy = core::cmp::min(self.ring_buffer_output_index as usize - 1 - self.ring_buffer_decode_index as usize,
                                          input.len() - *input_offset);
+           debug_assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
+           debug_assert!(self.ring_buffer_decode_index + max_copy  as u32 <= self.ring_buffer.slice().len() as u32);
+           debug_assert!(*input_offset as u32 + max_copy as u32 <= input.len() as u32);
            self.ring_buffer.slice_mut()[(self.ring_buffer_decode_index as usize)..(self.ring_buffer_decode_index as usize + max_copy)].clone_from_slice(&input[*input_offset..(*input_offset + max_copy)]);
             *input_offset += max_copy;
             self.ring_buffer_decode_index += max_copy as u32;
@@ -99,15 +102,16 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         }
         if self.ring_buffer_decode_index < self.ring_buffer_output_index {
            let max_copy = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
-           output[*output_offset] = Command::Literal(
-               LiteralCommand::<SliceReference<'a, u8> >{
-                   data: SliceReference::<u8>::new(self.ring_buffer.slice(),
-                                                   self.ring_buffer_output_index as usize,
-                                                   max_copy),
-                   prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
-                   
-               });
-           *output_offset += 1;
+           if max_copy != 0 {
+               output[*output_offset] = Command::Literal(
+                   LiteralCommand::<SliceReference<'a, u8> >{
+                       data: SliceReference::<u8>::new(self.ring_buffer.slice(),
+                                                       self.ring_buffer_output_index as usize,
+                                                       max_copy),
+                       prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
+                   });
+               *output_offset += 1;
+           }
            if self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() {
                self.ring_buffer_decode_index = 0;
            }
@@ -126,7 +130,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                    prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
                });
            *output_offset += 1;
-           self.ring_buffer_output_index = self.ring_buffer_decode_index
+           assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
+           self.ring_buffer_output_index = self.ring_buffer_decode_index;
+           assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
         }
         BrotliResult::ResultSuccess
     }
