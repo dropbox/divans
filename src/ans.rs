@@ -256,6 +256,9 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
     fn stack_bytes_avail(&self) -> usize {
         self.nbytes
     }
+    fn is_empty(&self) -> bool {
+        self.nbytes == self.data.slice().len()
+    }
     fn stack_data(&mut self, src: &[u8]) {
         for v in src.iter().rev() {
             self.stack_byte(*v);
