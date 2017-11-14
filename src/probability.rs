@@ -34,6 +34,12 @@ macro_rules! println_stderr(
 );
 
 
+pub struct SymStartFreq {
+    pub start: Prob,
+    pub freq: Prob,
+    pub sym: u8,
+}
+
 // Common interface for CDF2 and CDF16, with optional methods.
 pub trait BaseCDF {
 
@@ -77,7 +83,41 @@ pub trait BaseCDF {
         }
         sum
     }
-
+    fn cdf_offset_to_sym_start_and_freq(
+        &self,
+        cdf_offset: Prob,
+        log2_scale: u32) -> SymStartFreq {
+        let log_max = self.log_max().unwrap();
+        let rescaled_cdf_offset = (((self.max() as u32) * (cdf_offset as u32)) >> log2_scale) as Prob;
+        let symbol_less = [
+            -((rescaled_cdf_offset <= self.cdf(0)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(1)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(2)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(3)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(4)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(5)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(6)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(7)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(8)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(9)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(10)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(11)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(12)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(13)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(14)) as i16),
+            -((rescaled_cdf_offset <= self.cdf(15)) as i16),
+            ];
+        let bitmask:u32 = movemask_epi8(symbol_less);
+        let sym = (15 - (bitmask.trailing_zeros() >> 1)) as u8;
+        let cdf_sym = (i32::from(self.cdf(sym)) << log2_scale) / i32::from(self.max());
+        let freq = (i32::from(self.pdf(sym)) << log2_scale) / i32::from(self.max());
+        SymStartFreq {
+            start: cdf_sym as Prob,
+            freq:  freq as Prob,
+            sym: sym,
+        }
+    }
+                                    
     // These methods are optional because implementing them requires nontrivial bookkeeping.
     // Only CDFs that are intended for debugging should support them.
     fn num_samples(&self) -> Option<u32> { None }
@@ -102,6 +142,18 @@ impl Default for CDF2 {
 }
 
 impl BaseCDF for CDF2 {
+    fn cdf_offset_to_sym_start_and_freq(
+        &self,
+        cdf_offset: Prob,
+        log2_scale: u32) -> SymStartFreq {
+        let bit = ((i32::from(cdf_offset) * i32::from(self.max())) >> log2_scale) >= i32::from(self.prob);
+        let rescaled_prob = (i32::from(self.prob) << log2_scale) / i32::from(self.max());
+        SymStartFreq {
+            sym: bit as u8,
+            start: if bit {rescaled_prob as Prob} else {0},
+            freq: if bit {((1 << log2_scale) - rescaled_prob) as Prob} else {rescaled_prob as Prob}
+        }
+    }
     fn num_symbols() -> u8 { 2 }
     fn cdf(&self, symbol: u8) -> Prob {
         match symbol {
@@ -223,6 +275,48 @@ impl Default for BlendCDF16 {
             count: 0,
         }
     }
+}
+
+fn to_bit_u32(val: i16, shift_val: u8) -> u32 {
+    if val != 0 {
+        1 << shift_val
+    } else {
+        0
+    }
+}
+fn movemask_epi8(data:[i16;16]) -> u32{
+    to_bit_u32(data[0] & -0x8000 , 0) |
+    to_bit_u32(data[0] & 0x80 , 1) |
+    to_bit_u32(data[1] & -0x8000 , 2) |
+    to_bit_u32(data[1] & 0x80 , 3) |
+    to_bit_u32(data[2] & -0x8000 , 4) |
+    to_bit_u32(data[2] & 0x80 , 5) |
+    to_bit_u32(data[3] & -0x8000 , 6) |
+    to_bit_u32(data[3] & 0x80 , 7) |
+    to_bit_u32(data[4] & -0x8000 , 8) |
+    to_bit_u32(data[4] & 0x80 , 9) |
+    to_bit_u32(data[5] & -0x8000 , 10) |
+    to_bit_u32(data[5] & 0x80 , 11) |
+    to_bit_u32(data[6] & -0x8000 , 12) |
+    to_bit_u32(data[6] & 0x80 , 13) |
+    to_bit_u32(data[7] & -0x8000 , 14) |
+    to_bit_u32(data[7] & 0x80 , 15) |
+    to_bit_u32(data[8] & -0x8000 , 16) |
+    to_bit_u32(data[8] & 0x80 , 17) |
+    to_bit_u32(data[9] & -0x8000 , 18) |
+    to_bit_u32(data[9] & 0x80 , 19) |
+    to_bit_u32(data[10] & -0x8000 , 20) |
+    to_bit_u32(data[10] & 0x80 , 21) |
+    to_bit_u32(data[11] & -0x8000 , 22) |
+    to_bit_u32(data[11] & 0x80 , 23) |
+    to_bit_u32(data[12] & -0x8000 , 24) |
+    to_bit_u32(data[12] & 0x80 , 25) |
+    to_bit_u32(data[13] & -0x8000 , 26) |
+    to_bit_u32(data[13] & 0x80 , 27) |
+    to_bit_u32(data[14] & -0x8000 , 28) |
+    to_bit_u32(data[14] & 0x80 , 29) |
+    to_bit_u32(data[15] & -0x8000 , 30) |
+    to_bit_u32(data[15] & 0x80 , 31)
 }
 
 impl BaseCDF for BlendCDF16 {
