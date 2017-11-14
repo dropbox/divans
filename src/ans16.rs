@@ -34,29 +34,73 @@ use super::encoder::{
 };
 
 type ANSState u64;
+type StartFreqType i16;
 const NORMALIZATION_INTERVAL: ANSState = 1u64 << 31;
 const ENC_START_STATE: ANSState = NORMALIZATION_INTERVAL;
 const LOG2_SCALE: u32 = 16;
 const NUM_SYMBOLS_BEFORE_FLUSH:u32 = 65536;
-
-struct ANSDecoder {
+const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
+pub struct ANSDecoder {
     state_a: u64,
     state_b: u64,
-    chunk_count: u32, // FIXME: this may be able to be a u16
+    sym_count: u32, // FIXME: this may be able to be a u16
     buffer_a_bytes_required: u8, // needs 8 to start with
     buffer_b_bytes_required: u8, // needs 8 to start with
 }
 
-struct ANSEncoder<AllocU8:Allocator<u8>> {
+impl<A: Allocator<u8>> NewWithAllocator<A> for ANSDecoder {
+    fn new(m8: &mut A) -> Self {
+        ANSDecoder{
+            state_a: 0,
+            state_b: 0,
+            sym_count: 0,
+            buffer_a_bytes_required: 8,
+            buffer_b_bytes_required: 8,
+        }
+    }
+}
+
+impl ANSDecoder {
+    fn helper_get_cdf_value_of_sym(&mut self) StartFreqType {
+        debug_assert!(self.buffer_a_bytes_required == 0);
+        return state_a & SCALE_MASK;
+    }
+    fn helper_advance_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
+        let x = (freq as u64) * (state_a >> LOG2_SCALE) + (state_a & SCALE_MASK) - start as u64;
+        self.buffer_a_bytes_required = buffer_b_bytes_required;
+        // if we've run out of symbols to decode, we don't care what buffer_a's value is, we just clear state and start fresh
+        self.buffer_a_bytes_required |= (u64::from(self.byte_count) + 1 == u64::from(NUM_SYMBOLS_BEFORE_FLUSH)) as u8 << 3;
+        self.byte_count += 1;
+        // if we ran out of data in our state, we setup buffer_b to require pull from our wordstream
+        self.buffer_b_bytes_required = ((x < NORMALIZATION_INTERVAL) as u8) << 2; // need 4 bytes to continue (may want to make this constant 1)
+        self.state_a = self.state_b;
+        self.state_b = x;
+    }
+    fn get_nibble(&mut self, cdf:CDF16) -> u8 {
+        //FIXME: this is where it gets real and we need to use SSE and things
+        
+    }
+    fn get_bit(&mut self, prob_of_false:Probability) -> bool {
+        let cdf_value = self.helper_get_cdf_value_of_sym();
+        let rescaled_prob_of_false = (StartFreqType::from(prob_of_false) << (mem::size_of::<Probability>() - LOG2_SCALE));
+        let bit = cdf_value > rescaled_prob_of_false;
+        self.helper_advance_sym(if bit {rescaled_prob_of_false} else {0},
+                                if bit {(u32::from(1) << LOG2_SCALE) - u32::from(rescaled_prob_of_false) as StartFreqType} else {rescaled_prob_of_false});
+        bit
+    }
+}
+
+pub struct ANSEncoder<AllocU8:Allocator<u8>> {
     q: ByteStack<AllocU8>,
     start_freq: ByteStack<AllocU8>,
 }
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
-    fn put_sym(&mut self, start: u16, freq: u16) {
+    fn put_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
         debug_assert!(freq != 0);
         // broken if put is called without the queue being empty
         debug_assert!(self.q.is_empty());
+        assert!(mem::size_of::<StartFreqType>() == mem::size_of::<u16>()); // so we can use stack_u16 helper
         self.start_freq.stack_u16(freq);
         self.start_freq.stack_u16(start);
         if self.start_freq.bytes().len() == NUM_SYMBOLS_BEFORE_FLUSH * 4 {
