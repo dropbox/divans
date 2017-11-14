@@ -83,10 +83,20 @@ pub trait BaseCDF {
         }
         sum
     }
-    fn cdf_offset_to_sym_start_and_freq(
-        &self,
-        cdf_offset: Prob,
-        log2_scale: u32) -> SymStartFreq {
+    fn sym_to_start_and_freq(&self,
+                             sym: u8,
+                             log2_scale: u32) -> SymStartFreq {
+        let cdf_sym = (i32::from(self.cdf(sym)) << log2_scale) / i32::from(self.max());
+        let freq = (i32::from(self.pdf(sym)) << log2_scale) / i32::from(self.max());
+        SymStartFreq {
+            start: cdf_sym as Prob,
+            freq:  freq as Prob,
+            sym: sym,
+        }
+    }
+    fn cdf_offset_to_sym_start_and_freq(&self,
+                                        cdf_offset: Prob,
+                                        log2_scale: u32) -> SymStartFreq {
         let log_max = self.log_max().unwrap();
         let rescaled_cdf_offset = (((self.max() as u32) * (cdf_offset as u32)) >> log2_scale) as Prob;
         let symbol_less = [
@@ -109,13 +119,7 @@ pub trait BaseCDF {
             ];
         let bitmask:u32 = movemask_epi8(symbol_less);
         let sym = (15 - (bitmask.trailing_zeros() >> 1)) as u8;
-        let cdf_sym = (i32::from(self.cdf(sym)) << log2_scale) / i32::from(self.max());
-        let freq = (i32::from(self.pdf(sym)) << log2_scale) / i32::from(self.max());
-        SymStartFreq {
-            start: cdf_sym as Prob,
-            freq:  freq as Prob,
-            sym: sym,
-        }
+        self.sym_to_start_and_freq(sym, log2_scale)
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.

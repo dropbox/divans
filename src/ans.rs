@@ -243,33 +243,33 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
 }
 
 impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.nbytes = self.data.slice().len();
     }
-    fn bytes(&mut self) -> &[u8] {
+    pub fn bytes(&mut self) -> &[u8] {
         let sl = self.data.slice();
         &sl[self.nbytes ..  sl.len()]
     }
-    fn stack_num_bytes(&self) -> usize {
+    pub fn stack_num_bytes(&self) -> usize {
         self.data.slice().len() - self.nbytes
     }
-    fn stack_bytes_avail(&self) -> usize {
+    pub fn stack_bytes_avail(&self) -> usize {
         self.nbytes
     }
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.nbytes == self.data.slice().len()
     }
-    fn stack_data(&mut self, src: &[u8]) {
+    pub fn stack_data(&mut self, src: &[u8]) {
         for v in src.iter().rev() {
             self.stack_byte(*v);
         }
     }
-    fn stack_byte(&mut self, b: u8) {
+    pub fn stack_byte(&mut self, b: u8) {
         assert!(self.nbytes > 0);
         self.nbytes -= 1;
         self.data.slice_mut()[self.nbytes] = b;
     }
-    fn stack_u16(&mut self, s: u16) {
+    pub fn stack_u16(&mut self, s: u16) {
         self.stack_byte((s & 0xff) as u8);
         self.stack_byte(((s >> 8) & 0xff) as u8);
     }

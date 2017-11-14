@@ -40,6 +40,7 @@ mod divans_to_raw;
 #[macro_use]
 mod billing;
 mod ans;
+mod ans16;
 mod brotli_ir_gen;
 mod divans_compressor;
 pub mod constants;
