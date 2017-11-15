@@ -37,6 +37,7 @@ use super::encoder::{
 use std::io::{Write};
 
 #[cfg(test)]
+#[cfg(not(feature="benchmark"))]
 macro_rules! perror(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
@@ -44,6 +45,13 @@ macro_rules! perror(
 );
 
 #[cfg(not(test))]
+macro_rules! perror(
+    ($($val:tt)*) => { {
+//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+    } }
+);
+#[cfg(test)]
+#[cfg(feature="benchmark")]
 macro_rules! perror(
     ($($val:tt)*) => { {
 //        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
@@ -509,6 +517,8 @@ mod test {
     use alloc;
     use alloc::{
         Allocator,
+        SliceWrapper,
+        SliceWrapperMut,
     };
 
     fn init_src(src: &mut [u8]) -> u8 {
@@ -650,7 +660,7 @@ mod test {
     }
 
     #[test]
-    fn entropy_traat_test() {
+    fn entropy_trait_test() {
         const SZ: usize = 1024*4;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut d = EntropyDecoderANS::new(&mut m8);
@@ -763,4 +773,87 @@ mod test {
         }
         assert!(t == SZ);
     }
+    #[cfg(feature="benchmark")]
+    extern crate test;
+    #[cfg(feature="benchmark")]
+    use self::test::Bencher;
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_single_trait_bench(b: &mut Bencher) {
+        const SZ: usize = 1024*1024;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut src = m8.alloc_cell(SZ);
+        let mut dst = m8.alloc_cell(SZ);
+        let mut n: usize = 0;
+        let mut end = m8.alloc_cell(SZ);
+        let prob = init_src(src.slice_mut());
+        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
+        let mut start = m8.alloc_cell(SZ);
+        start.slice_mut().clone_from_slice(src.slice());
+        let mut compressed_size = 0;
+        let mut optimal = 1.0f64;
+        let mut actual = 1.0f64;
+        b.iter(|| {
+            let mut d = EntropyDecoderANS::new(&mut m8);
+            let mut e = EntropyEncoderANS::new(&mut m8);
+            encode(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n);
+            compressed_size = n;
+            let nbits = n * 8;
+            let z = SZ as f64 * 8.0;
+            let p1 = prob as f64 / 256.0;
+            let p0 = 1.0 - p1;
+            optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
+            actual = nbits as f64;
+            //assert!(actual >= optimal);
+            n = 0;
+            decode::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut());
+        });
+        perror!("encoded size: {}", compressed_size);
+        perror!("effeciency: {}", actual / optimal);
+        let mut t = 0;
+        for (e,s) in end.slice().iter().zip(start.slice().iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy16_decode_bench(b: &mut Bencher) {
+        const SZ: usize = 1024*1024;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut src = m8.alloc_cell(SZ);
+        let mut dst = m8.alloc_cell(SZ);
+        let mut n: usize = 0;
+        let mut end = m8.alloc_cell(SZ);
+        let prob = init_src(src.slice_mut());
+        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
+        let mut start = m8.alloc_cell(SZ);
+        start.slice_mut().clone_from_slice(src.slice());
+        let mut e = EntropyEncoderANS::new(&mut m8);
+        encode(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n);
+        perror!("encoded size: {}", n);
+        let nbits = n * 8;
+        let z = SZ as f64 * 8.0;
+        let p1 = prob as f64 / 256.0;
+        let p0 = 1.0 - p1;
+        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
+        let actual = nbits as f64;
+        perror!("effeciency: {}", actual / optimal);
+        b.iter(|| {
+            let mut d = EntropyDecoderANS::new(&mut m8);
+            //assert!(actual >= optimal);
+            n = 0;
+            decode::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut());
+        });
+        let mut t = 0;
+        for (e,s) in end.slice().iter().zip(start.slice().iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+
 }

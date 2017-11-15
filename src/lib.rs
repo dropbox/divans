@@ -11,7 +11,7 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
-
+#![cfg_attr(feature="benchmark", feature(test))]
 #![no_std]
 #[cfg(test)]
 #[macro_use]
@@ -41,6 +41,7 @@ mod divans_to_raw;
 mod billing;
 mod ans;
 mod ans16;
+mod single_ans;
 mod brotli_ir_gen;
 mod divans_compressor;
 pub mod constants;
