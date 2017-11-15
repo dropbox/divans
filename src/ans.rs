@@ -89,7 +89,7 @@ impl ANS1 {
     pub fn encode(&mut self, bb: bool, dst: &mut [u8], n: &mut usize) {
         let bit = bb as usize;
         let x = self.r;
-        perror!("encode_in:[{}]", x);
+        //perror!("encode_in:[{}]", x);
         assert!(x != 0);        //failed to call encode_init
         let bs = self.bs[bit];  // freq start
         let ls = self.ls[bit];
@@ -98,16 +98,16 @@ impl ANS1 {
             if x >= x_max {
                 *n -= 4;
                 ANS1::write_u32(x as u32, &mut dst[*n .. *n + 4]);
-                perror!("rpush {:?}", &dst[*n .. *n + 4]);
+                //perror!("rpush {:?}", &dst[*n .. *n + 4]);
                 x >> 32
             } else {
                 x
             };
         assert!(x1 < x_max);
         let r = ((x1 / ls)<<BITS).wrapping_add(bs.wrapping_add(x1 % ls));
-        perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", x, x1, bs, ls, x_max, r, x1, x1%ls, bs.wrapping_add(x1 % ls), ((x1 / ls)<<BITS));
+        //perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", x, x1, bs, ls, x_max, r, x1, x1%ls, bs.wrapping_add(x1 % ls), ((x1 / ls)<<BITS));
         self.r = r;
-        perror!("encode_ot:[{}]", self.r);
+        //perror!("encode_ot:[{}]", self.r);
         //make sure we can decode the encoded bit
         assert!(self.decode().1 == bb);
     }
@@ -357,12 +357,12 @@ impl<AllocU8: Allocator<u8>> EntropyEncoderANS<AllocU8> {
                     EntropyEncoderANS::encode_bit(&mut self.c, &mut self.q, (*b) != 0,*p);
                 }
             }
-            perror!("encode pre flush len {}", self.q.stack_num_bytes() as u16);
+            //perror!("encode pre flush len {}", self.q.stack_num_bytes() as u16);
 
             let mut dst = [0u8; 8];
             let mut n = dst.len();
             self.c.encode_flush(&mut dst, &mut n);
-            perror!("encode R = {:x}", self.c.r);
+            //perror!("encode R = {:x}", self.c.r);
             assert!(n == 0);
             //NOTE: encode is in reverse, but dst is already in the right order
             //so the first 4 bytes we want the q to pop are the first 4 bytes of dst
@@ -371,7 +371,7 @@ impl<AllocU8: Allocator<u8>> EntropyEncoderANS<AllocU8> {
             //encode len
             assert!(self.q.stack_num_bytes() < (u16::max_value() as usize));
             let len = self.q.stack_num_bytes() as u16;
-            perror!("encode len {}", len);
+            //perror!("encode len {}", len);
             self.q.stack_u16(len);
 
             self.probs.reset();
@@ -450,7 +450,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
         }
         let p1 = ((1<<BITS) - u64::from(prob_of_false)) as u8;
         self.c.update(p1);
-        perror!("decode_in:[{}]", self.c.r);
+        //perror!("decode_in:[{}]", self.c.r);
         let (x1, bit) = self.c.decode();
         let mut dst = [0u8; 4];
         let mut n = 0;
@@ -461,7 +461,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
             self.len -= 4;
         }
         self.c.decode_advance(x1, &dst, &mut n);
-        perror!("decode_ot:[{}]", self.c.r);
+        //perror!("decode_ot:[{}]", self.c.r);
         assert!(n == 4 || !ANS1::decode_will_advance(x1));
         //perror!("get_bit {} {}", bit, prob_of_false);
         bit

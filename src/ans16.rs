@@ -64,14 +64,6 @@ impl Default for ANSDecoder {
         }
     }
 }
-extern crate std;
-use self::std::io::Write;
-
-macro_rules! perror(
-    ($($val:tt)*) => { {
-        writeln!(&mut self::std::io::stderr(), $($val)*).unwrap();
-    } }
-);
 
 impl<A: Allocator<u8>> NewWithAllocator<A> for ANSDecoder {
     fn new(_m8: &mut A) -> Self {
@@ -131,10 +123,10 @@ impl ANSDecoder {
         return (self.state_a & SCALE_MASK) as i16;
     }
     fn helper_advance_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
-        perror!("inn:{:?} {} {}", self, start, freq);
+        //perror!("inn:{:?} {} {}", self, start, freq);
         let x = (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK) - start as u64;
         //self.buffer_a_bytes_required = self.buffer_b_bytes_required;
-        perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
+        //perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
         
         self.buffer_a_bytes_required = self.buffer_b_bytes_required;
         // if we've run out of symbols to decode, we don't care what buffer_a's value is, we just clear state and start fresh
@@ -144,7 +136,7 @@ impl ANSDecoder {
         self.buffer_b_bytes_required = (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
         self.state_a = self.state_b;
         self.state_b = x;
-        perror!("out:{:?}, {} {}", self, start, freq);
+        //perror!("out:{:?}, {} {}", self, start, freq);
     }
     fn get_nibble<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
@@ -188,9 +180,9 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
         assert!(mem::size_of::<StartFreqType>() == mem::size_of::<u16>()); // so we can use stack_u16 helper
         self.start_freq.stack_u16(freq as u16);
         self.start_freq.stack_u16(start as u16);
-        perror!("Putting {}, {}\n",  start, freq);
+        //perror!("Putting {}, {}\n",  start, freq);
         if self.start_freq.bytes().len() == ((NUM_SYMBOLS_BEFORE_FLUSH as usize) << 2) {
-            perror!("Flushing at {}\n",  self.start_freq.bytes().len());
+            //perror!("Flushing at {}\n",  self.start_freq.bytes().len());
             self.flush_chunk()
         }
     }
@@ -201,7 +193,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             freq: Prob) {
         debug_assert!(start >= 0);
         debug_assert!(freq > 0);
-        perror!("inn:[{}, {}] {} {}", state_a, state_b, start, freq);
+        //perror!("inn:[{}, {}] {} {}", state_a, state_b, start, freq);
         let rescale_lim = ((NORMALIZATION_INTERVAL >> LOG2_SCALE) << 32) * (freq as u64);
         let mut state = *state_a;
         if state >= rescale_lim {
@@ -217,23 +209,16 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 ((state >> 8) & 0xff) as u8,
                 ((state >> 0) & 0xff) as u8,
             ];
-            perror!("rpush {:?}\n", be_state_lower);
+            //perror!("rpush {:?}\n", be_state_lower);
             self.q.stack_data(&state_lower[..]);
             state >>= 32;
             debug_assert!(state < rescale_lim);
         }
         let xstate_a = ((state / freq as u64) << LOG2_SCALE) + (state % freq as u64) + start as u64;
-        perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}",
-                *state_a, state, start, freq,
-                rescale_lim,//xmax
-                xstate_a, //r
-                state, //x1
-                state%(freq as u64), // x1 % ls
-                (start as u64).wrapping_add(state % (freq as u64)),// bs+x1%ls
-                ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
+        //perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", *state_a, state, start, freq, rescale_lim, xstate_a, state, state%(freq as u64), (start as u64).wrapping_add(state % (freq as u64)), ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
         *state_a = *state_b;
         *state_b = xstate_a;
-        perror!("out:[{} {}] {} {}", state_a, state_b, start, freq);
+        //perror!("out:[{} {}] {} {}", state_a, state_b, start, freq);
     }
             
     fn flush_chunk(&mut self) {
@@ -251,7 +236,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 let start_freq = self.start_freq.bytes();
                 start = Prob::from(start_freq[index * 4]) | (Prob::from(start_freq[index* 4 + 1]) << 8);
                 freq = Prob::from(start_freq[index * 4 +2]) | (Prob::from(start_freq[index* 4 + 3]) << 8);
-                perror!("frepush {} {}\n",  start, freq);
+                //perror!("frepush {} {}\n",  start, freq);
             }
             self.reverse_put_sym(&mut state_a, &mut state_b, start, freq);
             index += 1;
@@ -277,7 +262,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             ((state_b >> 48) & 0xff) as u8,
             ((state_b >> 56) & 0xff) as u8,
         ];
-        perror!("[{} {}]", state_a, state_b);
+        //perror!("[{} {}]", state_a, state_b);
         self.q.stack_data(&state_ab[..]);
         self.start_freq.reset();
     }
@@ -360,8 +345,14 @@ impl EntropyDecoder for ANSDecoder {
 }
 #[cfg(test)]
 mod test {
-    use super::std;
+    extern crate std;
     use std::io::Write;
+    
+    macro_rules! perror(
+        ($($val:tt)*) => { {
+            writeln!(&mut std::io::stderr(), $($val)*).unwrap();
+        } }
+    );
     use std::vec::{
         Vec,
     };
