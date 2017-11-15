@@ -181,7 +181,7 @@ pub struct EntropyDecoderANS<AllocU8: Allocator<u8>> {
     len: u16,
 }
 
-const MAX_BUFFER_SIZE: usize = 64*1024; // with space for size
+pub const MAX_BUFFER_SIZE: usize = 64*1024; // with space for size
 
 pub struct ByteStack<AllocU8: Allocator<u8>>  {
     data : AllocU8::AllocatedMemory,
@@ -270,8 +270,8 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
         self.data.slice_mut()[self.nbytes] = b;
     }
     pub fn stack_u16(&mut self, s: u16) {
-        self.stack_byte((s & 0xff) as u8);
         self.stack_byte(((s >> 8) & 0xff) as u8);
+        self.stack_byte((s & 0xff) as u8);
     }
 }
 
@@ -412,7 +412,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoderANS<AllocU8> {
         assert!(self.q.num_pop_bytes_avail() >= 2);
         let sz = self.q.pop_data(&mut dst);
         assert!(sz == 2);
-        let len = ((dst[0] as usize) << 8) | (dst[1] as usize);
+        let len = ((dst[1] as usize) << 8) | (dst[0] as usize);
         assert!(len <= u16::max_value() as usize);
         self.len = len as u16;
         perror!("decode len = {}", self.len);
