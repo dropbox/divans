@@ -185,7 +185,7 @@ pub struct EntropyDecoderANS<AllocU8: Allocator<u8>> {
     len: u16,
 }
 
-pub const MAX_BUFFER_SIZE: usize = 128*1024; // with space for size
+pub const MAX_BUFFER_SIZE: usize = 256*1024; // with space for size
 
 pub struct ByteStack<AllocU8: Allocator<u8>>  {
     data : AllocU8::AllocatedMemory,
