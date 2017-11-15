@@ -380,7 +380,9 @@ mod test {
         SliceWrapperMut,
         SliceWrapper,
     };
+    use super::super::test_helper::HeapAllocator;
     const BITS: u8 = 8;
+    
     fn init_src(src: &mut [u8]) -> u8 {
         let mut ones = 0u64;
         let seed: [u8; 16] = [0xef, 0xbf,0xff,0xfd,0xef,0x3f,0xc0,0xfd,0xef,0xc0,0xff,0xfd,0xdf,0x3f,0xff,0xfd];
@@ -398,7 +400,7 @@ mod test {
     }
 
 
-    fn encode<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u8, src: &[u8], dst: &mut [u8], n: &mut usize, trailer: bool) {
+    fn encode_test_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u8, src: &[u8], dst: &mut [u8], n: &mut usize, trailer: bool) {
         let mut t = 0;
         *n = 0;
         for u in src.iter() {
@@ -449,7 +451,7 @@ mod test {
         }
     }
 
-    fn decode<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8], trailer: bool) {
+    fn decode_test_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8], trailer: bool) {
         let max_copy = if trailer {1usize} else {1024usize};
         let mut t = 0;
         {
@@ -504,57 +506,6 @@ mod test {
             }
         }
     }
-
-    pub struct Rebox<T> {
-      b: Box<[T]>,
-    }
-
-    impl<T> core::default::Default for Rebox<T> {
-      fn default() -> Self {
-        let v: Vec<T> = Vec::new();
-        let b = v.into_boxed_slice();
-        Rebox::<T> { b: b }
-      }
-    }
-
-    impl<T> core::ops::Index<usize> for Rebox<T> {
-      type Output = T;
-      fn index(&self, index: usize) -> &T {
-        &(*self.b)[index]
-      }
-    }
-
-    impl<T> core::ops::IndexMut<usize> for Rebox<T> {
-      fn index_mut(&mut self, index: usize) -> &mut T {
-        &mut (*self.b)[index]
-      }
-    }
-
-    impl<T> alloc::SliceWrapper<T> for Rebox<T> {
-      fn slice(&self) -> &[T] {
-        &*self.b
-      }
-    }
-
-    impl<T> alloc::SliceWrapperMut<T> for Rebox<T> {
-      fn slice_mut(&mut self) -> &mut [T] {
-        &mut *self.b
-      }
-    }
-
-    pub struct HeapAllocator<T: core::clone::Clone> {
-      pub default_value: T,
-    }
-
-    impl<T: core::clone::Clone> alloc::Allocator<T> for HeapAllocator<T> {
-      type AllocatedMemory = Rebox<T>;
-      fn alloc_cell(self: &mut HeapAllocator<T>, len: usize) -> Rebox<T> {
-        let v: Vec<T> = vec![self.default_value.clone();len];
-        let b = v.into_boxed_slice();
-        Rebox::<T> { b: b }
-      }
-      fn free_cell(self: &mut HeapAllocator<T>, _data: Rebox<T>) {}
-    }
     #[cfg(feature="benchmark")]
     extern crate test;
     #[cfg(feature="benchmark")]
@@ -566,29 +517,23 @@ mod test {
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
-        let mut n: usize = 0;
-        let mut end = m8.alloc_cell(SZ);
-        let prob = init_src(src.slice_mut());
-        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = m8.alloc_cell(SZ);
-        start.slice_mut().clone_from_slice(src.slice());
+        let mut end = m8.alloc_cell(SZ);
+        let (prob0, optimal) = setup_test_return_optimal(
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut compressed_size = 0;
-        let mut optimal = 1.0f64;
         let mut actual = 1.0f64;
         b.iter(|| {
+            let mut n: usize = 0;
             let mut d = ANSDecoder::new(&mut m8);
             let mut e = ANSEncoder::new(&mut m8);
-            encode(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n, false);
+            encode_test_helper(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n, false);
             compressed_size = n;
             let nbits = n * 8;
-            let z = SZ as f64 * 8.0;
-            let p1 = prob as f64 / 256.0;
-            let p0 = 1.0 - p1;
-            optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
             actual = nbits as f64;
             //assert!(actual >= optimal);
             n = 0;
-            decode::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
+            decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
         });
         perror!("encoded size: {}", compressed_size);
         perror!("effeciency: {}", actual / optimal);
@@ -607,27 +552,22 @@ mod test {
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
-        let mut n: usize = 0;
         let mut end = m8.alloc_cell(SZ);
-        let prob = init_src(src.slice_mut());
-        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = m8.alloc_cell(SZ);
-        start.slice_mut().clone_from_slice(src.slice());
+        let (prob0, optimal) = setup_test_return_optimal(
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut e = ANSEncoder::new(&mut m8);
-        encode(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n, false);
+        let mut n: usize = 0;
+        encode_test_helper(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n, false);
         perror!("encoded size: {}", n);
         let nbits = n * 8;
-        let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0;
-        let p0 = 1.0 - p1;
-        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
         let actual = nbits as f64;
         perror!("effeciency: {}", actual / optimal);
         b.iter(|| {
             let mut d = ANSDecoder::new(&mut m8);
             //assert!(actual >= optimal);
             n = 0;
-            decode::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
+            decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
         });
         let mut t = 0;
         for (e,s) in end.slice().iter().zip(start.slice().iter()) {
@@ -637,112 +577,66 @@ mod test {
         assert!(t == SZ);
         perror!("done!");
     }
-
-
-    #[test]
-    fn entropy16_trait_test() {
-        const SZ: usize = 1024*4 - 4;
+    fn setup_test_return_optimal(src:&mut[u8], dst:&mut[u8], end:&mut [u8], start:&mut[u8]) -> (u8, f64) {
+        let prob = init_src(src);
+        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
+        let z = src.len() as f64 * 8.0;
+        let p1 = prob as f64 / 256.0;
+        let p0 = 1.0 - p1;
+        start.clone_from_slice(src.iter().as_slice());
+        (prob0, -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z))
+    }
+    fn help_rt(src:&mut[u8], dst:&mut[u8], end:&mut [u8], start:&mut[u8], trailing_bit_and_one_byte_at_a_time: bool) {
+        let sz = src.len();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let (prob0, optimal) = setup_test_return_optimal(src, dst, end, start);
         let mut d = ANSDecoder::new(&mut m8);
         let mut e = ANSEncoder::new(&mut m8);
-        let mut src: [u8; SZ] = [0; SZ];
-        let mut dst: [u8; SZ + 16] = [0; SZ + 16];
         let mut n: usize = 0;
-        let mut end: [u8; SZ] = [0; SZ];
-        let prob = init_src(&mut src);
-        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
-        let mut start = [0u8; SZ];
-        start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n, false);
+        encode_test_helper(&mut e, prob0, src, dst, &mut n, trailing_bit_and_one_byte_at_a_time);
         perror!("encoded size: {}", n);
 
         let nbits = n * 8;
-        let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0;
-        let p0 = 1.0 - p1;
-        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
         let actual = nbits as f64;
         perror!("effeciency: {}", actual / optimal);
         //assert!(actual >= optimal);
         n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, false);
+        decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst, &mut n, end, trailing_bit_and_one_byte_at_a_time);
         let mut t = 0;
         for (e,s) in end.iter().zip(start.iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
             t = t + 1;
         }
-        assert!(t == SZ);
-        perror!("done!");
+        assert!(t == sz);
+        perror!("done!");        
+    }
+
+    #[test]
+    fn entropy16_trait_test() {
+        const SZ: usize = 1024*4 - 4;
+        let mut src: [u8; SZ] = [0; SZ];
+        let mut dst: [u8; SZ + 16] = [0; SZ + 16];
+        let mut end: [u8; SZ] = [0; SZ];
+        let mut start = [0u8; SZ];
+        help_rt(&mut src[..],&mut dst[..],&mut end[..],&mut start[..], false)
     }
 
     #[test]
     fn entropy16_lite_trait_test() {
         const SZ: usize = 16;
-        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let mut d = ANSDecoder::new(&mut m8);
-        let mut e = ANSEncoder::new(&mut m8);
         let mut src: [u8; SZ] = [0; SZ];
         let mut dst: [u8; SZ + 16] = [0; SZ + 16];
-        let mut n: usize = 0;
         let mut end: [u8; SZ] = [0; SZ];
-        let prob = init_src(&mut src);
-        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = [0u8; SZ];
-        start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
-        perror!("encoded size: {}", n);
-
-        let nbits = n * 8;
-        let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0;
-        let p0 = 1.0 - p1;
-        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
-        let actual = nbits as f64;
-        //assert!(actual >= optimal);
-        perror!("effeciency: {}", actual / optimal);
-        n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
-        let mut t = 0;
-        for (e,s) in end.iter().zip(start.iter()) {
-            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
-            t = t + 1;
-        }
-        assert!(t == SZ);
-        perror!("done!");
+        help_rt(&mut src[..],&mut dst[..],&mut end[..],&mut start[..], true)
     }
     #[test]
     fn entropy16_big_trait_test() {
         const SZ: usize = 4097;
-        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let mut d = ANSDecoder::new(&mut m8);
-        let mut e = ANSEncoder::new(&mut m8);
         let mut src: [u8; SZ] = [0; SZ];
         let mut dst: [u8; SZ + 16] = [0; SZ + 16];
-        let mut n: usize = 0;
         let mut end: [u8; SZ] = [0; SZ];
-        let prob = init_src(&mut src);
-        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = [0u8; SZ];
-        start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
-        perror!("encoded size: {}", n);
-
-        let nbits = n * 8;
-        let z = SZ as f64 * 8.0;
-        let p1 = prob as f64 / 256.0;
-        let p0 = 1.0 - p1;
-        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
-        let actual = nbits as f64;
-        //assert!(actual >= optimal);
-        perror!("effeciency: {}", actual / optimal);
-        n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
-        let mut t = 0;
-        for (e,s) in end.iter().zip(start.iter()) {
-            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
-            t = t + 1;
-        }
-        assert!(t == SZ);
-        perror!("done!");
+        help_rt(&mut src[..],&mut dst[..],&mut end[..],&mut start[..], true)
     }
 }

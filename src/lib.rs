@@ -39,6 +39,7 @@ mod cmd_to_divans;
 mod divans_to_raw;
 #[macro_use]
 mod billing;
+mod test_helper;
 mod ans;
 mod ans16;
 mod single_ans;
