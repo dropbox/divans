@@ -59,8 +59,8 @@ impl Default for ANSDecoder {
             state_a: 0,
             state_b: 0,
             sym_count: 0,
-            buffer_a_bytes_required: 8,
-            buffer_b_bytes_required: 8,
+            buffer_a_bytes_required: 8, // this will load both buffers
+            buffer_b_bytes_required: 0,
         }
     }
 }
@@ -82,12 +82,15 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSDecoder {
 impl ANSDecoder {
     fn helper_push_data_rare_cases(&mut self, data: &[u8]) -> usize{
         if self.buffer_a_bytes_required < 16 && self.buffer_a_bytes_required > 4 { // initial setup
+            self.sym_count = 0;
             self.state_a = 0;
-            if data.len() >= 8 {
+            if data.len() >= 16 {
                 self.state_a = u64::from(data[0])|(u64::from(data[1]) << 8)|(u64::from(data[2]) << 16) | (u64::from(data[3]) << 24) |
                     (u64::from(data[4]) << 32)|(u64::from(data[5]) << 40)|(u64::from(data[6]) << 48) | (u64::from(data[7]) << 56);
+                self.state_b = u64::from(data[8])|(u64::from(data[9]) << 8)|(u64::from(data[10]) << 16) | (u64::from(data[11]) << 24) |
+                    (u64::from(data[12]) << 32)|(u64::from(data[13]) << 40)|(u64::from(data[14]) << 48) | (u64::from(data[15]) << 56);
                 self.buffer_a_bytes_required = 0;
-                return 8;
+                return 16;
             } else {
                 self.buffer_a_bytes_required = 16;
             }
@@ -108,12 +111,17 @@ impl ANSDecoder {
             return bytes_to_copy;
         }
         assert!(self.buffer_a_bytes_required >= 16);
-        let bytes_to_copy = cmp::min(data.len(), 24 - self.buffer_a_bytes_required as usize);
+        let bytes_to_copy = cmp::min(data.len(), 32 - self.buffer_a_bytes_required as usize);
         for i in 0..bytes_to_copy {
-            self.state_a |= u64::from(data[i]) << ((self.buffer_a_bytes_required - 16) << 3);
+            let shift = (self.buffer_a_bytes_required - 16) << 3;
+            if shift < 64 {
+                self.state_a |= u64::from(data[i]) << shift;
+            } else {
+                self.state_b |= u64::from(data[i]) << (shift - 64);
+            }
         }
         self.buffer_a_bytes_required += bytes_to_copy as u8;
-        if self.buffer_a_bytes_required == 24 {
+        if self.buffer_a_bytes_required == 32 {
            self.buffer_a_bytes_required = 0; // done with copy 
         }
         return bytes_to_copy;
@@ -130,7 +138,7 @@ impl ANSDecoder {
         self.buffer_a_bytes_required |= ((u64::from(self.sym_count) == u64::from(NUM_SYMBOLS_BEFORE_FLUSH - 1)) as u8) << 3;
         self.sym_count += 1;
         // if we ran out of data in our state, we setup buffer_b to require pull from our wordstream
-        self.buffer_b_bytes_required = ((x < NORMALIZATION_INTERVAL) as u8); // mark to need 4 bytes to continue
+        self.buffer_b_bytes_required = (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
         self.state_a = self.state_b;
         self.state_b = x;
         perror!("out:{:?}, {} {}", self, start, freq);
@@ -282,9 +290,9 @@ impl ByteQueue for ANSDecoder {
             return 5 - self.buffer_a_bytes_required as usize;
         }
         if self.buffer_a_bytes_required >= 16 {
-            return 24 - self.buffer_a_bytes_required as usize;
+            return 32 - self.buffer_a_bytes_required as usize;
         }
-        return 8
+        return 16
     }
     fn num_pop_bytes_avail(&self) -> usize {
         0
@@ -370,7 +378,7 @@ mod test {
     }
 
 
-    fn encode<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u8, src: &[u8], dst: &mut [u8], n: &mut usize) {
+    fn encode<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u8, src: &[u8], dst: &mut [u8], n: &mut usize, trailer: bool) {
         let mut t = 0;
         *n = 0;
         for u in src.iter() {
@@ -390,6 +398,28 @@ mod test {
             }
         }
         assert!(t == src.len() * 8);
+        if trailer {
+            e.put_bit(true, 1);
+            {
+                let mut q = e.get_internal_buffer();
+                let qb = q.num_pop_bytes_avail();
+                if qb > 0 {
+                    assert!(qb + *n <= dst.len());
+                    q.pop_data(&mut dst[*n  .. *n + qb]);
+                    *n = *n + qb;
+                }
+            }
+            e.put_bit(false, 1);
+            {
+                let mut q = e.get_internal_buffer();
+                let qb = q.num_pop_bytes_avail();
+                if qb > 0 {
+                    assert!(qb + *n <= dst.len());
+                    q.pop_data(&mut dst[*n  .. *n + qb]);
+                    *n = *n + qb;
+                }
+            }
+        }
         e.flush();
         {
             let q = e.get_internal_buffer();
@@ -399,7 +429,8 @@ mod test {
         }
     }
 
-    fn decode<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8]) {
+    fn decode<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &[u8], n: &mut usize, end: &mut [u8], trailer: bool) {
+        let max_copy = if trailer {1usize} else {1024usize};
         let mut t = 0;
         {
             let q = d.get_internal_buffer();
@@ -420,8 +451,9 @@ mod test {
                     *v = *v | (1u8<<(7 - b));
                 }
                 let mut q = d.get_internal_buffer();
-                if q.num_push_bytes_avail() > 0 && *n < src.len() {
-                    let sz = core::cmp::min(src.len() - *n, q.num_push_bytes_avail());
+                while q.num_push_bytes_avail() > 0 && *n < src.len() {
+                    let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
+                                            max_copy);
                     q.push_data(&src[*n .. *n + sz]);
                     *n = *n + sz;
                 }
@@ -429,6 +461,28 @@ mod test {
             }
         }
         assert!(t == 8*end.len());
+        if trailer {
+            let bit = d.get_bit(1);
+            assert!(bit);
+            {
+                let mut q = d.get_internal_buffer();
+                while q.num_push_bytes_avail() > 0 && *n < src.len() {
+                    let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
+                                            max_copy);
+                    q.push_data(&src[*n .. *n + sz]);
+                    *n = *n + sz;
+                }
+            }
+            let bit = d.get_bit(1);
+            assert!(!bit);
+            let mut q = d.get_internal_buffer();
+            while q.num_push_bytes_avail() > 0 && *n < src.len() {
+                let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
+                                        max_copy);
+                q.push_data(&src[*n .. *n + sz]);
+                *n = *n + sz;
+            }
+        }
     }
 
     pub struct Rebox<T> {
@@ -485,8 +539,7 @@ mod test {
 
     #[test]
     fn entropy16_trait_test() {
-        
-        const SZ: usize = 1024*2;
+        const SZ: usize = 1024*4;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut d = ANSDecoder::new(&mut m8);
         let mut e = ANSEncoder::new(&mut m8);
@@ -498,7 +551,7 @@ mod test {
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = [0u8; SZ];
         start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n);
+        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
         perror!("encoded size: {}", n);
 
         let nbits = n * 8;
@@ -510,7 +563,77 @@ mod test {
         assert!(actual >= optimal);
         perror!("effeciency: {}", actual / optimal);
         n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end);
+        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
+        let mut t = 0;
+        for (e,s) in end.iter().zip(start.iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+    #[test]
+    fn entropy16_lite_trait_test() {
+        const SZ: usize = 16;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut d = ANSDecoder::new(&mut m8);
+        let mut e = ANSEncoder::new(&mut m8);
+        let mut src: [u8; SZ] = [0; SZ];
+        let mut dst: [u8; SZ + 16] = [0; SZ + 16];
+        let mut n: usize = 0;
+        let mut end: [u8; SZ] = [0; SZ];
+        let prob = init_src(&mut src);
+        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
+        let mut start = [0u8; SZ];
+        start.clone_from_slice(src.iter().as_slice());
+        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
+        perror!("encoded size: {}", n);
+
+        let nbits = n * 8;
+        let z = SZ as f64 * 8.0;
+        let p1 = prob as f64 / 256.0;
+        let p0 = 1.0 - p1;
+        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
+        let actual = nbits as f64;
+        assert!(actual >= optimal);
+        perror!("effeciency: {}", actual / optimal);
+        n = 0;
+        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
+        let mut t = 0;
+        for (e,s) in end.iter().zip(start.iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+    #[test]
+    fn entropy16_big_trait_test() {
+        const SZ: usize = 4097;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut d = ANSDecoder::new(&mut m8);
+        let mut e = ANSEncoder::new(&mut m8);
+        let mut src: [u8; SZ] = [0; SZ];
+        let mut dst: [u8; SZ + 16] = [0; SZ + 16];
+        let mut n: usize = 0;
+        let mut end: [u8; SZ] = [0; SZ];
+        let prob = init_src(&mut src);
+        let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
+        let mut start = [0u8; SZ];
+        start.clone_from_slice(src.iter().as_slice());
+        encode(&mut e, prob0, &src, &mut dst, &mut n, false);
+        perror!("encoded size: {}", n);
+
+        let nbits = n * 8;
+        let z = SZ as f64 * 8.0;
+        let p1 = prob as f64 / 256.0;
+        let p0 = 1.0 - p1;
+        let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
+        let actual = nbits as f64;
+        assert!(actual >= optimal);
+        perror!("effeciency: {}", actual / optimal);
+        n = 0;
+        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, false);
         let mut t = 0;
         for (e,s) in end.iter().zip(start.iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
