@@ -40,7 +40,7 @@ type ANSState = u64;
 type StartFreqType = Prob;
 const NORMALIZATION_INTERVAL: ANSState = 1u64 << 31;
 const ENC_START_STATE: ANSState = NORMALIZATION_INTERVAL;
-const LOG2_SCALE: u32 = 15;
+const LOG2_SCALE: u32 = 8;
 const NUM_SYMBOLS_BEFORE_FLUSH:u32 = (MAX_BUFFER_SIZE as u32) >> 2;
 const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
 
@@ -133,6 +133,8 @@ impl ANSDecoder {
     fn helper_advance_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
         perror!("inn:{:?} {} {}", self, start, freq);
         let x = (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK) - start as u64;
+        perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
+        
         //self.buffer_a_bytes_required = self.buffer_b_bytes_required;
         // if we've run out of symbols to decode, we don't care what buffer_a's value is, we just clear state and start fresh
         self.buffer_a_bytes_required |= ((u64::from(self.sym_count) == u64::from(NUM_SYMBOLS_BEFORE_FLUSH - 1)) as u8) << 3;
@@ -208,12 +210,27 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 ((state >> 16) & 0xff) as u8,
                 ((state >> 24) & 0xff) as u8,
             ];
-            perror!("qpush {:?}\n",  state_lower);
+            let be_state_lower:[u8; 4] = [
+                ((state >> 24)& 0xff) as u8,
+                ((state >> 16) & 0xff) as u8,
+                ((state >> 8) & 0xff) as u8,
+                ((state >> 0) & 0xff) as u8,
+            ];
+            perror!("rpush {:?}\n", be_state_lower);
             self.q.stack_data(&state_lower[..]);
             state >>= 32;
             debug_assert!(state < rescale_lim);
         }
-        *state_a = ((state / freq as u64) << LOG2_SCALE) + (state % freq as u64) + start as u64;
+        let xstate_a = ((state / freq as u64) << LOG2_SCALE) + (state % freq as u64) + start as u64;
+        perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}",
+                *state_a, state, start, freq,
+                rescale_lim,//xmax
+                xstate_a, //r
+                state, //x1
+                state%(freq as u64), // x1 % ls
+                (start as u64).wrapping_add(state % (freq as u64)),// bs+x1%ls
+                ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
+        *state_a = xstate_a;
         perror!("out:[{}] {} {}", state_a, start, freq);
     }
             
@@ -232,7 +249,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 let start_freq = self.start_freq.bytes();
                 start = Prob::from(start_freq[index * 4]) | (Prob::from(start_freq[index* 4 + 1]) << 8);
                 freq = Prob::from(start_freq[index * 4 +2]) | (Prob::from(start_freq[index* 4 + 3]) << 8);
-                perror!("rpush {} {}\n",  start, freq);
+                perror!("frepush {} {}\n",  start, freq);
             }
             self.reverse_put_sym(&mut state_a, /*&mut state_b,*/ start, freq);
             index += 1;
@@ -269,9 +286,12 @@ impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
         &mut self.q
     }
-    fn put_bit(&mut self, bit: bool, prob_of_false: u8) {
-        self.put_start_freq(if bit {(1 + (Prob::from(prob_of_false) << 1)) << (LOG2_SCALE - 9) } else {0},
-                            (if bit {511 - (Prob::from(prob_of_false) << 1)} else {(Prob::from(prob_of_false) << 1) + 1}) << (LOG2_SCALE - 9))
+    fn put_bit(&mut self, bit: bool, mut prob_of_false: u8) {
+        if prob_of_false == 0 {
+            prob_of_false = 1;
+        }
+        self.put_start_freq(if bit {((Prob::from(prob_of_false))) << (LOG2_SCALE - 8) } else {0},
+                            (if bit {256 - (Prob::from(prob_of_false))} else {Prob::from(prob_of_false)}) << (LOG2_SCALE - 8))
     }
     fn flush(&mut self) {
         self.flush_chunk()
@@ -320,12 +340,16 @@ impl EntropyDecoder for ANSDecoder {
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
         self
     }
-    fn get_bit(&mut self, prob_of_false: u8) -> bool {
+    fn get_bit(&mut self, mut prob_of_false: u8) -> bool {
+        if prob_of_false ==0 {
+            prob_of_false =1;
+        }
         let cdf_offset = self.helper_get_cdf_value_of_sym();
-        let rescaled_prob_of_false = (1 + (Prob::from(prob_of_false) << 1)) << (LOG2_SCALE - 9);
+        let rescaled_prob_of_false = ((Prob::from(prob_of_false))) << (LOG2_SCALE - 8);
+        let inv_rescaled_prob_of_false = ((255 - Prob::from(prob_of_false))) << (LOG2_SCALE - 8);
         let bit = cdf_offset >= rescaled_prob_of_false;
         self.helper_advance_sym(if bit {rescaled_prob_of_false} else {0},
-                                if bit {((1i32 << LOG2_SCALE) - i32::from(rescaled_prob_of_false)) as Prob} else {rescaled_prob_of_false});
+                                if bit {inv_rescaled_prob_of_false} else {rescaled_prob_of_false});
         bit
     }
     fn flush(&mut self) -> BrotliResult {
@@ -538,7 +562,7 @@ mod test {
 
     #[test]
     fn entropy16_trait_test() {
-        const SZ: usize = 1024*4;
+        const SZ: usize = 1024*4 - 4;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut d = ANSDecoder::new(&mut m8);
         let mut e = ANSEncoder::new(&mut m8);
@@ -550,7 +574,7 @@ mod test {
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = [0u8; SZ];
         start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
+        encode(&mut e, prob0, &src, &mut dst, &mut n, false);
         perror!("encoded size: {}", n);
 
         let nbits = n * 8;
@@ -559,10 +583,10 @@ mod test {
         let p0 = 1.0 - p1;
         let optimal = -1.0 * p1.log2() * (p1 * z) + (-1.0) * p0.log2() * (p0 * z);
         let actual = nbits as f64;
-        assert!(actual >= optimal);
         perror!("effeciency: {}", actual / optimal);
+        assert!(actual >= optimal);
         n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
+        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, false);
         let mut t = 0;
         for (e,s) in end.iter().zip(start.iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
@@ -620,7 +644,7 @@ mod test {
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let mut start = [0u8; SZ];
         start.clone_from_slice(src.iter().as_slice());
-        encode(&mut e, prob0, &src, &mut dst, &mut n, false);
+        encode(&mut e, prob0, &src, &mut dst, &mut n, true);
         perror!("encoded size: {}", n);
 
         let nbits = n * 8;
@@ -632,7 +656,7 @@ mod test {
         assert!(actual >= optimal);
         perror!("effeciency: {}", actual / optimal);
         n = 0;
-        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, false);
+        decode::<HeapAllocator<u8>>(&mut d, prob0, &dst, &mut n, &mut end, true);
         let mut t = 0;
         for (e,s) in end.iter().zip(start.iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);

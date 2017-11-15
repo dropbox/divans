@@ -89,6 +89,7 @@ impl ANS1 {
     pub fn encode(&mut self, bb: bool, dst: &mut [u8], n: &mut usize) {
         let bit = bb as usize;
         let x = self.r;
+        perror!("encode_in:[{}]", x);
         assert!(x != 0);        //failed to call encode_init
         let bs = self.bs[bit];  // freq start
         let ls = self.ls[bit];
@@ -97,13 +98,16 @@ impl ANS1 {
             if x >= x_max {
                 *n -= 4;
                 ANS1::write_u32(x as u32, &mut dst[*n .. *n + 4]);
+                perror!("rpush {:?}", &dst[*n .. *n + 4]);
                 x >> 32
             } else {
                 x
             };
         assert!(x1 < x_max);
         let r = ((x1 / ls)<<BITS).wrapping_add(bs.wrapping_add(x1 % ls));
+        perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", x, x1, bs, ls, x_max, r, x1, x1%ls, bs.wrapping_add(x1 % ls), ((x1 / ls)<<BITS));
         self.r = r;
+        perror!("encode_ot:[{}]", self.r);
         //make sure we can decode the encoded bit
         assert!(self.decode().1 == bb);
     }
@@ -181,7 +185,7 @@ pub struct EntropyDecoderANS<AllocU8: Allocator<u8>> {
     len: u16,
 }
 
-pub const MAX_BUFFER_SIZE: usize = 64*1024; // with space for size
+pub const MAX_BUFFER_SIZE: usize = 128*1024; // with space for size
 
 pub struct ByteStack<AllocU8: Allocator<u8>>  {
     data : AllocU8::AllocatedMemory,
@@ -446,6 +450,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
         }
         let p1 = ((1<<BITS) - u64::from(prob_of_false)) as u8;
         self.c.update(p1);
+        perror!("decode_in:[{}]", self.c.r);
         let (x1, bit) = self.c.decode();
         let mut dst = [0u8; 4];
         let mut n = 0;
@@ -456,6 +461,7 @@ impl<AllocU8: Allocator<u8>> EntropyDecoder for EntropyDecoderANS<AllocU8> {
             self.len -= 4;
         }
         self.c.decode_advance(x1, &dst, &mut n);
+        perror!("decode_ot:[{}]", self.c.r);
         assert!(n == 4 || !ANS1::decode_will_advance(x1));
         //perror!("get_bit {} {}", bit, prob_of_false);
         bit
@@ -644,7 +650,7 @@ mod test {
     }
 
     #[test]
-    fn entropy_trait_test() {
+    fn entropy_traat_test() {
         const SZ: usize = 1024*4;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut d = EntropyDecoderANS::new(&mut m8);
