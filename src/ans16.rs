@@ -48,20 +48,22 @@ const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
 pub struct ANSDecoder {
     state_a: u64,
     state_b: u64,
-    sym_count: u32, // FIXME: this may be able to be a u16
+    sym_count: u16, // FIXME: this may be able to be a u16
     buffer_a_bytes_required: u8, // needs 8 to start with
     buffer_b_bytes_required: u8, // needs 8 to start with
 }
 
 impl Default for ANSDecoder {
     fn default() -> Self {
-        ANSDecoder{
+        let ret = ANSDecoder{
             state_a: 0,
             state_b: 0,
             sym_count: 0,
             buffer_a_bytes_required: 8, // this will load both buffers
             buffer_b_bytes_required: 0,
-        }
+        };
+        assert!((1 << (mem::size_of_val(&ret.sym_count) * 8)) >= NUM_SYMBOLS_BEFORE_FLUSH);
+        ret
     }
 }
 
