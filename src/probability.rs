@@ -118,8 +118,23 @@ pub trait BaseCDF {
             -((rescaled_cdf_offset >= self.cdf(15)) as i16),
             ];
         let bitmask:u32 = movemask_epi8(symbol_less);
-        let sym = (16 - (bitmask.leading_zeros() >> 1)) as u8;
-        self.sym_to_start_and_freq(sym, log2_scale)
+        let mut sym = (16 - (bitmask.leading_zeros() >> 1)) as u8;
+        for hypothetical_symbol in 0..16{
+            let tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
+            if cdf_offset >= tmp.start && i32::from(cdf_offset) < i32::from(tmp.start) + i32::from(tmp.freq) {
+                if sym != hypothetical_symbol {
+                    let _tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
+                    let _tmp2 = self.sym_to_start_and_freq(sym, log2_scale);
+                    sym = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale).sym; //FIXME: double plus bad (slow)
+                    assert_eq!(sym, hypothetical_symbol);                    
+                }
+                assert_eq!(sym, hypothetical_symbol);
+            }
+        }
+        let retval = self.sym_to_start_and_freq(sym, log2_scale);
+        assert!(retval.start <= cdf_offset);
+        assert!(i32::from(retval.start) + i32::from(retval.freq) > i32::from(cdf_offset));
+        retval
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.

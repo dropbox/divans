@@ -33,9 +33,10 @@ use super::encoder::{
     EntropyDecoder,
     ByteQueue,
 };
-
-#[cfg(test)]
 use std::io::{Write};
+#[cfg(test)]
+use super::std;
+
 
 #[cfg(test)]
 #[cfg(not(feature="benchmark"))]
@@ -48,16 +49,21 @@ macro_rules! perror(
 #[cfg(not(test))]
 macro_rules! perror(
     ($($val:tt)*) => { {
-//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
 #[cfg(test)]
 #[cfg(feature="benchmark")]
 macro_rules! perror(
     ($($val:tt)*) => { {
-//        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
+        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
+fn hilarious() {
+    let x = 10;
+    let y = x * 10;
+    perror!("{}", y);
+}
 
 pub const MAX_BUFFER_SIZE: usize = 256*1024; // with space for size
 
@@ -177,6 +183,7 @@ impl ANSDecoder {
                 self.state_b = u64::from(data[8])|(u64::from(data[9]) << 8)|(u64::from(data[10]) << 16) | (u64::from(data[11]) << 24) |
                     (u64::from(data[12]) << 32)|(u64::from(data[13]) << 40)|(u64::from(data[14]) << 48) | (u64::from(data[15]) << 56);
                 self.buffer_a_bytes_required = 0;
+                perror!("Full load buffer_a {} buffer_b {}\n", self.state_a, self.state_b);
                 return 16;
             } else {
                 self.buffer_a_bytes_required = 16;
@@ -218,10 +225,15 @@ impl ANSDecoder {
         return (self.state_a & SCALE_MASK) as i16;
     }
     fn helper_advance_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
-        //perror!("inn:{:?} {} {}", self, start, freq);
+        perror!("inn:{:?} {} {}", self, start, freq);
+        if self.state_a == 309113665019770848 {
+            hilarious();
+        }
+        if self.state_a == 2312831472 {
+            hilarious();
+        }
         let x = (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK) - start as u64;
-        //self.buffer_a_bytes_required = self.buffer_b_bytes_required;
-        //perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
+        perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
         
         self.buffer_a_bytes_required = self.buffer_b_bytes_required;
         // if we've run out of symbols to decode, we don't care what buffer_a's value is, we just clear state and start fresh
@@ -231,7 +243,7 @@ impl ANSDecoder {
         self.buffer_b_bytes_required = (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
         self.state_a = self.state_b;
         self.state_b = x;
-        //perror!("out:{:?}, {} {}", self, start, freq);
+        perror!("out:{:?}, {} {}", self, start, freq);
     }
     fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
@@ -280,9 +292,9 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
         assert!(mem::size_of::<StartFreqType>() == mem::size_of::<u16>()); // so we can use stack_u16 helper
         self.start_freq.stack_u16(freq as u16);
         self.start_freq.stack_u16(start as u16);
-        //perror!("Putting {}, {}\n",  start, freq);
+        perror!("Putting {}, {}\n",  start, freq);
         if self.start_freq.bytes().len() == ((NUM_SYMBOLS_BEFORE_FLUSH as usize) << 2) {
-            //perror!("Flushing at {}\n",  self.start_freq.bytes().len());
+            perror!("Flushing at {}\n",  self.start_freq.bytes().len());
             self.flush_chunk()
         }
     }
@@ -293,7 +305,13 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             freq: Prob) {
         debug_assert!(start >= 0);
         debug_assert!(freq > 0);
-        //perror!("inn:[{}, {}] {} {}", state_a, state_b, start, freq);
+        perror!("inn:[{}, {}] {} {}", state_a, state_b, start, freq);
+        if (*state_a == 2218617861689731) {
+            hilarious(); // earlier
+        }
+        if (*state_a == 75180553725951402 || *state_a == 35497885787029891) {
+            hilarious();
+        }
         let rescale_lim = ((NORMALIZATION_INTERVAL >> LOG2_SCALE) << 32) * (freq as u64);
         let mut state = *state_a;
         if state >= rescale_lim {
@@ -315,10 +333,10 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             debug_assert!(state < rescale_lim);
         }
         let xstate_a = ((state / freq as u64) << LOG2_SCALE) + (state % freq as u64) + start as u64;
-        //perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", *state_a, state, start, freq, rescale_lim, xstate_a, state, state%(freq as u64), (start as u64).wrapping_add(state % (freq as u64)), ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
+        perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", *state_a, state, start, freq, rescale_lim, xstate_a, state, state%(freq as u64), (start as u64).wrapping_add(state % (freq as u64)), ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
         *state_a = *state_b;
         *state_b = xstate_a;
-        //perror!("out:[{} {}] {} {}", state_a, state_b, start, freq);
+        perror!("out:[{} {}] {} {}", state_a, state_b, start, freq);
     }
             
     fn flush_chunk(&mut self) {
@@ -362,7 +380,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             ((state_b >> 48) & 0xff) as u8,
             ((state_b >> 56) & 0xff) as u8,
         ];
-        //perror!("[{} {}]", state_a, state_b);
+        perror!("efinal: [{} {}]", state_a, state_b);
         self.q.stack_data(&state_ab[..]);
         self.start_freq.reset();
     }
