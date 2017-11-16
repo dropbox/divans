@@ -8,12 +8,7 @@ use std::boxed::{
 };
 use core;
 use alloc;
-use alloc::{
-    Allocator,
-    SliceWrapperMut,
-    SliceWrapper,
-};
-
+ 
 pub struct Rebox<T> {
     b: Box<[T]>,
 }

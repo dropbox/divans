@@ -233,7 +233,7 @@ impl ANSDecoder {
         self.state_b = x;
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
-    fn get_nibble<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
+    fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
         let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset, LOG2_SCALE);
         self.helper_advance_sym(sym_start_freq.start,
@@ -264,8 +264,13 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 }
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
-    fn put_freq<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
+    fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
         let start_freq = cdf.sym_to_start_and_freq(sym, LOG2_SCALE);
+        if (!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE))) {
+            debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
+        }
+        debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
+        debug_assert!(start_freq.freq > 0 && i32::from(start_freq.freq) < (1 << LOG2_SCALE));
         self.put_start_freq(start_freq.start, start_freq.freq);
     }
     fn put_start_freq(&mut self, start: StartFreqType, freq: StartFreqType) {
@@ -336,9 +341,9 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             self.reverse_put_sym(&mut state_a, &mut state_b, start, freq);
             index += 1;
         }
-        if (len & 1) == 0 { // odd number of symbols, flip state_a and state_b
+        //if (len & 1) == 0 { // odd number of symbols, flip state_a and state_b
             mem::swap(&mut state_a, &mut state_b);
-        }
+        //}
         let state_ab:[u8;16] = [
             (state_a & 0xff) as u8,
             ((state_a >> 8) & 0xff) as u8,
@@ -375,6 +380,10 @@ impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
         self.put_start_freq(if bit {((Prob::from(prob_of_false))) << (LOG2_SCALE - 8) } else {0},
                             (if bit {256 - (Prob::from(prob_of_false))} else {Prob::from(prob_of_false)}) << (LOG2_SCALE - 8))
     }
+    fn put_nibble<CDF:CDF16>(&mut self, symbol: u8, cdf:&CDF) {
+        self.put_nibble_internal(symbol, *cdf)
+    }
+
     fn flush(&mut self) {
         self.flush_chunk()
     }
@@ -421,6 +430,9 @@ impl EntropyDecoder for ANSDecoder {
     type Queue = Self;
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
         self
+    }
+    fn get_nibble<CDF:CDF16>(&mut self, cdf:&CDF) -> u8 {
+        self.get_nibble_internal(*cdf)
     }
     fn get_bit(&mut self, mut prob_of_false: u8) -> bool {
         if prob_of_false ==0 {

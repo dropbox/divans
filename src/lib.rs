@@ -13,7 +13,6 @@
 //   limitations under the License.
 #![cfg_attr(feature="benchmark", feature(test))]
 #![no_std]
-#[cfg(test)]
 #[macro_use]
 extern crate std;
 
@@ -41,7 +40,6 @@ mod divans_to_raw;
 mod billing;
 mod test_helper;
 mod ans;
-mod ans16;
 mod single_ans;
 mod brotli_ir_gen;
 mod divans_compressor;
