@@ -218,7 +218,7 @@ fn test_e2e_tinybuf() {
 
 
 #[test]
-fn test_e2e_64x() {
+fn test_e2e_32xx() {
    let raw_text_buffer = UnlimitedBuffer::new(b"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
    let ir_buffer = UnlimitedBuffer::new(b"window 22 len 64\ninsert 1 58\ncopy 63 from 1 ctx 3\n");
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
