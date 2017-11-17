@@ -172,6 +172,7 @@ impl ANSDecoder {
         if self.buffer_a_bytes_required < 16 && self.buffer_a_bytes_required > 4 { // initial setup
             self.sym_count = 0;
             self.state_a = 0;
+            self.state_b = 0;
             if data.len() >= 16 {
                 self.state_a = u64::from(data[0])|(u64::from(data[1]) << 8)|(u64::from(data[2]) << 16) | (u64::from(data[3]) << 24) |
                     (u64::from(data[4]) << 32)|(u64::from(data[5]) << 40)|(u64::from(data[6]) << 48) | (u64::from(data[7]) << 56);
