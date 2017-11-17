@@ -138,7 +138,7 @@ impl ANSDecoder {
         self.state_a = x;
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
-    fn get_nibble<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
+    fn _get_nibble<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
         let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset, LOG2_SCALE);
         self.helper_advance_sym(sym_start_freq.start,
@@ -169,7 +169,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 }
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
-    fn put_freq<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
+    fn _put_freq<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
         let start_freq = cdf.sym_to_start_and_freq(sym, LOG2_SCALE);
         self.put_start_freq(start_freq.start, start_freq.freq);
     }
@@ -202,12 +202,6 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 ((state >> 8) & 0xff) as u8,
                 ((state >> 16) & 0xff) as u8,
                 ((state >> 24) & 0xff) as u8,
-            ];
-            let be_state_lower:[u8; 4] = [
-                ((state >> 24)& 0xff) as u8,
-                ((state >> 16) & 0xff) as u8,
-                ((state >> 8) & 0xff) as u8,
-                ((state >> 0) & 0xff) as u8,
             ];
             //perror!("rpush {:?}\n", be_state_lower);
             self.q.stack_data(&state_lower[..]);
@@ -420,7 +414,7 @@ mod test {
         if trailer {
             e.put_bit(true, 1);
             {
-                let mut q = e.get_internal_buffer();
+                let q = e.get_internal_buffer();
                 let qb = q.num_pop_bytes_avail();
                 if qb > 0 {
                     assert!(qb + *n <= dst.len());
@@ -430,7 +424,7 @@ mod test {
             }
             e.put_bit(false, 1);
             {
-                let mut q = e.get_internal_buffer();
+                let q = e.get_internal_buffer();
                 let qb = q.num_pop_bytes_avail();
                 if qb > 0 {
                     assert!(qb + *n <= dst.len());
@@ -484,7 +478,7 @@ mod test {
             let bit = d.get_bit(1);
             assert!(bit);
             {
-                let mut q = d.get_internal_buffer();
+                let q = d.get_internal_buffer();
                 while q.num_push_bytes_avail() > 0 && *n < src.len() {
                     let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                             max_copy);
@@ -494,7 +488,7 @@ mod test {
             }
             let bit = d.get_bit(1);
             assert!(!bit);
-            let mut q = d.get_internal_buffer();
+            let q = d.get_internal_buffer();
             while q.num_push_bytes_avail() > 0 && *n < src.len() {
                 let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                         max_copy);

@@ -13,7 +13,6 @@
 //   limitations under the License.
 
 use core;
-use core::marker::PhantomData;
 use alloc::{
     Allocator,
     SliceWrapper,
@@ -33,9 +32,6 @@ use super::encoder::{
     EntropyDecoder,
     ByteQueue,
 };
-use std::io::{Write};
-#[cfg(test)]
-use super::std;
 
 
 #[cfg(test)]
@@ -45,12 +41,12 @@ macro_rules! perror(
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
     } }
 );
-
+/*
 #[cfg(not(test))]
 macro_rules! perror(
     ($($val:tt)*) => { {
     } }
-);
+);*/
 #[cfg(test)]
 #[cfg(feature="benchmark")]
 macro_rules! perror(
@@ -79,9 +75,6 @@ impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
     pub fn bytes(&mut self) -> &[u8] {
         let sl = self.data.slice();
         &sl[self.nbytes ..  sl.len()]
-    }
-    pub fn stack_num_bytes(&self) -> usize {
-        self.data.slice().len() - self.nbytes
     }
     pub fn stack_bytes_avail(&self) -> usize {
         self.nbytes
@@ -165,8 +158,6 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSDecoder {
     }
 }
 
-static mut g_count:i32 = 0;
-static mut g_e_count:i32 = 0;
 impl ANSDecoder {
     fn helper_push_data_rare_cases(&mut self, data: &[u8]) -> usize{
         if self.buffer_a_bytes_required < 16 && self.buffer_a_bytes_required > 4 { // initial setup
@@ -271,7 +262,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
     fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
         let start_freq = cdf.sym_to_start_and_freq(sym, LOG2_SCALE);
-        if (!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE))) {
+        if !(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE)) {
             debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
         }
         debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
@@ -307,12 +298,6 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 ((state >> 8) & 0xff) as u8,
                 ((state >> 16) & 0xff) as u8,
                 ((state >> 24) & 0xff) as u8,
-            ];
-            let be_state_lower:[u8; 4] = [
-                ((state >> 24)& 0xff) as u8,
-                ((state >> 16) & 0xff) as u8,
-                ((state >> 8) & 0xff) as u8,
-                ((state >> 0) & 0xff) as u8,
             ];
             //perror!("rpush {:?}\n", be_state_lower);
             self.q.stack_data(&state_lower[..]);
@@ -471,12 +456,6 @@ mod test {
     extern crate std;
     use std::io::Write;
     
-    use std::vec::{
-        Vec,
-    };
-    use std::boxed::{
-        Box,
-    };
     use core;
     use super::{
         ANSDecoder,
@@ -490,11 +469,8 @@ mod test {
     use interface::{
         NewWithAllocator,
     };
-    use alloc;
     use alloc::{
         Allocator,
-        SliceWrapperMut,
-        SliceWrapper,
     };
     use super::super::test_helper::HeapAllocator;
     const BITS: u8 = 8;
@@ -539,7 +515,7 @@ mod test {
         if trailer {
             e.put_bit(true, 1);
             {
-                let mut q = e.get_internal_buffer();
+                let q = e.get_internal_buffer();
                 let qb = q.num_pop_bytes_avail();
                 if qb > 0 {
                     assert!(qb + *n <= dst.len());
@@ -549,7 +525,7 @@ mod test {
             }
             e.put_bit(false, 1);
             {
-                let mut q = e.get_internal_buffer();
+                let q = e.get_internal_buffer();
                 let qb = q.num_pop_bytes_avail();
                 if qb > 0 {
                     assert!(qb + *n <= dst.len());
@@ -603,7 +579,7 @@ mod test {
             let bit = d.get_bit(1);
             assert!(bit);
             {
-                let mut q = d.get_internal_buffer();
+                let q = d.get_internal_buffer();
                 while q.num_push_bytes_avail() > 0 && *n < src.len() {
                     let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                             max_copy);
@@ -613,7 +589,7 @@ mod test {
             }
             let bit = d.get_bit(1);
             assert!(!bit);
-            let mut q = d.get_internal_buffer();
+            let q = d.get_internal_buffer();
             while q.num_push_bytes_avail() > 0 && *n < src.len() {
                 let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                         max_copy);
@@ -693,7 +669,7 @@ mod test {
         assert!(t == SZ);
         perror!("done!");
     }
-    fn setup_test_return_optimal(src:&mut[u8], dst:&mut[u8], end:&mut [u8], start:&mut[u8]) -> (u8, f64) {
+    fn setup_test_return_optimal(src:&mut[u8], _dst:&mut[u8], _end:&mut [u8], start:&mut[u8]) -> (u8, f64) {
         let prob = init_src(src);
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let z = src.len() as f64 * 8.0;

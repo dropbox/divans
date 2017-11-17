@@ -14,12 +14,16 @@
 #![cfg_attr(feature="benchmark", feature(test))]
 #![no_std]
 #[macro_use]
-extern crate std;
 
 #[cfg(not(test))]
 #[cfg(feature="billing")]
 #[macro_use]
 extern crate std;
+
+#[cfg(test)]
+#[macro_use]
+extern crate std;
+
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli;
 pub mod resizable_byte_buffer;

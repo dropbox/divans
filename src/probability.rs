@@ -90,8 +90,8 @@ pub trait BaseCDF {
         let cdf_sym = (i32::from(self.cdf(sym)) << log2_scale) / i32::from(self.max());
         let freq = cdf_sym - cdf_prev;
         SymStartFreq {
-            start: cdf_prev as Prob,
-            freq:  freq as Prob,
+            start: cdf_prev as Prob + 1, // major hax
+            freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
             sym: sym,
         }
     }
@@ -101,6 +101,7 @@ pub trait BaseCDF {
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob,
                                         log2_scale: u32) -> SymStartFreq {
+        /*
         for i in 0..16 {
             let cdf_cur = (i32::from(self.cdf(i as u8))<<log2_scale) / i32::from(self.max());
             if i32::from(cdf_offset_p) < cdf_cur {
@@ -117,7 +118,7 @@ pub trait BaseCDF {
             }
         }
         panic!("unreachable due to max value of cdf");
-        /*
+*/
         let cdf_offset = i32::from(cdf_offset_p) * i32::from(self.max());
         let symbol_less_a = [
             -((cdf_offset >= self.rescaled_cdf(0, log2_scale)) as i32),
@@ -158,7 +159,6 @@ pub trait BaseCDF {
         assert!(retval.start <= cdf_offset_p);
         assert!(i32::from(retval.start) + i32::from(retval.freq) > i32::from(cdf_offset_p));
         retval
-*/
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.
