@@ -95,46 +95,70 @@ pub trait BaseCDF {
             sym: sym,
         }
     }
+    fn rescaled_cdf(&self, sym: u8, log2_scale: u32) -> i32 {
+        i32::from(self.cdf(sym)) << log2_scale
+    }
     fn cdf_offset_to_sym_start_and_freq(&self,
-                                        cdf_offset: Prob,
+                                        cdf_offset_p: Prob,
                                         log2_scale: u32) -> SymStartFreq {
-        let rescaled_cdf_offset = (((self.max() as u32) * (cdf_offset as u32)) >> log2_scale) as Prob;
-        let symbol_less = [
-            -((rescaled_cdf_offset >= self.cdf(0)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(1)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(2)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(3)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(4)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(5)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(6)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(7)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(8)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(9)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(10)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(11)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(12)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(13)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(14)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(15)) as i16),
+        for i in 0..16 {
+            let cdf_cur = (i32::from(self.cdf(i as u8))<<log2_scale) / i32::from(self.max());
+            if i32::from(cdf_offset_p) < cdf_cur {
+                let cdf_prev = if i != 0 {
+                    (i32::from(self.cdf(i as u8 - 1))<<log2_scale) / i32::from(self.max())
+                } else {
+                    0
+                };
+                return SymStartFreq{
+                    sym: i as u8,
+                    start: cdf_prev as Prob,
+                    freq: (cdf_cur - cdf_prev) as Prob,
+                };
+            }
+        }
+        panic!("unreachable due to max value of cdf");
+        /*
+        let cdf_offset = i32::from(cdf_offset_p) * i32::from(self.max());
+        let symbol_less_a = [
+            -((cdf_offset >= self.rescaled_cdf(0, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(1, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(2, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(3, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(4, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(5, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(6, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(7, log2_scale)) as i32),
+        ];
+        let symbol_less_b = [
+            -((cdf_offset >= self.rescaled_cdf(8, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(9, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(10, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(11, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(12, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(13, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(14, log2_scale)) as i32),
+            -((cdf_offset >= self.rescaled_cdf(15, log2_scale)) as i32),
             ];
-        let bitmask:u32 = movemask_epi8(symbol_less);
-        let mut sym = (16 - (bitmask.leading_zeros() >> 1)) as u8;
+        let bitmask_a:u32 = movemask_epi8_i32(symbol_less_a);
+        let bitmask_b:u32 = movemask_epi8_i32(symbol_less_b);
+        let mut sym = (16 - ((u64::from(bitmask_a) | (u64::from(bitmask_b)<<32)).leading_zeros() >> 2)) as u8;
         for hypothetical_symbol in 0..16{
             let tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
-            if cdf_offset >= tmp.start && i32::from(cdf_offset) < i32::from(tmp.start) + i32::from(tmp.freq) {
+            if cdf_offset_p >= tmp.start && i32::from(cdf_offset_p) < i32::from(tmp.start) + i32::from(tmp.freq) {
                 if sym != hypothetical_symbol {
                     let _tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
                     let _tmp2 = self.sym_to_start_and_freq(sym, log2_scale);
-                    sym = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale).sym; //FIXME: double plus bad (slow)
+                    //sym = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale).sym; //FIXME: double plus bad (slow)
                     assert_eq!(sym, hypothetical_symbol);                    
                 }
                 assert_eq!(sym, hypothetical_symbol);
             }
         }
         let retval = self.sym_to_start_and_freq(sym, log2_scale);
-        assert!(retval.start <= cdf_offset);
-        assert!(i32::from(retval.start) + i32::from(retval.freq) > i32::from(cdf_offset));
+        assert!(retval.start <= cdf_offset_p);
+        assert!(i32::from(retval.start) + i32::from(retval.freq) > i32::from(cdf_offset_p));
         retval
+*/
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.
@@ -303,6 +327,13 @@ fn to_bit_u32(val: i16, shift_val: u8) -> u32 {
         0
     }
 }
+fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
+    if val != 0 {
+        1 << shift_val
+    } else {
+        0
+    }
+}
 fn movemask_epi8(data:[i16;16]) -> u32{
     to_bit_u32(data[0] & -0x8000 , 0) |
     to_bit_u32(data[0] & 0x80 , 1) |
@@ -336,6 +367,48 @@ fn movemask_epi8(data:[i16;16]) -> u32{
     to_bit_u32(data[14] & 0x80 , 29) |
     to_bit_u32(data[15] & -0x8000 , 30) |
     to_bit_u32(data[15] & 0x80 , 31)
+}
+
+fn movemask_epi8_i32(data:[i32;8]) -> u32{
+    to_bit_i32(data[0] & 0x80 , 0) |
+    to_bit_i32(data[0] & 0x8000 , 1) |
+    to_bit_i32(data[0] & 0x800000 , 2) |
+    to_bit_i32(data[0] & -0x80000000, 3) |
+
+    to_bit_i32(data[1] & 0x80 , 4) |
+    to_bit_i32(data[1] & 0x8000 , 5) |
+    to_bit_i32(data[1] & 0x800000 , 6) |
+    to_bit_i32(data[1] & -0x80000000, 7) |
+
+    to_bit_i32(data[2] & 0x80 , 8) |
+    to_bit_i32(data[2] & 0x8000 , 9) |
+    to_bit_i32(data[2] & 0x800000 , 10) |
+    to_bit_i32(data[2] & -0x80000000, 11) |
+
+    to_bit_i32(data[3] & 0x80 , 12) |
+    to_bit_i32(data[3] & 0x8000 , 13) |
+    to_bit_i32(data[3] & 0x800000 , 14) |
+    to_bit_i32(data[3] & -0x80000000, 15) |
+
+    to_bit_i32(data[4] & 0x80 , 16) |
+    to_bit_i32(data[4] & 0x8000 , 17) |
+    to_bit_i32(data[4] & 0x800000 , 18) |
+    to_bit_i32(data[4] & -0x80000000, 19) |
+
+    to_bit_i32(data[5] & 0x80 , 20) |
+    to_bit_i32(data[5] & 0x8000 , 21) |
+    to_bit_i32(data[5] & 0x800000 , 22) |
+    to_bit_i32(data[5] & -0x80000000, 23) |
+
+    to_bit_i32(data[6] & 0x80 , 24) |
+    to_bit_i32(data[6] & 0x8000 , 25) |
+    to_bit_i32(data[6] & 0x800000 , 26) |
+    to_bit_i32(data[6] & -0x80000000, 27) |
+
+    to_bit_i32(data[7] & 0x80 , 28) |
+    to_bit_i32(data[7] & 0x8000 , 29) |
+    to_bit_i32(data[7] & 0x800000 , 30) |
+    to_bit_i32(data[7] & -0x80000000, 31)
 }
 
 impl BaseCDF for BlendCDF16 {
