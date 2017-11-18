@@ -462,6 +462,7 @@ mod test {
         ANSDecoder,
         ANSEncoder,
     };
+    use super::super::probability::{Speed, FrequentistCDF16, CDF16};
     use encoder::{
         EntropyEncoder,
         EntropyDecoder,
@@ -493,6 +494,110 @@ mod test {
             }
         }
         ((ones<<BITS) as u64 / (src.len() as u64 * 8)) as u8
+    }
+
+    fn make_test_cdfs() -> (FrequentistCDF16, [FrequentistCDF16; 16]) {
+        (FrequentistCDF16::default(),
+         [
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default(),
+             FrequentistCDF16::default()])
+    }
+
+    fn encode_test_nibble_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, src: &[u8], dst: &mut [u8], n: &mut usize) {
+        let mut t = 0;
+        *n = 0;
+        let (mut cdf_high, mut cdf_low) = make_test_cdfs();
+        for u in src.iter() {
+            let v = *u;
+            //left to right
+            e.put_nibble(v >> 4, &cdf_high);
+            {
+                let mut q = e.get_internal_buffer();
+                let qb = q.num_pop_bytes_avail();
+                if qb > 0 {
+                    assert!(qb + *n <= dst.len());
+                    q.pop_data(&mut dst[*n  .. *n + qb]);
+                    *n = *n + qb;
+                }
+            }
+            cdf_high.blend(v >> 4, Speed::SLOW);
+            let cdfl = &mut cdf_low[(v>>4) as usize];
+            e.put_nibble(v & 0xf, cdfl);
+            let mut q = e.get_internal_buffer();
+            let qb = q.num_pop_bytes_avail();
+            if qb > 0 {
+                assert!(qb + *n <= dst.len());
+                q.pop_data(&mut dst[*n  .. *n + qb]);
+                *n = *n + qb;
+            }
+            cdfl.blend(v & 0xf, Speed::SLOW);
+            t += 1;
+        }
+        assert_eq!(t, src.len());
+        e.flush();
+        {
+            let q = e.get_internal_buffer();
+            let qb = q.num_pop_bytes_avail();
+            q.pop_data(&mut dst[*n .. *n + qb]);
+            *n = *n + qb;
+        }
+    }
+    fn decode_test_nibble_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8]) {
+        let max_copy =1024usize;
+        let (mut cdf_high, mut cdf_low) = make_test_cdfs();
+        let mut t = 0;
+        {
+            let q = d.get_internal_buffer();
+            let sz = q.num_push_bytes_avail();
+            //assert!(sz >= 10);
+            //assert!(sz <= 16);
+            assert!(src.len() >= sz);
+            let p = q.push_data(&src[*n  .. *n + sz]);
+            assert_eq!(p, sz);
+            //assert!(q.num_pop_bytes_avail() == sz);
+            *n = *n + sz;
+        }
+        for v in end.iter_mut() {
+            let high_nibble = d.get_nibble(&cdf_high);
+            *v = high_nibble << 4;
+            {
+                let mut q = d.get_internal_buffer();
+                while q.num_push_bytes_avail() > 0 {
+                    let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
+                                            max_copy);
+                    q.push_data(&src[*n .. *n + sz]);
+                    *n = *n + sz;
+                }
+            }
+            let cdfl = &mut cdf_low[(*v >> 4) as usize];
+            cdf_high.blend(*v >> 4, Speed::SLOW);
+            let low_nibble = d.get_nibble(cdfl);
+            *v |= low_nibble;
+            let mut q = d.get_internal_buffer();
+            while q.num_push_bytes_avail() > 0 {
+                let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
+                                        max_copy);
+                q.push_data(&src[*n .. *n + sz]);
+                *n = *n + sz;
+            }
+            cdfl.blend(low_nibble, Speed::SLOW);
+            t = t + 1;
+        }
+        assert_eq!(t, end.len());
     }
 
 
@@ -673,6 +778,79 @@ mod test {
         assert!(t == SZ);
         perror!("done!");
     }
+
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_dynamic_nibble_decode_bench(b: &mut Bencher) {
+        const SZ: usize = 1024*1024;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut src = m8.alloc_cell(SZ);
+        let mut dst = m8.alloc_cell(SZ);
+        let mut end = m8.alloc_cell(SZ);
+        let mut start = m8.alloc_cell(SZ);
+        let (_prob0, _optimal) = setup_test_return_optimal(
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+        let mut e = ANSEncoder::new(&mut m8);
+        let mut n: usize = 0;
+        encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n);
+        perror!("encoded size: {}", n);
+        let nbits = n * 8;
+        let actual = nbits as f64;
+        perror!("effeciency: {}", actual / _optimal);
+        b.iter(|| {
+            let mut d = ANSDecoder::new(&mut m8);
+            //assert!(actual >= _optimal);
+            n = 0;
+            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut());
+        });
+        let mut t = 0;
+        for (e,s) in end.slice().iter().zip(start.slice().iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+
+
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_dynamic_nibble_roundtrip_bench(b: &mut Bencher) {
+        const SZ: usize = 1024*1024;
+        let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+        let mut src = m8.alloc_cell(SZ);
+        let mut dst = m8.alloc_cell(SZ);
+        let mut start = m8.alloc_cell(SZ);
+        let mut end = m8.alloc_cell(SZ);
+        let (_prob0, _optimal) = setup_test_return_optimal(
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+        let mut compressed_size = 0;
+        let mut actual = 1.0f64;
+        b.iter(|| {
+            let mut n: usize = 0;
+            let mut d = ANSDecoder::new(&mut m8);
+            let mut e = ANSEncoder::new(&mut m8);
+            encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n);
+            compressed_size = n;
+            let nbits = n * 8;
+            actual = nbits as f64;
+            //assert!(actual >= _optimal);
+            n = 0;
+            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut());
+        });
+        perror!("encoded size: {}", compressed_size);
+        perror!("effeciency: {}", actual / _optimal);
+        let mut t = 0;
+        for (e,s) in end.slice().iter().zip(start.slice().iter()) {
+            assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+            t = t + 1;
+        }
+        assert!(t == SZ);
+        perror!("done!");
+    }
+
+
+
     fn setup_test_return_optimal(src:&mut[u8], _dst:&mut[u8], _end:&mut [u8], start:&mut[u8]) -> (u8, f64) {
         let prob = init_src(src);
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
