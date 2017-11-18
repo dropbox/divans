@@ -516,8 +516,40 @@ mod test {
              FrequentistCDF16::default(),
              FrequentistCDF16::default()])
     }
+    trait TestSelection {
+        fn size(&self) -> usize;
+        fn adapt_probability(&self) -> bool;
+        fn independent_hilo(&self) -> bool;
+    }
+    struct TestAdapt{
+        pub size: usize,
+    }
+    struct TestNoAdapt{
+        pub size: usize,
+    }
+    struct TestSimple{
+        pub size: usize,
+    }
+    
+    impl TestSelection for TestAdapt {
+        fn size(&self) -> {self.size}
+        fn adapt_probability(&self) -> bool {true}
+        fn independent_hilo(&self) -> bool {true}
+    }
+    impl TestSelection for TestNoAdapt {
+        fn size(&self) -> {self.size}
+        fn adapt_probability(&self) -> bool {false}
+        fn independent_hilo(&self) -> bool {true}
+    }
 
-    fn encode_test_nibble_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, src: &[u8], dst: &mut [u8], n: &mut usize) {
+    impl TestSelection for TestSimple {
+        fn size(&self) -> {self.size}
+        fn adapt_probability(&self) -> bool {false}
+        fn independent_hilo(&self) -> bool {false}
+    }
+
+    fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
+                                 TS:TestSelection>(e: &mut ANSEncoder<AllocU8>, src: &[u8], dst: &mut [u8], n: &mut usize, ts: TS) {
         let mut t = 0;
         *n = 0;
         let (mut cdf_high, mut cdf_low) = make_test_cdfs();
@@ -534,8 +566,10 @@ mod test {
                     *n = *n + qb;
                 }
             }
-            cdf_high.blend(v >> 4, Speed::SLOW);
-            let cdfl = &mut cdf_low[(v>>4) as usize];
+            if ts.adapt_probability() {
+                cdf_high.blend(v >> 4, Speed::SLOW);
+            }
+            let cdfl = &mut cdf_low[if ts.independent_hilo() {0} else {(v>>4) as usize}];
             e.put_nibble(v & 0xf, cdfl);
             let mut q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
@@ -544,7 +578,9 @@ mod test {
                 q.pop_data(&mut dst[*n  .. *n + qb]);
                 *n = *n + qb;
             }
-            cdfl.blend(v & 0xf, Speed::SLOW);
+            if ts.adapt_probability() {
+                cdfl.blend(v & 0xf, Speed::SLOW);
+            }
             t += 1;
         }
         assert_eq!(t, src.len());
@@ -556,7 +592,8 @@ mod test {
             *n = *n + qb;
         }
     }
-    fn decode_test_nibble_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8]) {
+    fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
+                                 TS:TestSelection>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8], ts: TS) {
         let max_copy =1024usize;
         let (mut cdf_high, mut cdf_low) = make_test_cdfs();
         let mut t = 0;
@@ -583,8 +620,10 @@ mod test {
                     *n = *n + sz;
                 }
             }
-            let cdfl = &mut cdf_low[(*v >> 4) as usize];
-            cdf_high.blend(*v >> 4, Speed::SLOW);
+            let cdfl = &mut cdf_low[if ts.independent_hilo() {0}else{(*v >> 4) as usize}];
+            if ts.adapt_probability() {
+                cdf_high.blend(*v >> 4, Speed::SLOW);
+            }
             let low_nibble = d.get_nibble(cdfl);
             *v |= low_nibble;
             let mut q = d.get_internal_buffer();
@@ -594,7 +633,9 @@ mod test {
                 q.push_data(&src[*n .. *n + sz]);
                 *n = *n + sz;
             }
-            cdfl.blend(low_nibble, Speed::SLOW);
+            if ts.adapt_probability() {
+                cdfl.blend(low_nibble, Speed::SLOW);
+            }
             t = t + 1;
         }
         assert_eq!(t, end.len());
@@ -781,8 +822,38 @@ mod test {
 
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_dynamic_nibble_decode_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_dynamic_nibble_adaptive_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestAdapt{size:124 * 1024/10})
+    }
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_dynamic_nibble_nonadaptive_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestNoAdapt{size:1024 * 1024/10})
+    }
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_nibble_roundtrip_simple_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestSimple{size:1024 * 1024/10})
+    }
+
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_decode_nibble_adaptive_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestAdapt{size:124 * 1024/10})
+    }
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_decode_nibble_nonadaptive_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestNoAdapt{size:1024 * 1024/10})
+    }
+    #[cfg(feature="benchmark")]
+    #[bench]
+    fn entropy_nibble_recode_simple_100k<TS:TestSelection>(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestSimple{size:1024 * 1024/10})
+    }
+    #[cfg(feature="benchmark")]
+    fn entropy_dynamic_nibble_decode<TS:TestSelection>(b: &mut Bencher, ts:TS) {
+        const SZ: usize = ts.size();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
@@ -792,7 +863,7 @@ mod test {
             src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
-        encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n);
+        encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n, ts);
         perror!("encoded size: {}", n);
         let nbits = n * 8;
         let actual = nbits as f64;
@@ -801,7 +872,7 @@ mod test {
             let mut d = ANSDecoder::new(&mut m8);
             //assert!(actual >= _optimal);
             n = 0;
-            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut());
+            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
         });
         let mut t = 0;
         for (e,s) in end.slice().iter().zip(start.slice().iter()) {
@@ -814,9 +885,8 @@ mod test {
 
 
     #[cfg(feature="benchmark")]
-    #[bench]
-    fn entropy_dynamic_nibble_roundtrip_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b: &mut Bencher, ts:TS) {
+        const SZ: usize = ts.size();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
@@ -830,13 +900,13 @@ mod test {
             let mut n: usize = 0;
             let mut d = ANSDecoder::new(&mut m8);
             let mut e = ANSEncoder::new(&mut m8);
-            encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n);
+            encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n, ts);
             compressed_size = n;
             let nbits = n * 8;
             actual = nbits as f64;
             //assert!(actual >= _optimal);
             n = 0;
-            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut());
+            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
         });
         perror!("encoded size: {}", compressed_size);
         perror!("effeciency: {}", actual / _optimal);
