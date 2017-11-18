@@ -479,10 +479,24 @@ mod test {
     };
     use super::super::test_helper::HeapAllocator;
     const BITS: u8 = 8;
-    
+    fn init_shuffle_256(src: &mut [u8]) -> u8 {
+        let shuffled = [133, 240, 232, 124, 145, 29, 201, 207, 244, 226, 199, 176, 13, 173, 98, 179, 247, 69, 167, 6, 41, 117, 131, 44, 158, 38, 139, 253, 71, 250, 1, 101, 126, 65, 113, 57, 25, 97, 56, 16, 87, 64, 47, 138, 150, 212, 155, 0, 89, 118, 218, 68, 241, 77, 49, 112, 142, 143, 245, 48, 12, 152, 14, 195, 234, 95, 185, 37, 108, 137, 55, 63, 81, 120, 107, 34, 11, 52, 96, 111, 127, 189, 35, 223, 249, 221, 23, 154, 242, 136, 93, 141, 3, 84, 99, 248, 206, 62, 134, 211, 51, 216, 162, 61, 183, 72, 198, 40, 122, 202, 190, 163, 180, 171, 153, 159, 166, 186, 164, 210, 91, 165, 213, 30, 15, 33, 27, 172, 104, 121, 147, 219, 140, 36, 4, 28, 43, 45, 102, 24, 5, 168, 188, 114, 255, 160, 209, 181, 21, 182, 130, 254, 214, 83, 170, 82, 105, 187, 192, 156, 26, 196, 184, 54, 116, 46, 228, 115, 19, 76, 169, 225, 32, 10, 193, 60, 215, 103, 22, 42, 144, 80, 161, 78, 17, 94, 2, 31, 18, 203, 129, 20, 9, 227, 246, 224, 229, 135, 231, 73, 66, 125, 230, 119, 151, 67, 86, 205, 128, 174, 243, 74, 123, 92, 191, 110, 157, 106, 100, 70, 148, 237, 132, 109, 220, 53, 8, 197, 50, 175, 251, 208, 204, 79, 146, 149, 222, 178, 233, 58, 252, 217, 177, 7, 235, 236, 59, 194, 75, 85, 90, 238, 200, 239, 88, 39];
+        for (s,v) in shuffled.iter().cycle().zip(src.iter_mut()) {
+            *v = *s;
+        }
+        127
+    }
+    fn init_shuffle_384(src: &mut [u8]) -> u8 {
+        let shuffled = [133, 240, 232, 124, 145, 29, 201, 207, 244, 226, 199, 176, 13, 173, 98, 179, 247, 69, 167, 6, 41, 117, 131, 44, 158, 38, 139, 253, 71, 250, 1, 101, 126, 65, 113, 57, 25, 97, 56, 16, 87, 64, 47, 138, 150, 212, 155, 0, 89, 118, 218, 68, 241, 77, 49, 112, 142, 143, 245, 48, 12, 152, 14, 195, 234, 95, 185, 37, 108, 137, 55, 63, 81, 120, 107, 34, 11, 52, 96, 111, 127, 189, 35, 223, 249, 221, 23, 154, 242, 136, 93, 141, 3, 84, 99, 248, 206, 62, 134, 211, 51, 216, 162, 61, 183, 72, 198, 40, 122, 202, 190, 163, 180, 171, 153, 159, 166, 186, 164, 210, 91, 165, 213, 30, 15, 33, 27, 172, 104, 121, 147, 219, 140, 36, 4, 28, 43, 45, 102, 24, 5, 168, 188, 114, 255, 160, 209, 181, 21, 182, 130, 254, 214, 83, 170, 82, 105, 187, 192, 156, 26, 196, 184, 54, 116, 46, 228, 115, 19, 76, 169, 225, 32, 10, 193, 60, 215, 103, 22, 42, 144, 80, 161, 78, 17, 94, 2, 31, 18, 203, 129, 20, 9, 227, 246, 224, 229, 135, 231, 73, 66, 125, 230, 119, 151, 67, 86, 205, 128, 174, 243, 74, 123, 92, 191, 110, 157, 106, 100, 70, 148, 237, 132, 109, 220, 53, 8, 197, 50, 175, 251, 208, 204, 79, 146, 149, 222, 178, 233, 58, 252, 217, 177, 7, 235, 236, 59, 194, 75, 85, 90, 238, 200, 239, 88, 39, 133, 240, 232, 124, 145, 29, 201, 207, 244, 226, 199, 176, 13, 173, 98, 179, 247, 69, 167, 6, 41, 117, 131, 44, 158, 38, 139, 253, 71, 250, 1, 101, 126, 65, 113, 57, 25, 97, 56, 16, 87, 64, 47, 138, 150, 212, 155, 0, 89, 118, 218, 68, 241, 77, 49, 112, 142, 143, 245, 48, 12, 152, 14, 195, 234, 95, 185, 37, 108, 137, 55, 63, 81, 120, 107, 34, 11, 52, 96, 111, 127, 189, 35, 223, 249, 221, 23, 154, 242, 136, 93, 141, 3, 84, 99, 248, 206, 62, 134, 211, 51, 216, 162, 61, 183, 72, 198, 40, 122, 202, 190, 163, 180, 171, 153, 159, 166, 186, 164, 210, 91, 165, 213, 30, 15, 33, 27, 172];
+        for (s,v) in shuffled.iter().cycle().zip(src.iter_mut()) {
+            *v = *s;
+        }
+        127
+    }
     fn init_src(src: &mut [u8]) -> u8 {
         let mut ones = 0u64;
-        let seed: [u8; 16] = [0xef, 0xbf,0xff,0xfd,0xef,0x3f,0xc0,0xfd,0xef,0xc0,0xff,0xfd,0xdf,0x3f,0xff,0xfd];
+        let seed: [u8; 16] = [0xef, 0xbf,0xff,0xfd,0xef,0x3f,0xc0,0xfd,0xef,0xc0,0xff,0xfd,0xdf,0x3f,0xff,0xfd,
+        ];
         for (s,v) in seed.iter().cycle().zip(src.iter_mut()) {
             *v = *s;
         }
@@ -537,18 +551,18 @@ mod test {
     impl TestSelection for TestAdapt {
         fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {true}
-        fn independent_hilo(&self) -> bool {true}
+        fn independent_hilo(&self) -> bool {false}
     }
     impl TestSelection for TestNoAdapt {
         fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {false}
-        fn independent_hilo(&self) -> bool {true}
+        fn independent_hilo(&self) -> bool {false}
     }
 
     impl TestSelection for TestSimple {
         fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {false}
-        fn independent_hilo(&self) -> bool {false}
+        fn independent_hilo(&self) -> bool {true}
     }
 
     fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
@@ -765,7 +779,7 @@ mod test {
         let mut start = m8.alloc_cell(SZ);
         let mut end = m8.alloc_cell(SZ);
         let (prob0, _optimal) = setup_test_return_optimal(
-            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut(), init_src);
         let mut compressed_size = 0;
         let mut actual = 1.0f64;
         b.iter(|| {
@@ -800,7 +814,7 @@ mod test {
         let mut end = m8.alloc_cell(SZ);
         let mut start = m8.alloc_cell(SZ);
         let (prob0, _optimal) = setup_test_return_optimal(
-            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut(), init_src);
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
         encode_test_helper(&mut e, prob0, src.slice(), dst.slice_mut(), &mut n, false);
@@ -864,7 +878,7 @@ mod test {
         let mut end = m8.alloc_cell(sz);
         let mut start = m8.alloc_cell(sz);
         let (_prob0, _optimal) = setup_test_return_optimal(
-            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut(), init_shuffle_384);
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
         encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n, ts);
@@ -898,7 +912,7 @@ mod test {
         let mut start = m8.alloc_cell(sz);
         let mut end = m8.alloc_cell(sz);
         let (_prob0, _optimal) = setup_test_return_optimal(
-            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
+            src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut(), init_shuffle_256);
         let mut compressed_size = 0;
         let mut actual = 1.0f64;
         let _unused = actual;
@@ -927,8 +941,8 @@ mod test {
 
 
 
-    fn setup_test_return_optimal(src:&mut[u8], _dst:&mut[u8], _end:&mut [u8], start:&mut[u8]) -> (u8, f64) {
-        let prob = init_src(src);
+    fn setup_test_return_optimal(src:&mut[u8], _dst:&mut[u8], _end:&mut [u8], start:&mut[u8], ini: fn (&mut [u8]) -> u8) -> (u8, f64) {
+        let prob = ini(src);
         let prob0: u8 = ((1u64<<BITS) - (prob as u64)) as u8;
         let z = src.len() as f64 * 8.0;
         let p1 = prob as f64 / 256.0;
@@ -939,7 +953,7 @@ mod test {
     fn help_rt(src:&mut[u8], dst:&mut[u8], end:&mut [u8], start:&mut[u8], trailing_bit_and_one_byte_at_a_time: bool) {
         let sz = src.len();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let (prob0, _optimal) = setup_test_return_optimal(src, dst, end, start);
+        let (prob0, _optimal) = setup_test_return_optimal(src, dst, end, start, init_src);
         let mut d = ANSDecoder::new(&mut m8);
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
