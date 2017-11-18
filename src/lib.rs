@@ -42,9 +42,9 @@ mod cmd_to_divans;
 mod divans_to_raw;
 #[macro_use]
 mod billing;
-mod test_helper;
+pub mod test_helper;
+mod test_ans;
 mod ans;
-mod single_ans;
 mod brotli_ir_gen;
 mod divans_compressor;
 pub mod constants;
