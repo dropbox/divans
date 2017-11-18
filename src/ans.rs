@@ -454,6 +454,7 @@ impl BillingCapability for ANSDecoder {
 #[cfg(test)]
 mod test {
     extern crate std;
+    #[allow(unused_imports)]
     use std::io::Write;
     
     use core;
@@ -469,8 +470,11 @@ mod test {
     use interface::{
         NewWithAllocator,
     };
+    #[allow(unused_imports)]
     use alloc::{
         Allocator,
+        SliceWrapper,
+        SliceWrapperMut,
     };
     use super::super::test_helper::HeapAllocator;
     const BITS: u8 = 8;
@@ -611,7 +615,7 @@ mod test {
         let mut dst = m8.alloc_cell(SZ);
         let mut start = m8.alloc_cell(SZ);
         let mut end = m8.alloc_cell(SZ);
-        let (prob0, optimal) = setup_test_return_optimal(
+        let (prob0, _optimal) = setup_test_return_optimal(
             src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut compressed_size = 0;
         let mut actual = 1.0f64;
@@ -623,12 +627,12 @@ mod test {
             compressed_size = n;
             let nbits = n * 8;
             actual = nbits as f64;
-            //assert!(actual >= optimal);
+            //assert!(actual >= _optimal);
             n = 0;
             decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
         });
         perror!("encoded size: {}", compressed_size);
-        perror!("effeciency: {}", actual / optimal);
+        perror!("effeciency: {}", actual / _optimal);
         let mut t = 0;
         for (e,s) in end.slice().iter().zip(start.slice().iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
@@ -646,7 +650,7 @@ mod test {
         let mut dst = m8.alloc_cell(SZ);
         let mut end = m8.alloc_cell(SZ);
         let mut start = m8.alloc_cell(SZ);
-        let (prob0, optimal) = setup_test_return_optimal(
+        let (prob0, _optimal) = setup_test_return_optimal(
             src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
@@ -654,10 +658,10 @@ mod test {
         perror!("encoded size: {}", n);
         let nbits = n * 8;
         let actual = nbits as f64;
-        perror!("effeciency: {}", actual / optimal);
+        perror!("effeciency: {}", actual / _optimal);
         b.iter(|| {
             let mut d = ANSDecoder::new(&mut m8);
-            //assert!(actual >= optimal);
+            //assert!(actual >= _optimal);
             n = 0;
             decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst.slice(), &mut n, end.slice_mut(), false);
         });
