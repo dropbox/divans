@@ -554,8 +554,8 @@ mod test {
     use self::test::Bencher;
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_single_trait_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_single_trait_bench_100k(b: &mut Bencher) {
+        const SZ: usize = 1024*1024/10;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
@@ -595,8 +595,8 @@ mod test {
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_single_decode_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_single_decode_bench_100k(b: &mut Bencher) {
+        const SZ: usize = 1024*1024/10;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);

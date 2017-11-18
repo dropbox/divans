@@ -516,34 +516,37 @@ mod test {
              FrequentistCDF16::default(),
              FrequentistCDF16::default()])
     }
-    trait TestSelection {
+    trait TestSelection : Clone + Copy {
         fn size(&self) -> usize;
         fn adapt_probability(&self) -> bool;
         fn independent_hilo(&self) -> bool;
     }
+    #[derive(Clone, Copy)]
     struct TestAdapt{
         pub size: usize,
     }
+    #[derive(Clone, Copy)]
     struct TestNoAdapt{
         pub size: usize,
     }
+    #[derive(Clone, Copy)]
     struct TestSimple{
         pub size: usize,
     }
     
     impl TestSelection for TestAdapt {
-        fn size(&self) -> {self.size}
+        fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {true}
         fn independent_hilo(&self) -> bool {true}
     }
     impl TestSelection for TestNoAdapt {
-        fn size(&self) -> {self.size}
+        fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {false}
         fn independent_hilo(&self) -> bool {true}
     }
 
     impl TestSelection for TestSimple {
-        fn size(&self) -> {self.size}
+        fn size(&self) -> usize {self.size}
         fn adapt_probability(&self) -> bool {false}
         fn independent_hilo(&self) -> bool {false}
     }
@@ -754,8 +757,8 @@ mod test {
     use self::test::Bencher;
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_single_trait_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_bit_roundtrip_100k(b: &mut Bencher) {
+        const SZ: usize = 1024*1024 / 10;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
         let mut dst = m8.alloc_cell(SZ);
@@ -789,11 +792,11 @@ mod test {
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy16_decode_bench(b: &mut Bencher) {
-        const SZ: usize = 1024*1024;
+    fn entropy_bit_decode_bench_100k(b: &mut Bencher) {
+        const SZ: usize = 1024*1024 / 10;
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
         let mut src = m8.alloc_cell(SZ);
-        let mut dst = m8.alloc_cell(SZ);
+        let mut dst = m8.alloc_cell(SZ );
         let mut end = m8.alloc_cell(SZ);
         let mut start = m8.alloc_cell(SZ);
         let (prob0, _optimal) = setup_test_return_optimal(
@@ -804,6 +807,7 @@ mod test {
         perror!("encoded size: {}", n);
         let nbits = n * 8;
         let actual = nbits as f64;
+        let _unused = actual;
         perror!("effeciency: {}", actual / _optimal);
         b.iter(|| {
             let mut d = ANSDecoder::new(&mut m8);
@@ -822,43 +826,43 @@ mod test {
 
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_dynamic_nibble_adaptive_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestAdapt{size:124 * 1024/10})
+    fn encode_nibble_roundtrip_adaptive_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip(b, TestAdapt{size:124 * 1024/10})
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_dynamic_nibble_nonadaptive_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestNoAdapt{size:1024 * 1024/10})
+    fn encode_nibble_roundtrip_nonadaptive_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip(b, TestNoAdapt{size:1024 * 1024/10})
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_nibble_roundtrip_simple_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b, TestSimple{size:1024 * 1024/10})
+    fn encode_nibble_roundtrip_simple_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_roundtrip(b, TestSimple{size:1024 * 1024/10})
     }
 
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_decode_nibble_adaptive_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestAdapt{size:124 * 1024/10})
+    fn decode_nibble_adaptive_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode(b, TestAdapt{size:124 * 1024/10})
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_decode_nibble_nonadaptive_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestNoAdapt{size:1024 * 1024/10})
+    fn decode_nibble_nonadaptive_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode(b, TestNoAdapt{size:1024 * 1024/10})
     }
     #[cfg(feature="benchmark")]
     #[bench]
-    fn entropy_nibble_recode_simple_100k<TS:TestSelection>(b: &mut Bencher) {
-        entropy_dynamic_nibble_decode<TS:TestSelection>(b, TestSimple{size:1024 * 1024/10})
+    fn decode_nibble_simple_100k(b: &mut Bencher) {
+        entropy_dynamic_nibble_decode(b, TestSimple{size:1024 * 1024/10})
     }
     #[cfg(feature="benchmark")]
     fn entropy_dynamic_nibble_decode<TS:TestSelection>(b: &mut Bencher, ts:TS) {
-        const SZ: usize = ts.size();
+        let sz: usize = ts.size();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let mut src = m8.alloc_cell(SZ);
-        let mut dst = m8.alloc_cell(SZ);
-        let mut end = m8.alloc_cell(SZ);
-        let mut start = m8.alloc_cell(SZ);
+        let mut src = m8.alloc_cell(sz);
+        let mut dst = m8.alloc_cell(sz * 2);
+        let mut end = m8.alloc_cell(sz);
+        let mut start = m8.alloc_cell(sz);
         let (_prob0, _optimal) = setup_test_return_optimal(
             src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut e = ANSEncoder::new(&mut m8);
@@ -867,35 +871,37 @@ mod test {
         perror!("encoded size: {}", n);
         let nbits = n * 8;
         let actual = nbits as f64;
+        let _unused = actual;
         perror!("effeciency: {}", actual / _optimal);
         b.iter(|| {
             let mut d = ANSDecoder::new(&mut m8);
             //assert!(actual >= _optimal);
             n = 0;
-            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
+            decode_test_nibble_helper::<HeapAllocator<u8>, TS>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
         });
         let mut t = 0;
         for (e,s) in end.slice().iter().zip(start.slice().iter()) {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
             t = t + 1;
         }
-        assert!(t == SZ);
+        assert!(t == sz);
         perror!("done!");
     }
 
 
     #[cfg(feature="benchmark")]
     fn entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b: &mut Bencher, ts:TS) {
-        const SZ: usize = ts.size();
+        let sz: usize = ts.size();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let mut src = m8.alloc_cell(SZ);
-        let mut dst = m8.alloc_cell(SZ);
-        let mut start = m8.alloc_cell(SZ);
-        let mut end = m8.alloc_cell(SZ);
+        let mut src = m8.alloc_cell(sz);
+        let mut dst = m8.alloc_cell(sz * 2);
+        let mut start = m8.alloc_cell(sz);
+        let mut end = m8.alloc_cell(sz);
         let (_prob0, _optimal) = setup_test_return_optimal(
             src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut());
         let mut compressed_size = 0;
         let mut actual = 1.0f64;
+        let _unused = actual;
         b.iter(|| {
             let mut n: usize = 0;
             let mut d = ANSDecoder::new(&mut m8);
@@ -906,7 +912,7 @@ mod test {
             actual = nbits as f64;
             //assert!(actual >= _optimal);
             n = 0;
-            decode_test_nibble_helper::<HeapAllocator<u8>>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
+            decode_test_nibble_helper::<HeapAllocator<u8>, TS>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
         });
         perror!("encoded size: {}", compressed_size);
         perror!("effeciency: {}", actual / _optimal);
@@ -915,7 +921,7 @@ mod test {
             assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
             t = t + 1;
         }
-        assert!(t == SZ);
+        assert!(t == sz);
         perror!("done!");
     }
 
@@ -933,7 +939,7 @@ mod test {
     fn help_rt(src:&mut[u8], dst:&mut[u8], end:&mut [u8], start:&mut[u8], trailing_bit_and_one_byte_at_a_time: bool) {
         let sz = src.len();
         let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
-        let (prob0, optimal) = setup_test_return_optimal(src, dst, end, start);
+        let (prob0, _optimal) = setup_test_return_optimal(src, dst, end, start);
         let mut d = ANSDecoder::new(&mut m8);
         let mut e = ANSEncoder::new(&mut m8);
         let mut n: usize = 0;
@@ -942,8 +948,9 @@ mod test {
 
         let nbits = n * 8;
         let actual = nbits as f64;
-        perror!("effeciency: {}", actual / optimal);
-        //assert!(actual >= optimal);
+        let _unused = actual;
+        perror!("effeciency: {}", actual / _optimal);
+        //assert!(actual >= _optimal);
         n = 0;
         decode_test_helper::<HeapAllocator<u8>>(&mut d, prob0, dst, &mut n, end, trailing_bit_and_one_byte_at_a_time);
         let mut t = 0;
