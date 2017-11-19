@@ -118,7 +118,30 @@ pub trait BaseCDF {
             }
         }
         panic!("unreachable due to max value of cdf");
-*/
+         */
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> log2_scale) as i16;
+        let symbol_less = [
+            -((rescaled_cdf_offset >= self.cdf(0)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(1)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(2)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(3)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(4)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(5)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(6)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(7)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(8)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(9)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(10)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(11)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(12)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(13)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(14)) as i16),
+            -((rescaled_cdf_offset >= self.cdf(15)) as i16),
+            ];
+        let bitmask:u32 = movemask_epi8(symbol_less);
+        let symbol_id = 16 - (u32::from(bitmask).leading_zeros() >> 1) as u8;
+        return self.sym_to_start_and_freq(symbol_id, log2_scale);
+
         let cdf_offset = i32::from(cdf_offset_p) * i32::from(self.max());
         let symbol_less_a = [
             -((cdf_offset >= self.rescaled_cdf(0, log2_scale)) as i32),
