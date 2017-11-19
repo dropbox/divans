@@ -408,6 +408,23 @@ fn encode_nibble_roundtrip_simple_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestSimple{size:1024 * 1024/10})
 }
 
+
+#[cfg(feature="benchmark")]
+#[bench]
+fn encode_only_nibble_adaptive_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_encode_only(b, TestAdapt{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
+fn encode_only_nibble_nonadaptive_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_encode_only(b, TestNoAdapt{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
+fn encode_only_nibble_simple_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_encode_only(b, TestSimple{size:1024 * 1024/10})
+}
+
 #[cfg(feature="benchmark")]
 #[bench]
 fn decode_nibble_adaptive_100k(b: &mut Bencher) {
@@ -486,6 +503,43 @@ fn entropy_dynamic_nibble_roundtrip<TS:TestSelection>(b: &mut Bencher, ts:TS) {
         n = 0;
         decode_test_nibble_helper::<HeapAllocator<u8>, TS>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
     });
+    perror!("encoded size: {}", compressed_size);
+    perror!("effeciency: {}", actual / _optimal);
+    let mut t = 0;
+    for (e,s) in end.slice().iter().zip(start.slice().iter()) {
+        assert!(e == s, "byte {} mismatch {:b} != {:b} ", t, e, s);
+        t = t + 1;
+    }
+    assert!(t == sz);
+    perror!("done!");
+}
+
+
+#[cfg(feature="benchmark")]
+fn entropy_dynamic_nibble_encode_only<TS:TestSelection>(b: &mut Bencher, ts:TS) {
+    let sz: usize = ts.size();
+    let mut m8 = HeapAllocator::<u8>{default_value: 0u8};
+    let mut src = m8.alloc_cell(sz);
+    let mut dst = m8.alloc_cell(sz * 2);
+    let mut start = m8.alloc_cell(sz);
+    let mut end = m8.alloc_cell(sz);
+    let (_prob0, _optimal) = setup_test_return_optimal(
+        src.slice_mut(), dst.slice_mut(), end.slice_mut(), start.slice_mut(), init_shuffle_256);
+    let mut compressed_size = 0;
+    let mut actual = 1.0f64;
+    let _unused = actual;
+    b.iter(|| {
+        let mut n: usize = 0;
+        let mut e = ANSEncoder::new(&mut m8);
+        encode_test_nibble_helper(&mut e, src.slice(), dst.slice_mut(), &mut n, ts);
+        compressed_size = n;
+        let nbits = n * 8;
+        actual = nbits as f64;
+        //assert!(actual >= _optimal);
+    });
+    let mut d = ANSDecoder::new(&mut m8);
+    let mut n = 0usize;
+    decode_test_nibble_helper::<HeapAllocator<u8>, TS>(&mut d, dst.slice(), &mut n, end.slice_mut(), ts);
     perror!("encoded size: {}", compressed_size);
     perror!("effeciency: {}", actual / _optimal);
     let mut t = 0;
