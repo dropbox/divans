@@ -14,7 +14,7 @@
 
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
-use super::probability::{CDF2, CDF16};
+use super::probability::interface::{CDF2, CDF16};
 use super::probability;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
 pub use brotli::enc::interface::*;
