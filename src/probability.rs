@@ -16,7 +16,7 @@
 use core;
 use core::clone::Clone;
 pub type Prob = i16; // can be i32
-
+pub const LOG2_SCALE: u32 = 15;
 #[cfg(feature="billing")]
 use std::io::Write;
 #[cfg(feature="billing")]
@@ -84,10 +84,9 @@ pub trait BaseCDF {
         sum
     }
     fn sym_to_start_and_freq(&self,
-                             sym: u8,
-                             log2_scale: u32) -> SymStartFreq {
-        let cdf_prev = if sym != 0 {(i32::from(self.cdf(sym - 1)) << log2_scale) / i32::from(self.max())} else { 0 };
-        let cdf_sym = (i32::from(self.cdf(sym)) << log2_scale) / i32::from(self.max());
+                             sym: u8) -> SymStartFreq {
+        let cdf_prev = if sym != 0 {(i32::from(self.cdf(sym - 1)) << LOG2_SCALE) / i32::from(self.max())} else { 0 };
+        let cdf_sym = (i32::from(self.cdf(sym)) << LOG2_SCALE) / i32::from(self.max());
         let freq = cdf_sym - cdf_prev;
         SymStartFreq {
             start: cdf_prev as Prob + 1, // major hax
@@ -95,18 +94,17 @@ pub trait BaseCDF {
             sym: sym,
         }
     }
-    fn rescaled_cdf(&self, sym: u8, log2_scale: u32) -> i32 {
-        i32::from(self.cdf(sym)) << log2_scale
+    fn rescaled_cdf(&self, sym: u8) -> i32 {
+        i32::from(self.cdf(sym)) << LOG2_SCALE
     }
     fn cdf_offset_to_sym_start_and_freq(&self,
-                                        cdf_offset_p: Prob,
-                                        log2_scale: u32) -> SymStartFreq {
+                                        cdf_offset_p: Prob) -> SymStartFreq {
         /*
         for i in 0..16 {
-            let cdf_cur = (i32::from(self.cdf(i as u8))<<log2_scale) / i32::from(self.max());
+            let cdf_cur = (i32::from(self.cdf(i as u8))<<LOG2_SCALE) / i32::from(self.max());
             if i32::from(cdf_offset_p) < cdf_cur {
                 let cdf_prev = if i != 0 {
-                    (i32::from(self.cdf(i as u8 - 1))<<log2_scale) / i32::from(self.max())
+                    (i32::from(self.cdf(i as u8 - 1))<<LOG2_SCALE) / i32::from(self.max())
                 } else {
                     0
                 };
@@ -119,7 +117,7 @@ pub trait BaseCDF {
         }
         panic!("unreachable due to max value of cdf");
          */
-        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> log2_scale) as i16;
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
         let symbol_less = [
             -((rescaled_cdf_offset >= self.cdf(0)) as i16),
             -((rescaled_cdf_offset >= self.cdf(1)) as i16),
@@ -139,49 +137,8 @@ pub trait BaseCDF {
             -((rescaled_cdf_offset >= self.cdf(15)) as i16),
             ];
         let bitmask:u32 = movemask_epi8(symbol_less);
-        let symbol_id = 16 - (u32::from(bitmask).leading_zeros() >> 1) as u8;
-        return self.sym_to_start_and_freq(symbol_id, log2_scale);
-
-        let cdf_offset = i32::from(cdf_offset_p) * i32::from(self.max());
-        let symbol_less_a = [
-            -((cdf_offset >= self.rescaled_cdf(0, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(1, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(2, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(3, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(4, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(5, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(6, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(7, log2_scale)) as i32),
-        ];
-        let symbol_less_b = [
-            -((cdf_offset >= self.rescaled_cdf(8, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(9, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(10, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(11, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(12, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(13, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(14, log2_scale)) as i32),
-            -((cdf_offset >= self.rescaled_cdf(15, log2_scale)) as i32),
-            ];
-        let bitmask_a:u32 = movemask_epi8_i32(symbol_less_a);
-        let bitmask_b:u32 = movemask_epi8_i32(symbol_less_b);
-        let mut sym = (16 - ((u64::from(bitmask_a) | (u64::from(bitmask_b)<<32)).leading_zeros() >> 2)) as u8;
-        for hypothetical_symbol in 0..16{
-            let tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
-            if cdf_offset_p >= tmp.start && i32::from(cdf_offset_p) < i32::from(tmp.start) + i32::from(tmp.freq) {
-                if sym != hypothetical_symbol {
-                    let _tmp = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale);
-                    let _tmp2 = self.sym_to_start_and_freq(sym, log2_scale);
-                    //sym = self.sym_to_start_and_freq(hypothetical_symbol, log2_scale).sym; //FIXME: double plus bad (slow)
-                    assert_eq!(sym, hypothetical_symbol);                    
-                }
-                assert_eq!(sym, hypothetical_symbol);
-            }
-        }
-        let retval = self.sym_to_start_and_freq(sym, log2_scale);
-        assert!(retval.start <= cdf_offset_p);
-        assert!(i32::from(retval.start) + i32::from(retval.freq) > i32::from(cdf_offset_p));
-        retval
+        let symbol_id = ((32 - u32::from(bitmask).leading_zeros()) >> 1) as u8;
+        self.sym_to_start_and_freq(symbol_id)
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.
@@ -210,14 +167,13 @@ impl Default for CDF2 {
 impl BaseCDF for CDF2 {
     fn cdf_offset_to_sym_start_and_freq(
         &self,
-        cdf_offset: Prob,
-        log2_scale: u32) -> SymStartFreq {
-        let bit = ((i32::from(cdf_offset) * i32::from(self.max())) >> log2_scale) >= i32::from(self.prob);
-        let rescaled_prob = (i32::from(self.prob) << log2_scale) / i32::from(self.max());
+        cdf_offset: Prob) -> SymStartFreq {
+        let bit = ((i32::from(cdf_offset) * i32::from(self.max())) >> LOG2_SCALE) >= i32::from(self.prob);
+        let rescaled_prob = (i32::from(self.prob) << LOG2_SCALE) / i32::from(self.max());
         SymStartFreq {
             sym: bit as u8,
             start: if bit {rescaled_prob as Prob} else {0},
-            freq: if bit {((1 << log2_scale) - rescaled_prob) as Prob} else {rescaled_prob as Prob}
+            freq: if bit {((1 << LOG2_SCALE) - rescaled_prob) as Prob} else {rescaled_prob as Prob}
         }
     }
     fn num_symbols() -> u8 { 2 }
@@ -950,7 +906,7 @@ mod test {
     #[allow(unused)]
     fn simple_rand(state: &mut u64) -> u32 {
         *state = (*state).wrapping_mul(1_103_515_245).wrapping_add(12_345);
-        return ((*state / 65_536) as u32 % (RAND_MAX + 1)) as u32;
+        ((*state / 65_536) as u32 % (RAND_MAX + 1)) as u32
     }
 
     #[allow(unused)]

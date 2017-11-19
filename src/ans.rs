@@ -20,7 +20,7 @@ use alloc::{
 };
 use core::default::Default;
 use core::{mem, cmp};
-use probability::{CDF16, BaseCDF, Prob};
+use probability::{CDF16, BaseCDF, Prob, LOG2_SCALE};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     NewWithAllocator,
@@ -125,7 +125,7 @@ type ANSState = u64;
 type StartFreqType = Prob;
 const NORMALIZATION_INTERVAL: ANSState = 1u64 << 31;
 const ENC_START_STATE: ANSState = NORMALIZATION_INTERVAL;
-const LOG2_SCALE: u32 = 15;
+
 const NUM_SYMBOLS_BEFORE_FLUSH:u32 = (MAX_BUFFER_SIZE as u32) >> 2;
 const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
 
@@ -231,19 +231,11 @@ impl ANSDecoder {
     }
     fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
-        let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset, LOG2_SCALE);
+        let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset);
         self.helper_advance_sym(sym_start_freq.start,
                                 sym_start_freq.freq);
         sym_start_freq.sym
     }
-    /*
-    fn get_bit_from_cdf(&mut self, cdf:CDF2) -> bool {
-        let cdf_offset = self.helper_get_cdf_value_of_sym();
-        let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset, LOG2_SCALE);
-        self.helper_advance_sym(sym_start_freq.start,
-                                sym_start_freq.freq);
-        sym_start_freq.sym != 0
-    }*/
 }
 
 pub struct ANSEncoder<AllocU8:Allocator<u8>> {
@@ -261,7 +253,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
     fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
-        let start_freq = cdf.sym_to_start_and_freq(sym, LOG2_SCALE);
+        let start_freq = cdf.sym_to_start_and_freq(sym);
         if !(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE)) {
             debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
         }
@@ -367,8 +359,8 @@ impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
         if prob_of_false == 0 {
             prob_of_false = 1;
         }
-        self.put_start_freq(if bit {((Prob::from(prob_of_false))) << (LOG2_SCALE - 8) } else {0},
-                            (if bit {256 - (Prob::from(prob_of_false))} else {Prob::from(prob_of_false)}) << (LOG2_SCALE - 8))
+        self.put_start_freq(if bit {Prob::from(prob_of_false) << (LOG2_SCALE - 8) } else {0},
+                            if bit {256 - Prob::from(prob_of_false)} else {Prob::from(prob_of_false)} << (LOG2_SCALE - 8))
     }
     fn put_nibble<CDF:CDF16>(&mut self, symbol: u8, cdf:&CDF) {
         self.put_nibble_internal(symbol, *cdf)
@@ -392,7 +384,7 @@ impl ByteQueue for ANSDecoder {
         if self.buffer_a_bytes_required >= 16 {
             return 32 - self.buffer_a_bytes_required as usize;
         }
-        return 16
+        16
     }
     fn num_pop_bytes_avail(&self) -> usize {
         0
@@ -401,16 +393,14 @@ impl ByteQueue for ANSDecoder {
         if self.buffer_a_bytes_required == 0 {
             return 0;
         }
-        if self.buffer_a_bytes_required == 1 {
-            if data.len() >= 4 {
-                self.state_a <<= 32;
-                let old_state_a = self.state_a;
-                self.state_a |= u64::from(data[0])|(u64::from(data[1]) << 8)|(u64::from(data[2]) << 16) | (u64::from(data[3]) << 24);
-                let new_state_a = self.state_a;
-                assert!(new_state_a >= old_state_a);
-                self.buffer_a_bytes_required = 0;
-                return 4;
-            }
+        if self.buffer_a_bytes_required == 1 && data.len() >= 4 {
+            self.state_a <<= 32;
+            let old_state_a = self.state_a;
+            self.state_a |= u64::from(data[0])|(u64::from(data[1]) << 8)|(u64::from(data[2]) << 16) | (u64::from(data[3]) << 24);
+            let new_state_a = self.state_a;
+            assert!(new_state_a >= old_state_a);
+            self.buffer_a_bytes_required = 0;
+            return 4;
         }
         self.helper_push_data_rare_cases(data)
     }
@@ -432,8 +422,8 @@ impl EntropyDecoder for ANSDecoder {
             prob_of_false =1;
         }
         let cdf_offset = self.helper_get_cdf_value_of_sym();
-        let rescaled_prob_of_false = ((Prob::from(prob_of_false))) << (LOG2_SCALE - 8);
-        let inv_rescaled_prob_of_false = ((256 - Prob::from(prob_of_false))) << (LOG2_SCALE - 8);
+        let rescaled_prob_of_false = Prob::from(prob_of_false) << (LOG2_SCALE - 8);
+        let inv_rescaled_prob_of_false = (256 - Prob::from(prob_of_false)) << (LOG2_SCALE - 8);
         let bit = cdf_offset >= rescaled_prob_of_false;
         self.helper_advance_sym(if bit {rescaled_prob_of_false} else {0},
                                 if bit {inv_rescaled_prob_of_false} else {rescaled_prob_of_false});
