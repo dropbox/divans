@@ -1,6 +1,7 @@
 use core;
 use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, LOG2_SCALE, CDF_BITS};
 use super::frequentist_cdf::FrequentistCDF16;
+use super::numeric;
 fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
     if val != 0 {
         1 << shift_val
@@ -54,17 +55,14 @@ fn movemask_epi8_i32(data:[i32;8]) -> u32{
 #[derive(Clone,Copy)]
 pub struct OptFrequentistCDF16 {
     pub cdf: FrequentistCDF16,
-    pub inv_max: i64,
-    pub cdf_max_bitlen: u8,
+    pub inv_max_and_bitlen: (i64, u8),
 }
 
 impl OptFrequentistCDF16 {
     fn new(input:FrequentistCDF16) -> Self {
-        let (inv_max, cdf_max_bitlen) = compute_divisor(input.max());
         OptFrequentistCDF16{
             cdf:input,
-            inv_max: inv_max,
-            cdf_max_bitlen: cdf_max_bitlen,
+            inv_max_and_bitlen: numeric::lookup_divisor(input.max()),
         }
     }
 }
@@ -89,17 +87,15 @@ impl BaseCDF for OptFrequentistCDF16 {
         self.cdf.cdf(symbol)
     }
     fn valid(&self) -> bool {
-        let (inv_max, cdf_max_bitlen) = compute_divisor(self.max());
-        if self.inv_max != inv_max || self.cdf_max_bitlen != cdf_max_bitlen {
+        let inv_max_and_bitlen = numeric::lookup_divisor(self.max());
+        if self.inv_max_and_bitlen != inv_max_and_bitlen {
            return false;
         }
         self.cdf.valid()
     }
     fn div_by_max(&self, num: i32) -> i32 {
-        let idiv_mul_num = i64::from(self.inv_max) * i64::from(num);
-         ((idiv_mul_num >> LOG_MAX_NUMERATOR) as i32
-             + (((i64::from(num) - (idiv_mul_num >> LOG_MAX_NUMERATOR)) as i32) >> 1))
-          >> self.cdf_max_bitlen
+        assert_eq!(LOG2_SCALE as usize + CDF_BITS, numeric::LOG_MAX_NUMERATOR);
+        numeric::fast_divide_30bit_by_16bit(num, self.inv_max_and_bitlen)
     }
 }
 
@@ -107,10 +103,6 @@ fn k16bit_length(d:i16) -> u8 {
     (16 - d.leading_zeros()) as u8
 }
 const LOG_MAX_NUMERATOR: usize = LOG2_SCALE as usize + CDF_BITS;
-fn compute_divisor(d: i16) -> (i64, u8) {
-    let bit_len = k16bit_length(d);
-    (((((( 1i64 << bit_len) - i64::from(d)) << (LOG_MAX_NUMERATOR))) / i64::from(d)) + 1, bit_len.wrapping_sub(1))
-}
 
 impl CDF16 for OptFrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
@@ -119,8 +111,6 @@ impl CDF16 for OptFrequentistCDF16 {
     }
     fn blend(&mut self, symbol: u8, speed: Speed) {
         self.cdf.blend(symbol, speed);
-        let (inv_max, cdf_max_bitlen) = compute_divisor(self.max());
-        self.inv_max = inv_max;
-        self.cdf_max_bitlen = cdf_max_bitlen;
+        self.inv_max_and_bitlen = numeric::lookup_divisor(self.max());
     }
 }
