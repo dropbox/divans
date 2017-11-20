@@ -24,13 +24,13 @@ pub use brotli::enc::interface::*;
 pub type DefaultCDF16 = probability::BlendCDF16;
 #[cfg(not(feature="blend"))]
 #[cfg(not(feature="debug_entropy"))]
-pub type DefaultCDF16 = probability::FrequentistCDF16;
+pub type DefaultCDF16 = probability::OptFrequentistCDF16;
 #[cfg(feature="blend")]
 #[cfg(feature="debug_entropy")]
 pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::BlendCDF16>;
 #[cfg(not(feature="blend"))]
 #[cfg(feature="debug_entropy")]
-pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::FrequentistCDF16>;
+pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::OptFrequentistCDF16>;
 
 pub const HEADER_LENGTH: usize = 16;
 pub const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];

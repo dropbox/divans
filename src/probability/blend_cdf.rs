@@ -152,6 +152,9 @@ impl BaseCDF for BlendCDF16 {
     fn log_max(&self) -> Option<i8> {
         Some(15)
     }
+    fn div_by_max(&self, val:i32) -> i32 {
+        return val>>self.log_max().unwrap()
+    }
     fn cdf(&self, symbol: u8) -> Prob {
         match symbol {
             15 => self.max(),

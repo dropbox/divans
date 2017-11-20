@@ -41,7 +41,7 @@ pub trait BaseCDF {
             self.cdf(symbol) - self.cdf(symbol - 1)
         }
     }
-
+    fn div_by_max(&self, val: i32) -> i32;
     // the maximum value relative to which cdf() and pdf() values should be normalized.
     fn max(&self) -> Prob;
 
@@ -69,7 +69,7 @@ pub trait BaseCDF {
     fn sym_to_start_and_freq(&self,
                              sym: u8) -> SymStartFreq {
         let cdf_prev = if sym != 0 {(i32::from(self.cdf(sym - 1)) << LOG2_SCALE) / i32::from(self.max())} else { 0 };
-        let cdf_sym = (i32::from(self.cdf(sym)) << LOG2_SCALE) / i32::from(self.max());
+        let cdf_sym = self.div_by_max((i32::from(self.cdf(sym)) << LOG2_SCALE));
         let freq = cdf_sym - cdf_prev;
         SymStartFreq {
             start: cdf_prev as Prob + 1, // major hax
@@ -84,10 +84,10 @@ pub trait BaseCDF {
                                         cdf_offset_p: Prob) -> SymStartFreq {
         /*
         for i in 0..16 {
-            let cdf_cur = (i32::from(self.cdf(i as u8))<<LOG2_SCALE) / i32::from(self.max());
+            let cdf_cur = self.div_by_max(i32::from(self.cdf(i as u8))<<LOG2_SCALE);
             if i32::from(cdf_offset_p) < cdf_cur {
                 let cdf_prev = if i != 0 {
-                    (i32::from(self.cdf(i as u8 - 1))<<LOG2_SCALE) / i32::from(self.max())
+                    self.div_by_max(i32::from(self.cdf(i as u8 - 1))<<LOG2_SCALE)
                 } else {
                     0
                 };
@@ -152,12 +152,15 @@ impl BaseCDF for CDF2 {
         &self,
         cdf_offset: Prob) -> SymStartFreq {
         let bit = ((i32::from(cdf_offset) * i32::from(self.max())) >> LOG2_SCALE) >= i32::from(self.prob);
-        let rescaled_prob = (i32::from(self.prob) << LOG2_SCALE) / i32::from(self.max());
+        let rescaled_prob = self.div_by_max(i32::from(self.prob) << LOG2_SCALE);
         SymStartFreq {
             sym: bit as u8,
             start: if bit {rescaled_prob as Prob} else {0},
             freq: if bit {((1 << LOG2_SCALE) - rescaled_prob) as Prob} else {rescaled_prob as Prob}
         }
+    }
+    fn div_by_max(&self, val:i32) -> i32 {
+        return val / i32::from(self.max())
     }
     fn num_symbols() -> u8 { 2 }
     fn cdf(&self, symbol: u8) -> Prob {
@@ -250,7 +253,7 @@ pub trait CDF16: Sized + Default + Copy + BaseCDF {
 }
 
 pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;
-const CDF_BITS : usize = 15; // 15 bits
+pub const CDF_BITS : usize = 15; // 15 bits
 pub const LOG2_SCALE: u32 = CDF_BITS as u32;
 pub const CDF_MAX : Prob = 32_767; // last value is implicitly 32768
 const CDF_LIMIT : i64 = (CDF_MAX as i64) + 1;
@@ -302,6 +305,7 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
     fn log_max(&self) -> Option<i8> { self.cdf.log_max() }
     fn entropy(&self) -> f64 { self.cdf.entropy() }
     fn valid(&self) -> bool { self.cdf.valid() }
+    fn div_by_max(&self, val: i32) -> i32 {self.cdf.div_by_max(val)}
     fn used(&self) -> bool {
         self.num_samples().unwrap() > 0
     }

@@ -70,6 +70,9 @@ impl ExternalProbCDF16 {
 
 impl BaseCDF for ExternalProbCDF16 {
     fn num_symbols() -> u8 { 16 }
+    fn div_by_max(&self, val:i32) -> i32 {
+        return val / i32::from(self.max())
+    }
     fn used(&self) -> bool {
         self.entropy() != Self::default().entropy()
     }

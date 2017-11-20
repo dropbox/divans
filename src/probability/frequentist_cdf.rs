@@ -104,6 +104,9 @@ impl BaseCDF for FrequentistCDF16 {
     fn max(&self) -> Prob {
         self.cdf[15]
     }
+    fn div_by_max(&self, val:i32) -> i32 {
+        return val / i32::from(self.max())
+    }
     fn log_max(&self) -> Option<i8> { None }
     fn cdf(&self, symbol: u8) -> Prob {
         self.cdf[symbol as usize]

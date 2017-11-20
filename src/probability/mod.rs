@@ -19,11 +19,12 @@ pub mod interface;
 pub mod external_cdf;
 pub mod blend_cdf;
 pub mod frequentist_cdf;
+pub mod opt_frequentist_cdf;
 pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, Prob, LOG2_SCALE, BLEND_FIXED_POINT_PRECISION};
 pub use self::blend_cdf::{BlendCDF16};
 pub use self::frequentist_cdf::FrequentistCDF16;
 pub use self::external_cdf::ExternalProbCDF16;
-
+pub use self::opt_frequentist_cdf::OptFrequentistCDF16;
 mod test {
     use super::{BaseCDF, CDF16, Speed};
     use super::blend_cdf::{BlendCDF16, to_blend, to_blend_lut};
