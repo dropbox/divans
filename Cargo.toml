@@ -24,16 +24,18 @@ vergen = "0.1"
 
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
-#"brotli-decompressor" = "~1"
 "brotli" = ">= 1.0.9"
+"stdsimd" = { version = ">= 0.0.3", optional = true }
+
 [features]
-default= []#["block_switch"]
+default= ["simd"]#["block_switch"]
 billing = []
 blend = []
 debug_entropy = []
 bitcmdselect = []
 float64 = []
 block_switch = []
+simd = ["stdsimd"]
 seccomp = ["brotli/seccomp"]
 no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
 benchmark = ["brotli/benchmark"]

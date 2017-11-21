@@ -19,6 +19,8 @@
 #[cfg(feature="billing")]
 #[macro_use]
 extern crate std;
+#[cfg(feature="simd")]
+extern crate stdsimd;
 
 #[cfg(test)]
 #[macro_use]
