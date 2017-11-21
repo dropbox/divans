@@ -19,6 +19,7 @@ pub mod interface;
 pub mod external_cdf;
 pub mod blend_cdf;
 pub mod frequentist_cdf;
+pub mod div_lut;
 pub mod numeric;
 pub mod opt_frequentist_cdf;
 pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, Prob, LOG2_SCALE, BLEND_FIXED_POINT_PRECISION};

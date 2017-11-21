@@ -10,7 +10,7 @@ use super::ans::{
     ANSDecoder,
     ANSEncoder,
 };
-use super::probability::{Speed, FrequentistCDF16, CDF16};
+use super::probability::{Speed, FrequentistCDF16, OptFrequentistCDF16, BaseCDF, CDF16};
 use encoder::{
     EntropyEncoder,
     EntropyDecoder,
@@ -84,10 +84,43 @@ fn make_test_cdfs() -> (FrequentistCDF16, [FrequentistCDF16; 16]) {
          FrequentistCDF16::default(),
          FrequentistCDF16::default()])
 }
+
+fn make_opt_test_cdfs() -> (OptFrequentistCDF16, [OptFrequentistCDF16; 16]) {
+    (OptFrequentistCDF16::default(),
+     [
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default(),
+         OptFrequentistCDF16::default()])
+}
+enum CDFTraitSelection {
+Frequentist,
+OptFrequentist
+}
+
 trait TestSelection : Clone + Copy {
+    type C16: BaseCDF+CDF16;
     fn size(&self) -> usize;
     fn adapt_probability(&self) -> bool;
     fn independent_hilo(&self) -> bool;
+    fn make_test_cdfs(&self) -> (Self::C16, [Self::C16; 16]);
+    fn which_cdf_to_use(&self) -> CDFTraitSelection;
+}
+#[derive(Clone, Copy)]
+struct TestOptAdapt{
+    pub size: usize,
 }
 #[derive(Clone, Copy)]
 struct TestAdapt{
@@ -102,21 +135,54 @@ struct TestSimple{
     pub size: usize,
 }
 
-impl TestSelection for TestAdapt {
+impl TestSelection for TestOptAdapt {
+    type C16 = OptFrequentistCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {true}
     fn independent_hilo(&self) -> bool {false}
+    fn make_test_cdfs(&self) -> (OptFrequentistCDF16, [OptFrequentistCDF16; 16]) {
+        self::make_opt_test_cdfs()
+    }
+    fn which_cdf_to_use(&self) -> CDFTraitSelection {
+       CDFTraitSelection::OptFrequentist
+    }
+}
+impl TestSelection for TestAdapt {
+    type C16 = FrequentistCDF16;
+    fn size(&self) -> usize {self.size}
+    fn adapt_probability(&self) -> bool {true}
+    fn independent_hilo(&self) -> bool {false}
+    fn make_test_cdfs(&self) -> (FrequentistCDF16, [FrequentistCDF16; 16]) {
+        self::make_test_cdfs()
+    }
+    fn which_cdf_to_use(&self) -> CDFTraitSelection {
+       CDFTraitSelection::Frequentist
+    }
 }
 impl TestSelection for TestNoAdapt {
+    type C16 = FrequentistCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {false}
     fn independent_hilo(&self) -> bool {false}
+    fn make_test_cdfs(&self) -> (FrequentistCDF16, [FrequentistCDF16; 16]) {
+        self::make_test_cdfs()
+    }
+    fn which_cdf_to_use(&self) -> CDFTraitSelection {
+       CDFTraitSelection::Frequentist
+    }
 }
 
 impl TestSelection for TestSimple {
+    type C16 = FrequentistCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {false}
     fn independent_hilo(&self) -> bool {true}
+    fn make_test_cdfs(&self) -> (FrequentistCDF16, [FrequentistCDF16; 16]) {
+        self::make_test_cdfs()
+    }
+    fn which_cdf_to_use(&self) -> CDFTraitSelection {
+       CDFTraitSelection::Frequentist
+    }
 }
 
 fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
@@ -124,10 +190,15 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
     let mut t = 0;
     *n = 0;
     let (mut cdf_high, mut cdf_low) = make_test_cdfs();
+    let (mut opt_cdf_high, mut opt_cdf_low) = make_opt_test_cdfs();
+    let which_cdf = ts.which_cdf_to_use();
     for u in src.iter() {
         let v = *u;
         //left to right
-        e.put_nibble(v >> 4, &cdf_high);
+        match which_cdf {
+           CDFTraitSelection::Frequentist => e.put_nibble(v >> 4, &cdf_high),
+           CDFTraitSelection::OptFrequentist => e.put_nibble(v >> 4, &opt_cdf_high),
+        }
         {
             let mut q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
@@ -138,10 +209,19 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
             }
         }
         if ts.adapt_probability() {
-            cdf_high.blend(v >> 4, Speed::SLOW);
+            match which_cdf {
+            CDFTraitSelection::Frequentist => 
+            cdf_high.blend(v >> 4, Speed::SLOW),
+            CDFTraitSelection::OptFrequentist =>
+            opt_cdf_high.blend(v >> 4, Speed::SLOW),
+            }
         }
         let cdfl = &mut cdf_low[if ts.independent_hilo() {0} else {(v>>4) as usize}];
-        e.put_nibble(v & 0xf, cdfl);
+        let opt_cdfl = &mut opt_cdf_low[if ts.independent_hilo() {0} else {(v>>4) as usize}];
+        match which_cdf {
+        CDFTraitSelection::Frequentist => e.put_nibble(v & 0xf, cdfl),
+        CDFTraitSelection::OptFrequentist => e.put_nibble(v & 0xf, opt_cdfl),
+        }
         let mut q = e.get_internal_buffer();
         let qb = q.num_pop_bytes_avail();
         if qb > 0 {
@@ -150,7 +230,10 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
             *n = *n + qb;
         }
         if ts.adapt_probability() {
-            cdfl.blend(v & 0xf, Speed::SLOW);
+            match which_cdf {
+            CDFTraitSelection::Frequentist => cdfl.blend(v & 0xf, Speed::SLOW),
+            CDFTraitSelection::OptFrequentist => opt_cdfl.blend(v & 0xf, Speed::SLOW),
+            }
         }
         t += 1;
     }
@@ -167,6 +250,8 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
                              TS:TestSelection>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8], ts: TS) {
     let max_copy =1024usize;
     let (mut cdf_high, mut cdf_low) = make_test_cdfs();
+    let (mut opt_cdf_high, mut opt_cdf_low) = make_opt_test_cdfs();
+    let which_cdf = ts.which_cdf_to_use();
     let mut t = 0;
     {
         let q = d.get_internal_buffer();
@@ -180,7 +265,11 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         *n = *n + sz;
     }
     for v in end.iter_mut() {
-        let high_nibble = d.get_nibble(&cdf_high);
+        let high_nibble;
+        match which_cdf {
+            CDFTraitSelection::Frequentist => high_nibble = d.get_nibble(&cdf_high),
+            CDFTraitSelection::OptFrequentist => high_nibble = d.get_nibble(&opt_cdf_high),
+        }
         *v = high_nibble << 4;
         {
             let mut q = d.get_internal_buffer();
@@ -192,10 +281,19 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
             }
         }
         let cdfl = &mut cdf_low[if ts.independent_hilo() {0}else{(*v >> 4) as usize}];
+        let opt_cdfl = &mut opt_cdf_low[if ts.independent_hilo() {0}else{(*v >> 4) as usize}];
         if ts.adapt_probability() {
-            cdf_high.blend(*v >> 4, Speed::SLOW);
+        match which_cdf {
+            CDFTraitSelection::Frequentist => cdf_high.blend(*v >> 4, Speed::SLOW),
+            CDFTraitSelection::OptFrequentist => opt_cdf_high.blend(*v >> 4, Speed::SLOW),
         }
-        let low_nibble = d.get_nibble(cdfl);
+            
+        }
+        let low_nibble;
+        match which_cdf {
+        CDFTraitSelection::Frequentist => low_nibble = d.get_nibble(cdfl),
+        CDFTraitSelection::OptFrequentist => low_nibble = d.get_nibble(opt_cdfl),
+        }
         *v |= low_nibble;
         let mut q = d.get_internal_buffer();
         while q.num_push_bytes_avail() > 0 {
@@ -205,7 +303,12 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
             *n = *n + sz;
         }
         if ts.adapt_probability() {
-            cdfl.blend(low_nibble, Speed::SLOW);
+                match which_cdf {
+        CDFTraitSelection::Frequentist => 
+            cdfl.blend(low_nibble, Speed::SLOW),
+        CDFTraitSelection::OptFrequentist => 
+            opt_cdfl.blend(low_nibble, Speed::SLOW),
+            }
         }
         t = t + 1;
     }
@@ -394,6 +497,11 @@ fn entropy_bit_decode_bench_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
+fn encode_nibble_roundtrip_adaptive_opt_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_roundtrip(b, TestOptAdapt{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
 fn encode_nibble_roundtrip_adaptive_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestAdapt{size:1024 * 1024/10})
 }
@@ -411,6 +519,11 @@ fn encode_nibble_roundtrip_simple_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
+fn encode_only_nibble_adaptive_opt_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_encode_only(b, TestOptAdapt{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
 fn encode_only_nibble_adaptive_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestAdapt{size:1024 * 1024/10})
 }
@@ -425,6 +538,11 @@ fn encode_only_nibble_simple_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestSimple{size:1024 * 1024/10})
 }
 
+#[cfg(feature="benchmark")]
+#[bench]
+fn decode_nibble_adaptive_opt_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_decode(b, TestOptAdapt{size:1024 * 1024/10})
+}
 #[cfg(feature="benchmark")]
 #[bench]
 fn decode_nibble_adaptive_100k(b: &mut Bencher) {

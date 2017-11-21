@@ -39,3 +39,4 @@ no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
 benchmark = ["brotli/benchmark"]
 external-literal-probability = ["brotli/external-literal-probability"]
 
+uncached_frequentist = []

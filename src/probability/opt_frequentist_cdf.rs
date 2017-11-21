@@ -94,7 +94,7 @@ impl BaseCDF for OptFrequentistCDF16 {
         self.cdf.valid()
     }
     fn div_by_max(&self, num: i32) -> i32 {
-        assert_eq!(LOG2_SCALE as usize + CDF_BITS, numeric::LOG_MAX_NUMERATOR);
+        assert!(LOG2_SCALE as usize + CDF_BITS <= numeric::LOG_MAX_NUMERATOR);
         numeric::fast_divide_30bit_by_16bit(num, self.inv_max_and_bitlen)
     }
 }
