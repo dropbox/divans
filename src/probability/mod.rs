@@ -28,11 +28,16 @@ pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, Prob, LOG2_SCALE, BLEND_F
 pub use self::blend_cdf::{BlendCDF16};
 pub use self::frequentist_cdf::FrequentistCDF16;
 pub use self::external_cdf::ExternalProbCDF16;
+#[cfg(feature="simd")]
+pub use self::simd_frequentist_cdf::SIMDFrequentistCDF16;
 pub use self::opt_frequentist_cdf::OptFrequentistCDF16;
 mod test {
     use super::{BaseCDF, CDF16, Speed};
     use super::blend_cdf::{BlendCDF16, to_blend, to_blend_lut};
     use super::frequentist_cdf::FrequentistCDF16;
+    use super::opt_frequentist_cdf::OptFrequentistCDF16;
+        #[cfg(feature="simd")]
+    use super::simd_frequentist_cdf::SIMDFrequentistCDF16;
     #[test]
     fn test_blend_lut() {
         for i in 0..16 {
@@ -102,6 +107,27 @@ mod test {
     fn test_stationary_probability_frequentist_cdf() {
         let rm = RAND_MAX as u32;
         test_random_cdf(FrequentistCDF16::default(),
+                        [(0,1), (0,1), (1,16), (0,1),
+                         (1,32), (1,32), (0,1), (0,1),
+                         (1,8), (0,1), (0,1), (0,1),
+                         (1,5), (1,5), (1,5), (3,20)],
+                        1000000);
+    }
+    #[test]
+    fn test_stationary_probability_opt_frequentist_cdf() {
+        let rm = RAND_MAX as u32;
+        test_random_cdf(OptFrequentistCDF16::default(),
+                        [(0,1), (0,1), (1,16), (0,1),
+                         (1,32), (1,32), (0,1), (0,1),
+                         (1,8), (0,1), (0,1), (0,1),
+                         (1,5), (1,5), (1,5), (3,20)],
+                        1000000);
+    }
+    #[cfg(feature="simd")]
+    #[test]
+    fn test_stationary_probability_simd_frequentist_cdf() {
+        let rm = RAND_MAX as u32;
+        test_random_cdf(SIMDFrequentistCDF16::default(),
                         [(0,1), (0,1), (1,16), (0,1),
                          (1,32), (1,32), (0,1), (0,1),
                          (1,8), (0,1), (0,1), (0,1),
