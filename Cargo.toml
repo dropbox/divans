@@ -29,6 +29,7 @@ vergen = "0.1"
 
 [features]
 default= []#["simd"]
+avx2=[]
 billing = []
 blend = []
 debug_entropy = []

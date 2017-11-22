@@ -70,7 +70,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
             sym: sym,
         }
 }*/
-    #[cfg(feature="fixed_llvm")]
+    #[cfg(feature="avx2")]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
@@ -81,14 +81,13 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
         self.sym_to_start_and_freq(symbol_id)
     }
-    #[cfg(not(feature="fixed_llvm"))]
+    #[cfg(not(feature="avx2"))]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
         let symbol_less = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(
             i16x16::splat(rescaled_cdf_offset),
             self.cdf - i16x16::splat(1))};
-        // BUG IN COMPILER let bitmask = unsafe{stdsimd::vendor::_mm256_movemask_epi8(i8x32::from(symbol_less))};
         let lower_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(symbol_less))))} as u32;
         let upper_quad_cmp = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(symbol_less),
                                                                               0xee)};
