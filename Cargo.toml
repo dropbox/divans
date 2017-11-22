@@ -28,7 +28,7 @@ vergen = "0.1"
 "stdsimd" = { version = ">= 0.0.3", optional = true }
 
 [features]
-default= ["simd"]#["block_switch"]
+default= []#["simd"]
 billing = []
 blend = []
 debug_entropy = []
