@@ -1,8 +1,9 @@
 use core;
 use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION};
 use super::numeric;
-use stdsimd::simd::{i16x16, i64x4};
-
+use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16};
+use stdsimd;
+use stdsimd::vendor::__m256i;
 #[derive(Clone,Copy)]
 pub struct SIMDFrequentistCDF16 {
     pub cdf: i16x16,
@@ -55,7 +56,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         self.inv_max == numeric::lookup_divisor(self.max())
     }
 }
-/*
+
 impl CDF16 for SIMDFrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
 
@@ -64,15 +65,28 @@ impl CDF16 for SIMDFrequentistCDF16 {
         let maxmax = core::cmp::min(ourmax, othermax);
         let lgmax = 64 - maxmax.leading_zeros();
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
-        let self0 = i64x4::new(self.cdf.extract(0)
+        //let cdf4567: i16x16 = std::simd::vendor::_mm256_shuffle_epi8(address, simd_shuffle8::<_, i16x16>(self.cdf, self.cdf, [4, 5, 6, 7, 4,5,6,7, 8,9,10,11,12,13,14,15]);
+        let upper_addresses = u8x16::new(8, 9, 10, 11, 12, 13, 14, 15, 8, 9, 10, 11, 12, 13, 14, 15);
+        // FIXME this is missing let upper_quad = stdsimd::vendor::_mm256_extracti128_si256(__m256i::from(self.cdf), 1);
+        let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(self.cdf),
+                                                                                     0xee)};
+        let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
+        let self0 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(self.cdf))))};
+        let self1 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm_alignr_epi8(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(self.cdf)),stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(self.cdf)), 8)))};
+        let self2 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(upper_quad))};
+        let self3 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm_alignr_epi8(upper_quad, upper_quad, 8)))};
+        
         //for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-        SIMDFrequentistCDF16::new((((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
+        //(((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         //}
-        self.inv_max = numeric::lookup_divisor(self.max());
+        let mut retval = *self;
+        retval.inv_max = numeric::lookup_divisor(self.max());
         retval
     }
 
     fn blend(&mut self, symbol: u8, speed: Speed) {
+    }
+    /*
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let increment : Prob =
             match speed {
@@ -95,5 +109,6 @@ impl CDF16 for SIMDFrequentistCDF16 {
             }
         }
     }
-}
 */
+}
+
