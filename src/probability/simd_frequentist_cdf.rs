@@ -1,7 +1,7 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE};
 use super::numeric;
-use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16};
+use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2};
 use stdsimd;
 use stdsimd::vendor::__m256i;
 #[derive(Clone,Copy)]
@@ -54,6 +54,49 @@ impl BaseCDF for SIMDFrequentistCDF16 {
             prev = *item;
         }
         self.inv_max == numeric::lookup_divisor(self.max())
+    }
+    /* //slower
+    fn sym_to_start_and_freq(&self,
+                             sym: u8) -> SymStartFreq {
+        let prev_cur = i64x2::new(if sym != 0 {self.cdf(sym - 1) as u64 as i64} else {0},
+                                  self.cdf(sym) as u64 as i64);
+        let scaled_prev_cur = prev_cur << LOG2_SCALE;
+        let prev_cur_over_max = numeric::fast_divide_30bit_i64x2_by_16bit(scaled_prev_cur, self.inv_max);
+        let cdf_prev = prev_cur_over_max.extract(0);
+        let freq = prev_cur_over_max.extract(1) - cdf_prev;
+        SymStartFreq {
+            start: cdf_prev as Prob + 1, // major hax
+            freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            sym: sym,
+        }
+}*/
+    #[cfg(feature="fixed_llvm")]
+    fn cdf_offset_to_sym_start_and_freq(&self,
+                                        cdf_offset_p: Prob) -> SymStartFreq {
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
+        let symbol_less = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(
+            i16x16::splat(rescaled_cdf_offset),
+            self.cdf - i16x16::splat(1))};
+        let bitmask = unsafe{stdsimd::vendor::_mm256_movemask_epi8(i8x32::from(symbol_less))};
+        let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
+        self.sym_to_start_and_freq(symbol_id)
+    }
+    #[cfg(not(feature="fixed_llvm"))]
+    fn cdf_offset_to_sym_start_and_freq(&self,
+                                        cdf_offset_p: Prob) -> SymStartFreq {
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
+        let symbol_less = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(
+            i16x16::splat(rescaled_cdf_offset),
+            self.cdf - i16x16::splat(1))};
+        // BUG IN COMPILER let bitmask = unsafe{stdsimd::vendor::_mm256_movemask_epi8(i8x32::from(symbol_less))};
+        let lower_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(symbol_less))))} as u32;
+        let upper_quad_cmp = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(symbol_less),
+                                                                              0xee)};
+
+        let upper_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_cmp))))} as u32;
+        let bitmask = (upper_bitmask << 16) | lower_bitmask;
+        let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
+        self.sym_to_start_and_freq(symbol_id)
     }
 }
 fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4,i64x4,i64x4,i64x4) {
@@ -113,7 +156,7 @@ impl CDF16 for SIMDFrequentistCDF16 {
         //(((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
         //}
     }
-    #[always_inline]
+    #[inline(always)]
     fn blend(&mut self, symbol: u8, speed: Speed) {
         let increment : i16 =
             match speed {
