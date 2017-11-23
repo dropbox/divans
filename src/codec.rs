@@ -459,37 +459,39 @@ impl PredictionModeState {
                    *self = PredictionModeState::LiteralAdaptationRate;
                },
                PredictionModeState::LiteralAdaptationRate => {
-                   let mut beg_nib = superstate.bk.desired_literal_adaptation.clone() as u8;
+                   let mut beg_nib = match superstate.bk.desired_literal_adaptation.clone() {
+                       Speed::GEOLOGIC => GEOLOGIC_CODE,
+                       Speed::GLACIAL => GLACIAL_CODE,
+                       Speed::MUD => MUD_CODE,
+                       Speed::SLOW => SLOW_CODE,
+                       Speed::MED => MED_CODE,
+                       Speed::FAST => FAST_CODE,
+                       Speed::PLANE => PLANE_CODE,
+                       Speed::ROCKET => ROCKET_CODE,
+
+                   };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
-                   const GEOLOGIC: u8 = 0;//Speed::GEOLOGIC as u8;
-                   const GLACIAL: u8 = 1;//Speed::GLACIAL as u8;
-                   const MUD:   u8 = 2;//Speed::MUD as u8;
-                   const SLOW: u8 = 3;//Speed::SLOW as u8;
-                   const MED: u8 = 4;//Speed::MED as u8;
-                   const FAST: u8 = 5;//Speed::FAST as u8;
-                   const PLANE: u8 = 6;//Speed::PLANE as u8;
-                   const ROCKET: u8 = 7;//Speed::ROCKET as u8;
-		   assert_eq!(GEOLOGIC, Speed::GEOLOGIC as u8);
-		   assert_eq!(GLACIAL, Speed::GLACIAL as u8);
-		   assert_eq!(MUD, Speed::MUD as u8);
-		   assert_eq!(SLOW, Speed::SLOW as u8);
-		   assert_eq!(MED, Speed::MED as u8);
-		   assert_eq!(FAST, Speed::FAST as u8);
-		   assert_eq!(PLANE, Speed::PLANE as u8);
-		   assert_eq!(ROCKET, Speed::ROCKET as u8);
+                   const GEOLOGIC_CODE: u8 = 0;//Speed::GEOLOGIC as u8;
+                   const GLACIAL_CODE: u8 = 1;//Speed::GLACIAL as u8;
+                   const MUD_CODE:   u8 = 2;//Speed::MUD as u8;
+                   const SLOW_CODE: u8 = 3;//Speed::SLOW as u8;
+                   const MED_CODE: u8 = 4;//Speed::MED as u8;
+                   const FAST_CODE: u8 = 5;//Speed::FAST as u8;
+                   const PLANE_CODE: u8 = 6;//Speed::PLANE as u8;
+                   const ROCKET_CODE: u8 = 7;//Speed::ROCKET as u8;
                    superstate.bk.obs_literal_adaptation_rate(match beg_nib {
-                       GEOLOGIC => Speed::GEOLOGIC,
-                       GLACIAL => Speed::GLACIAL,
-                       MUD => Speed::MUD,
-                       SLOW => Speed::SLOW,
-                       MED => Speed::MED,
-                       FAST => Speed::FAST,
-                       PLANE => Speed::PLANE,
-                       ROCKET => Speed::ROCKET,
+                       GEOLOGIC_CODE => Speed::GEOLOGIC,
+                       GLACIAL_CODE => Speed::GLACIAL,
+                       MUD_CODE => Speed::MUD,
+                       SLOW_CODE => Speed::SLOW,
+                       MED_CODE => Speed::MED,
+                       FAST_CODE => Speed::FAST,
+                       PLANE_CODE => Speed::PLANE,
+                       ROCKET_CODE => Speed::ROCKET,
                        _ => return BrotliResult::ResultFailure,
                    });
                    *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);

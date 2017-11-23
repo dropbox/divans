@@ -148,17 +148,7 @@ impl CDF16 for FrequentistCDF16 {
     }
     fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-        let increment : Prob =
-            match speed {
-                Speed::GEOLOGIC => 2,
-                Speed::GLACIAL => 4,
-                Speed::MUD => 16,
-                Speed::SLOW => 32,
-                Speed::MED => 48,
-                Speed::FAST => 96,
-                Speed::PLANE => 128,
-                Speed::ROCKET => 384,
-            };
+        let increment : Prob = speed as Prob;
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }

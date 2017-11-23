@@ -157,18 +157,7 @@ impl CDF16 for SIMDFrequentistCDF16 {
     }
     #[inline(always)]
     fn blend(&mut self, symbol: u8, speed: Speed) {
-        let increment : i16 =
-            match speed {
-                Speed::GEOLOGIC => 2,
-                Speed::GLACIAL => 4,
-                Speed::MUD => 16,
-                Speed::SLOW => 32,
-                Speed::MED => 48,
-                Speed::FAST => 96,
-                Speed::PLANE => 128,
-                Speed::ROCKET => 384,
-            };
-        let increment_v = i16x16::splat(increment);
+        let increment_v = i16x16::splat(speed as i16);
         //let mask_v = unsafe{stdsimd::vendor::_mm256_alignr_epi8(i8x32::splat(0xff),stdsimd::vendor::_mm256_setzero_si256(), 32 - (symbol<< 1))};
         let one_to_16 = i16x16::new(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
         let mask_v = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(one_to_16, i16x16::splat(i16::from(symbol)))};

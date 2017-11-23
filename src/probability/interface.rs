@@ -211,14 +211,14 @@ impl CDF2 {
 #[derive(Clone)]
 #[repr(C)]
 pub enum Speed {
-    GEOLOGIC,
-    GLACIAL,
-    MUD,
-    SLOW,
-    MED,
-    FAST,
-    PLANE,
-    ROCKET,
+    GEOLOGIC = 2,
+    GLACIAL = 4,
+    MUD = 16,
+    SLOW = 32,
+    MED = 48,
+    FAST = 96,
+    PLANE = 128,
+    ROCKET = 384,
 }
 
 impl core::str::FromStr for Speed {
