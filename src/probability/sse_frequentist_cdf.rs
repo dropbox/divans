@@ -77,34 +77,21 @@ impl BaseCDF for SSEFrequentistCDF16 {
             sym: sym,
         }
 }*/
-    /*
-    #[cfg(feature="avx2")]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
-        let symbol_less = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(
-            i16x16::splat(rescaled_cdf_offset),
-            self.cdf - i16x16::splat(1))};
-        let bitmask = unsafe{stdsimd::vendor::_mm256_movemask_epi8(i8x32::from(symbol_less))};
-        let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
-        self.sym_to_start_and_freq(symbol_id)
-    }
-    #[cfg(not(feature="avx2"))]
-    fn cdf_offset_to_sym_start_and_freq(&self,
-                                        cdf_offset_p: Prob) -> SymStartFreq {
-        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
-        let symbol_less = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(
-            i16x16::splat(rescaled_cdf_offset),
-            self.cdf - i16x16::splat(1))};
-        let lower_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(symbol_less))))} as u32;
-        let upper_quad_cmp = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(symbol_less),
-                                                                              0xee)};
-
-        let upper_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_cmp))))} as u32;
+        let symbol_less0 = unsafe{stdsimd::vendor::_mm_cmpgt_epi16(
+            i16x8::splat(rescaled_cdf_offset),
+            self.cdf0 - i16x8::splat(1))};
+        let symbol_less1 = unsafe{stdsimd::vendor::_mm_cmpgt_epi16(
+            i16x8::splat(rescaled_cdf_offset),
+            self.cdf1 - i16x8::splat(1))};
+        let lower_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(symbol_less0))} as u32;
+        let upper_bitmask = unsafe{stdsimd::vendor::_mm_movemask_epi8(i8x16::from(symbol_less1))} as u32;
         let bitmask = (upper_bitmask << 16) | lower_bitmask;
         let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
         self.sym_to_start_and_freq(symbol_id)
-    }*/
+    }
 }
 fn i16x8_tuple_to_i64x2_tuple(input0: i16x8, input1:i16x8) -> (i64x2,i64x2,i64x2,i64x2,i64x2,i64x2,i64x2,i64x2) {
     let upper_quad = input1;
