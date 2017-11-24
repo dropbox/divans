@@ -16,7 +16,7 @@ macro_rules! println_stderr(
     } }
 );
 
-
+#[derive(Copy,Clone,PartialEq,Eq,Debug)]
 pub struct SymStartFreq {
     pub start: Prob,
     pub freq: Prob,
@@ -82,23 +82,56 @@ pub trait BaseCDF {
     }
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
+        let cdf_offset = i32::from(cdf_offset_p);
+        let candidate0 = 7u8;
+        let cdf0 = self.div_by_max(i32::from(self.cdf(candidate0))<<LOG2_SCALE);
+        let candidate1 = candidate0 - 4 + (((cdf_offset >= cdf0) as u8) << 3); // 4 or 12
+        let cdf1 = self.div_by_max(i32::from(self.cdf(candidate1))<<LOG2_SCALE);
+        let candidate2 = candidate1 - 2 + (((cdf_offset >= cdf1) as u8) << 2); // 4 or 12
+        let cdf2 = self.div_by_max(i32::from(self.cdf(candidate2))<<LOG2_SCALE);
+        let candidate3 = candidate2 - 1 + (((cdf_offset >= cdf2) as u8) << 1); // 4 or 12
+        let cdf3 = self.div_by_max(i32::from(self.cdf(candidate3))<<LOG2_SCALE);
+        let final_decision = ((cdf_offset >= cdf3) as i16);
+        let sym = candidate3 + final_decision as u8;
+        let retval: SymStartFreq;
+        if final_decision != 0 {
+            let cdf_sym = self.div_by_max((i32::from(self.cdf(sym)) << LOG2_SCALE)) as Prob;
+            retval =SymStartFreq {
+                start: cdf3 as Prob + 1, // major hax
+                freq:  (cdf_sym - cdf3 as Prob - 1), // don't want rounding errors to work out unfavorably
+                sym: sym,
+            }
+        } else {
+            let cdf_prev = (if sym != 0 {self.div_by_max(i32::from(self.cdf(sym - 1)) << LOG2_SCALE)} else { 0 }) as Prob;
+            retval =  SymStartFreq {
+                start: cdf_prev as Prob + 1, // major hax
+                freq:  (cdf3 as Prob - cdf_prev as Prob) - 1, // don't want rounding errors to work out unfavorably
+                sym: sym,
+            }
+        }
+        retval
+        /*
+        
+        //let retval = self.sym_to_start_and_freq(actual_symbol);
+        
         let mut cdf_prev: Prob = 0;
-        for i in 0..15 {
+        let mut actual_retval = retval;
+        for i in 0..16 {
             let cdf_cur = self.div_by_max(i32::from(self.cdf(i as u8))<<LOG2_SCALE) as Prob;
             if cdf_offset_p < cdf_cur {
-                return SymStartFreq{
+                actual_retval = SymStartFreq{
                     sym: i as u8,
                     start: cdf_prev as Prob + 1,
                     freq: (cdf_cur - cdf_prev) as Prob - 1,
                 };
+                break;
             }
             cdf_prev = cdf_cur;
         }
-        SymStartFreq{
-            sym: 15,
-            start: cdf_prev as Prob + 1,
-            freq: ((1i32 << LOG2_SCALE) - cdf_prev as i32) as Prob - 1,
-        }
+        self.sym_to_start_and_freq(sym);
+        assert_eq!(actual_retval, retval);
+        retval*/
+
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.
