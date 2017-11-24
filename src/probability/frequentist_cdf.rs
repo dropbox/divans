@@ -9,47 +9,6 @@ fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
 }
 
 
-fn movemask_epi8_i32(data:[i32;8]) -> u32{
-    to_bit_i32(data[0] & 0x80 , 0) |
-    to_bit_i32(data[0] & 0x8000 , 1) |
-    to_bit_i32(data[0] & 0x800000 , 2) |
-    to_bit_i32(data[0] & -0x80000000, 3) |
-
-    to_bit_i32(data[1] & 0x80 , 4) |
-    to_bit_i32(data[1] & 0x8000 , 5) |
-    to_bit_i32(data[1] & 0x800000 , 6) |
-    to_bit_i32(data[1] & -0x80000000, 7) |
-
-    to_bit_i32(data[2] & 0x80 , 8) |
-    to_bit_i32(data[2] & 0x8000 , 9) |
-    to_bit_i32(data[2] & 0x800000 , 10) |
-    to_bit_i32(data[2] & -0x80000000, 11) |
-
-    to_bit_i32(data[3] & 0x80 , 12) |
-    to_bit_i32(data[3] & 0x8000 , 13) |
-    to_bit_i32(data[3] & 0x800000 , 14) |
-    to_bit_i32(data[3] & -0x80000000, 15) |
-
-    to_bit_i32(data[4] & 0x80 , 16) |
-    to_bit_i32(data[4] & 0x8000 , 17) |
-    to_bit_i32(data[4] & 0x800000 , 18) |
-    to_bit_i32(data[4] & -0x80000000, 19) |
-
-    to_bit_i32(data[5] & 0x80 , 20) |
-    to_bit_i32(data[5] & 0x8000 , 21) |
-    to_bit_i32(data[5] & 0x800000 , 22) |
-    to_bit_i32(data[5] & -0x80000000, 23) |
-
-    to_bit_i32(data[6] & 0x80 , 24) |
-    to_bit_i32(data[6] & 0x8000 , 25) |
-    to_bit_i32(data[6] & 0x800000 , 26) |
-    to_bit_i32(data[6] & -0x80000000, 27) |
-
-    to_bit_i32(data[7] & 0x80 , 28) |
-    to_bit_i32(data[7] & 0x8000 , 29) |
-    to_bit_i32(data[7] & 0x800000 , 30) |
-    to_bit_i32(data[7] & -0x80000000, 31)
-}
 #[derive(Clone,Copy)]
 pub struct FrequentistCDF16 {
     pub cdf: [Prob; 16]
@@ -63,38 +22,6 @@ impl Default for FrequentistCDF16 {
     }
 }
 
-#[allow(unused)]
-macro_rules! each16{
-    ($src0: expr, $func: expr) => {
-    [$func($src0[0]),
-     $func($src0[1]),
-     $func($src0[2]),
-     $func($src0[3]),
-     $func($src0[4]),
-     $func($src0[5]),
-     $func($src0[6]),
-     $func($src0[7]),
-     $func($src0[8]),
-     $func($src0[9]),
-     $func($src0[10]),
-     $func($src0[11]),
-     $func($src0[12]),
-     $func($src0[13]),
-     $func($src0[14]),
-     $func($src0[15]),
-    ]
-    }
-}
-#[allow(unused)]
-macro_rules! set1 {
-    ($src: expr, $val: expr) =>{
-        [$val; 16]
-    }
-}
-
-fn srl(a:Prob) -> Prob {
-    a >> 1
-}
 
 impl BaseCDF for FrequentistCDF16 {
     fn num_symbols() -> u8 { 16 }

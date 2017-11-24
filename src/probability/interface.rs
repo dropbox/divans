@@ -82,46 +82,23 @@ pub trait BaseCDF {
     }
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
-        /*
-        for i in 0..16 {
-            let cdf_cur = self.div_by_max(i32::from(self.cdf(i as u8))<<LOG2_SCALE);
-            if i32::from(cdf_offset_p) < cdf_cur {
-                let cdf_prev = if i != 0 {
-                    self.div_by_max(i32::from(self.cdf(i as u8 - 1))<<LOG2_SCALE)
-                } else {
-                    0
-                };
+        let mut cdf_prev: Prob = 0;
+        for i in 0..15 {
+            let cdf_cur = self.div_by_max(i32::from(self.cdf(i as u8))<<LOG2_SCALE) as Prob;
+            if cdf_offset_p < cdf_cur {
                 return SymStartFreq{
                     sym: i as u8,
-                    start: cdf_prev as Prob,
-                    freq: (cdf_cur - cdf_prev) as Prob,
+                    start: cdf_prev as Prob + 1,
+                    freq: (cdf_cur - cdf_prev) as Prob - 1,
                 };
             }
+            cdf_prev = cdf_cur;
         }
-        panic!("unreachable due to max value of cdf");
-         */
-        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
-        let symbol_less = [
-            -((rescaled_cdf_offset >= self.cdf(0)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(1)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(2)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(3)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(4)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(5)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(6)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(7)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(8)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(9)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(10)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(11)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(12)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(13)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(14)) as i16),
-            -((rescaled_cdf_offset >= self.cdf(15)) as i16),
-            ];
-        let bitmask:u32 = movemask_epi8(symbol_less);
-        let symbol_id = ((32 - u32::from(bitmask).leading_zeros()) >> 1) as u8;
-        self.sym_to_start_and_freq(symbol_id)
+        SymStartFreq{
+            sym: 15,
+            start: cdf_prev as Prob + 1,
+            freq: ((1i32 << LOG2_SCALE) - cdf_prev as i32) as Prob - 1,
+        }
     }
                                     
     // These methods are optional because implementing them requires nontrivial bookkeeping.
@@ -355,45 +332,3 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     }
 }
 
-fn movemask_epi8(data:[i16;16]) -> u32{
-    to_bit_u32(data[0] & -0x8000 , 0) |
-    to_bit_u32(data[0] & 0x80 , 1) |
-    to_bit_u32(data[1] & -0x8000 , 2) |
-    to_bit_u32(data[1] & 0x80 , 3) |
-    to_bit_u32(data[2] & -0x8000 , 4) |
-    to_bit_u32(data[2] & 0x80 , 5) |
-    to_bit_u32(data[3] & -0x8000 , 6) |
-    to_bit_u32(data[3] & 0x80 , 7) |
-    to_bit_u32(data[4] & -0x8000 , 8) |
-    to_bit_u32(data[4] & 0x80 , 9) |
-    to_bit_u32(data[5] & -0x8000 , 10) |
-    to_bit_u32(data[5] & 0x80 , 11) |
-    to_bit_u32(data[6] & -0x8000 , 12) |
-    to_bit_u32(data[6] & 0x80 , 13) |
-    to_bit_u32(data[7] & -0x8000 , 14) |
-    to_bit_u32(data[7] & 0x80 , 15) |
-    to_bit_u32(data[8] & -0x8000 , 16) |
-    to_bit_u32(data[8] & 0x80 , 17) |
-    to_bit_u32(data[9] & -0x8000 , 18) |
-    to_bit_u32(data[9] & 0x80 , 19) |
-    to_bit_u32(data[10] & -0x8000 , 20) |
-    to_bit_u32(data[10] & 0x80 , 21) |
-    to_bit_u32(data[11] & -0x8000 , 22) |
-    to_bit_u32(data[11] & 0x80 , 23) |
-    to_bit_u32(data[12] & -0x8000 , 24) |
-    to_bit_u32(data[12] & 0x80 , 25) |
-    to_bit_u32(data[13] & -0x8000 , 26) |
-    to_bit_u32(data[13] & 0x80 , 27) |
-    to_bit_u32(data[14] & -0x8000 , 28) |
-    to_bit_u32(data[14] & 0x80 , 29) |
-    to_bit_u32(data[15] & -0x8000 , 30) |
-    to_bit_u32(data[15] & 0x80 , 31)
-}
-
-fn to_bit_u32(val: i16, shift_val: u8) -> u32 {
-    if val != 0 {
-        1 << shift_val
-    } else {
-        0
-    }
-}
