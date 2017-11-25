@@ -52,24 +52,17 @@ impl BaseCDF for FrequentistCDF16 {
 
 impl CDF16 for FrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
-        if self.max() < 64 && other.max() > 64 {
-             //return other.clone();
-        }
-        if self.max() > 64 && other.max() < 64 {
-             //return self.clone();
-        }
-        if self.entropy() > other.entropy() {
-             //return other.clone();
-        }
-        //return self.clone();
         let mut retval = *self;
-        let ourmax = i64::from(self.max());
-        let othermax = i64::from(other.max());
-        let maxmax = core::cmp::min(ourmax, othermax);
-        let lgmax = 64 - maxmax.leading_zeros();
+        let ourmax = i32::from(self.max());
+        let othermax = i32::from(other.max());
+        let ourmax_times_othermax = ourmax * othermax;
+        let leading_zeros_combo = core::cmp::min(ourmax_times_othermax.leading_zeros(), 17);
+        let desired_shift = 17 - leading_zeros_combo;
         let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
         for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-        *s = (((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
+          let rescaled_self = (i32::from(*s) * othermax) >> desired_shift;
+          let rescaled_other = (i32::from(*o) * ourmax) >> desired_shift;
+          *s = ((rescaled_self * mix_rate + rescaled_other * inv_mix_rate + 1) >> BLEND_FIXED_POINT_PRECISION) as Prob;
         }
         retval
     }

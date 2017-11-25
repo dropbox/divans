@@ -1,7 +1,7 @@
 use core;
 use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE};
 use super::numeric;
-use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2};
+use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 use stdsimd;
 use stdsimd::vendor::__m256i;
 #[derive(Clone,Copy)]
@@ -127,33 +127,59 @@ fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i6
                 input3.extract(3) as i16)
 }
 
+fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8,i32x8) {
+    let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(input), 0xee)};
+    let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
+    let self0 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi32(i16x8::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(input))))};
+    let self1 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi32(i16x8::from(upper_quad))};
+    (self0, self1)
+}
+fn i32x8_tuple_to_i16x16(input0: i32x8, input1: i32x8) -> i16x16 {
+    //FIXME: can potentially do this as some shuffles ??
+    i16x16::new(input0.extract(0) as i16,
+                input0.extract(1) as i16,
+                input0.extract(2) as i16,
+                input0.extract(3) as i16,
+                input0.extract(4) as i16,
+                input0.extract(5) as i16,
+                input0.extract(6) as i16,
+                input0.extract(7) as i16,
+                input1.extract(0) as i16,
+                input1.extract(1) as i16,
+                input1.extract(2) as i16,
+                input1.extract(3) as i16,
+                input1.extract(4) as i16,
+                input1.extract(5) as i16,
+                input1.extract(6) as i16,
+                input1.extract(7) as i16)
+}
+
 
 impl CDF16 for SIMDFrequentistCDF16 {
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
 
-        let ourmax = i64::from(self.max());
-        let othermax = i64::from(other.max());
-        let maxmax = core::cmp::min(ourmax, othermax);
-        let lgmax = 64 - maxmax.leading_zeros();
-        let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
-        //let cdf4567: i16x16 = std::simd::vendor::_mm256_shuffle_epi8(address, simd_shuffle8::<_, i16x16>(self.cdf, self.cdf, [4, 5, 6, 7, 4,5,6,7, 8,9,10,11,12,13,14,15]);
-        let mix_rate_v = i64x4::splat(i64::from(mix_rate));
-        let inv_mix_rate_v = i64x4::splat(i64::from(inv_mix_rate));
-        let our_max_v = i64x4::splat(ourmax);
-        let other_max_v = i64x4::splat(othermax);
-        let one = i64x4::splat(1);
-        let (self0, self1, self2, self3) = i16x16_to_i64x4_tuple(self.cdf);
-        let (other0, other1, other2, other3) = i16x16_to_i64x4_tuple(other.cdf);
-        let ret0 = (self0 * mix_rate_v * other_max_v + other0 * inv_mix_rate_v * our_max_v + one) >> (BLEND_FIXED_POINT_PRECISION + lgmax as i8);
-        let ret1 = (self1 * mix_rate_v * other_max_v + other1 * inv_mix_rate_v * our_max_v + one) >> (BLEND_FIXED_POINT_PRECISION + lgmax as i8);
-        let ret2 = (self2 * mix_rate_v * other_max_v + other2 * inv_mix_rate_v * our_max_v + one) >> (BLEND_FIXED_POINT_PRECISION + lgmax as i8);
-        let ret3 = (self3 * mix_rate_v * other_max_v + other3 * inv_mix_rate_v * our_max_v + one) >> (BLEND_FIXED_POINT_PRECISION + lgmax as i8);
-        SIMDFrequentistCDF16::new(i64x4_tuple_to_i16x16(ret0, ret1, ret2, ret3))
-        // FIXME this is missing let upper_quad = stdsimd::vendor::_mm256_extracti128_si256(__m256i::from(self.cdf), 1);
+        let ourmax = i32::from(self.max());
+        let othermax = i32::from(other.max());
+        let ourmax_times_othermax = ourmax * othermax;
+        let leading_zeros_combo = core::cmp::min(ourmax_times_othermax.leading_zeros(), 17);
+        let desired_shift = 17 - leading_zeros_combo;
         
-        //for (s, o) in retval.cdf.iter_mut().zip(other.cdf.iter()) {
-        //(((i64::from(*s) * i64::from(mix_rate) * othermax + i64::from(*o) * i64::from(inv_mix_rate) * ourmax + 1) >> BLEND_FIXED_POINT_PRECISION) >> lgmax) as Prob;
-        //}
+        let inv_mix_rate = (1 << BLEND_FIXED_POINT_PRECISION) - mix_rate;
+        let mix_rate_v = i32x8::splat(mix_rate);
+        let inv_mix_rate_v = i32x8::splat(inv_mix_rate);
+        let our_max_v = i32x8::splat(ourmax);
+        let other_max_v = i32x8::splat(othermax);
+        let one = i32x8::splat(1);
+        let (self0, self1) = i16x16_to_i32x8_tuple(self.cdf);
+        let (other0, other1) = i16x16_to_i32x8_tuple(other.cdf);
+        let rescaled_self0 = (self0 * other_max_v) >> desired_shift; // now we know we have at least 15 bits remaining in our space
+        let rescaled_self1 = (self1 * other_max_v) >> desired_shift;
+        let rescaled_other0 = (other0 * our_max_v) >> desired_shift;
+        let rescaled_other1 = (other1 * our_max_v) >> desired_shift;
+        
+        let ret0 = (rescaled_self0 * mix_rate_v + rescaled_other0 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as i8);
+        let ret1 = (rescaled_self1 * mix_rate_v + rescaled_other1 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as i8);
+        SIMDFrequentistCDF16::new(i32x8_tuple_to_i16x16(ret0, ret1))
     }
     #[inline(always)]
     fn blend(&mut self, symbol: u8, speed: Speed) {

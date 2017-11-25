@@ -57,6 +57,21 @@ mod test {
        assert!(cdf0.valid());
        assert!(cdf1.valid());
     }
+    fn assert_cdf_similar<CDFA: CDF16, CDFB: CDF16>(cdf0: &CDFA, cdf1: &CDFB) {
+       let max0 = cdf0.max() as i64;
+       let max1 = cdf1.max() as i64;
+       for sym in 0..16 {
+          let sym0cdf = i64::from(cdf0.cdf(sym as u8));
+          let sym1cdf = i64::from(cdf1.cdf(sym as u8));
+          let cmp0 = sym0cdf * max1;
+          let cmp1 = sym1cdf * max0;
+          let sdelta = cmp0.wrapping_sub(cmp1);
+          let delta = if sdelta < 0 { -sdelta} else {sdelta};
+          assert!(delta < max1*max0 / 160);
+       }
+       assert!(cdf0.valid());
+       assert!(cdf1.valid());
+    }
     fn operation_test_helper<CDFA: CDF16, CDFB: CDF16> (cdf0a: &mut CDFA, cdf1a: &mut CDFA, cdf0b: &mut CDFB, cdf1b: &mut CDFB) {
         assert_cdf_eq(cdf0a, cdf0b);
         assert_cdf_eq(cdf1a, cdf1b);
@@ -69,7 +84,7 @@ mod test {
               cdf0b.blend(*sym, Speed::MED);
               assert_cdf_eq(cdf0a, cdf0b);
         }
-        assert_cdf_eq(&cdf0a.average(cdf1a, (1<<BLEND_FIXED_POINT_PRECISION)>>2), &cdf0b.average(cdf1b, (1<<BLEND_FIXED_POINT_PRECISION)>>2));
+        assert_cdf_similar(&cdf0a.average(cdf1a, (1<<BLEND_FIXED_POINT_PRECISION)>>2), &cdf0b.average(cdf1b, (1<<BLEND_FIXED_POINT_PRECISION)>>2));
         for sym in symbol_buffer1.iter() {
               cdf0a.blend(*sym, Speed::MED);
               cdf0b.blend(*sym, Speed::MED);
@@ -85,6 +100,10 @@ mod test {
         assert_cdf_eq(&cdf0a.average(cdf1a, threequarters), &cdf0b.average(cdf1b, threequarters));
         assert_cdf_eq(&cdf0a.average(cdf1a, 0), &cdf0b.average(cdf1b, 0));
         assert_cdf_eq(&cdf0a.average(cdf1a, all), &cdf0b.average(cdf1b, all));
+        assert_cdf_similar(&cdf0a.average(cdf1a, 0), cdf1a);
+        assert_cdf_similar(&cdf0a.average(cdf1a, all), cdf0a);
+        assert_cdf_similar(&cdf0b.average(cdf1b, 0), cdf1b);
+        assert_cdf_similar(&cdf0b.average(cdf1b, all), cdf0b);
     }
     #[cfg(feature="simd")]
     #[test]
