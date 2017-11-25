@@ -10,7 +10,7 @@ use super::ans::{
     ANSDecoder,
     ANSEncoder,
 };
-use super::probability::{Speed, BaseCDF, CDF16};
+use super::probability::{Speed, BaseCDF, CDF16, BLEND_FIXED_POINT_PRECISION};
 use ::DefaultCDF16;
 use encoder::{
     EntropyEncoder,
@@ -140,10 +140,13 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
     let mut t = 0;
     *n = 0;
     let (mut cdf_high, mut cdf_low) = ts.make_test_cdfs();
+    let (mut _unused, mut cdf_low_adv) = ts.make_test_cdfs();
+    let (mut _unused, mut cdf_high_adv) = ts.make_test_cdfs();
+    let mut last_nibble = 0usize;
     for u in src.iter() {
         let v = *u;
         //left to right
-        e.put_nibble(v >> 4, &cdf_high);
+        e.put_nibble(v >> 4, &cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
         {
             let mut q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
@@ -155,9 +158,10 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         }
         if ts.adapt_probability() {
             cdf_high.blend(v >> 4, Speed::SLOW);
+            cdf_high_adv[last_nibble].blend(v >> 4, Speed::MED);
         }
         let cdfl = &mut cdf_low[if ts.independent_hilo() {0} else {(v>>4) as usize}];
-        e.put_nibble(v & 0xf, cdfl);
+        e.put_nibble(v & 0xf, &cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
         let mut q = e.get_internal_buffer();
         let qb = q.num_pop_bytes_avail();
         if qb > 0 {
@@ -167,7 +171,9 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         }
         if ts.adapt_probability() {
             cdfl.blend(v & 0xf, Speed::SLOW);
+            cdf_low_adv[last_nibble].blend(v & 0xf, Speed::SLOW);
         }
+        last_nibble = v as usize & 0xf;
         t += 1;
     }
     assert_eq!(t, src.len());
@@ -183,6 +189,9 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
                              TS:TestSelection>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8], ts: TS) {
     let max_copy =1024usize;
     let (mut cdf_high, mut cdf_low) = ts.make_test_cdfs();
+    let (mut _unused, mut cdf_low_adv) = ts.make_test_cdfs();
+    let (mut _unused, mut cdf_high_adv) = ts.make_test_cdfs();
+    let mut last_nibble = 0usize;
     let mut t = 0;
     {
         let q = d.get_internal_buffer();
@@ -196,7 +205,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         *n = *n + sz;
     }
     for v in end.iter_mut() {
-        let high_nibble = d.get_nibble(&cdf_high);
+        let high_nibble = d.get_nibble(&cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
         *v = high_nibble << 4;
         {
             let mut q = d.get_internal_buffer();
@@ -210,8 +219,9 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         let cdfl = &mut cdf_low[if ts.independent_hilo() {0}else{(*v >> 4) as usize}];
         if ts.adapt_probability() {
             cdf_high.blend(*v >> 4, Speed::SLOW);
+            cdf_high_adv[last_nibble].blend(*v >> 4, Speed::MED);
         }
-        let low_nibble = d.get_nibble(cdfl);
+        let low_nibble = d.get_nibble(&cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
         *v |= low_nibble;
         let mut q = d.get_internal_buffer();
         while q.num_push_bytes_avail() > 0 {
@@ -222,7 +232,9 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         }
         if ts.adapt_probability() {
             cdfl.blend(low_nibble, Speed::SLOW);
+            cdf_low_adv[last_nibble].blend(low_nibble, Speed::SLOW);
         }
+        last_nibble = *v as usize & 0xf;
         t = t + 1;
     }
     assert_eq!(t, end.len());
