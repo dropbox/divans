@@ -41,7 +41,7 @@ macro_rules! println_stderr(
     } }
 );
 */
-use super::probability::{BaseCDF, CDF2, CDF16, Speed, BLEND_FIXED_POINT_PRECISION, ExternalProbCDF16};
+use super::probability::{BaseCDF, CDF2, CDF16, Speed, BLEND_FIXED_POINT_PRECISION, ExternalProbCDF16, Prob, LOG2_SCALE};
 
 //#[cfg(feature="billing")]
 //use std::io::Write;
@@ -742,6 +742,42 @@ pub enum LiteralSubstate {
     LiteralNibbleIndex(u32),
     FullyDecoded,
 }
+
+
+fn normalize_weights(weights: &mut [i32;2]) {
+    let ilog = 32  - core::cmp::min(weights[0].leading_zeros(),
+                                   weights[1].leading_zeros());
+    if ilog >= 28 {
+        weights[0] >>= ilog - 20;
+        weights[1] >>= ilog - 20;
+    }
+}
+fn ilog2(item: i64) -> u32 {
+    63 - item.leading_zeros()
+}
+fn compute_new_weight(probs: [Prob; 2],
+                      weighted_prob: Prob,
+                      weights: [i32;2],
+                      index_equal_1: bool) -> i32{
+    let index = index_equal_1 as usize;
+    let full_model_sum_p1 = i64::from(weighted_prob);
+    let full_model_total = 1i64 << LOG2_SCALE;
+    let full_model_sum_p0 = full_model_total.wrapping_sub(i64::from(weighted_prob));
+    let n1i = i64::from(probs[index]);
+    let ni = 1i64 << LOG2_SCALE;
+    let error = full_model_total - full_model_sum_p1;
+    let wi = i64::from(weights[index]);
+    let efficacy = full_model_total * n1i - full_model_sum_p1 * ni;
+    //let geometric_probabilities = full_model_sum_p1 * full_model_sum_p0;
+    let forgetfulness = 4;
+    let log_geometric_probabilities = ilog2(full_model_sum_p1) + ilog2(full_model_sum_p0) - forgetfulness;
+    //let scaled_geometric_probabilities = geometric_probabilities * S;
+    let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;// / geometric_probabilities;
+    
+//    assert!(wi + new_weight_adj < (1i64 << 31));
+    //print!("{} -> {} due to {:?} vs {}\n", wi as f64 / (weights[0] + weights[1]) as f64, (wi + new_weight_adj) as f64 /(weights[0] as i64 + new_weight_adj as i64 + weights[1] as i64) as f64, probs[index], weighted_prob);
+    (wi + core::cmp::max(0,new_weight_adj)) as i32
+}
 struct LiteralState<AllocU8:Allocator<u8>> {
     lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
     state: LiteralSubstate,
@@ -927,7 +963,11 @@ impl<AllocU8:Allocator<u8>,
                             };
                             let prob = if materialized_prediction_mode {
                                 if superstate.bk.combine_literal_predictions {
-                                    cm_prob.average(nibble_prob, (1<<BLEND_FIXED_POINT_PRECISION)>>1)
+                                    let total = i64::from(superstate.bk.model_weights[0]) + i64::from(superstate.bk.model_weights[1]);
+                                    let model_weight = i64::from(superstate.bk.model_weights[1]) * (1<<BLEND_FIXED_POINT_PRECISION) / total;
+                                    
+                                    cm_prob.average(nibble_prob,
+                                                    model_weight as i32/*(1<<(BLEND_FIXED_POINT_PRECISION-1))*/)
                                 } else {
                                     *cm_prob
                                 }
@@ -945,6 +985,23 @@ impl<AllocU8:Allocator<u8>,
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
                             } else {
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing);
+                            }
+                            if materialized_prediction_mode {
+                                let model_probs = [
+                                    nibble_prob.sym_to_start_and_freq(cur_nibble).freq,
+                                    cm_prob.sym_to_start_and_freq(cur_nibble).freq,
+                                ];
+                                let weighted_prob = prob.sym_to_start_and_freq(cur_nibble).freq;
+                                normalize_weights(&mut superstate.bk.model_weights);
+                                let w0new = compute_new_weight(model_probs,
+                                                               weighted_prob,
+                                                               superstate.bk.model_weights,
+                                                               false);
+                                let w1new = compute_new_weight(model_probs,
+                                                               weighted_prob,
+                                                               superstate.bk.model_weights,
+                                                               true);
+                                superstate.bk.model_weights = [w0new, w1new];
                             }
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                             cm_prob.blend(cur_nibble, Speed::GLACIAL);
@@ -1278,6 +1335,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
+    model_weights: [i32;2],
     last_8_literals: u64,
     decode_byte_count: u32,
     command_count:u32,
@@ -1335,6 +1393,7 @@ impl<Cdf16:CDF16,
            distance_context_map: AllocU8::AllocatedMemory,
            literal_adaptation_speed:Speed) -> Self {
         let mut ret = CrossCommandBookKeeping{
+            model_weights:[1;2],
             desired_literal_adaptation: literal_adaptation_speed,
             literal_adaptation: default_literal_speed(),
             decode_byte_count:0,
