@@ -766,9 +766,9 @@ fn normalize_weights(weights: &mut [i32;2]) {
     }
 }
 fn ilog2(item: i64) -> u32 {
-    63 - item.leading_zeros()
+    64 - item.leading_zeros()
 }
-#[cfg(not(features="fixed_point_context_mixing"))]
+#[cfg(features="floating_point_context_mixing")]
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],
@@ -788,14 +788,10 @@ fn compute_new_weight(probs: [Prob; 2],
     if !(wi_new > 0.0) {
         wi_new = 0.0;
     }
-    /*print!("{} -> {} due to {:?} vs {}\n",
-           wi, wi_new,
-           probs[index], weighted_prob);
-*/
     (wi_new * ((1i64 << LOG2_SCALE) as f64)) as i32
 }
 
-#[cfg(features="fixed_point_context_mixing")]
+#[cfg(not(features="floating_point_context_mixing"))]
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],
@@ -811,14 +807,14 @@ fn compute_new_weight(probs: [Prob; 2],
     let wi = i64::from(weights[index]);
     let efficacy = full_model_total * n1i - full_model_sum_p1 * ni;
     //let geometric_probabilities = full_model_sum_p1 * full_model_sum_p0;
-    let forgetfulness = 4;
-    let log_geometric_probabilities = ilog2(full_model_sum_p1) + ilog2(full_model_sum_p0) - forgetfulness;
+    let log_geometric_probabilities = 64 - (full_model_sum_p1 *full_model_sum_p0).leading_zeros();
     //let scaled_geometric_probabilities = geometric_probabilities * S;
-    let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;// / geometric_probabilities;
-    
+    //let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;// / geometric_probabilities;
+    //let new_weight_adj = (error * efficacy)/(full_model_sum_p1 * full_model_sum_p0);
+    let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;
 //    assert!(wi + new_weight_adj < (1i64 << 31));
     //print!("{} -> {} due to {:?} vs {}\n", wi as f64 / (weights[0] + weights[1]) as f64, (wi + new_weight_adj) as f64 /(weights[0] as i64 + new_weight_adj as i64 + weights[1] as i64) as f64, probs[index], weighted_prob);
-    (wi + core::cmp::max(0,new_weight_adj)) as i32
+    (core::cmp::max(0,wi + new_weight_adj)) as i32
 }
 
 struct LiteralState<AllocU8:Allocator<u8>> {
