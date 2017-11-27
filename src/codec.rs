@@ -758,15 +758,44 @@ pub enum LiteralSubstate {
 
 fn normalize_weights(weights: &mut [i32;2]) {
     let ilog = 32  - core::cmp::min(weights[0].leading_zeros(),
-                                   weights[1].leading_zeros());
-    if ilog >= 28 {
-        weights[0] >>= ilog - 20;
-        weights[1] >>= ilog - 20;
+                                    weights[1].leading_zeros());
+    let max_log = 24;
+    if ilog >= max_log {
+        weights[0] >>= ilog - max_log;
+        weights[1] >>= ilog - max_log;
     }
 }
 fn ilog2(item: i64) -> u32 {
     63 - item.leading_zeros()
 }
+#[cfg(not(features="fixed_point_context_mixing"))]
+fn compute_new_weight(probs: [Prob; 2],
+                      weighted_prob: Prob,
+                      weights: [i32;2],
+                      index_equal_1: bool,
+                      _speed: u8) -> i32{ // speed ranges from 1 to 14 inclusive
+    let index = index_equal_1 as usize;
+    let n1i = probs[index] as f64 / ((1i64 << LOG2_SCALE) as f64);
+    //let n0i = 1.0f64 - n1i;
+    let ni = 1.0f64;
+    let s1 = weighted_prob as f64 / ((1i64 << LOG2_SCALE) as f64);
+    let s0 = 1.0f64 - s1;
+    let s = 1.0f64;
+    //let p0 = s0;
+    let p1 = s1;
+    let wi = weights[index] as f64 / ((1i64 << LOG2_SCALE) as f64);
+    let mut wi_new = wi + (1.0 - p1) * (s * n1i - s1 * ni) / (s0 * s1);
+    if !(wi_new > 0.0) {
+        wi_new = 0.0;
+    }
+    /*print!("{} -> {} due to {:?} vs {}\n",
+           wi, wi_new,
+           probs[index], weighted_prob);
+*/
+    (wi_new * ((1i64 << LOG2_SCALE) as f64)) as i32
+}
+
+#[cfg(features="fixed_point_context_mixing")]
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],
@@ -791,6 +820,7 @@ fn compute_new_weight(probs: [Prob; 2],
     //print!("{} -> {} due to {:?} vs {}\n", wi as f64 / (weights[0] + weights[1]) as f64, (wi + new_weight_adj) as f64 /(weights[0] as i64 + new_weight_adj as i64 + weights[1] as i64) as f64, probs[index], weighted_prob);
     (wi + core::cmp::max(0,new_weight_adj)) as i32
 }
+
 struct LiteralState<AllocU8:Allocator<u8>> {
     lc:LiteralCommand<AllocatedMemoryPrefix<AllocU8>>,
     state: LiteralSubstate,
