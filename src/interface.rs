@@ -16,7 +16,11 @@ use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
 use super::probability::interface::{CDF2, CDF16, ProbRange};
 use super::probability;
-use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
+use super::codec::copy::CopySubstate;
+use super::codec::dict::DictSubstate;
+use super::codec::literal::LiteralSubstate;
+use super::codec::context_map::PredictionModeState;
+use super::codec::block_type::BlockTypeState;
 pub use brotli::enc::interface::*;
 
 #[cfg(feature="blend")]
@@ -173,6 +177,7 @@ pub enum BillingDesignation {
     LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
     PredModeCtxMap(PredictionModeState),
+    BlockType(BlockTypeState),
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]

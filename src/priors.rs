@@ -64,8 +64,8 @@ macro_rules! define_prior_struct {
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.
-        struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
-            priors: AllocT::AllocatedMemory
+        pub struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
+            pub priors: AllocT::AllocatedMemory
         }
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
             #[inline]
