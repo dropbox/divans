@@ -791,12 +791,39 @@ fn compute_new_weight(probs: [Prob; 2],
     (wi_new * ((1i64 << LOG2_SCALE) as f64)) as i32
 }
 
-#[cfg(not(features="floating_point_context_mixing"))]
+fn stretch(x: f64) -> f64 {
+    (x / (1.0 - x)).ln()
+}
+fn squash(x: f64) -> f64 {
+    1.0f64/(1.0 + (-x).exp())
+}
+fn compute_new_weight_logit(probs: [Prob; 2],
+                      weighted_prob: Prob,
+                      weights: [i32;2],
+                      index_equal_1: bool,
+                      speed: u8) -> i32{ // speed ranges from 1 to 14 inclusive
+    let index = index_equal_1 as usize;
+    let gen_scale = 1./(1i64 << LOG2_SCALE) as f64;
+    let float_weighted_prob = weighted_prob as f64 * gen_scale;
+    let float_prob = [probs[0] as f64 * gen_scale,
+                      probs[1] as f64 * gen_scale];
+    let float_weights = [weights[0] as f64 * gen_scale,
+                         weights[1] as f64 * gen_scale];
+    let wi = float_weights[index];
+    let learning_rate = 0.0007 * speed as f64;
+    let wi_new = wi + learning_rate * stretch(float_prob[index]) * float_weighted_prob;
+    core::cmp::max((wi_new * ((1i64 << LOG2_SCALE) as f64)) as i32, 1)
+}
+
+//#[cfg(not(features="floating_point_context_mixing"))]
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],
                       index_equal_1: bool,
-                      _speed: u8) -> i32{ // speed ranges from 1 to 14 inclusive
+                      speed: u8) -> i32{ // speed ranges from 1 to 14 inclusive
+    if speed == 2 {
+        return compute_new_weight_logit(probs, weighted_prob, weights, index_equal_1, speed);
+    }
     let index = index_equal_1 as usize;
     let full_model_sum_p1 = i64::from(weighted_prob);
     let full_model_total = 1i64 << LOG2_SCALE;
