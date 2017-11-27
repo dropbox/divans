@@ -205,7 +205,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         *n = *n + sz;
     }
     for v in end.iter_mut() {
-        let high_nibble = d.get_nibble(&cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
+        let high_nibble = d.get_nibble(&cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2))).0;
         *v = high_nibble << 4;
         {
             let mut q = d.get_internal_buffer();
@@ -221,7 +221,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
             cdf_high.blend(*v >> 4, Speed::SLOW);
             cdf_high_adv[last_nibble].blend(*v >> 4, Speed::MED);
         }
-        let low_nibble = d.get_nibble(&cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
+        let low_nibble = d.get_nibble(&cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2))).0;
         *v |= low_nibble;
         let mut q = d.get_internal_buffer();
         while q.num_push_bytes_avail() > 0 {

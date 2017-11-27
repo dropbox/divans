@@ -13,7 +13,7 @@
 //   limitations under the License.
 use core;
 use core::default::Default;
-use probability::CDF16;
+use probability::{CDF16, ProbRange};
 use interface::ArithmeticEncoderOrDecoder;
 use super::BrotliResult;
 pub trait ByteQueue {
@@ -81,7 +81,7 @@ pub trait EntropyEncoder {
                prob_of_false: u8);
     fn put_nibble<C: CDF16>(&mut self,
                             nibble: u8,
-                            prob: &C) {
+                            prob: &C) -> ProbRange {
         let high_bit_prob = prob.cdf(7);
         let cdf_max = i32::from(prob.max());
         let normalized_high_bit_prob = match prob.log_max() {
@@ -107,19 +107,13 @@ pub trait EntropyEncoder {
         let lo_prob = i32::from(prob.cdf(nibble & 14));
         let normalized_lo_prob =(((lo_prob -  lo_min) << 8) / (lo_max - lo_min)) as u8;
         self.put_bit((nibble & 1) != 0, normalized_lo_prob);
+        prob.sym_to_start_and_freq(nibble).range
     }
     fn put_8bit(&mut self,
                 bits: [bool;8], // should we make this a u8 and pull out the bits?
                 true_probabilities: [u8;8]) {
         for i in 0..true_probabilities.len() {
             self.put_bit(bits[i], true_probabilities[i]);
-        }
-    }
-    fn put_4nibble<C: CDF16>(&mut self,
-                             nibbles: [u8;4],
-                             prob: &[C;4]){
-        for i in 0..prob.len() {
-            self.put_nibble(nibbles[i], &prob[i]);
         }
     }
     // output must have at least 64 bits of free space remaining for this function
@@ -131,7 +125,7 @@ pub trait EntropyDecoder {
     // if it's a register, should have a get and a set and pass by value and clobber?
     fn get_internal_buffer(&mut self) -> &mut Self::Queue;
     fn get_bit(&mut self, prob_of_false: u8) -> bool;
-    fn get_nibble<C: CDF16> (&mut self, prob: &C) -> u8 {
+    fn get_nibble<C: CDF16> (&mut self, prob: &C) -> (u8, ProbRange) {
         let high_bit_prob = prob.cdf(7);
         let cdf_max = i32::from(prob.max());
         let normalized_high_bit_prob = match prob.log_max() {
@@ -156,21 +150,14 @@ pub trait EntropyDecoder {
         let lo_max = if lomid_bit != 0 {lomid_max} else {lomid_prob};
         let lo_prob = i32::from(prob.cdf(nibble & 14));
         let normalized_lo_prob = (((lo_prob -  lo_min) << 8) / (lo_max - lo_min)) as u8;
-        nibble | self.get_bit(normalized_lo_prob) as u8
+        nibble = nibble | self.get_bit(normalized_lo_prob) as u8;
+        (nibble, prob.sym_to_start_and_freq(nibble).range)
         //println!("P({}) {} {} {} {} b {}", count, normalized_high_bit_prob, normalized_mid_prob, normalized_lomid_prob, lo_prob, nibble | self.get_bit(normalized_lo_prob) as u8);
     }
     fn get_8bit(&mut self, true_probabilities: [u8;8]) -> [bool;8] {
         let mut ret = [false; 8];
         for i in 0..true_probabilities.len() {
             ret[i] = self.get_bit(true_probabilities[i]);
-        }
-        ret
-    }
-    // input must have at least 64 bits inside unless we have reached the end
-    fn get_4nibble<C: CDF16> (&mut self, prob: &[C;4]) -> [u8;4] {
-        let mut ret = [0u8; 4];
-        for i in 0..prob.len() {
-            ret[i] = self.get_nibble(&prob[i]);
         }
         ret
     }
@@ -202,8 +189,10 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
     }
     fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
                                                    nibble: &mut u8,
-                                                   prob: &C) {
-        *nibble = self.get_nibble(prob);
+                                                   prob: &C) -> ProbRange {
+        let (nib, ret) = self.get_nibble(prob);
+        *nibble = nib;
+        ret
     }
     fn close(&mut self) -> BrotliResult {
         self.flush()
@@ -235,8 +224,8 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
             }
             fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
                                                            nibble: &mut u8,
-                                                           prob: &C) {
-                self.put_nibble(*nibble, prob);
+                                                           prob: &C) -> ::probability::ProbRange {
+                self.put_nibble(*nibble, prob)
             }
             fn close(&mut self) -> BrotliResult {
                 self.flush();
@@ -398,7 +387,7 @@ mod test {
         }
         for i in 0..16 {
             let nib = mock_decoder.get_nibble(&cdf);
-            assert_eq!(nib, i as u8);
+            assert_eq!(nib.0, i as u8);
         }
         for i in 0..16 {
             println!("Validating {:}", i);
@@ -418,7 +407,7 @@ mod test {
             mock_decoder.calls_to_put_bit[i][3].0 = (i & 1) != 0;
         }
         for i in 0..16 {
-            let nib = mock_decoder.get_nibble(&bcdf);
+            let nib = mock_decoder.get_nibble(&bcdf).0;
             assert_eq!(nib, i as u8)
         }
         for i in 0..16 {

@@ -20,7 +20,7 @@ use alloc::{
 };
 use core::default::Default;
 use core::{mem, cmp};
-use probability::{CDF16, BaseCDF, Prob, LOG2_SCALE};
+use probability::{CDF16, BaseCDF, Prob, LOG2_SCALE, ProbRange};
 use super::interface::{
     ArithmeticEncoderOrDecoder,
     NewWithAllocator,
@@ -229,12 +229,12 @@ impl ANSDecoder {
         self.state_b = x;
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
-    fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> u8 {
+    fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> (u8, ProbRange) {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
         let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset);
-        self.helper_advance_sym(sym_start_freq.start,
-                                sym_start_freq.freq);
-        sym_start_freq.sym
+        self.helper_advance_sym(sym_start_freq.range.start,
+                                sym_start_freq.range.freq);
+        (sym_start_freq.sym, sym_start_freq.range)
     }
 }
 
@@ -252,14 +252,15 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 }
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
-    fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) {
-        let start_freq = cdf.sym_to_start_and_freq(sym);
+    fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) -> ProbRange {
+        let start_freq = cdf.sym_to_start_and_freq(sym).range;
         if !(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE)) {
             debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
         }
         debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
         debug_assert!(start_freq.freq > 0 && i32::from(start_freq.freq) < (1 << LOG2_SCALE));
         self.put_start_freq(start_freq.start, start_freq.freq);
+        start_freq
     }
     fn put_start_freq(&mut self, start: StartFreqType, freq: StartFreqType) {
         debug_assert!(freq != 0);
@@ -362,7 +363,7 @@ impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
         self.put_start_freq(if bit {Prob::from(prob_of_false) << (LOG2_SCALE - 8) } else {0},
                             if bit {256 - Prob::from(prob_of_false)} else {Prob::from(prob_of_false)} << (LOG2_SCALE - 8))
     }
-    fn put_nibble<CDF:CDF16>(&mut self, symbol: u8, cdf:&CDF) {
+    fn put_nibble<CDF:CDF16>(&mut self, symbol: u8, cdf:&CDF) -> ProbRange {
         self.put_nibble_internal(symbol, *cdf)
     }
 
@@ -414,7 +415,7 @@ impl EntropyDecoder for ANSDecoder {
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
         self
     }
-    fn get_nibble<CDF:CDF16>(&mut self, cdf:&CDF) -> u8 {
+    fn get_nibble<CDF:CDF16>(&mut self, cdf:&CDF) -> (u8, ProbRange) {
         self.get_nibble_internal(*cdf)
     }
     fn get_bit(&mut self, mut prob_of_false: u8) -> bool {

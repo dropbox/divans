@@ -14,7 +14,7 @@
 
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
-use super::probability::interface::{CDF2, CDF16};
+use super::probability::interface::{CDF2, CDF16, ProbRange};
 use super::probability;
 use super::codec::{CopySubstate, DictSubstate, LiteralSubstate, PredictionModeState};
 pub use brotli::enc::interface::*;
@@ -215,11 +215,11 @@ pub trait ArithmeticEncoderOrDecoder {
 
     fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
                                                    nibble: &mut u8,
-                                                   prob: &C);
+                                                   prob: &C) -> ProbRange;
     fn get_or_put_nibble<C: CDF16>(&mut self,
                                    nibble: &mut u8,
                                    prob: &C,
-                                   _billing: BillingDesignation) {
+                                   _billing: BillingDesignation) -> ProbRange {
         self.get_or_put_nibble_without_billing(nibble, prob)
     }
 
@@ -234,6 +234,7 @@ pub trait DivansCompressorFactory<
      type ConstructedCompressor: Compressor;
      type AdditionalArgs;
     fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
+           dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<probability::Speed>,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }

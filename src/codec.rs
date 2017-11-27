@@ -395,6 +395,7 @@ pub enum ContextMapType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
+    DynamicContextMixing,
     LiteralAdaptationRate,
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
@@ -456,6 +457,17 @@ impl PredictionModeState {
                       Ok(pred_mode) => pred_mode,
                    };
                    superstate.bk.obs_pred_mode(pred_mode);
+                   *self = PredictionModeState::DynamicContextMixing;
+               },
+               PredictionModeState::DynamicContextMixing => {
+                   let mut beg_nib = superstate.bk.desired_context_mixing;
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(
+                           PredictionModePriorType::DynamicContextMixingSpeed, (0,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       nibble_prob.blend(beg_nib, Speed::MED);
+                   }
+                   superstate.bk.obs_dynamic_context_mixing(beg_nib);
                    *self = PredictionModeState::LiteralAdaptationRate;
                },
                PredictionModeState::LiteralAdaptationRate => {
@@ -758,7 +770,8 @@ fn ilog2(item: i64) -> u32 {
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],
-                      index_equal_1: bool) -> i32{
+                      index_equal_1: bool,
+                      _speed: u8) -> i32{ // speed ranges from 1 to 14 inclusive
     let index = index_equal_1 as usize;
     let full_model_sum_p1 = i64::from(weighted_prob);
     let full_model_total = 1i64 << LOG2_SCALE;
@@ -977,30 +990,32 @@ impl<AllocU8:Allocator<u8>,
                             let mut ecdf = ExternalProbCDF16::default();
                             let shift_offset = if shift != 0 { 0usize } else { 4usize };
                             let en = byte_index*8 + shift_offset + 4;
-                            if en <= in_cmd.prob.slice().len() {
+                            let weighted_prob_range = if en <= in_cmd.prob.slice().len() {
                                 let st = en - 4;
                                 let probs = [in_cmd.prob.slice()[st], in_cmd.prob.slice()[st + 1],
                                              in_cmd.prob.slice()[st + 2], in_cmd.prob.slice()[st + 3]];
                                 ecdf.init(cur_nibble, &probs, nibble_prob);
-                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing);
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, billing)
                             } else {
-                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing);
-                            }
-                            if materialized_prediction_mode {
+                                superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing)
+                            };
+                            if materialized_prediction_mode && superstate.bk.dynamic_context_mixing != 0 {
                                 let model_probs = [
-                                    nibble_prob.sym_to_start_and_freq(cur_nibble).freq,
-                                    cm_prob.sym_to_start_and_freq(cur_nibble).freq,
+                                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
+                                    cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                 ];
-                                let weighted_prob = prob.sym_to_start_and_freq(cur_nibble).freq;
+                                let weighted_prob = weighted_prob_range.freq;
                                 normalize_weights(&mut superstate.bk.model_weights);
                                 let w0new = compute_new_weight(model_probs,
                                                                weighted_prob,
                                                                superstate.bk.model_weights,
-                                                               false);
+                                                               false,
+                                                               superstate.bk.dynamic_context_mixing);
                                 let w1new = compute_new_weight(model_probs,
                                                                weighted_prob,
                                                                superstate.bk.model_weights,
-                                                               true);
+                                                               true,
+                                                               superstate.bk.dynamic_context_mixing);
                                 superstate.bk.model_weights = [w0new, w1new];
                             }
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
@@ -1262,6 +1277,7 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
 #[derive(PartialEq, Debug, Clone)]
 enum PredictionModePriorType {
     Only,
+    DynamicContextMixingSpeed,
     LiteralSpeed,
     Mnemonic,
     FirstNibble,
@@ -1361,6 +1377,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     last_4_states: u8,
     materialized_context_map: bool,
     combine_literal_predictions: bool,
+    desired_context_mixing: u8,
+    dynamic_context_mixing: u8,
     literal_prediction_mode: LiteralPredictionModeNibble,
     literal_adaptation: Speed,
     desired_literal_adaptation: Speed,
@@ -1391,10 +1409,14 @@ impl<Cdf16:CDF16,
            btype_prior: AllocCDF16::AllocatedMemory,
            literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
+           dynamic_context_mixing: u8,
            literal_adaptation_speed:Speed) -> Self {
+        assert!(dynamic_context_mixing < 15); // leaves room for expansion
         let mut ret = CrossCommandBookKeeping{
             model_weights:[1;2],
             desired_literal_adaptation: literal_adaptation_speed,
+            desired_context_mixing:dynamic_context_mixing,
+            dynamic_context_mixing:0,
             literal_adaptation: default_literal_speed(),
             decode_byte_count:0,
             command_count:0,
@@ -1469,6 +1491,9 @@ impl<Cdf16:CDF16,
     }
     fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
         self.literal_adaptation = ladaptation_rate;
+    }
+    fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
+        self.dynamic_context_mixing = context_mixing;
     }
 
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
@@ -1698,7 +1723,9 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            mcdf2:AllocCDF2,
            mut mcdf16:AllocCDF16,
            coder: ArithmeticCoder,
-           spc: Specialization, ring_buffer_size: usize,
+           spc: Specialization,
+           ring_buffer_size: usize,
+           dynamic_context_mixing: u8,
            literal_adaptation_rate :Speed) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -1726,6 +1753,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
+                                            dynamic_context_mixing,
                                             literal_adaptation_rate,
             ),
         }
@@ -1831,6 +1859,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                coder: ArithmeticCoder,
                specialization: Specialization,
                ring_buffer_size: usize,
+               dynamic_context_mixing: u8,
                literal_adaptation_rate: Option<Speed>) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
@@ -1844,6 +1873,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      coder,
                                                                      specialization,
                                                                      ring_buffer_size,
+                                                                     dynamic_context_mixing,
                                                                      literal_adaptation_rate.unwrap_or_else(
                                                                          default_literal_speed),
             ),

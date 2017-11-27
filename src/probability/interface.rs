@@ -17,9 +17,14 @@ macro_rules! println_stderr(
 );
 
 #[derive(Copy,Clone,PartialEq,Eq,Debug)]
-pub struct SymStartFreq {
+pub struct ProbRange {
     pub start: Prob,
     pub freq: Prob,
+}
+
+#[derive(Copy,Clone,PartialEq,Eq,Debug)]
+pub struct SymStartFreq {
+    pub range: ProbRange,
     pub sym: u8,
 }
 
@@ -72,8 +77,9 @@ pub trait BaseCDF {
         let cdf_sym = self.div_by_max((i32::from(self.cdf(sym)) << LOG2_SCALE));
         let freq = cdf_sym - cdf_prev;
         SymStartFreq {
-            start: cdf_prev as Prob + 1, // major hax
-            freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            range: ProbRange {start: cdf_prev as Prob + 1, // major hax
+                              freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            },
             sym: sym,
         }
     }
@@ -169,8 +175,13 @@ impl BaseCDF for CDF2 {
         let rescaled_prob = self.div_by_max(i32::from(self.prob) << LOG2_SCALE);
         SymStartFreq {
             sym: bit as u8,
-            start: if bit {rescaled_prob as Prob} else {0},
-            freq: if bit {((1 << LOG2_SCALE) - rescaled_prob) as Prob} else {rescaled_prob as Prob}
+            range: ProbRange {start: if bit {rescaled_prob as Prob} else {0},
+                              freq: if bit {
+                                  ((1 << LOG2_SCALE) - rescaled_prob) as Prob
+                              } else {
+                                  rescaled_prob as Prob
+                              },
+            }
         }
     }
     fn div_by_max(&self, val:i32) -> i32 {

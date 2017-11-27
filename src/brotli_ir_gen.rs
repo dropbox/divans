@@ -385,7 +385,8 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocHT>;
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT);
-     fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+        fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
+           dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<Speed>,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         if window_size < 10 {
@@ -419,6 +420,7 @@ impl<AllocU8:Allocator<u8>,
                 enc,
                 EncoderSpecialization::new(),
                 window_size,
+                dynamic_context_mixing,
                 literal_adaptation_rate,
             ),
             header_progress: 0,

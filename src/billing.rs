@@ -17,7 +17,7 @@ use core::iter::FromIterator;
 use core::marker::PhantomData;
 use alloc::{Allocator};
 use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
-use super::probability::CDF16;
+use super::probability::{CDF16, ProbRange};
 use brotli::BrotliResult;
 
 #[cfg(feature="billing")]
@@ -126,18 +126,19 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
     }
     fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
                                                    nibble: &mut u8,
-                                                   prob: &C) {
+                                                   prob: &C) -> ProbRange {
         self.get_or_put_nibble(nibble, prob, BillingDesignation::Unknown)
     }
     fn get_or_put_nibble<C: CDF16>(&mut self,
                                    nibble: &mut u8,
                                    prob: &C,
-                                   billing: BillingDesignation) {
-        self.coder.get_or_put_nibble_without_billing(nibble, prob);
+                                   billing: BillingDesignation) -> ProbRange {
+        let ret = self.coder.get_or_put_nibble_without_billing(nibble, prob);
         let actual_prob = prob.pdf(*nibble) as f64 / (prob.max() as f64);
         let v = self.counter.entry(billing).or_insert((0.0, 0.0));
         (*v).0 += -actual_prob.log2();
         (*v).1 += 4.0;
+        ret
     }
     fn close(&mut self) -> BrotliResult {
         self.coder.close()
