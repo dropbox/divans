@@ -251,7 +251,7 @@ impl<AllocU8:Allocator<u8>,
                                     cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                 ];
                                 let weighted_prob = weighted_prob_range.freq;
-                                normalize_weights(&mut superstate.bk.model_weights);
+                                //normalize_weights(&mut superstate.bk.model_weights);
                                 let w0new = compute_new_weight(model_probs,
                                                                weighted_prob,
                                                                superstate.bk.model_weights,
@@ -350,16 +350,16 @@ fn compute_new_weight(probs: [Prob; 2],
     let full_model_sum_p0 = full_model_total.wrapping_sub(i64::from(weighted_prob));
     let n1i = i64::from(probs[index]);
     let ni = 1i64 << LOG2_SCALE;
-    let error = full_model_total - full_model_sum_p1;
+    let error = full_model_total.wrapping_sub(full_model_sum_p1);
     let wi = i64::from(weights[index]);
-    let efficacy = full_model_total * n1i - full_model_sum_p1 * ni;
+    let efficacy = full_model_total.wrapping_mul(n1i) - full_model_sum_p1.wrapping_mul(ni);
     //let geometric_probabilities = full_model_sum_p1 * full_model_sum_p0;
-    let log_geometric_probabilities = 64 - (full_model_sum_p1 *full_model_sum_p0).leading_zeros();
+    let log_geometric_probabilities = 64 - (full_model_sum_p1.wrapping_mul(full_model_sum_p0)).leading_zeros();
     //let scaled_geometric_probabilities = geometric_probabilities * S;
     //let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;// / geometric_probabilities;
     //let new_weight_adj = (error * efficacy)/(full_model_sum_p1 * full_model_sum_p0);
-    let new_weight_adj = (error * efficacy) >> log_geometric_probabilities;
+    let new_weight_adj = (error.wrapping_mul(efficacy)) >> log_geometric_probabilities;
 //    assert!(wi + new_weight_adj < (1i64 << 31));
     //print!("{} -> {} due to {:?} vs {}\n", wi as f64 / (weights[0] + weights[1]) as f64, (wi + new_weight_adj) as f64 /(weights[0] as i64 + new_weight_adj as i64 + weights[1] as i64) as f64, probs[index], weighted_prob);
-    (core::cmp::max(0,wi + new_weight_adj)) as i32
+    core::cmp::max(0,wi.wrapping_add(new_weight_adj) as i32)
 }
