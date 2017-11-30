@@ -91,8 +91,9 @@ fn compute_new_weight(probs: [Prob; 2],
     let p1 = s1;
     let wi = weights[index] as f64 / ((1i64 << LOG2_SCALE) as f64);
     let mut wi_new = wi + (1.0 - p1) * (s * n1i - s1 * ni) / (s0 * s1);
-    if !(wi_new > 0.0) {
-        wi_new = 0.0;
+    let eps = 0.00001f64;
+    if !(wi_new > eps) {
+        wi_new = eps;
     }
     (wi_new * ((1i64 << LOG2_SCALE) as f64)) as i32
 }
@@ -120,5 +121,5 @@ fn compute_new_weight(probs: [Prob; 2],
     let new_weight_adj = (error.wrapping_mul(efficacy)) >> log_geometric_probabilities;
 //    assert!(wi + new_weight_adj < (1i64 << 31));
     //print!("{} -> {} due to {:?} vs {}\n", wi as f64 / (weights[0] + weights[1]) as f64, (wi + new_weight_adj) as f64 /(weights[0] as i64 + new_weight_adj as i64 + weights[1] as i64) as f64, probs[index], weighted_prob);
-    core::cmp::max(0,wi.wrapping_add(new_weight_adj) as i32)
+    core::cmp::max(1,wi.wrapping_add(new_weight_adj) as i32)
 }
