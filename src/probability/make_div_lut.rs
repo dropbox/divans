@@ -1,6 +1,6 @@
 mod numeric;
 fn main() {
-    print!("pub static RECIPROCAL8: [(i32, u8); 256] = [\n    (0,0), ");
+    print!("pub static RECIPROCAL8: [i32; 256] = [\n    0, ");
     for divisor in 1..256 {
         let next_str = if divisor % 16 == 15 {
            "\n    "
@@ -8,10 +8,23 @@ fn main() {
            " "
         };
         let reciprocal = numeric::compute_divisor8(divisor as numeric::Denominator8Type);
-        for num in 0u16..32768u16 {
-            assert_eq!(num as i16 /divisor, numeric::fast_divide_15bit_by_8bit(num as i16, reciprocal));
+        let mut fail = false;
+        for num in 0u16..65535u16 {
+            let correct = num as u16 /divisor;
+            let trial = numeric::fast_divide_16bit_by_8bit(num as u16, reciprocal) as u16;
+            if trial != correct {
+                print!("FAIL: {} : {} / {} = fast: {} slow: {}\n",
+                       reciprocal,
+                       num,
+                       divisor,
+                       trial,
+                       correct);
+                fail = true;
+            }
         }
-        print!("({},{}),{}", reciprocal.0, numeric::compute_divisor8(divisor as numeric::Denominator8Type).1, next_str)
+        assert!(!fail);
+        assert!(reciprocal <= (1<<30));
+        print!("{},{}", reciprocal, next_str)
     }
     print!("];\n");
     print!("pub static RECIPROCAL: [(i64, u8); 65536] = [\n    (0,0), ");

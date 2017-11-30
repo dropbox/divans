@@ -218,10 +218,15 @@ impl<AllocU8:Allocator<u8>,
                             let prob = if materialized_prediction_mode {
                                 if superstate.bk.combine_literal_predictions {
                                     let total = i64::from(superstate.bk.model_weights[0]) + i64::from(superstate.bk.model_weights[1]);
-                                    let model_weight = i64::from(superstate.bk.model_weights[1]) * (1<<BLEND_FIXED_POINT_PRECISION) / total;
-                                    
-                                    cm_prob.average(nibble_prob,
-                                                    model_weight as i32/*(1<<(BLEND_FIXED_POINT_PRECISION-1))*/)
+                                    let leading_zeros = total.leading_zeros();
+                                    let shift = core::cmp::max(56 - (leading_zeros as i16), 0);
+                                    let total_8bit = total >> shift;
+                                    let a = superstate.bk.model_weights[1]>> shift;
+                                    let model_weight = i32::from(::probability::numeric::fast_divide_16bit_by_8bit(
+                                        (a as u16)<< 8,
+                                        ::probability::numeric::lookup_divisor8(total_8bit as u8))) << (BLEND_FIXED_POINT_PRECISION - 8);
+                                    //let model_weight = i64::from(superstate.bk.model_weights[1]) * (1<<BLEND_FIXED_POINT_PRECISION) / total;
+                                    cm_prob.average(nibble_prob, model_weight)
                                 } else {
                                     *cm_prob
                                 }
