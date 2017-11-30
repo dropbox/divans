@@ -251,7 +251,7 @@ impl<AllocU8:Allocator<u8>,
                                     cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                 ];
                                 let weighted_prob = weighted_prob_range.freq;
-                                //normalize_weights(&mut superstate.bk.model_weights);
+                                normalize_weights(&mut superstate.bk.model_weights);
                                 let w0new = compute_new_weight(model_probs,
                                                                weighted_prob,
                                                                superstate.bk.model_weights,
@@ -302,14 +302,20 @@ impl<AllocU8:Allocator<u8>,
     }
 }
 
-
-fn normalize_weights(weights: &mut [i32;2]) {
+#[cold]
+fn fix_weights(weights: &mut [i32;2]) {
     let ilog = 32  - core::cmp::min(weights[0].leading_zeros(),
                                     weights[1].leading_zeros());
     let max_log = 24;
     if ilog >= max_log {
         weights[0] >>= ilog - max_log;
         weights[1] >>= ilog - max_log;
+    }
+}
+
+fn normalize_weights(weights: &mut [i32;2]) {
+    if ((weights[0]|weights[1])&0x7f000000) != 0 {
+        fix_weights(weights);
     }
 }
 fn ilog2(item: i64) -> u32 {
