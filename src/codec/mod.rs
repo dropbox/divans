@@ -24,13 +24,14 @@ use super::interface::{
     LiteralBlockSwitch,
     Nop
 };
+mod weights;
 mod interface;
 pub use self::interface::{
     EncoderOrDecoderSpecialization,
     AllocatedMemoryPrefix,
     CrossCommandState,
 };
-    
+
 pub mod copy;
 pub mod dict;
 pub mod literal;
