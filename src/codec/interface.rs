@@ -112,7 +112,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    pub model_weights: super::weights::Weights,
+    pub model_weights: [super::weights::Weights;2],
     pub last_8_literals: u64,
     pub decode_byte_count: u32,
     pub command_count:u32,
@@ -186,7 +186,8 @@ impl<Cdf16:CDF16,
            literal_adaptation_speed:Speed) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
         let mut ret = CrossCommandBookKeeping{
-            model_weights:super::weights::Weights::default(),
+            model_weights:[super::weights::Weights::default(),
+                           super::weights::Weights::default()],
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
             literal_adaptation: default_literal_speed(),
@@ -265,7 +266,8 @@ impl<Cdf16:CDF16,
         self.literal_adaptation = ladaptation_rate;
     }
     pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
-        self.model_weights.set_mixing_param(context_mixing);
+        self.model_weights[0].set_mixing_param(context_mixing);
+        self.model_weights[1].set_mixing_param(context_mixing);
     }
 
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {

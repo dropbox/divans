@@ -24,7 +24,7 @@ use super::interface::{
     LiteralBlockSwitch,
     Nop
 };
-mod weights;
+pub mod weights;
 mod interface;
 pub use self::interface::{
     EncoderOrDecoderSpecialization,

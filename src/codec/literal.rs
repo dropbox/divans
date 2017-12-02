@@ -217,7 +217,7 @@ impl<AllocU8:Allocator<u8>,
                             };
                             let prob = if materialized_prediction_mode {
                                 if superstate.bk.combine_literal_predictions {
-                                    cm_prob.average(nibble_prob, superstate.bk.model_weights.norm_weight() as u16 as i32)
+                                    cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
                                 } else {
                                     *cm_prob
                                 }
@@ -236,12 +236,12 @@ impl<AllocU8:Allocator<u8>,
                             } else {
                                 superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, billing)
                             };
-                            if materialized_prediction_mode && superstate.bk.model_weights.should_mix() {
+                            if materialized_prediction_mode && superstate.bk.model_weights[high_nibble as usize].should_mix() {
                                 let model_probs = [
                                     nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                     cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                 ];
-                                superstate.bk.model_weights.update(model_probs, weighted_prob_range.freq);
+                                superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
                             }
                             nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
                             cm_prob.blend(cur_nibble, Speed::GLACIAL);

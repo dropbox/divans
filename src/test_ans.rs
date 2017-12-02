@@ -26,6 +26,7 @@ use alloc::{
     SliceWrapper,
     SliceWrapperMut,
 };
+use super::codec::weights::Weights;
 macro_rules! perror(
     ($($val:tt)*) => { {
         writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
@@ -92,6 +93,11 @@ trait TestSelection : Clone + Copy {
     fn adapt_probability(&self) -> bool;
     fn independent_hilo(&self) -> bool;
     fn make_test_cdfs(&self) -> (Self::C16, [Self::C16; 16]);
+    fn adaptive_context_mixing(&self) -> bool;
+}
+#[derive(Clone, Copy)]
+struct TestContextMixing{
+    pub size: usize,
 }
 #[derive(Clone, Copy)]
 struct TestAdapt{
@@ -105,11 +111,22 @@ struct TestNoAdapt{
 struct TestSimple{
     pub size: usize,
 }
+impl TestSelection for TestContextMixing {
+    type C16 = DefaultCDF16;
+    fn size(&self) -> usize {self.size}
+    fn adapt_probability(&self) -> bool {true}
+    fn adaptive_context_mixing(&self) -> bool {true}
+    fn independent_hilo(&self) -> bool {false}
+    fn make_test_cdfs(&self) -> (DefaultCDF16, [DefaultCDF16; 16]) {
+        self::make_test_cdfs()
+    }
+}
 
 impl TestSelection for TestAdapt {
     type C16 = DefaultCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {true}
+    fn adaptive_context_mixing(&self) -> bool {false}
     fn independent_hilo(&self) -> bool {false}
     fn make_test_cdfs(&self) -> (DefaultCDF16, [DefaultCDF16; 16]) {
         self::make_test_cdfs()
@@ -119,6 +136,7 @@ impl TestSelection for TestNoAdapt {
     type C16 = DefaultCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {false}
+    fn adaptive_context_mixing(&self) -> bool {false}
     fn independent_hilo(&self) -> bool {false}
     fn make_test_cdfs(&self) -> (DefaultCDF16, [DefaultCDF16; 16]) {
         self::make_test_cdfs()
@@ -129,24 +147,46 @@ impl TestSelection for TestSimple {
     type C16 = DefaultCDF16;
     fn size(&self) -> usize {self.size}
     fn adapt_probability(&self) -> bool {false}
+    fn adaptive_context_mixing(&self) -> bool {false}
     fn independent_hilo(&self) -> bool {true}
     fn make_test_cdfs(&self) -> (DefaultCDF16, [DefaultCDF16; 16]) {
         self::make_test_cdfs()
     }
 }
-
+#[inline(always)]
 fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
                              TS:TestSelection>(e: &mut ANSEncoder<AllocU8>, src: &[u8], dst: &mut [u8], n: &mut usize, ts: TS) {
     let mut t = 0;
     *n = 0;
+    let mut weights = [Weights::default(), Weights::default()];
     let (mut cdf_high, mut cdf_low) = ts.make_test_cdfs();
     let (mut _unused, mut cdf_low_adv) = ts.make_test_cdfs();
     let (mut _unused, mut cdf_high_adv) = ts.make_test_cdfs();
     let mut last_nibble = 0usize;
     for u in src.iter() {
         let v = *u;
+        let blend0 = if ts.adaptive_context_mixing() {
+            weights[0].norm_weight() as u16 as i32
+        } else {
+            1 << (BLEND_FIXED_POINT_PRECISION - 2)
+        };
+        let blend1 = if ts.adaptive_context_mixing() {
+            weights[1].norm_weight() as u16 as i32
+        } else {
+            1 << (BLEND_FIXED_POINT_PRECISION - 2)
+        };
         //left to right
-        e.put_nibble(v >> 4, &cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
+        let high_nibble = v >> 4;
+        let high_weighted_prob_range = e.put_nibble(high_nibble, &cdf_high.average(&cdf_high_adv[last_nibble], blend0));
+        if ts.adaptive_context_mixing() {
+            let model_probs = [
+                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
+                cdf_high.sym_to_start_and_freq(high_nibble).range.freq,
+            ];
+            weights[0].update(model_probs,
+                              high_weighted_prob_range.freq);
+        }
+
         {
             let mut q = e.get_internal_buffer();
             let qb = q.num_pop_bytes_avail();
@@ -161,13 +201,23 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
             cdf_high_adv[last_nibble].blend(v >> 4, Speed::MED);
         }
         let cdfl = &mut cdf_low[if ts.independent_hilo() {0} else {(v>>4) as usize}];
-        e.put_nibble(v & 0xf, &cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2)));
+        let low_nibble = v & 0xf;
+
+        let low_weighted_prob_range = e.put_nibble(low_nibble, &cdfl.average(&cdf_low_adv[last_nibble], blend1));
         let mut q = e.get_internal_buffer();
         let qb = q.num_pop_bytes_avail();
         if qb > 0 {
             assert!(qb + *n <= dst.len());
             q.pop_data(&mut dst[*n  .. *n + qb]);
             *n = *n + qb;
+        }
+        if ts.adaptive_context_mixing() {
+            let model_probs = [
+                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
+                cdfl.sym_to_start_and_freq(low_nibble).range.freq,
+            ];
+            weights[1].update(model_probs,
+                              low_weighted_prob_range.freq);
         }
         if ts.adapt_probability() {
             cdfl.blend(v & 0xf, Speed::SLOW);
@@ -185,8 +235,10 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         *n = *n + qb;
     }
 }
+#[inline(always)]
 fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
                              TS:TestSelection>(d: &mut ANSDecoder, src: &[u8], n: &mut usize, end: &mut [u8], ts: TS) {
+    let mut weights = [Weights::default(), Weights::default()];
     let max_copy =1024usize;
     let (mut cdf_high, mut cdf_low) = ts.make_test_cdfs();
     let (mut _unused, mut cdf_low_adv) = ts.make_test_cdfs();
@@ -204,9 +256,28 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         //assert!(q.num_pop_bytes_avail() == sz);
         *n = *n + sz;
     }
+    let mut blend0 = if ts.adaptive_context_mixing() {
+        weights[0].norm_weight() as u16 as i32
+    } else {
+        1 << (BLEND_FIXED_POINT_PRECISION - 2)
+    };
     for v in end.iter_mut() {
-        let high_nibble = d.get_nibble(&cdf_high.average(&cdf_high_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2))).0;
+        let blend1 = if ts.adaptive_context_mixing() {
+            weights[1].norm_weight() as u16 as i32
+        } else {
+            1 << (BLEND_FIXED_POINT_PRECISION - 2)
+        };
+        let (high_nibble, high_weighted_prob_range) = d.get_nibble(&cdf_high.average(&cdf_high_adv[last_nibble],
+                                                                                   blend0));
         *v = high_nibble << 4;
+        if ts.adaptive_context_mixing() {
+            let model_probs = [
+                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
+                cdf_high.sym_to_start_and_freq(high_nibble).range.freq,
+            ];
+            weights[0].update(model_probs,
+                              high_weighted_prob_range.freq);
+        }
         {
             let mut q = d.get_internal_buffer();
             while q.num_push_bytes_avail() > 0 {
@@ -221,7 +292,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
             cdf_high.blend(*v >> 4, Speed::SLOW);
             cdf_high_adv[last_nibble].blend(*v >> 4, Speed::MED);
         }
-        let low_nibble = d.get_nibble(&cdfl.average(&cdf_low_adv[last_nibble], 1 << (BLEND_FIXED_POINT_PRECISION - 2))).0;
+        let (low_nibble, low_weighted_prob_range) = d.get_nibble(&cdfl.average(&cdf_low_adv[last_nibble], blend1));
         *v |= low_nibble;
         let mut q = d.get_internal_buffer();
         while q.num_push_bytes_avail() > 0 {
@@ -229,6 +300,19 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
                                     max_copy);
             q.push_data(&src[*n .. *n + sz]);
             *n = *n + sz;
+        }
+        blend0 = if ts.adaptive_context_mixing() {
+            weights[0].norm_weight() as u16 as i32
+        } else {
+            1 << (BLEND_FIXED_POINT_PRECISION - 2)
+        };
+        if ts.adaptive_context_mixing() {
+            let model_probs = [
+                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
+                cdfl.sym_to_start_and_freq(low_nibble).range.freq,
+            ];
+            weights[1].update(model_probs,
+                              low_weighted_prob_range.freq);
         }
         if ts.adapt_probability() {
             cdfl.blend(low_nibble, Speed::SLOW);
@@ -422,7 +506,12 @@ fn entropy_bit_decode_bench_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_adaptive_100k(b: &mut Bencher) {
+fn encode_nibble_roundtrip_context_mixing_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_roundtrip(b, TestContextMixing{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
+fn encode_nibble_roundtrip_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
@@ -439,7 +528,12 @@ fn encode_nibble_roundtrip_simple_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_adaptive_100k(b: &mut Bencher) {
+fn encode_only_nibble_context_mixing_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_encode_only(b, TestContextMixing{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
+fn encode_only_nibble_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
@@ -455,7 +549,12 @@ fn encode_only_nibble_simple_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_adaptive_100k(b: &mut Bencher) {
+fn decode_nibble_context_mixing_100k(b: &mut Bencher) {
+    entropy_dynamic_nibble_decode(b, TestContextMixing{size:1024 * 1024/10})
+}
+#[cfg(feature="benchmark")]
+#[bench]
+fn decode_nibble_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
