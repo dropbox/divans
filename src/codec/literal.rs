@@ -238,8 +238,8 @@ impl<AllocU8:Allocator<u8>,
                             };
                             if materialized_prediction_mode && superstate.bk.model_weights[high_nibble as usize].should_mix() {
                                 let model_probs = [
-                                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                     cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
+                                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                                 ];
                                 superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
                             }

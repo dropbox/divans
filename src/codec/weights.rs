@@ -51,7 +51,7 @@ fn compute_normalized_weight(model_weights: [i32;2]) -> i16 {
     let shift = core::cmp::max(56 - (leading_zeros as i16), 0);
     let total_8bit = total >> shift;
     ::probability::numeric::fast_divide_16bit_by_8bit(
-        ((model_weights[1]>> shift) as u16)<< 8,
+        ((model_weights[0] >> shift) as u16)<< 8,
         ::probability::numeric::lookup_divisor8(total_8bit as u8)) << (BLEND_FIXED_POINT_PRECISION - 8)
 }
 

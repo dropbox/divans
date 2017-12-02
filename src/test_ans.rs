@@ -180,8 +180,8 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         let high_weighted_prob_range = e.put_nibble(high_nibble, &cdf_high.average(&cdf_high_adv[last_nibble], blend0));
         if ts.adaptive_context_mixing() {
             let model_probs = [
-                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
                 cdf_high.sym_to_start_and_freq(high_nibble).range.freq,
+                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
             ];
             weights[0].update(model_probs,
                               high_weighted_prob_range.freq);
@@ -213,8 +213,8 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         }
         if ts.adaptive_context_mixing() {
             let model_probs = [
-                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
                 cdfl.sym_to_start_and_freq(low_nibble).range.freq,
+                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
             ];
             weights[1].update(model_probs,
                               low_weighted_prob_range.freq);
@@ -272,8 +272,8 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         *v = high_nibble << 4;
         if ts.adaptive_context_mixing() {
             let model_probs = [
-                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
                 cdf_high.sym_to_start_and_freq(high_nibble).range.freq,
+                cdf_high_adv[last_nibble].sym_to_start_and_freq(high_nibble).range.freq,
             ];
             weights[0].update(model_probs,
                               high_weighted_prob_range.freq);
@@ -308,8 +308,8 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
         };
         if ts.adaptive_context_mixing() {
             let model_probs = [
-                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
                 cdfl.sym_to_start_and_freq(low_nibble).range.freq,
+                cdf_low_adv[last_nibble].sym_to_start_and_freq(low_nibble).range.freq,
             ];
             weights[1].update(model_probs,
                               low_weighted_prob_range.freq);
