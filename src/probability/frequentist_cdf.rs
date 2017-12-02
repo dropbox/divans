@@ -1,5 +1,5 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, MAX_FREQUENTIST_PROB};
 fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
     if val != 0 {
         1 << shift_val
@@ -72,8 +72,7 @@ impl CDF16 for FrequentistCDF16 {
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }
-        let limit: Prob = 32_767 - 16 - 384 /* XXX: max possible increment */;
-        if self.cdf[15] >= limit {
+        if self.cdf[15] >= MAX_FREQUENTIST_PROB {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
             }

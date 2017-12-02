@@ -1,5 +1,5 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE, MAX_FREQUENTIST_PROB};
 use super::numeric;
 use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 use stdsimd;
@@ -188,9 +188,8 @@ impl CDF16 for SIMDFrequentistCDF16 {
         let one_to_16 = i16x16::new(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
         let mask_v = unsafe{stdsimd::vendor::_mm256_cmpgt_epi16(one_to_16, i16x16::splat(i16::from(symbol)))};
         self.cdf = self.cdf + (increment_v & i16x16::from(mask_v));
-        const LIMIT: i16 = 32_767 - 16 - 384 /* XXX: max possible increment */;
         let mut cdf_max = self.max();
-        if cdf_max >= LIMIT {
+        if cdf_max >= MAX_FREQUENTIST_PROB {
             let cdf_bias = one_to_16;
             self.cdf = self.cdf + cdf_bias - ((self.cdf + cdf_bias) >> 2);
             cdf_max = self.max();

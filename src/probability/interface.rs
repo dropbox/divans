@@ -1,5 +1,6 @@
 use core;
 pub type Prob = i16; // can be i32
+pub const MAX_FREQUENTIST_PROB: Prob = 0x4000;
 #[cfg(feature="billing")]
 use std::io::Write;
 #[cfg(feature="billing")]
