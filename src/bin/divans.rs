@@ -776,7 +776,9 @@ fn compress_raw<Reader:std::io::Read,
     literal_adaptation_speed: Option<Speed>,
     do_context_map: bool,
     force_stride_value:StrideSelection,
+    quality: Option<u16>,
     opt_window_size:Option<i32>,
+    lgwin: Option<u32>,
     buffer_size: usize,
     use_brotli: bool) -> io::Result<()> {
     let window_size = opt_window_size.unwrap_or(21);
@@ -805,7 +807,10 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::histogram::HistogramDistance>::default(),
              ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
-             ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default()),
+             ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
+             quality,
+             lgwin,
+            ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -1085,129 +1090,159 @@ fn main() {
     let mut force_stride_value = StrideSelection::PriorDisabled;
     let mut literal_adaptation: Option<Speed> = None;
     let mut window_size: Option<i32> = None;
+    let mut lgwin: Option<u32> = None;
+    let mut quality: Option<u16> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
+    let mut doubledash = false;
     if env::args_os().len() > 1 {
-        let mut first = true;
-        for argument in env::args() {
-            if first {
-                first = false;
-                continue;
-            }
-            if argument == "-d" {
-                continue;
-            }
-            if argument.starts_with("-bs") {
-                buffer_size = argument.trim_matches(
-                    '-').trim_matches(
-                    'b').trim_matches('s').parse::<usize>().unwrap();
-                continue;
-            }
-            if argument.starts_with("-b") {
-                num_benchmarks = argument.trim_matches(
-                    '-').trim_matches(
-                    'b').parse::<usize>().unwrap();
-                continue;
-            }
-            if argument == "--recode" {
-                do_recode = true;
-                continue;
-            }
-            if argument.starts_with("-w") || argument.starts_with("-window=") {
-                let fs = argument.trim_matches(
-                    '-').trim_matches(
-                    'w').trim_matches(
-                    'i').trim_matches(
-                    'n').trim_matches(
-                    'd').trim_matches(
-                    'o').trim_matches(
-                    'w').trim_matches(
-                    '=').parse::<i32>().unwrap();
-                window_size=Some(fs);
-                continue;
-            }
-            if argument.starts_with("-stride") || argument == "-s" {
-                if argument.starts_with("-stride=") {
+        for argument in env::args().skip(1) {
+            if !doubledash {
+                if argument == "-d" {
+                    continue;
+                }
+                if argument == "--" {
+                    doubledash = true;
+                    continue;
+                }
+                if argument.starts_with("-bs") {
+                    buffer_size = argument.trim_matches(
+                        '-').trim_matches(
+                        'b').trim_matches('s').parse::<usize>().unwrap();
+                    continue;
+                }
+                if argument.starts_with("-b") {
+                    num_benchmarks = argument.trim_matches(
+                        '-').trim_matches(
+                        'b').parse::<usize>().unwrap();
+                    continue;
+                }
+                if argument == "--recode" {
+                    do_recode = true;
+                    continue;
+                }
+                if argument.starts_with("-lgwin") {
                     let fs = argument.trim_matches(
                         '-').trim_matches(
-                        's').trim_matches(
-                        't').trim_matches(
-                        'r').trim_matches(
+                        'l').trim_matches(
+                        'g').trim_matches(
+                        'w').trim_matches(
                         'i').trim_matches(
-                        'd').trim_matches(
-                        'e').trim_matches(
+                        'n').trim_matches(
                         '=').parse::<u32>().unwrap();
-                    force_stride_value = match fs {
-                        0 => panic!("Omit -s to set avoid stride=0"),
-                        1 => StrideSelection::Stride1,
-                        2 => StrideSelection::Stride2,
-                        3 => StrideSelection::Stride3,
-                        4 => StrideSelection::Stride4,
-                        5 => StrideSelection::Stride5,
-                        6 => StrideSelection::Stride6,
-                        7 => StrideSelection::Stride7,
-                        8 => StrideSelection::Stride8,
-                        _ => panic!("Force stride must be <= 8"),
-                    }
-                } else {
-                    match force_stride_value {
-                        StrideSelection::PriorDisabled => force_stride_value = StrideSelection::UseBrotliRec,
-                        _ => {}, // already set
-                    }
+                    lgwin=Some(fs);
+                    continue;
                 }
-                continue;
-            }
-            if argument == "-cm" || argument == "-contextmap" {
-                use_context_map = true;
-                continue;
-            }
-            if argument == "-i" {
-                do_compress = true;
-                continue;
-            }
-            if argument == "-c" {
-                do_compress = true;
-                raw_compress = true;
-                continue;
-            }
-            if argument == "-nobrotli" {
-                do_compress = true;
-                raw_compress = true;
-                use_brotli = false;
-                continue;
-            }
-            if argument.starts_with("-mixing=") {
-                dynamic_context_mixing = Some(argument.trim_matches(
-                    '-').trim_matches(
-                    'm').trim_matches(
-                    'i').trim_matches(
-                    'x').trim_matches(
-                    'i').trim_matches(
-                    'n').trim_matches(
-                    'g').trim_matches(
-                    '=').parse::<i32>().unwrap() as u8);
-                continue
-            }
-            if argument.starts_with("-speed=") {
-                literal_adaptation = Some(argument.trim_matches(
-                    '-').trim_matches(
-                    's').trim_matches(
-                    'p').trim_matches(
-                    'e').trim_matches(
-                    'e').trim_matches(
-                    'd').trim_matches(
-                    '=').parse::<Speed>().unwrap());
-                continue
-
-            }
-            if argument == "-h" || argument == "-help" || argument == "--help" {
-                println_stderr!("Compression: divans {{-c [raw_input_file] | -i [ir_file]}} [output_file]");
-                println_stderr!("Decompression: divans [input_file] [output_file]");
-                return;
-            }
-            if argument == "-v" || argument == "-version" || argument == "--version" {
-                println_stderr!("Divans {}", sha());
-                return;
+                if argument.starts_with("-q") {
+                    let fs = argument.trim_matches(
+                        '-').trim_matches(
+                        'q').trim_matches(
+                        'u').trim_matches(
+                        'a').trim_matches(
+                        'l').trim_matches(
+                        'i').trim_matches(
+                        't').trim_matches(
+                        'y').trim_matches(
+                        '=').parse::<u16>().unwrap();
+                    quality=Some(fs);
+                    continue;
+                }
+                if argument.starts_with("-w") || argument.starts_with("-window=") {
+                    let fs = argument.trim_matches(
+                        '-').trim_matches(
+                        'w').trim_matches(
+                        'i').trim_matches(
+                        'n').trim_matches(
+                        'd').trim_matches(
+                        'o').trim_matches(
+                        'w').trim_matches(
+                    '=').parse::<i32>().unwrap();
+                    window_size=Some(fs);
+                    continue;
+                }
+                if argument.starts_with("-stride") || argument == "-s" {
+                    if argument.starts_with("-stride=") {
+                        let fs = argument.trim_matches(
+                            '-').trim_matches(
+                            's').trim_matches(
+                            't').trim_matches(
+                            'r').trim_matches(
+                            'i').trim_matches(
+                            'd').trim_matches(
+                            'e').trim_matches(
+                            '=').parse::<u32>().unwrap();
+                        force_stride_value = match fs {
+                            0 => panic!("Omit -s to set avoid stride=0"),
+                            1 => StrideSelection::Stride1,
+                            2 => StrideSelection::Stride2,
+                            3 => StrideSelection::Stride3,
+                            4 => StrideSelection::Stride4,
+                            5 => StrideSelection::Stride5,
+                            6 => StrideSelection::Stride6,
+                            7 => StrideSelection::Stride7,
+                            8 => StrideSelection::Stride8,
+                            _ => panic!("Force stride must be <= 8"),
+                        }
+                    } else {
+                        match force_stride_value {
+                            StrideSelection::PriorDisabled => force_stride_value = StrideSelection::UseBrotliRec,
+                            _ => {}, // already set
+                        }
+                    }
+                    continue;
+                }
+                if argument == "-cm" || argument == "-contextmap" {
+                    use_context_map = true;
+                    continue;
+                }
+                if argument == "-i" {
+                    do_compress = true;
+                    continue;
+                }
+                if argument == "-c" {
+                    do_compress = true;
+                    raw_compress = true;
+                    continue;
+                }
+                if argument == "-nobrotli" {
+                    do_compress = true;
+                    raw_compress = true;
+                    use_brotli = false;
+                    continue;
+                }
+                if argument.starts_with("-mixing=") {
+                    dynamic_context_mixing = Some(argument.trim_matches(
+                        '-').trim_matches(
+                        'm').trim_matches(
+                        'i').trim_matches(
+                        'x').trim_matches(
+                        'i').trim_matches(
+                        'n').trim_matches(
+                        'g').trim_matches(
+                        '=').parse::<i32>().unwrap() as u8);
+                    continue
+                }
+                if argument.starts_with("-speed=") {
+                    literal_adaptation = Some(argument.trim_matches(
+                        '-').trim_matches(
+                        's').trim_matches(
+                        'p').trim_matches(
+                        'e').trim_matches(
+                        'e').trim_matches(
+                        'd').trim_matches(
+                        '=').parse::<Speed>().unwrap());
+                    continue
+                        
+                }
+                if argument == "-h" || argument == "-help" || argument == "--help" {
+                    println_stderr!("Compression: divans {{-c [raw_input_file] | -i [ir_file]}} [output_file]");
+                    println_stderr!("Decompression: divans [input_file] [output_file]");
+                    return;
+                }
+                if argument == "-v" || argument == "-version" || argument == "--version" {
+                    println_stderr!("Divans {}", sha());
+                    return;
+                }
             }
             if filenames[0] == "" {
                 filenames[0] = argument.clone();
@@ -1238,7 +1273,7 @@ fn main() {
                         }
                         input = buffered_input.into_inner();
                     } else if do_compress {
-                        match compress_raw(&mut input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
+                        match compress_raw(&mut input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1268,7 +1303,7 @@ fn main() {
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
-                    match compress_raw (&mut input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
+                    match compress_raw (&mut input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1293,7 +1328,7 @@ fn main() {
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
-                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
+                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }

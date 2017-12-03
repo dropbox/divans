@@ -146,7 +146,8 @@ impl<SelectedCDF:CDF16,
     }
     fn internal_encode_stream(&mut self,
                               op: BrotliEncoderOperation,
-                              input:&[u8], input_offset: &mut usize) -> brotli::BrotliResult {
+                              input:&[u8], input_offset: &mut usize,
+                              is_end: bool) -> brotli::BrotliResult {
         let mut nothing : Option<usize> = None;
         {
             let divans_data_ref = &mut self.divans_data;
@@ -196,20 +197,24 @@ impl<SelectedCDF:CDF16,
                 }
             }
         }
-        loop { // flush divans coder
-            let ret;
-            let mut output_offset = 0usize;
-            {
-                let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8(),
-                                                                       Some(interface::HEADER_LENGTH + 256));
-                ret = self.codec.flush(&mut output, &mut output_offset);
+        if is_end {
+            loop { // flush divans coder
+                let ret;
+                let mut output_offset = 0usize;
+                {
+                    let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8(),
+                                                                           Some(interface::HEADER_LENGTH + 256));
+                    ret = self.codec.flush(&mut output, &mut output_offset);
+                }
+                self.divans_data.commit_next_buffer(output_offset);
+                match ret {
+                    BrotliResult::ResultSuccess => return ret,
+                    BrotliResult::NeedsMoreOutput => {},
+                    BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                }
             }
-            self.divans_data.commit_next_buffer(output_offset);
-            match ret {
-                            BrotliResult::ResultSuccess => return ret,
-                BrotliResult::NeedsMoreOutput => {},
-                BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-            }
+        } else {
+            return BrotliResult::NeedsMoreInput
         }
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
@@ -264,7 +269,8 @@ impl<SelectedCDF:CDF16,
               _output_offset: &mut usize) -> BrotliResult {
         match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
                                           input,
-                                          input_offset) {
+                                          input_offset,
+                                          false) {
             BrotliResult::ResultFailure => BrotliResult::ResultFailure,
             BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => BrotliResult::NeedsMoreInput,
             BrotliResult::NeedsMoreOutput => panic!("unexpected code"),
@@ -277,7 +283,8 @@ impl<SelectedCDF:CDF16,
         loop {
             match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
                                               &[],
-                                              &mut zero) {
+                                              &mut zero,
+                                              true) {
                 BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
                 BrotliResult::ResultSuccess => break,
                 BrotliResult::NeedsMoreOutput => {},
@@ -348,6 +355,8 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
     pe: PhantomData<AllocCT>,
     pf: PhantomData<AllocHT>,
 }
+type LgWin = Option<u32>;
+type Quality = Option<u16>;
 impl<AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
      AllocI32:Allocator<i32>,
@@ -384,7 +393,9 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocCT,
                                                                AllocHT>;
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
-                             AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT);
+                             AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT,
+                             Quality,
+                             LgWin);
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
                dynamic_context_mixing: u8,
                literal_adaptation_rate: Option<Speed>,
@@ -435,10 +446,10 @@ impl<AllocU8:Allocator<u8>,
                                                        window_size as u32);
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGBLOCK,
-                                                       1024 * 1024);
+                                                       additional_args.13.unwrap_or(18));
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
-                                                       10);
+                                                       additional_args.12.unwrap_or(10) as u32);
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
                                                        1);
