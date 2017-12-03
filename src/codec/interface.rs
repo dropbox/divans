@@ -33,6 +33,22 @@ pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum StrideSelection {
+    PriorDisabled = 0u8,
+    Stride1 = 1u8,
+    Stride2 = 2u8,
+    Stride3 = 3u8,
+    Stride4 = 4u8,
+    Stride5 = 5u8,
+    Stride6 = 6u8,
+    Stride7 = 7u8,
+    Stride8 = 8u8,
+    UseBrotliRec = 9u8,
+}
+
+
 pub trait EncoderOrDecoderSpecialization {
     fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
@@ -142,7 +158,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub literal_prediction_mode: LiteralPredictionModeNibble,
     pub literal_adaptation: Speed,
     pub desired_literal_adaptation: Speed,
-    pub desired_force_stride: Option<u8>,
+    pub desired_force_stride: StrideSelection,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -185,7 +201,7 @@ impl<Cdf16:CDF16,
            distance_context_map: AllocU8::AllocatedMemory,
            dynamic_context_mixing: u8,
            literal_adaptation_speed:Speed,
-           force_stride: Option<u8>) -> Self {
+           force_stride: StrideSelection) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
         let mut ret = CrossCommandBookKeeping{
             model_weights:[super::weights::Weights::default(),
@@ -504,7 +520,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            ring_buffer_size: usize,
            dynamic_context_mixing: u8,
            literal_adaptation_rate :Speed,
-           force_stride: Option<u8>) -> Self {
+           force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());

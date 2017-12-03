@@ -51,7 +51,7 @@ use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
 use divans::DivansDecompressorFactory;
 use divans::DivansDecompressorFactoryStruct;
-use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator};
+use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, StrideSelection};
 use divans::Nop;
 use std::fs::File;
 use std::error::Error;
@@ -180,7 +180,7 @@ fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<Featu
 
 
 
-fn command_parse(s : &str, do_context_map:bool, do_stride: bool) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+fn command_parse(s : &str, do_context_map:bool) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.is_empty() {
         panic!("Unexpected");
@@ -269,11 +269,11 @@ fn command_parse(s : &str, do_context_map:bool, do_stride: bool) -> Result<Optio
                      match command_vec[2].parse::<u32>() {
                          Ok(stride) => {
                              if stride > 8 {
-                        return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                                  "Strude must be <= 8"));
+                                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                           "Strude must be <= 8"));
                                  
                              }
-                             if do_stride{stride as u8} else {0}
+                             stride as u8
                          },
                          Err(msg) => {
                              return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -500,7 +500,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(&line, true, true).unwrap() {
+                match command_parse(&line, true).unwrap() {
                     None => {},
                     Some(c) => {
                         ibuffer[i_read_index] = c;
@@ -541,23 +541,21 @@ fn recode_inner<Reader:std::io::BufRead,
     Ok(())
 }
 
-fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, do_stride: bool, last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
-    if !do_context_map || !do_stride {
-        match *cmd {
-           divans::Command::BlockSwitchLiteral(lbs) => {
-               let retval = if do_context_map {
-                   last_literal_switch.block_type() != lbs.block_type()
-               } else {
-                   last_literal_switch.stride() != lbs.stride()
-               };
-               *last_literal_switch = lbs;
-              return retval;
-           },
-           divans::Command::BlockSwitchDistance(_) | divans::Command::BlockSwitchCommand(_) => {
-               return do_context_map;
-           },
-           _ => {},
-        }
+fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
+    match *cmd {
+        divans::Command::BlockSwitchLiteral(lbs) => {
+            let retval = if do_context_map {
+                last_literal_switch.block_type() != lbs.block_type()
+            } else {
+                last_literal_switch.stride() != lbs.stride()
+            };
+            *last_literal_switch = lbs;
+            return retval;
+        },
+        divans::Command::BlockSwitchDistance(_) | divans::Command::BlockSwitchCommand(_) => {
+            return do_context_map;
+        },
+        _ => {},
     }
     true
 }
@@ -576,8 +574,7 @@ fn compress_inner<Reader:std::io::BufRead,
                                 AllocCDF16>,
     r:&mut Reader,
     w:&mut Writer,
-    do_context_map: bool,
-    do_stride: bool) -> io::Result<()> {
+    do_context_map: bool) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -623,11 +620,11 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match try!(command_parse(&line, do_context_map, do_stride)) {
+                match try!(command_parse(&line, do_context_map)) {
                     None => {},
                     Some(c) => {
                         if allowed_command(&c,
-                                           do_context_map, do_stride,
+                                           do_context_map,
                                            &mut last_literal_switch) {
                             ibuffer[i_read_index] = c;
                             i_read_index += 1;
@@ -798,8 +795,7 @@ fn compress_raw<Reader:std::io::Read,
     dynamic_context_mixing: Option<u8>,
     literal_adaptation_speed: Option<Speed>,
     _do_context_map: bool,
-    _do_stride: bool,
-    force_stride_value:Option<u8>,
+    force_stride_value:StrideSelection,
     opt_window_size:Option<i32>,
     buffer_size: usize,
     use_brotli: bool) -> io::Result<()> {
@@ -863,8 +859,7 @@ fn compress_ir<Reader:std::io::BufRead,
     dynamic_context_mixing: Option<u8>,
     literal_adaptation_speed: Option<Speed>,
     do_context_map: bool,
-    do_stride: bool,
-    force_stride_value:Option<u8>) -> io::Result<()> {
+    force_stride_value:StrideSelection) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -895,7 +890,7 @@ fn compress_ir<Reader:std::io::BufRead,
         force_stride_value,
         (),
    );
-    compress_inner(state, r, w, do_context_map, do_stride)
+    compress_inner(state, r, w, do_context_map)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {
@@ -1104,10 +1099,8 @@ fn main() {
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
     let mut use_context_map = false;
-    let mut use_stride = true;
     let mut use_brotli = true;
-    let mut force_stride = false;
-    let mut force_stride_value: Option<u8> = None;
+    let mut force_stride_value = StrideSelection::PriorDisabled;
     let mut literal_adaptation: Option<Speed> = None;
     let window_size: Option<i32> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
@@ -1139,8 +1132,6 @@ fn main() {
                 continue;
             }
             if argument.starts_with("-stride") || argument == "-s" {
-                use_stride = true;
-                force_stride = true;
                 if argument.starts_with("-stride=") {
                     let fs = argument.trim_matches(
                         '-').trim_matches(
@@ -1151,18 +1142,28 @@ fn main() {
                         'd').trim_matches(
                         'e').trim_matches(
                         '=').parse::<u32>().unwrap();
-                    if fs > 8 {
-                        panic!("Force stride must be <= 8");
+                    force_stride_value = match fs {
+                        0 => panic!("Omit -s to set avoid stride=0"),
+                        1 => StrideSelection::Stride1,
+                        2 => StrideSelection::Stride2,
+                        3 => StrideSelection::Stride3,
+                        4 => StrideSelection::Stride4,
+                        5 => StrideSelection::Stride5,
+                        6 => StrideSelection::Stride6,
+                        7 => StrideSelection::Stride7,
+                        8 => StrideSelection::Stride8,
+                        _ => panic!("Force stride must be <= 8"),
                     }
-                    force_stride_value = Some(fs as u8);
+                } else {
+                    match force_stride_value {
+                        StrideSelection::PriorDisabled => force_stride_value = StrideSelection::UseBrotliRec,
+                        _ => {}, // already set
+                    }
                 }
                 continue;
             }
             if argument == "-cm" || argument == "-contextmap" {
                 use_context_map = true;
-                if !force_stride {
-                    use_stride = false;
-                }
                 continue;
             }
             if argument == "-i" {
@@ -1236,13 +1237,13 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress && !raw_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, use_stride, force_stride_value) {
+                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
                         input = buffered_input.into_inner();
                     } else if do_compress {
-                        match compress_raw(&mut input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
+                        match compress_raw(&mut input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1267,12 +1268,12 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress && !raw_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
-                    match compress_raw (&mut input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
+                    match compress_raw (&mut input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1292,12 +1293,12 @@ fn main() {
             if do_compress && !raw_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, use_stride, force_stride_value) {
+                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
-                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, use_stride, force_stride_value, window_size, buffer_size, use_brotli) {
+                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, window_size, buffer_size, use_brotli) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }

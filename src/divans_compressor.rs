@@ -24,7 +24,7 @@ pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapp
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::interface;
 use super::brotli::BrotliResult;
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
@@ -67,7 +67,7 @@ impl<AllocU8:Allocator<u8>,
      fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
             dynamic_context_mixing_rate:u8,
             literal_adaptation_rate: Option<probability::Speed>,
-            force_stride: Option<u8>,
+            force_stride: StrideSelection,
            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
         if window_size < 10 {
             window_size = 10;

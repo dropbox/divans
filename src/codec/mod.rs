@@ -27,6 +27,7 @@ use super::interface::{
 pub mod weights;
 mod interface;
 pub use self::interface::{
+    StrideSelection,
     EncoderOrDecoderSpecialization,
     AllocatedMemoryPrefix,
     CrossCommandState,
@@ -198,7 +199,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
                literal_adaptation_rate: Option<Speed>,
-               force_stride: Option<u8>) -> Self {
+               force_stride: interface::StrideSelection) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,

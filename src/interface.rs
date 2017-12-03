@@ -21,6 +21,7 @@ use super::codec::dict::DictSubstate;
 use super::codec::literal::LiteralSubstate;
 use super::codec::context_map::PredictionModeState;
 use super::codec::block_type::BlockTypeState;
+pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
 
 #[cfg(feature="blend")]
@@ -57,7 +58,6 @@ pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::SIMDFrequent
 #[cfg(feature="debug_entropy")]
 #[cfg(feature="uncached_frequentist")]
 pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::FrequentistCDF16>;
-
 
 
 pub const HEADER_LENGTH: usize = 16;
@@ -241,6 +241,6 @@ pub trait DivansCompressorFactory<
     fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
            dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<probability::Speed>,
-           force_stride: Option<u8>,
+           force_stride: StrideSelection,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }

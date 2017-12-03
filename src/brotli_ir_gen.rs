@@ -20,7 +20,7 @@ pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapp
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_byte_buffer::ResizableByteBuffer;
 use super::interface;
 use super::brotli::BrotliResult;
@@ -388,7 +388,7 @@ impl<AllocU8:Allocator<u8>,
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
            dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<Speed>,
-           force_stride: Option<u8>,
+           force_stride: StrideSelection,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         if window_size < 10 {
             window_size = 10;

@@ -26,7 +26,7 @@ use super::brotli_decompressor::BrotliState;
 use super::brotli_decompressor::HuffmanCode;
 use super::util::HeapAllocator;
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
-use divans::Speed;
+use divans::{Speed, StrideSelection};
 struct UnlimitedBuffer {
   data: Vec<u8>,
   read_offset: usize,
@@ -160,8 +160,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         Some(1),
                         Some(Speed::GLACIAL),
                         use_serialized_priors,
-                        true,
-                        None, // force stride
+                        StrideSelection::UseBrotliRec, // force stride
                         Some(16), //window size
                         buffer_size,
                         use_brotli).unwrap();
@@ -193,7 +192,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::MUD), true, true, None).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::MUD), true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
@@ -225,7 +224,7 @@ fn test_e2e_32xx() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, None, None, true, true, None).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, None, None, true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -240,7 +239,7 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::ROCKET), true, true, None).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::ROCKET), true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -258,7 +257,7 @@ fn test_e2e_64xp() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    //let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::SLOW), true, true, None) {
+   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::SLOW), true, StrideSelection::UseBrotliRec) {
       Ok(_) => assert_eq!(EXTERNAL_PROB_FEATURE, true),
       Err(_) => assert_eq!(EXTERNAL_PROB_FEATURE, false),
    };

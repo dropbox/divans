@@ -60,12 +60,13 @@ pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
 pub use cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 pub use divans_compressor::{DivansCompressor, DivansCompressorFactoryStruct};
 use core::marker::PhantomData;
 
 
 pub use probability::Speed;
+
 
 pub use probability::CDF2;
 
@@ -182,7 +183,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                                      window_size,
                                                                                      0,
                                                                                      None,
-                                                                                     None), 0));
+                                                                                     codec::StrideSelection::UseBrotliRec), 0));
         BrotliResult::ResultSuccess
     }
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
