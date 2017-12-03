@@ -1084,7 +1084,7 @@ fn main() {
     let mut use_brotli = true;
     let mut force_stride_value = StrideSelection::PriorDisabled;
     let mut literal_adaptation: Option<Speed> = None;
-    let window_size: Option<i32> = None;
+    let mut window_size: Option<i32> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
     if env::args_os().len() > 1 {
@@ -1111,6 +1111,19 @@ fn main() {
             }
             if argument == "--recode" {
                 do_recode = true;
+                continue;
+            }
+            if argument.starts_with("-w") || argument.starts_with("-window=") {
+                let fs = argument.trim_matches(
+                    '-').trim_matches(
+                    'w').trim_matches(
+                    'i').trim_matches(
+                    'n').trim_matches(
+                    'd').trim_matches(
+                    'o').trim_matches(
+                    'w').trim_matches(
+                    '=').parse::<i32>().unwrap();
+                window_size=Some(fs);
                 continue;
             }
             if argument.starts_with("-stride") || argument == "-s" {
