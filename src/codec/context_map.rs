@@ -33,7 +33,7 @@ impl PredictionModeState {
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>,
-                        SliceType:SliceWrapper<u8>>(&mut self,
+                        SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   Cdf16,
@@ -131,10 +131,14 @@ impl PredictionModeState {
                    *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                },
                PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
-                   let cur_context_map = match context_map_type {
-                       ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
+                   let mut cur_context_map = match context_map_type {
+                           ContextMapType::Literal => in_cmd.literal_context_map.slice(),
+                           ContextMapType::Distance => in_cmd.distance_context_map.slice(),
                    };
+                   if !superstate.bk.desired_do_context_map {
+                       cur_context_map = &cur_context_map[..0];
+                   }
+                       
                    let mut mnemonic_nibble = if index as usize >= cur_context_map.len() {
                        // encode nothing
                        14 // eof

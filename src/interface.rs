@@ -241,6 +241,7 @@ pub trait DivansCompressorFactory<
     fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
            dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<probability::Speed>,
+           do_context_map: bool,
            force_stride: StrideSelection,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }

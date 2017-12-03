@@ -180,7 +180,7 @@ fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<Featu
 
 
 
-fn command_parse(s : &str, do_context_map:bool) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.is_empty() {
         panic!("Unexpected");
@@ -207,9 +207,6 @@ fn command_parse(s : &str, do_context_map:bool) -> Result<Option<Command<ItemVec
             literal_context_map: ItemVec::<u8>::default(),
             distance_context_map: ItemVec::<u8>::default(),
         };
-        if !do_context_map {
-            return Ok(Some(Command::PredictionMode(ret)));
-        }
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
                 match literal_context_map_val.parse::<i64>() {
@@ -500,7 +497,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(&line, true).unwrap() {
+                match command_parse(&line).unwrap() {
                     None => {},
                     Some(c) => {
                         ibuffer[i_read_index] = c;
@@ -541,22 +538,7 @@ fn recode_inner<Reader:std::io::BufRead,
     Ok(())
 }
 
-fn allowed_command(cmd: &Command<ItemVec<u8>>, do_context_map:bool, last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
-    match *cmd {
-        divans::Command::BlockSwitchLiteral(lbs) => {
-            let retval = if do_context_map {
-                last_literal_switch.block_type() != lbs.block_type()
-            } else {
-                last_literal_switch.stride() != lbs.stride()
-            };
-            *last_literal_switch = lbs;
-            return retval;
-        },
-        divans::Command::BlockSwitchDistance(_) | divans::Command::BlockSwitchCommand(_) => {
-            return do_context_map;
-        },
-        _ => {},
-    }
+fn allowed_command(_cmd: &Command<ItemVec<u8>>, _last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
     true
 }
 
@@ -573,8 +555,7 @@ fn compress_inner<Reader:std::io::BufRead,
                                 AllocCDF2,
                                 AllocCDF16>,
     r:&mut Reader,
-    w:&mut Writer,
-    do_context_map: bool) -> io::Result<()> {
+    w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -620,11 +601,10 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match try!(command_parse(&line, do_context_map)) {
+                match try!(command_parse(&line)) {
                     None => {},
                     Some(c) => {
                         if allowed_command(&c,
-                                           do_context_map,
                                            &mut last_literal_switch) {
                             ibuffer[i_read_index] = c;
                             i_read_index += 1;
@@ -794,7 +774,7 @@ fn compress_raw<Reader:std::io::Read,
     w:&mut Writer,
     dynamic_context_mixing: Option<u8>,
     literal_adaptation_speed: Option<Speed>,
-    _do_context_map: bool,
+    do_context_map: bool,
     force_stride_value:StrideSelection,
     opt_window_size:Option<i32>,
     buffer_size: usize,
@@ -812,6 +792,7 @@ fn compress_raw<Reader:std::io::Read,
             window_size as usize,
             dynamic_context_mixing.unwrap_or(0),
             literal_adaptation_speed,
+            do_context_map,
             force_stride_value,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
@@ -843,7 +824,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
             dynamic_context_mixing.unwrap_or(0),
-            literal_adaptation_speed, force_stride_value, (),
+            literal_adaptation_speed, do_context_map, force_stride_value, (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -887,10 +868,11 @@ fn compress_ir<Reader:std::io::BufRead,
         window_size as usize,
         dynamic_context_mixing.unwrap_or(0),
         literal_adaptation_speed,
+        do_context_map,
         force_stride_value,
         (),
-   );
-    compress_inner(state, r, w, do_context_map)
+    );
+    compress_inner(state, r, w)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {

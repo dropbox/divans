@@ -158,6 +158,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub literal_prediction_mode: LiteralPredictionModeNibble,
     pub literal_adaptation: Speed,
     pub desired_literal_adaptation: Speed,
+    pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
@@ -201,6 +202,7 @@ impl<Cdf16:CDF16,
            distance_context_map: AllocU8::AllocatedMemory,
            dynamic_context_mixing: u8,
            literal_adaptation_speed:Speed,
+           do_context_map: bool,
            force_stride: StrideSelection) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
         let mut ret = CrossCommandBookKeeping{
@@ -254,6 +256,7 @@ impl<Cdf16:CDF16,
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
             btype_max_seen:[0;3],
+            desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
@@ -519,7 +522,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            spc: Specialization,
            ring_buffer_size: usize,
            dynamic_context_mixing: u8,
-           literal_adaptation_rate :Speed,
+               literal_adaptation_rate :Speed,
+               do_context_map:bool,
            force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -549,6 +553,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
                                             literal_adaptation_rate,
+                                            do_context_map,
                                             force_stride,
             ),
         }

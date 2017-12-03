@@ -199,6 +199,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
                literal_adaptation_rate: Option<Speed>,
+               do_context_map: bool,
                force_stride: interface::StrideSelection) -> Self {
         DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
@@ -215,6 +216,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      dynamic_context_mixing,
                                                                      literal_adaptation_rate.unwrap_or_else(
                                                                          self::interface::default_literal_speed),
+                                                                     do_context_map,
                                                                      force_stride,
             ),
             state:EncodeOrDecodeState::Begin,

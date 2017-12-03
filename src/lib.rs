@@ -183,6 +183,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                                      window_size,
                                                                                      0,
                                                                                      None,
+                                                                                     true,
                                                                                      codec::StrideSelection::UseBrotliRec), 0));
         BrotliResult::ResultSuccess
     }

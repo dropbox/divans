@@ -386,10 +386,11 @@ impl<AllocU8:Allocator<u8>,
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT);
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
-           dynamic_context_mixing: u8,
-           literal_adaptation_rate: Option<Speed>,
-           force_stride: StrideSelection,
-           additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
+               dynamic_context_mixing: u8,
+               literal_adaptation_rate: Option<Speed>,
+               do_context_map: bool,
+               force_stride: StrideSelection,
+               additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         if window_size < 10 {
             window_size = 10;
         }
@@ -423,6 +424,7 @@ impl<AllocU8:Allocator<u8>,
                 window_size,
                 dynamic_context_mixing,
                 literal_adaptation_rate,
+                do_context_map,
                 force_stride,
             ),
             header_progress: 0,
