@@ -388,6 +388,7 @@ impl<AllocU8:Allocator<u8>,
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
            dynamic_context_mixing: u8,
            literal_adaptation_rate: Option<Speed>,
+           force_stride: Option<u8>,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         if window_size < 10 {
             window_size = 10;
@@ -422,6 +423,7 @@ impl<AllocU8:Allocator<u8>,
                 window_size,
                 dynamic_context_mixing,
                 literal_adaptation_rate,
+                force_stride,
             ),
             header_progress: 0,
             window_size: window_size as u8,

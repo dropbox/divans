@@ -142,6 +142,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub literal_prediction_mode: LiteralPredictionModeNibble,
     pub literal_adaptation: Speed,
     pub desired_literal_adaptation: Speed,
+    pub desired_force_stride: Option<u8>,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -183,7 +184,8 @@ impl<Cdf16:CDF16,
            literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
            dynamic_context_mixing: u8,
-           literal_adaptation_speed:Speed) -> Self {
+           literal_adaptation_speed:Speed,
+           force_stride: Option<u8>) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
         let mut ret = CrossCommandBookKeeping{
             model_weights:[super::weights::Weights::default(),
@@ -236,6 +238,7 @@ impl<Cdf16:CDF16,
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
             btype_max_seen:[0;3],
+            desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
         for i in 0..4 {
@@ -500,7 +503,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            spc: Specialization,
            ring_buffer_size: usize,
            dynamic_context_mixing: u8,
-           literal_adaptation_rate :Speed) -> Self {
+           literal_adaptation_rate :Speed,
+           force_stride: Option<u8>) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
@@ -529,6 +533,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
                                             literal_adaptation_rate,
+                                            force_stride,
             ),
         }
     }

@@ -167,7 +167,7 @@ impl LiteralBlockTypeState {
                          BrotliResult::ResultSuccess => {},
                          need_something => return need_something,
                     }
-		    let mut stride_nibble = input_bs.stride();
+		            let mut stride_nibble = superstate.bk.desired_force_stride.unwrap_or(input_bs.stride());
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::StrideNibble,
                                                                          (0,));
                     superstate.coder.get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);

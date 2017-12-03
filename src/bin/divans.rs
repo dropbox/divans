@@ -180,7 +180,7 @@ fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<Featu
 
 
 
-fn command_parse(s : &str, do_context_map:bool, do_stride: bool, force_stride_value: Option<u8>) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+fn command_parse(s : &str, do_context_map:bool, do_stride: bool) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.is_empty() {
         panic!("Unexpected");
@@ -263,27 +263,24 @@ fn command_parse(s : &str, do_context_map:bool, do_stride: bool, force_stride_va
             'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
             'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
             'l' => Command::BlockSwitchLiteral(LiteralBlockSwitch::new(block_type,
-                match force_stride_value {
-                  None => if command_vec.len() < 2 {
+                  if command_vec.len() < 2 {
                      0
                   } else {
-                  match command_vec[2].parse::<u32>() {
-                    Ok(stride) => {
-                      if stride > 8 {
+                     match command_vec[2].parse::<u32>() {
+                         Ok(stride) => {
+                             if stride > 8 {
                         return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          "Strude must be <= 8"));
-
-                      }
-                      if do_stride{stride as u8} else {0}
-                    },
-                    Err(msg) => {
-                       return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                                 msg.description()));
-                    }
-                 }
-                },
-                Some(forced_value) => forced_value,
-              }
+                                                  "Strude must be <= 8"));
+                                 
+                             }
+                             if do_stride{stride as u8} else {0}
+                         },
+                         Err(msg) => {
+                             return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                       msg.description()));
+                         }
+                     }
+                  }
             )),
             _ => panic!("Logic error: already checked for valid command"),
         }));
@@ -503,7 +500,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(&line, true, true, None).unwrap() {
+                match command_parse(&line, true, true).unwrap() {
                     None => {},
                     Some(c) => {
                         ibuffer[i_read_index] = c;
@@ -580,8 +577,7 @@ fn compress_inner<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer,
     do_context_map: bool,
-    do_stride: bool,
-    force_stride_value: Option<u8>) -> io::Result<()> {
+    do_stride: bool) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = [0u8;65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
@@ -627,7 +623,7 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match try!(command_parse(&line, do_context_map, do_stride, force_stride_value)) {
+                match try!(command_parse(&line, do_context_map, do_stride)) {
                     None => {},
                     Some(c) => {
                         if allowed_command(&c,
@@ -803,7 +799,7 @@ fn compress_raw<Reader:std::io::Read,
     literal_adaptation_speed: Option<Speed>,
     _do_context_map: bool,
     _do_stride: bool,
-    _force_stride_value:Option<u8>,
+    force_stride_value:Option<u8>,
     opt_window_size:Option<i32>,
     buffer_size: usize,
     use_brotli: bool) -> io::Result<()> {
@@ -820,6 +816,7 @@ fn compress_raw<Reader:std::io::Read,
             window_size as usize,
             dynamic_context_mixing.unwrap_or(0),
             literal_adaptation_speed,
+            force_stride_value,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
              ItemVecAllocator::<i32>::default(),
@@ -850,7 +847,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
             dynamic_context_mixing.unwrap_or(0),
-            literal_adaptation_speed,(),
+            literal_adaptation_speed, force_stride_value, (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -895,9 +892,10 @@ fn compress_ir<Reader:std::io::BufRead,
         window_size as usize,
         dynamic_context_mixing.unwrap_or(0),
         literal_adaptation_speed,
+        force_stride_value,
         (),
    );
-    compress_inner(state, r, w, do_context_map, do_stride, force_stride_value)
+    compress_inner(state, r, w, do_context_map, do_stride)
 }
 
 fn zero_slice(sl: &mut [u8]) -> usize {

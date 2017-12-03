@@ -181,6 +181,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                                      DecoderSpecialization::new(),
                                                                                      window_size,
                                                                                      0,
+                                                                                     None,
                                                                                      None), 0));
         BrotliResult::ResultSuccess
     }
