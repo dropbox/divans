@@ -549,80 +549,80 @@ fn entropy_bit_decode_bench_100k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_context_mixing_100k(b: &mut Bencher) {
+fn nibble_encode_roundtrip_context_mixing_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestContextMixing{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_context_pure_average_100k(b: &mut Bencher) {
+fn nibble_encode_roundtrip_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestContextMixingPureAverage{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_model_adapt_100k(b: &mut Bencher) {
+fn nibble_encode_roundtrip_model_adapt_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_nonadaptive_100k(b: &mut Bencher) {
+fn nibble_encode_roundtrip_nonadaptive_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestNoAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_nibble_roundtrip_simple_100k(b: &mut Bencher) {
+fn nibble_encode_roundtrip_simple_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_roundtrip(b, TestSimple{size:1024 * 1024/10})
 }
 
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_context_mixing_100k(b: &mut Bencher) {
+fn nibble_encode_only_context_mixing_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestContextMixing{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_context_pure_average_100k(b: &mut Bencher) {
+fn nibble_encode_only_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestContextMixingPureAverage{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_model_adapt_100k(b: &mut Bencher) {
+fn nibble_encode_only_model_adapt_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_nonadaptive_100k(b: &mut Bencher) {
+fn nibble_encode_only_nonadaptive_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestNoAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn encode_only_nibble_simple_100k(b: &mut Bencher) {
+fn nibble_encode_only_simple_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_encode_only(b, TestSimple{size:1024 * 1024/10})
 }
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_context_mixing_100k(b: &mut Bencher) {
+fn nibble_decode_context_mixing_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestContextMixing{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_context_pure_average_100k(b: &mut Bencher) {
+fn nibble_decode_context_pure_average_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestContextMixingPureAverage{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_model_adapt_100k(b: &mut Bencher) {
+fn nibble_decode_model_adapt_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_nonadaptive_100k(b: &mut Bencher) {
+fn nibble_decode_nonadaptive_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestNoAdapt{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
 #[bench]
-fn decode_nibble_simple_100k(b: &mut Bencher) {
+fn nibble_decode_simple_100k(b: &mut Bencher) {
     entropy_dynamic_nibble_decode(b, TestSimple{size:1024 * 1024/10})
 }
 #[cfg(feature="benchmark")]
