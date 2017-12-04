@@ -59,6 +59,7 @@ impl<'a> LimitedBuffer<'a> {
     fn reset(&mut self) {
         self.write_offset = 0;
         self.read_offset = 0;
+        self.data.split_at_mut(32).0.clone_from_slice(&[0u8;32]); // clear the first 256 bits
     }
     fn reset_read(&mut self) {
         self.read_offset = 0;
