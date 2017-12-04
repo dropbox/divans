@@ -11,6 +11,7 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
+#![cfg_attr(feature="benchmark", feature(test))]
 
 extern crate core;
 extern crate divans;
@@ -19,10 +20,12 @@ extern crate alloc_no_stdlib as alloc;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
+
 #[cfg(test)]
 extern crate brotli as brotli_decompressor;
 
 mod integration_test;
+mod benchmark;
 mod util;
 
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
@@ -768,20 +771,22 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                          ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
 
+pub struct CompressOptions {
+   pub quality: Option<u16>,
+   pub window_size: Option<i32>,
+   pub lgblock: Option<u32>,
+   pub do_context_map: bool,
+   pub force_stride_value: StrideSelection,
+   pub literal_adaptation_speed: Option<Speed>,
+   pub dynamic_context_mixing: Option<u8>
+}
 fn compress_raw<Reader:std::io::Read,
-                Writer:std::io::Write>(
-    r:&mut Reader,
-    w:&mut Writer,
-    dynamic_context_mixing: Option<u8>,
-    literal_adaptation_speed: Option<Speed>,
-    do_context_map: bool,
-    force_stride_value:StrideSelection,
-    quality: Option<u16>,
-    opt_window_size:Option<i32>,
-    lgwin: Option<u32>,
-    buffer_size: usize,
-    use_brotli: bool) -> io::Result<()> {
-    let window_size = opt_window_size.unwrap_or(21);
+                Writer:std::io::Write>(r:&mut Reader,
+                                       w:&mut Writer,
+                                       opts: CompressOptions,
+                                       buffer_size: usize,
+                                       use_brotli: bool) -> io::Result<()> {
+    let window_size = opts.window_size.unwrap_or(21);
     let mut m8 = ItemVecAllocator::<u8>::default();
     let ibuffer = m8.alloc_cell(buffer_size);
     let obuffer = m8.alloc_cell(buffer_size);
@@ -792,10 +797,10 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
-            dynamic_context_mixing.unwrap_or(0),
-            literal_adaptation_speed,
-            do_context_map,
-            force_stride_value,
+            opts.dynamic_context_mixing.unwrap_or(0),
+            opts.literal_adaptation_speed,
+            opts.do_context_map,
+            opts.force_stride_value,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
              ItemVecAllocator::<i32>::default(),
@@ -808,8 +813,8 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
-             quality,
-             lgwin,
+             opts.quality,
+             opts.lgblock,
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -828,8 +833,8 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
-            dynamic_context_mixing.unwrap_or(0),
-            literal_adaptation_speed, do_context_map, force_stride_value, (),
+            opts.dynamic_context_mixing.unwrap_or(0),
+            opts.literal_adaptation_speed, opts.do_context_map, opts.force_stride_value, (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -1273,7 +1278,18 @@ fn main() {
                         }
                         input = buffered_input.into_inner();
                     } else if do_compress {
-                        match compress_raw(&mut input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
+                        match compress_raw(&mut input,
+                                           &mut output,
+                                           CompressOptions{
+                                               dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                               literal_adaptation_speed: literal_adaptation.clone(),
+                                               do_context_map: use_context_map,
+                                               force_stride_value: force_stride_value,
+                                               quality: quality,
+                                               window_size: window_size,
+                                               lgblock: lgwin,
+                                           },
+                                           buffer_size, use_brotli) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1303,7 +1319,19 @@ fn main() {
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
-                    match compress_raw (&mut input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
+                    match compress_raw(&mut input,
+                                       &mut io::stdout(),
+                                       CompressOptions{
+                                           dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                           literal_adaptation_speed: literal_adaptation.clone(),
+                                           do_context_map: use_context_map,
+                                           force_stride_value: force_stride_value,
+                                           quality: quality,
+                                           window_size: window_size,
+                                           lgblock: lgwin,
+                                       },
+                                       buffer_size,
+                                       use_brotli) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1328,7 +1356,19 @@ fn main() {
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
-                match compress_raw(&mut std::io::stdin(), &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value, quality, window_size, lgwin, buffer_size, use_brotli) {
+                match compress_raw(&mut std::io::stdin(),
+                                   &mut io::stdout(),
+                                   CompressOptions{
+                                       dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                       literal_adaptation_speed: literal_adaptation.clone(),
+                                       do_context_map: use_context_map,
+                                       force_stride_value: force_stride_value,
+                                       quality: quality,
+                                       window_size: window_size,
+                                       lgblock: lgwin,
+                                   },
+                                   buffer_size,
+                                   use_brotli) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }

@@ -27,9 +27,9 @@ use super::brotli_decompressor::HuffmanCode;
 use super::util::HeapAllocator;
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 use divans::{Speed, StrideSelection};
-struct UnlimitedBuffer {
-  data: Vec<u8>,
-  read_offset: usize,
+pub struct UnlimitedBuffer {
+  pub data: Vec<u8>,
+  pub read_offset: usize,
 }
 
 impl UnlimitedBuffer {
@@ -157,11 +157,15 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
     super::compress_raw(&mut in_buffer,
                         &mut dv_buffer,
-                        Some(1),
-                        Some(Speed::GLACIAL),
-                        use_serialized_priors,
-                        StrideSelection::UseBrotliRec, // force stride
-                        Some(16), //window size
+                        super::CompressOptions{
+                            dynamic_context_mixing: Some(1),
+                            literal_adaptation_speed: Some(Speed::GLACIAL),
+                            do_context_map: use_serialized_priors,
+                            force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                            quality:Some(10u16), // quality
+                            window_size:Some(16i32), // window size
+                            lgblock:Some(18u32), //lgblock
+                        },
                         buffer_size,
                         use_brotli).unwrap();
     super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
