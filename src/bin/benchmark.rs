@@ -328,7 +328,7 @@ fn bench_no_ir<Run: Runner,
 #[test]
 fn test_raw_literal_stream() {
     bench_no_ir(65536,
-                TestContextMixing{size:100000},
+                TestContextMixing{size:1024 * 1024 / 10},
                 0.025,
                 true,
                 true,
@@ -340,7 +340,7 @@ fn test_raw_literal_stream() {
 #[bench]
 fn bench_e2e_decode_context_mixing_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestContextMixing{size:100000},
+                TestContextMixing{size:1024 * 1024 / 10},
                 0.025,
                 false,
                 true,
@@ -351,7 +351,7 @@ fn bench_e2e_decode_context_mixing_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_decode_context_pure_average_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestContextMixingPureAverage{size:100000},
+                TestContextMixingPureAverage{size:1024 * 1024 / 10},
                 0.17,
                 false,
                 true,
@@ -362,7 +362,7 @@ fn bench_e2e_decode_context_pure_average_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_decode_model_adapt_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestAdapt{size:100000},
+                TestAdapt{size:1024 * 1024 / 10},
                 0.29,
                 false,
                 true,
@@ -373,7 +373,7 @@ fn bench_e2e_decode_model_adapt_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_decode_simple_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestSimple{size:100000},
+                TestSimple{size:1024 * 1024 / 10},
                 0.03,
                 false,
                 true,
@@ -385,7 +385,7 @@ fn bench_e2e_decode_simple_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_roundtrip_context_mixing_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestContextMixing{size:100000},
+                TestContextMixing{size:1024 * 1024 / 10},
                 0.025,
                 true,
                 true,
@@ -396,7 +396,7 @@ fn bench_e2e_roundtrip_context_mixing_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_roundtrip_context_pure_average_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestContextMixingPureAverage{size:100000},
+                TestContextMixingPureAverage{size:1024 * 1024 / 10},
                 0.17,
                 true,
                 true,
@@ -407,7 +407,7 @@ fn bench_e2e_roundtrip_context_pure_average_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_roundtrip_model_adapt_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestAdapt{size:100000},
+                TestAdapt{size:1024 * 1024 / 10},
                 0.29,
                 true,
                 true,
@@ -418,7 +418,7 @@ fn bench_e2e_roundtrip_model_adapt_100k(b: &mut Bencher) {
 #[bench]
 fn bench_e2e_roundtrip_simple_100k(b: &mut Bencher) {
     bench_no_ir(65536,
-                TestSimple{size:100000},
+                TestSimple{size:1024 * 1024 / 10},
                 0.03,
                 true,
                 true,
