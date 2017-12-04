@@ -41,6 +41,10 @@ impl UnlimitedBuffer {
     ret.data.extend(buf);
     return ret;
   }
+  #[allow(unused)]
+  pub fn written(&self) -> &[u8] {
+    &self.data[..]
+  }
 }
 
 impl io::Read for UnlimitedBuffer {
