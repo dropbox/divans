@@ -31,6 +31,7 @@ extern crate brotli;
 pub mod resizable_byte_buffer;
 pub mod interface;
 pub mod slice_util;
+pub mod alloc_util;
 mod probability;
 #[macro_use]
 mod priors;

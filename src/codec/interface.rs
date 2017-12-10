@@ -3,6 +3,7 @@ use brotli::BrotliResult;
 use ::cmd_to_raw::DivansRecodeState;
 use ::probability::{CDF2, CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use ::alloc_util::RepurposingAlloc;
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     CrossCommandBilling,
@@ -498,7 +499,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub coder: ArithmeticCoder,
     pub specialization: Specialization,
     pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
-    pub m8: AllocU8,
+    pub m8: RepurposingAlloc<u8, AllocU8>,
     mcdf2: AllocCDF2,
     mcdf16: AllocCDF16,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
@@ -546,7 +547,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             specialization: spc,
             recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
-            m8: m8,
+            m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
             mcdf2:mcdf2,
             mcdf16:mcdf16,
             bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior, cc_priors, copy_priors,
@@ -572,6 +573,6 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         self.mcdf16.free_cell(cdf16c);
         self.mcdf16.free_cell(cdf16d);
         self.mcdf16.free_cell(cdf16e);
-        (self.m8, self.mcdf2, self.mcdf16)
+        (self.m8.free(), self.mcdf2, self.mcdf16)
     }
 }

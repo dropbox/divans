@@ -98,7 +98,7 @@ impl<SelectedCDF:CDF16,
                                     AllocCT,
                                     AllocHT> {
     pub fn get_m8(&mut self) -> &mut AllocU8 {
-       self.codec.get_m8()
+       self.codec.get_m8().get_base_alloc()
     }
     fn divans_encode_commands<SliceType:SliceWrapper<u8>+Default>(cmd:&[brotli::interface::Command<SliceType>],
                                                           header_progress: &mut usize,
@@ -115,7 +115,7 @@ impl<SelectedCDF:CDF16,
             let ret: BrotliResult;
             let mut output_offset = 0usize;
             {
-                let output = data.checkout_next_buffer(codec.get_m8(),
+                let output = data.checkout_next_buffer(codec.get_m8().get_base_alloc(),
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset) {
@@ -202,7 +202,7 @@ impl<SelectedCDF:CDF16,
                 let ret;
                 let mut output_offset = 0usize;
                 {
-                    let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8(),
+                    let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8().get_base_alloc(),
                                                                            Some(interface::HEADER_LENGTH + 256));
                     ret = self.codec.flush(&mut output, &mut output_offset);
                 }
@@ -220,7 +220,7 @@ impl<SelectedCDF:CDF16,
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
         self.brotli_data.free(&mut self.brotli_encoder.m8);
-        self.divans_data.free(&mut self.codec.get_m8());
+        self.divans_data.free(&mut self.codec.get_m8().get_base_alloc());
         let (m8, mcdf2, mcdf16) = self.codec.free();
         brotli::enc::encode::BrotliEncoderDestroyInstance(&mut self.brotli_encoder);
         (m8, self.brotli_encoder.m32, mcdf2, mcdf16, self.brotli_encoder.m8, self.brotli_encoder.m16,self.brotli_encoder.mi32, self.brotli_encoder.mc,

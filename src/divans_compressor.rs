@@ -20,6 +20,7 @@ use super::probability;
 use super::brotli;
 use super::raw_to_cmd;
 use super::slice_util;
+use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
 
@@ -221,7 +222,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             };
         }
     }
-    pub fn get_m8(&mut self) -> &mut AllocU8 {
+    pub fn get_m8(&mut self) -> &mut RepurposingAlloc<u8, AllocU8> {
        self.codec.get_m8()
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {

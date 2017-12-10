@@ -17,6 +17,7 @@ use core;
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
 pub const CMD_BUFFER_SIZE: usize = 16;
+use ::alloc_util::RepurposingAlloc;
 use super::interface::{
     BillingDesignation,
     CrossCommandBilling,
@@ -222,7 +223,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub fn get_coder(&self) -> &ArithmeticCoder {
         &self.cross_command_state.coder
     }
-    pub fn get_m8(&mut self) -> &mut AllocU8 {
+    pub fn get_m8(&mut self) -> &mut RepurposingAlloc<u8, AllocU8> {
         &mut self.cross_command_state.m8
     }
     pub fn specialization(&mut self) -> &mut Specialization{
