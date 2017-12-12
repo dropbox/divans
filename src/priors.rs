@@ -120,11 +120,11 @@ macro_rules! define_prior_struct {
             // TODO: technically this does not depend on the template paramters.
             #[inline]
             fn num_prior(_billing: &$billing_type) -> usize {
-                (define_prior_struct_helper_product!(_billing; $($args),*)) as usize
+                define_prior_struct_unary_helper!(product; _billing; $($args),*) as usize
             }
             #[inline]
             fn num_dimensions(_billing: &$billing_type) -> usize {
-                (define_prior_struct_helper_dimensionality!(_billing; $($args),*)) as usize
+                define_prior_struct_unary_helper!(count_expr; _billing; $($args),*) as usize
             }
             fn index_to_billing_type(_index: usize) -> $billing_type {
                 define_prior_struct_helper_select_type!(_index; $($args),*)
@@ -153,17 +153,14 @@ macro_rules! define_prior_struct_helper_offset {
     };
 }
 
-macro_rules! define_prior_struct_helper_product {
-    ($billing: expr; ($typ: expr, $($args: expr),*)) => { product!($($args),*) };  // should panic if billing != type
-    ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $typ { product!($($args),*) } else { define_prior_struct_helper_product!($billing; $($more),*) }
-    };
-}
-
-macro_rules! define_prior_struct_helper_dimensionality {
-    ($billing: expr; ($typ: expr, $($args: expr),*)) => { count_expr!($($args),*) };  // should panic if billing != type
-    ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $typ { count_expr!($($args),*) } else { define_prior_struct_helper_dimensionality!($billing; $($more),*) }
+macro_rules! define_prior_struct_unary_helper {
+    ($macro: ident; $billing: expr; ($typ: expr, $($args: expr),*)) => { $macro!($($args),*) };
+    ($macro: ident; $billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if *$billing != $typ {
+            define_prior_struct_unary_helper!($macro; $billing; $($more),*)
+        } else {
+            $macro!($($args),*)
+        }
     };
 }
 
@@ -171,13 +168,6 @@ macro_rules! define_prior_struct_helper_select_type {
     ($index: expr; ($typ: expr, $($args: expr),*)) => { $typ };  // should panic if billing != type
     ($index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
         if $index == 0 { $typ } else { define_prior_struct_helper_select_type!(($index - 1); $($more),*) }
-    };
-}
-
-macro_rules! define_prior_struct_helper_select_dim {
-    ($billing: expr; $index: expr; ($typ: expr, $($args: expr),*)) => { select_expr!($index; 1; $($args),*) };  // should panic if billing != type
-    ($billing: expr; $index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if *$billing == $typ { select_expr!($index; 1; $($args),*) } else { define_prior_struct_helper_select_dim!($billing; $index; $($more),*) }
     };
 }
 
@@ -227,14 +217,6 @@ macro_rules! product {
 macro_rules! count_expr {
     ($args: expr) => { 1 };
     ($args: expr, $($more: expr),*) => { (1 + count_expr!($($more),*)) };
-}
-
-macro_rules! select_expr {
-    ($index: expr; $fallback: expr; ) => { $fallback };
-    ($index: expr; $fallback: expr; $val: expr) => { if $index == 0 { $val } else { $fallback } };
-    ($index: expr; $fallback: expr; $val: expr, $($more: expr),*) => {
-        if $index == 0 { $val } else { select_expr!($index - 1; $fallback; $($more),*) }
-    }
 }
 
 #[cfg(feature="billing")]
@@ -313,14 +295,6 @@ mod test {
         assert_eq!(sum_product_cdr!(("a", 2)), 2);
         assert_eq!(sum_product_cdr!(("a", 2, 3)), 2 * 3);
         assert_eq!(sum_product_cdr!(("a", 2, 3), ("b", 3, 4)), 2 * 3 + 3 * 4);
-    }
-
-    #[test]
-    fn test_macro_select_expr() {
-        assert_eq!(select_expr!(0; 1; 7, 8, 9), 7);
-        assert_eq!(select_expr!(1; 1; 7, 8, 9), 8);
-        assert_eq!(select_expr!(2; 1; 7, 8, 9), 9);
-        assert_eq!(select_expr!(3; 1; 7, 8, 9), 1);
     }
 
     #[test]
