@@ -19,39 +19,54 @@ use super::probability::{BaseCDF, CDF2, CDF16};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 pub trait PriorMultiIndex {
-    fn expand(&self) -> (usize, usize, usize, usize);
+    fn car(&self) -> usize;
+    fn cdr(&self) -> (usize, usize, usize, usize);
     fn num_dimensions() -> usize;
 }
 
 impl PriorMultiIndex for (usize,) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, 0usize, 0usize, 0usize) }
+    #[inline]
+    fn car(&self) -> usize { self.0 }
+    #[inline]
+    fn cdr(&self) -> (usize, usize, usize, usize) { (1usize, 1usize, 1usize, 1usize) }
     fn num_dimensions() -> usize { 1usize }
 }
 
 impl PriorMultiIndex for (usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, 0usize, 0usize) }
+    #[inline]
+    fn car(&self) -> usize { self.0 }
+    #[inline]
+    fn cdr(&self) -> (usize, usize, usize, usize) { (self.1, 1usize, 1usize, 1usize) }
     fn num_dimensions() -> usize { 2usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { (self.0, self.1, self.2, 0usize) }
+    #[inline]
+    fn car(&self) -> usize { self.0 }
+    #[inline]
+    fn cdr(&self) -> (usize, usize, usize, usize) { (self.1, self.2, 1usize, 1usize) }
     fn num_dimensions() -> usize { 3usize }
 }
 
 impl PriorMultiIndex for (usize, usize, usize, usize) {
-    fn expand(&self) -> (usize, usize, usize, usize) { *self }
+    #[inline]
+    fn car(&self) -> usize { self.0 }
+    #[inline]
+    fn cdr(&self) -> (usize, usize, usize, usize) { (self.1, self.2, self.3, 1usize) }
     fn num_dimensions() -> usize { 4usize }
 }
 
 pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> {
     fn name() -> Option<&'static str> { None }
 
+    const NUM_ALL_PRIORS: usize;
+    const NUM_BILLING_TYPES: usize;
+
     fn initialized(&self) -> bool;
-    fn num_all_priors() -> usize;
     fn num_prior(billing: &B) -> usize;
     fn num_dimensions(billing: &B) -> usize;
-    fn num_billing_types() -> usize;
     fn index_to_billing_type(index: usize) -> B;
+    fn offset_for_billing_type(billing: B) -> usize;
 
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
     fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
@@ -67,67 +82,42 @@ macro_rules! define_prior_struct {
         pub struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
             pub priors: AllocT::AllocatedMemory
         }
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
-            #[inline]
-            fn prior_index_from_subindex(billing: $billing_type, index: usize) -> usize {
-                // Compute the offset into the array for this billing type.
-                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
-                debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                debug_assert!(offset_type + index < Self::num_all_priors());
-                offset_type + index
-            }
-        }
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
+            const NUM_ALL_PRIORS : usize = sum_product_cdr!($($args),*) as usize;
+            const NUM_BILLING_TYPES : usize = count_expr!($($args),*) as usize;
+
             fn name() -> Option<&'static str> {
                 Some(stringify!($name))
             }
-            #[inline]
             fn initialized(&self) -> bool {
-                self.priors.slice().len() == Self::num_all_priors()
+                self.priors.slice().len() == Self::NUM_ALL_PRIORS
             }
             #[inline]
             fn get_with_raw_index(&self, billing: $billing_type, index: usize) -> &T {
-                let i = Self::prior_index_from_subindex(billing, index);
-                &self.priors.slice()[i]
+                debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
+                let offset = Self::offset_for_billing_type(billing);
+                debug_assert!(offset + index < Self::NUM_ALL_PRIORS);
+                &self.priors.slice()[index + offset]
             }
             #[inline]
             fn get_with_raw_index_mut(&mut self, billing: $billing_type, index: usize) -> &mut T {
-                let i = Self::prior_index_from_subindex(billing, index);
-                &mut self.priors.slice_mut()[i]
+                debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
+                let offset = Self::offset_for_billing_type(billing);
+                debug_assert!(offset + index < Self::NUM_ALL_PRIORS);
+                &mut self.priors.slice_mut()[index + offset]
             }
             #[inline]
             fn get<I: PriorMultiIndex>(&mut self, billing: $billing_type, index: I) -> &mut T {
                 // Check the dimensionality.
-                let expected_dim = Self::num_dimensions(&billing);
-                debug_assert_eq!(I::num_dimensions(), expected_dim,
+                debug_assert_eq!(I::num_dimensions(), Self::num_dimensions(&billing),
                                  "Index has {} dimensions but {} is expected for {:?}",
-                                 I::num_dimensions(), expected_dim, billing);
-                // Compute the offset into the array for this billing type.
-                let offset_type = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
+                                 I::num_dimensions(), Self::num_dimensions(&billing), billing);
                 // Compute the offset arising from the index.
-                let expanded_index = index.expand();
-                let expanded_dim : (usize, usize, usize, usize) = (define_prior_struct_helper_select_dim!(&billing; 0; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 1; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 2; $($args),*),
-                                                                   define_prior_struct_helper_select_dim!(&billing; 3; $($args),*));
-                let offset_index = expanded_index.0 +
-                    expanded_dim.0 * (expanded_index.1 +
-                                      expanded_dim.1 * (expanded_index.2 + expanded_dim.2 * expanded_index.3));
-                if I::num_dimensions() > 1 {
-                    debug_assert!(expanded_index.0 < expanded_dim.0 &&
-                                  expanded_index.1 < expanded_dim.1 &&
-                                  expanded_index.2 < expanded_dim.2 &&
-                                  expanded_index.3 < expanded_dim.3, "Index out of bounds");
-                }
-                debug_assert!(offset_index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                debug_assert!(offset_type + offset_index < Self::num_all_priors());
-                &mut self.priors.slice_mut()[offset_type + offset_index]
+                let linearized_index = define_prior_struct_helper_collapse_index!(&billing; index; $($args),*);
+                debug_assert!(linearized_index < Self::NUM_ALL_PRIORS);
+                &mut self.priors.slice_mut()[linearized_index]
             }
             // TODO: technically this does not depend on the template paramters.
-            #[inline]
-            fn num_all_priors() -> usize {
-                sum_product_cdr!($($args),*) as usize
-            }
             #[inline]
             fn num_prior(_billing: &$billing_type) -> usize {
                 (define_prior_struct_helper_product!(_billing; $($args),*)) as usize
@@ -136,13 +126,15 @@ macro_rules! define_prior_struct {
             fn num_dimensions(_billing: &$billing_type) -> usize {
                 (define_prior_struct_helper_dimensionality!(_billing; $($args),*)) as usize
             }
-
-            fn num_billing_types() -> usize {
-                count_expr!($($args),*) as usize
-            }
             fn index_to_billing_type(_index: usize) -> $billing_type {
                 define_prior_struct_helper_select_type!(_index; $($args),*)
             }
+            #[inline(always)]
+            fn offset_for_billing_type(billing: $billing_type) -> usize {
+                let offset = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
+                offset
+            }
+
         }
         #[cfg(feature="billing")]
         #[cfg(feature="debug_entropy")]
@@ -189,6 +181,36 @@ macro_rules! define_prior_struct_helper_select_dim {
     };
 }
 
+macro_rules! linearize_index {
+    ($multi_index: expr; $val: expr) => {
+        if $multi_index.car() < $val {
+            $multi_index.car()
+        } else {
+            panic!("Index out of bounds")
+        }
+    };
+    ($multi_index: expr; $val: expr, $($more: expr),*) => {
+        if $multi_index.car() < $val {
+            $multi_index.car() + ($val) * (linearize_index!($multi_index.cdr(); $($more),*))
+        } else {
+            panic!("Index out of bounds")
+        }
+    };
+}
+
+macro_rules! define_prior_struct_helper_collapse_index {
+    ($billing: expr; $multi_index: expr; ($typ: expr, $($args: expr),*)) => {
+        linearize_index!($multi_index; $($args),*)
+    };
+    ($billing: expr; $multi_index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
+        if *$billing == $typ {
+            linearize_index!($multi_index; $($args),*)
+        } else {
+            (product!($($args),*) as usize) + define_prior_struct_helper_collapse_index!($billing; $multi_index; $($more),*)
+        }
+    };
+}
+
 // Given a list of tuples, compute the product of all but the first number for each tuple,
 // and report the sum of the said products.
 macro_rules! sum_product_cdr {
@@ -227,7 +249,7 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
     }
     use std::vec::Vec;
     use core::iter::FromIterator;
-    for i in 0..PriorCollectionImpl::num_billing_types() {
+    for i in 0..PriorCollectionImpl::NUM_BILLING_TYPES {
         let billing = PriorCollectionImpl::index_to_billing_type(i as usize);
         let count = PriorCollectionImpl::num_prior(&billing);
         let mut num_cdfs_printed = 0usize;
@@ -318,7 +340,7 @@ mod test {
             assert_eq!(TestPriorSetImpl::num_prior(&t), expected_count);
             expected_sum += expected_count;
         }
-        assert_eq!(TestPriorSetImpl::num_all_priors(), expected_sum);
+        assert_eq!(TestPriorSetImpl::NUM_ALL_PRIORS, expected_sum);
     }
 
     #[test]
@@ -333,7 +355,7 @@ mod test {
 
     #[test]
     fn test_billing_types() {
-        assert_eq!(TestPriorSetImpl::num_billing_types(), 3);
+        assert_eq!(TestPriorSetImpl::NUM_BILLING_TYPES, 3);
         assert_eq!(TestPriorSetImpl::index_to_billing_type(0), PriorType::Foo);
         assert_eq!(TestPriorSetImpl::index_to_billing_type(1), PriorType::Bar);
         assert_eq!(TestPriorSetImpl::index_to_billing_type(2), PriorType::Cat);
@@ -343,7 +365,7 @@ mod test {
     fn test_get() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
-            priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
+            priors: allocator.alloc_cell(TestPriorSetImpl::NUM_ALL_PRIORS),
         };
         let prior_types : [PriorType; 3] = [PriorType::Foo, PriorType::Bar, PriorType::Cat];
         // Check that all priors are initialized to default.
@@ -386,7 +408,7 @@ mod test {
     fn test_get_tuple() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
-            priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
+            priors: allocator.alloc_cell(TestPriorSetImpl::NUM_ALL_PRIORS),
         };
         for i in 0..5 {
             for j in 0..8 {
@@ -424,7 +446,7 @@ mod test {
     fn test_get_bad_tuple_index() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
-            priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
+            priors: allocator.alloc_cell(TestPriorSetImpl::NUM_ALL_PRIORS),
         };
         prior_set.get(PriorType::Bar, (6, 1));
     }
@@ -434,7 +456,7 @@ mod test {
     fn test_get_bad_tuple_dimensionality() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
         let mut prior_set = TestPriorSetImpl {
-            priors: allocator.alloc_cell(TestPriorSetImpl::num_all_priors()),
+            priors: allocator.alloc_cell(TestPriorSetImpl::NUM_ALL_PRIORS),
         };
         prior_set.get(PriorType::Bar, (0, 0, 0));
     }

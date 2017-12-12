@@ -526,13 +526,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
                do_context_map:bool,
            force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
-        let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::num_all_priors());
-        let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::num_all_priors());
+        let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let literal_context_map = m8.alloc_cell(64 * NUM_BLOCK_TYPES);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
         CrossCommandState::<ArithmeticCoder,
