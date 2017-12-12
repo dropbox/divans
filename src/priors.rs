@@ -173,17 +173,15 @@ macro_rules! define_prior_struct_helper_select_type {
 
 macro_rules! linearize_index {
     ($multi_index: expr; $val: expr) => {
-        if $multi_index.car() < $val {
+        {
+            debug_assert!($multi_index.car() < $val, "Index out of bounds");
             $multi_index.car()
-        } else {
-            panic!("Index out of bounds")
         }
     };
     ($multi_index: expr; $val: expr, $($more: expr),*) => {
-        if $multi_index.car() < $val {
+        {
+            debug_assert!($multi_index.car() < $val, "Index out of bounds");
             $multi_index.car() + ($val) * (linearize_index!($multi_index.cdr(); $($more),*))
-        } else {
-            panic!("Index out of bounds")
         }
     };
 }
