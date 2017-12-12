@@ -66,7 +66,6 @@ pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> 
     fn num_prior(billing: &B) -> usize;
     fn num_dimensions(billing: &B) -> usize;
     fn index_to_billing_type(index: usize) -> B;
-    fn offset_for_billing_type(billing: B) -> usize;
 
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
     fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
@@ -82,6 +81,9 @@ macro_rules! define_prior_struct {
         pub struct $name<T: BaseCDF + Default, AllocT: Allocator<T>> {
             pub priors: AllocT::AllocatedMemory
         }
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> $name<T, AllocT> {
+            const BILLING_TYPES: [$billing_type; count_expr!($($args),*)] = collect_car_into_array!($($args),*);
+        }
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             const NUM_ALL_PRIORS : usize = sum_product_cdr!($($args),*) as usize;
             const NUM_BILLING_TYPES : usize = count_expr!($($args),*) as usize;
@@ -95,14 +97,14 @@ macro_rules! define_prior_struct {
             #[inline]
             fn get_with_raw_index(&self, billing: $billing_type, index: usize) -> &T {
                 debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                let offset = Self::offset_for_billing_type(billing);
+                let offset : usize = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 debug_assert!(offset + index < Self::NUM_ALL_PRIORS);
                 &self.priors.slice()[index + offset]
             }
             #[inline]
             fn get_with_raw_index_mut(&mut self, billing: $billing_type, index: usize) -> &mut T {
                 debug_assert!(index < Self::num_prior(&billing), "Offset from the index is out of bounds");
-                let offset = Self::offset_for_billing_type(billing);
+                let offset : usize = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
                 debug_assert!(offset + index < Self::NUM_ALL_PRIORS);
                 &mut self.priors.slice_mut()[index + offset]
             }
@@ -118,23 +120,15 @@ macro_rules! define_prior_struct {
                 &mut self.priors.slice_mut()[linearized_index]
             }
             // TODO: technically this does not depend on the template paramters.
-            #[inline]
             fn num_prior(_billing: &$billing_type) -> usize {
                 define_prior_struct_unary_helper!(product; _billing; $($args),*) as usize
             }
-            #[inline]
             fn num_dimensions(_billing: &$billing_type) -> usize {
                 define_prior_struct_unary_helper!(count_expr; _billing; $($args),*) as usize
             }
-            fn index_to_billing_type(_index: usize) -> $billing_type {
-                define_prior_struct_helper_select_type!(_index; $($args),*)
+            fn index_to_billing_type(index: usize) -> $billing_type {
+                Self::BILLING_TYPES[index].clone()
             }
-            #[inline(always)]
-            fn offset_for_billing_type(billing: $billing_type) -> usize {
-                let offset = define_prior_struct_helper_offset!(billing; $($args),*) as usize;
-                offset
-            }
-
         }
         #[cfg(feature="billing")]
         #[cfg(feature="debug_entropy")]
@@ -147,9 +141,13 @@ macro_rules! define_prior_struct {
 }
 
 macro_rules! define_prior_struct_helper_offset {
-    ($billing: expr; ($typ: expr, $($args: expr),*)) => { 0 };  // should panic if billing != type
+    ($billing: expr; ($typ: expr, $($args: expr),*)) => {
+        { debug_assert_eq!($billing, $typ, "Invalid billing type"); 0 }
+    };
     ($billing: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        (($billing != $typ) as u32) * (product!($($args),*) + define_prior_struct_helper_offset!($billing; $($more),*))
+        if $billing == $typ { 0 } else {
+            product!($($args),*) + define_prior_struct_helper_offset!($billing; $($more),*)
+        }
     };
 }
 
@@ -161,13 +159,6 @@ macro_rules! define_prior_struct_unary_helper {
         } else {
             $macro!($($args),*)
         }
-    };
-}
-
-macro_rules! define_prior_struct_helper_select_type {
-    ($index: expr; ($typ: expr, $($args: expr),*)) => { $typ };  // should panic if billing != type
-    ($index: expr; ($typ: expr, $($args: expr),*), $($more:tt),*) => {
-        if $index == 0 { $typ } else { define_prior_struct_helper_select_type!(($index - 1); $($more),*) }
     };
 }
 
@@ -197,6 +188,10 @@ macro_rules! define_prior_struct_helper_collapse_index {
             (product!($($args),*) as usize) + define_prior_struct_helper_collapse_index!($billing; $multi_index; $($more),*)
         }
     };
+}
+
+macro_rules! collect_car_into_array {
+    ($($x: tt),*) => { [$($x.0),*] }
 }
 
 // Given a list of tuples, compute the product of all but the first number for each tuple,

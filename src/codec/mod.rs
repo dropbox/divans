@@ -39,9 +39,6 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
-#[cfg(feature="billing")]
-#[cfg(feature="debug_entropy")]
-use priors::summarize_prior_billing;
 
 /*
 use std::io::Write;

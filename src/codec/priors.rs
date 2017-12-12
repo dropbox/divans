@@ -2,6 +2,9 @@ use ::interface::{
     CrossCommandBilling,
 };
 use ::priors::{PriorCollection, PriorMultiIndex};
+#[cfg(feature="billing")]
+#[cfg(feature="debug_entropy")]
+use ::priors::summarize_prior_billing;
 pub const NUM_BLOCK_TYPES:usize = 256;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use probability::BaseCDF;

@@ -25,6 +25,8 @@ pub mod numeric;
 pub mod simd_frequentist_cdf;
 pub mod opt_frequentist_cdf;
 pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, Prob, LOG2_SCALE, BLEND_FIXED_POINT_PRECISION, ProbRange};
+#[cfg(feature="debug_entropy")]
+pub use self::interface::DebugWrapperCDF16;
 pub use self::blend_cdf::{BlendCDF16};
 pub use self::frequentist_cdf::FrequentistCDF16;
 pub use self::external_cdf::ExternalProbCDF16;
@@ -94,7 +96,7 @@ mod test {
         let half = (1<<BLEND_FIXED_POINT_PRECISION)>>1;
         let quarter = (1<<BLEND_FIXED_POINT_PRECISION)>>2;
         let threequarters = half + quarter;;
-        
+
         assert_cdf_eq(&cdf0a.average(cdf1a, quarter), &cdf0b.average(cdf1b, quarter));
         assert_cdf_eq(&cdf0a.average(cdf1a, half), &cdf0b.average(cdf1b, half));
         assert_cdf_eq(&cdf0a.average(cdf1a, threequarters), &cdf0b.average(cdf1b, threequarters));

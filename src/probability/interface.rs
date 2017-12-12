@@ -144,7 +144,7 @@ pub trait BaseCDF {
         self.sym_to_start_and_freq(15)
 */
     }
-                                    
+
     // These methods are optional because implementing them requires nontrivial bookkeeping.
     // Only CDFs that are intended for debugging should support them.
     fn num_samples(&self) -> Option<u32> { None }
@@ -320,6 +320,20 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         self.cdf.blend(symbol, speed);
     }
     fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
+    fn average(&self, other: &Self, mix_rate: i32) -> Self {
+        // NOTE(jongmin): The notion of averaging for a debug CDF is not well-formed
+        // because its private fields depend on the blend history that's not preserved in averaging.
+        let mut counts_both = [0u32; 16];
+        for i in 0..16 {
+            counts_both[i] = self.counts[i] + other.counts[i];
+        }
+        Self {
+            cdf: self.cdf.average(&other.cdf, mix_rate),
+            counts: counts_both,
+            cost: (self.cost + other.cost),
+            rolling_entropy_sum: (self.rolling_entropy_sum + other.rolling_entropy_sum)
+        }
+    }
 }
 
 #[cfg(feature="debug_entropy")]
@@ -380,4 +394,3 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         }
     }
 }
-
