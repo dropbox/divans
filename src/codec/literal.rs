@@ -3,6 +3,7 @@ use brotli::BrotliResult;
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
 use ::constants;
 use super::priors::LiteralNibblePriorType;
+use ::alloc_util::UninitializedOnAlloc;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use super::interface::{
     EncoderOrDecoderSpecialization,
@@ -87,7 +88,7 @@ impl<AllocU8:Allocator<u8>,
                     if shortcut_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountFirst;
                     } else {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(shortcut_nib as usize + 1),
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(shortcut_nib as usize + 1),
                                                                         shortcut_nib as usize + 1);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     }
@@ -102,7 +103,7 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(16 + beg_nib as usize),
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(16 + beg_nib as usize),
                                                                         16 + beg_nib as usize);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
@@ -132,7 +133,7 @@ impl<AllocU8:Allocator<u8>,
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
                     if next_len_remaining == 0 {
-                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.alloc_cell(next_decoded_so_far as usize + 16),
+                        self.lc.data = AllocatedMemoryPrefix::<AllocU8>(superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(next_decoded_so_far as usize + 16),
                                                                       next_decoded_so_far as usize+ 16);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
