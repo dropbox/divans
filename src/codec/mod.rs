@@ -27,10 +27,10 @@ use super::interface::{
 };
 pub mod weights;
 mod interface;
+use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
     StrideSelection,
     EncoderOrDecoderSpecialization,
-    AllocatedMemoryPrefix,
     CrossCommandState,
 };
 
@@ -96,7 +96,7 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     BlockSwitchCommand(block_type::BlockTypeState),
     BlockSwitchDistance(block_type::BlockTypeState),
     PredictionMode(context_map::PredictionModeState),
-    PopulateRingBuffer(Command<AllocatedMemoryPrefix<AllocU8>>),
+    PopulateRingBuffer(Command<AllocatedMemoryPrefix<u8, AllocU8>>),
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
@@ -149,7 +149,7 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
                                 state: dict::DictSubstate::Begin,
                             }),
       3 => EncodeOrDecodeState::Literal(literal::LiteralState {
-                                lc:LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop(),
+                                lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
                                 state:literal::LiteralSubstate::Begin,
                             }),
      4 => EncodeOrDecodeState::BlockSwitchLiteral(block_type::LiteralBlockTypeState::Begin),
@@ -512,7 +512,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         BrotliResult::ResultSuccess => {
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Literal(core::mem::replace(&mut lit_state.lc,
-                                                                    LiteralCommand::<AllocatedMemoryPrefix<AllocU8>>::nop()))));
+                                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()))));
                         },
                         retval => {
                             return OneCommandReturn::BufferExhausted(retval);
@@ -578,7 +578,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::Begin);
                             if let Command::Literal(ref mut l) = *o_cmd {
                                 let mfd = core::mem::replace(&mut l.data,
-                                                             AllocatedMemoryPrefix::<AllocU8>::default()).0;
+                                                             AllocatedMemoryPrefix::<u8, AllocU8>::default()).0;
                                 self.cross_command_state.m8.free_cell(mfd);
                                 //FIXME: what about prob array: should that be freed
                             }

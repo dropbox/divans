@@ -11,7 +11,7 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
-
+use core;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
 #[derive(Copy,Clone)]
@@ -60,5 +60,55 @@ impl<'a, T> Default for SliceReference<'a, T> {
         }
     }
 }
+
+pub struct AllocatedMemoryPrefix<T, AllocT:Allocator<T>>(pub AllocT::AllocatedMemory, pub usize);
+
+impl<T, AllocT: Allocator<T>> core::ops::Index<usize> for AllocatedMemoryPrefix<T, AllocT> {
+   type Output = T;
+   fn index(&self, index: usize) -> &T {
+      &self.0.slice()[index]
+   }
+}
+
+impl<T, AllocT: Allocator<T>> core::ops::IndexMut<usize> for AllocatedMemoryPrefix<T, AllocT> {
+   fn index_mut(&mut self, index: usize) -> &mut T {
+      &mut self.mem().slice_mut()[index]
+   }
+}
+
+impl<T, AllocT:Allocator<T>> Default for AllocatedMemoryPrefix<T, AllocT> {
+    fn default() -> Self {
+        AllocatedMemoryPrefix(AllocT::AllocatedMemory::default(), 0usize)
+    }
+}
+impl<T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
+    pub fn mem(&mut self) -> &mut AllocT::AllocatedMemory {
+        &mut self.0
+    }
+    pub fn components(self) -> (AllocT::AllocatedMemory, usize) {
+        (self.0, self.1)
+    }
+}
+
+impl<T, AllocT:Allocator<T>> SliceWrapperMut<T> for AllocatedMemoryPrefix<T, AllocT> {
+    fn slice_mut(&mut self) -> &mut [T] {
+        self.0.slice_mut().split_at_mut(self.1).0
+    }
+}
+impl<T, AllocT:Allocator<T>> SliceWrapper<T> for AllocatedMemoryPrefix<T, AllocT> {
+    fn slice(&self) -> &[T] {
+        self.0.slice().split_at(self.1).0
+    }
+}
+impl <T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
+    pub fn new(m8 : &mut AllocT, len: usize) -> Self {
+        AllocatedMemoryPrefix::<T, AllocT>(m8.alloc_cell(len), len)
+    }
+    pub fn realloc(mem : AllocT::AllocatedMemory, len: usize) -> Self {
+        debug_assert!(len <= mem.slice().len(), "Must realloc to a smaller size for AllocatedMemoryPrefix");
+        AllocatedMemoryPrefix::<T, AllocT>(mem, len)
+    }
+}
+
 
 

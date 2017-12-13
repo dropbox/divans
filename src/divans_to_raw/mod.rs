@@ -18,7 +18,7 @@ use codec::EncoderOrDecoderSpecialization;
 
 use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
 
-use codec::AllocatedMemoryPrefix;
+use slice_util::AllocatedMemoryPrefix;
 
 #[derive(Default)]
 pub struct DecoderSpecialization {
@@ -41,11 +41,11 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
     }
     fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&mut self,
                                                    m8:&mut AllocU8,
-                                                   len: usize) -> AllocatedMemoryPrefix<AllocU8> {
+                                                   len: usize) -> AllocatedMemoryPrefix<u8, AllocU8> {
         if len > self.max_size {
             self.max_size = len;
         }
-        AllocatedMemoryPrefix::<AllocU8>::new(m8, self.max_size)
+        AllocatedMemoryPrefix::<u8, AllocU8>::new(m8, self.max_size)
     }
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                       _data:&'a [Command<ISlice>],
@@ -53,9 +53,9 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                                       backing:&'a Command<ISlice>) -> &'a Command<ISlice> {
         backing
     }
-    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
+    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<u8, AllocU8>>],
                                                      offset: usize,
-                                                     _backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>> {
+                                                     _backing:&'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>> {
         &mut data[offset]
     }
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self,

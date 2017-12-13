@@ -3,6 +3,7 @@ use brotli::BrotliResult;
 use ::cmd_to_raw::DivansRecodeState;
 use ::probability::{CDF2, CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::RepurposingAlloc;
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -54,12 +55,12 @@ pub enum StrideSelection {
 pub trait EncoderOrDecoderSpecialization {
     fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
-                                                    len: usize) -> AllocatedMemoryPrefix<AllocU8>;
+                                                    len: usize) -> AllocatedMemoryPrefix<u8, AllocU8>;
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self, data:&'a [Command<ISlice>],offset: usize,
                                                       backing:&'a Command<ISlice>) -> &'a Command<ISlice>;
-    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<AllocU8>>],
+    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<u8, AllocU8>>],
                                                      offset: usize,
-                                                     backing:&'a mut Command<AllocatedMemoryPrefix<AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<AllocU8>>;
+                                                     backing:&'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>;
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
     fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
@@ -72,7 +73,6 @@ pub trait EncoderOrDecoderSpecialization {
                                      backing: &'a mut usize) -> &'a mut usize;
     fn does_caller_want_original_file_bytes(&self) -> bool;
 }
-pub struct AllocatedMemoryPrefix<AllocU8:Allocator<u8>>(pub AllocU8::AllocatedMemory, pub usize);
 
 #[allow(non_snake_case)]
 pub fn Fail() -> BrotliResult {
@@ -82,33 +82,6 @@ pub fn Fail() -> BrotliResult {
 
 
 
-
-impl<AllocU8:Allocator<u8>> Default for AllocatedMemoryPrefix<AllocU8> {
-    fn default() -> Self {
-        AllocatedMemoryPrefix(AllocU8::AllocatedMemory::default(), 0usize)
-    }
-}
-impl<AllocU8:Allocator<u8>> AllocatedMemoryPrefix<AllocU8> {
-    fn replace_with_empty(&mut self) ->AllocU8::AllocatedMemory {
-        core::mem::replace(&mut self.0, AllocU8::AllocatedMemory::default())
-    }
-}
-
-impl<AllocU8:Allocator<u8>> SliceWrapperMut<u8> for AllocatedMemoryPrefix<AllocU8> {
-    fn slice_mut(&mut self) -> &mut [u8] {
-        self.0.slice_mut().split_at_mut(self.1).0
-    }
-}
-impl<AllocU8:Allocator<u8>> SliceWrapper<u8> for AllocatedMemoryPrefix<AllocU8> {
-    fn slice(&self) -> &[u8] {
-        self.0.slice().split_at(self.1).0
-    }
-}
-impl <AllocU8:Allocator<u8>> AllocatedMemoryPrefix<AllocU8> {
-    pub fn new(m8 : &mut AllocU8, len: usize) -> Self {
-        AllocatedMemoryPrefix::<AllocU8>(m8.alloc_cell(len), len)
-    }
-}
 
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
