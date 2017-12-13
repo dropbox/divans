@@ -31,6 +31,15 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
+define_prior_struct!(LiteralCommandPriorsCM, LiteralNibblePriorType,
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 256),
+                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 256),
+                     (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
+                     (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum CopyCommandNibblePriorType {
     DistanceBegNib,

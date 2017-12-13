@@ -19,6 +19,7 @@ use ::interface::{
 };
 use super::priors::{
     LiteralCommandPriors,
+    LiteralCommandPriorsCM,
     CopyCommandPriors,
     DictCommandPriors,
     CrossCommandPriors,
@@ -136,7 +137,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub literal_context_map: AllocU8::AllocatedMemory,
     pub distance_context_map: AllocU8::AllocatedMemory,
     pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
-    pub lit_cm_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -233,7 +234,7 @@ impl<Cdf16:CDF16,
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
             },
-            lit_cm_priors: LiteralCommandPriors {
+            lit_cm_priors: LiteralCommandPriorsCM {
                 priors: cm_lit_prior
             },
             lit_priors: LiteralCommandPriors {
@@ -527,7 +528,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
            force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);

@@ -200,15 +200,11 @@ impl<AllocU8:Allocator<u8>,
                             };
                             let mut cm_prob = if high_nibble {
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                                (0,
-                                                                 actual_context,
-                                                                 0))
+                                                                (actual_context, 0))
                             } else {
                                 let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                                (0,
-                                                                 actual_context,
-                                                                 cur_byte_prior))
+                                                                (actual_context, cur_byte_prior))
                             };
                             let prob = if materialized_prediction_mode {
                                 if superstate.bk.combine_literal_predictions {
