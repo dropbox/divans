@@ -24,41 +24,20 @@ use super::codec::block_type::BlockTypeState;
 pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
 
+// The choice of CDF16 struct is controlled by feature flags.
 #[cfg(feature="blend")]
-#[cfg(not(feature="debug_entropy"))]
-pub type DefaultCDF16 = probability::BlendCDF16;
-#[cfg(not(feature="blend"))]
-#[cfg(not(feature="simd"))]
-#[cfg(not(feature="debug_entropy"))]
-#[cfg(not(feature="uncached_frequentist"))]
-pub type DefaultCDF16 = probability::OptFrequentistCDF16;
-#[cfg(not(feature="blend"))]
-#[cfg(feature="simd")]
-#[cfg(not(feature="debug_entropy"))]
-#[cfg(not(feature="uncached_frequentist"))]
-pub type DefaultCDF16 = probability::SIMDFrequentistCDF16;
-#[cfg(not(feature="blend"))]
-#[cfg(not(feature="debug_entropy"))]
-#[cfg(feature="uncached_frequentist")]
-pub type DefaultCDF16 = probability::FrequentistCDF16;
-#[cfg(feature="blend")]
-#[cfg(feature="debug_entropy")]
-pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::BlendCDF16>;
-#[cfg(not(feature="blend"))]
-#[cfg(not(feature="simd"))]
-#[cfg(feature="debug_entropy")]
-#[cfg(not(feature="uncached_frequentist"))]
-pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::OptFrequentistCDF16>;
-#[cfg(not(feature="blend"))]
-#[cfg(feature="simd")]
-#[cfg(feature="debug_entropy")]
-#[cfg(not(feature="uncached_frequentist"))]
-pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::SIMDFrequentistCDF16>;
-#[cfg(not(feature="blend"))]
-#[cfg(feature="debug_entropy")]
-#[cfg(feature="uncached_frequentist")]
-pub type DefaultCDF16 = probability::DebugWrapperCDF16<probability::FrequentistCDF16>;
+pub type DefaultInternalCDF16 = probability::BlendCDF16;
+#[cfg(all(not(any(feature="blend")), feature="uncached_frequentist"))]
+pub type DefaultInternalCDF16 = probability::FrequentistCDF16;
+#[cfg(all(not(any(feature="blend", feature="uncached_frequentist")), feature="simd"))]
+pub type DefaultInternalCDF16 = probability::SIMDFrequentistCDF16;
+#[cfg(all(not(any(feature="blend", feature="uncached_frequentist", feature="simd"))))]
+pub type DefaultInternalCDF16 = probability::OptFrequentistCDF16;
 
+#[cfg(feature="debug_entropy")]
+pub type DefaultCDF16 = probability::DebugWrapperCDF16<DefaultInternalCDF16>;
+#[cfg(not(feature="debug_entropy"))]
+pub type DefaultCDF16 = DefaultInternalCDF16;
 
 pub const HEADER_LENGTH: usize = 16;
 pub const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
@@ -231,8 +210,8 @@ pub trait ArithmeticEncoderOrDecoder {
     fn close(&mut self) -> BrotliResult;
 }
 pub trait DivansCompressorFactory<
-     AllocU8:Allocator<u8>, 
-     AllocU32:Allocator<u32>, 
+     AllocU8:Allocator<u8>,
+     AllocU32:Allocator<u32>,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;

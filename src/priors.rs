@@ -130,8 +130,7 @@ macro_rules! define_prior_struct {
                 Self::BILLING_TYPES[index].clone()
             }
         }
-        #[cfg(feature="billing")]
-        #[cfg(feature="debug_entropy")]
+        #[cfg(all(feature="billing",feature="debug_entropy"))]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
@@ -212,8 +211,7 @@ macro_rules! count_expr {
     ($args: expr, $($more: expr),*) => { (1 + count_expr!($($more),*)) };
 }
 
-#[cfg(feature="billing")]
-#[cfg(feature="debug_entropy")]
+#[cfg(all(feature="billing", feature="debug_entropy"))]
 pub fn summarize_prior_billing<T: BaseCDF + Default,
                                AllocT: Allocator<T>,
                                B: core::fmt::Debug + Clone,
@@ -265,8 +263,7 @@ mod test {
     use core;
     use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};
     use super::{PriorCollection, PriorMultiIndex};
-    #[cfg(feature="billing")]
-    #[cfg(feature="debug_entropy")]
+    #[cfg(all(feature="billing", feature="debug_entropy"))]
     use super::summarize_prior_billing;
     use alloc::{Allocator, HeapAlloc, SliceWrapper, SliceWrapperMut};
 
