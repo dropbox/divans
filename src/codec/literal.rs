@@ -88,7 +88,7 @@ impl<AllocU8:Allocator<u8>,
                     if shortcut_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountFirst;
                     } else {
-                        self.lc.data = superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(shortcut_nib as usize + 1);
+                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(shortcut_nib as usize + 1);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     }
                 },
@@ -102,7 +102,7 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(16 + beg_nib as usize);
+                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(16 + beg_nib as usize);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
@@ -131,7 +131,7 @@ impl<AllocU8:Allocator<u8>,
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
                     if next_len_remaining == 0 {
-                        self.lc.data = superstate.m8.use_cached_allocation(UninitializedOnAlloc{}).alloc_cell(next_decoded_so_far as usize + 16);
+                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(next_decoded_so_far as usize + 16);
                         self.state = LiteralSubstate::LiteralNibbleIndex(0);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
