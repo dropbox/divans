@@ -25,16 +25,16 @@ pub enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, 9, NUM_BLOCK_TYPES, 256),
-                     (LiteralNibblePriorType::SecondNibble, 9, NUM_BLOCK_TYPES, 256),
+                     (LiteralNibblePriorType::FirstNibble, 256, NUM_BLOCK_TYPES, 9),
+                     (LiteralNibblePriorType::SecondNibble, 256, NUM_BLOCK_TYPES, 9),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
 define_prior_struct!(LiteralCommandPriorsCM, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES, 256),
-                     (LiteralNibblePriorType::SecondNibble, NUM_BLOCK_TYPES, 256),
+                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SecondNibble, 256, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),

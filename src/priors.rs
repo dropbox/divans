@@ -75,6 +75,8 @@ pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> 
 macro_rules! define_prior_struct {
     // Syntax: define_prior_struct(StructName, BillingType,
     //                             billing_type1, count1, billing_type2, count2, ...);
+    // Note that the counts are expressed as tuples, with the least significant dimension
+    // being first. So dimensions with more volatile values should come first.
     ($name: ident, $billing_type: ty, $($args:tt),*) => {
         // TODO: this struct should probably own/manage its allocated memory,
         // since it is required to be of a particular size.

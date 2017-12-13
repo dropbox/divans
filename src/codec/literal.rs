@@ -188,23 +188,23 @@ impl<AllocU8:Allocator<u8>,
                             let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
                             let mut nibble_prob = if high_nibble {
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                             (superstate.bk.stride as usize,
+                                                             (k0 * 16 + k1,
                                                               actual_context,
-                                                              k0 * 16 + k1))
+                                                              superstate.bk.stride as usize))
                             } else {
                                 let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                             (superstate.bk.stride as usize,
+                                                             (k0 * 16 + k1,
                                                               cur_byte_prior,
-                                                              k0 * 16 + k1))
+                                                              superstate.bk.stride as usize))
                             };
                             let mut cm_prob = if high_nibble {
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                                (actual_context, 0))
+                                                                (actual_context,))
                             } else {
                                 let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                                (actual_context, cur_byte_prior))
+                                                                (cur_byte_prior, actual_context))
                             };
                             let prob = if materialized_prediction_mode {
                                 if superstate.bk.combine_literal_predictions {
