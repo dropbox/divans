@@ -335,6 +335,16 @@ fn test_raw_literal_stream() {
                 &mut Passthrough{});
 }
 
+#[test]
+fn test_raw_adaptive_literal_stream() {
+    bench_no_ir(65536,
+                TestAdapt{size:1024 * 1024 / 10},
+                0.29,
+                true,
+                true,
+                &mut Passthrough{});
+}
+
 
 #[cfg(feature="benchmark")]
 #[bench]

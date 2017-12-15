@@ -2,7 +2,7 @@ use core;
 use brotli::BrotliResult;
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
 use ::constants;
-use super::priors::LiteralNibblePriorType;
+use super::priors::{LiteralNibblePriorType, NUM_STRIDES};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::UninitializedOnAlloc;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
@@ -145,7 +145,7 @@ impl<AllocU8:Allocator<u8>,
                     let shift : u8 = if high_nibble { 4 } else { 0 };
                     let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
                                           >> shift) & 0xf;
-                    let stride = core::cmp::max(1, superstate.bk.stride);
+                    let stride = core::cmp::min(core::cmp::max(1, superstate.bk.stride), NUM_STRIDES as u8);
                     let base_shift = 0x40 - stride * 8;
                     let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
                     let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
@@ -188,13 +188,13 @@ impl<AllocU8:Allocator<u8>,
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                                              (k0 * 16 + k1,
                                                               actual_context,
-                                                              superstate.bk.stride as usize))
+                                                              core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1)))
                             } else {
                                 let cur_byte_prior = (*cur_byte >> 4) as usize;
                                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                                              (k0 * 16 + k1,
                                                               cur_byte_prior,
-                                                              superstate.bk.stride as usize))
+                                                              core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
                             };
                             let mut cm_prob = if high_nibble {
                                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
