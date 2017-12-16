@@ -95,7 +95,7 @@ impl<AllocU8:Allocator<u8>,
             //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
             //                }
             let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
-            let mut nibble_prob = if high_nibble {
+            let nibble_prob = if high_nibble {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                              (k0 * 16 + k1,
                                               actual_context,
@@ -106,7 +106,7 @@ impl<AllocU8:Allocator<u8>,
                                               cur_byte_prior as usize,
                                               core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
             };
-            let mut cm_prob = if high_nibble {
+            let cm_prob = if high_nibble {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
                                                 (actual_context,))
             } else {
@@ -192,7 +192,7 @@ impl<AllocU8:Allocator<u8>,
                 selected_context
             };
             let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
-            let mut nibble_prob = if high_nibble {
+            let nibble_prob = if high_nibble {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                              (k0 * 16 + k1,
                                               actual_context,
@@ -203,7 +203,7 @@ impl<AllocU8:Allocator<u8>,
                                               cur_byte_prior as usize,
                                               core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
             };
-            let mut cm_prob = if high_nibble {
+            let cm_prob = if high_nibble {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
                                                 (actual_context,))
             } else {
@@ -383,17 +383,10 @@ impl<AllocU8:Allocator<u8>,
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
-                        /*
                         let cur_nibble = self.code_nibble(false,
                                                       byte_to_encode_val & 0xf,
                                                       prior_nibble >> 4,
                                                       superstate);
-                                                      */
-                         let cur_nibble = self.code_nibble_with_ecdf(nibble_index,
-                                                                byte_to_encode_val & 0xf,
-                                                                prior_nibble >> 4,
-                                                                superstate,
-                                                                &[]);
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         *cur_byte = cur_nibble | *cur_byte;
                         superstate.bk.push_literal_byte(*cur_byte);
@@ -409,31 +402,20 @@ impl<AllocU8:Allocator<u8>,
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
-                    let cur_nibble = /*self.code_nibble(true,
+                    let cur_nibble = self.code_nibble(true,
                                                       byte_to_encode_val >> 4,
                                                       0,
-                                                      superstate);*/
-                                     self.code_nibble_with_ecdf(nibble_index,
-                                                                byte_to_encode_val >> 4,
-                                                                0,
-                                                                superstate,
-                                                                &[]);
+                                                      superstate);
                     match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                         BrotliResult::ResultSuccess => {},
                         need_something => {
                             return self.fallback_byte_encode(cur_nibble, nibble_index, need_something);
                         }
                     }
-                    /*
                     let cur_byte = self.code_nibble(false,
                                                   byte_to_encode_val & 0xf,
                                                   cur_nibble,
-                                                  superstate) | (cur_nibble << 4);*/
-                    let cur_byte = self.code_nibble_with_ecdf(nibble_index + 1,
-                                                                byte_to_encode_val & 0xf,
-                                                                cur_nibble,
-                                                                superstate,
-                                                                &[]) | (cur_nibble << 4);
+                                                  superstate) | (cur_nibble << 4);
                     self.lc.data.slice_mut()[byte_index] = cur_byte;
                     superstate.bk.push_literal_byte(cur_byte);
                     if byte_index + 1 == self.lc.data.slice().len() {
