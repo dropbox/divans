@@ -147,6 +147,7 @@ impl<AllocU8:Allocator<u8>,
         }
         cur_nibble
     }
+    #[inline(always)]
     pub fn code_nibble<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Cdf16:CDF16,
                         Specialization:EncoderOrDecoderSpecialization,
