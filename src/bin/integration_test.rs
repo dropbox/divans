@@ -181,6 +181,19 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     assert!(actual_ratio <= ratio);
 }
 
+#[test]
+fn test_e2e_ones_tinybuf() {
+    let data = [1u8, 2u8, 3u8, 4u8,255u8,1u8,2u8,3u8,0u8,1u8,2u8,3u8,8u8,4u8,3u8,
+                 7u8, 2u8, 3u8, 4u8,6u8,1u8,2u8,4u8,0u8,1u8,16u8,31u8,83u8,43u8,34u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 257u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
+                 ];
+    e2e_no_ir(1, false, false, &data[..], 0.99);
+}
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
    let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
