@@ -9,6 +9,7 @@ use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    ByteContext,
     round_up_mod_4,
 };
 use ::interface::{
@@ -39,6 +40,8 @@ pub struct LiteralState<AllocU8:Allocator<u8>> {
     pub lc:LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>,
     pub state: LiteralSubstate,
 }
+
+
 
 impl<AllocU8:Allocator<u8>,
                          > LiteralState<AllocU8> {
@@ -156,83 +159,54 @@ impl<AllocU8:Allocator<u8>,
                        >(&mut self,
                          high_nibble: bool,
                          mut cur_nibble: u8,
+                         byte_context: ByteContext,
                          cur_byte_prior: u8,
-                          superstate: &mut CrossCommandState<ArithmeticCoder,
-                                                             Specialization,
-                                                             Cdf16,
-                                                             AllocU8,
-                                                             AllocCDF2,
-                                                             AllocCDF16>) -> u8 {
-        let stride = core::cmp::min(core::cmp::max(1, superstate.bk.stride), NUM_STRIDES as u8);
-        let base_shift = 0x40 - stride * 8;
-        let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
-        let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
-        let selected_context:usize;
-        let actual_context: usize;
-        {
-            let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
-            let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
-            let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
-                | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
-            let sign_context =
-                (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) |
-            constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
-            let msb_context = prev_byte >> 2;
-            let lsb_context = prev_byte & 0x3f;
-            selected_context = match superstate.bk.literal_prediction_mode {
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
-                _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
-            } as usize;
-            let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
-            actual_context = if superstate.bk.materialized_prediction_mode() {
-                superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
+                         superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                            Specialization,
+                                                            Cdf16,
+                                                            AllocU8,
+                                                            AllocCDF2,
+                                                            AllocCDF16>) -> u8 {
+        let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
+        let nibble_prob = if high_nibble {
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                         (byte_context.stride_byte as usize,
+                                          byte_context.actual_context as usize,
+                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1)))
+        } else {
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                         (byte_context.stride_byte as usize,
+                                          cur_byte_prior as usize,
+                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
+        };
+        let cm_prob = if high_nibble {
+            superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
+                                            (byte_context.actual_context as usize,))
+        } else {
+            superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
+                                            (cur_byte_prior as usize, byte_context.actual_context as usize))
+        };
+        let prob = if materialized_prediction_mode {
+            if superstate.bk.combine_literal_predictions {
+                cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
             } else {
-                selected_context
-            };
-            let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
-            let nibble_prob = if high_nibble {
-                superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                             (k0 * 16 + k1,
-                                              actual_context,
-                                              core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1)))
-            } else {
-                superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                             (k0 * 16 + k1,
-                                              cur_byte_prior as usize,
-                                              core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
-            };
-            let cm_prob = if high_nibble {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                (actual_context,))
-            } else {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                (cur_byte_prior as usize, actual_context))
-            };
-            let prob = if materialized_prediction_mode {
-                if superstate.bk.combine_literal_predictions {
-                    cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
-                } else {
-                    *cm_prob
-                }
-            } else {
-                *nibble_prob
-            };
-            let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
-                                                                         &prob,
-                                                                         BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
-            if materialized_prediction_mode && superstate.bk.model_weights[high_nibble as usize].should_mix() {
-                let model_probs = [
-                    cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                ];
-                superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
+                *cm_prob
             }
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
-            cm_prob.blend(cur_nibble, Speed::GLACIAL);
+        } else {
+            *nibble_prob
+        };
+        let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
+                                                                     &prob,
+                                                                     BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
+        if materialized_prediction_mode && superstate.bk.model_weights[high_nibble as usize].should_mix() {
+            let model_probs = [
+                cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
+                nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
+            ];
+            superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
+        nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+        cm_prob.blend(cur_nibble, Speed::GLACIAL);
         cur_nibble
     }
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>) -> LiteralSubstate {
@@ -382,12 +356,14 @@ impl<AllocU8:Allocator<u8>,
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
+                    let byte_context = superstate.bk.get_prev_word_context();
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
                         let cur_nibble = self.code_nibble(false,
-                                                      byte_to_encode_val & 0xf,
-                                                      prior_nibble >> 4,
-                                                      superstate);
+                                                          byte_to_encode_val & 0xf,
+                                                          byte_context,
+                                                          prior_nibble >> 4,
+                                                          superstate);
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         *cur_byte = cur_nibble | *cur_byte;
                         superstate.bk.push_literal_byte(*cur_byte);
@@ -403,8 +379,10 @@ impl<AllocU8:Allocator<u8>,
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
+                    let byte_context = superstate.bk.get_prev_word_context();
                     let cur_nibble = self.code_nibble(true,
                                                       byte_to_encode_val >> 4,
+                                                      byte_context,
                                                       0,
                                                       superstate);
                     match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
@@ -414,9 +392,10 @@ impl<AllocU8:Allocator<u8>,
                         }
                     }
                     let cur_byte = self.code_nibble(false,
-                                                  byte_to_encode_val & 0xf,
-                                                  cur_nibble,
-                                                  superstate) | (cur_nibble << 4);
+                                                    byte_to_encode_val & 0xf,
+                                                    byte_context,
+                                                    cur_nibble,
+                                                    superstate) | (cur_nibble << 4);
                     self.lc.data.slice_mut()[byte_index] = cur_byte;
                     superstate.bk.push_literal_byte(cur_byte);
                     if byte_index + 1 == self.lc.data.slice().len() {
