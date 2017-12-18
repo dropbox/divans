@@ -36,12 +36,15 @@ impl Weights {
         self.model_weights = [w0new, w1new];
         self.normalized_weight = compute_normalized_weight(self.model_weights);
     }
+    #[inline(always)]
     pub fn set_mixing_param(&mut self, param: u8) {
         self.mixing_param = param;
     }
+    #[inline(always)]
     pub fn should_mix(&self) -> bool {
         self.mixing_param > 1
     }
+    #[inline(always)]
     pub fn norm_weight(&self) -> i16 {
         self.normalized_weight
     }
