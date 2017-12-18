@@ -7,16 +7,18 @@ use stdsimd::simd;
 pub type DenominatorType = i16;
 #[cfg(feature="division_table_gen")]
 pub type DenominatorType = u16;
-
+#[inline(always)]
 fn k16bit_length(d:DenominatorType) -> u8 {
     (16 - d.leading_zeros()) as u8
 }
 pub const LOG_MAX_NUMERATOR: usize = 31;
+#[inline(always)]
 pub fn compute_divisor(d: DenominatorType) -> (i64, u8) {
     let bit_len = k16bit_length(d);
     (((((( 1i64 << bit_len) - i64::from(d)) << (LOG_MAX_NUMERATOR))) / i64::from(d)) + 1, bit_len.wrapping_sub(1))
 }
 #[cfg(not(feature="division_table_gen"))]
+#[inline(always)]
 pub fn lookup_divisor(d: i16) -> (i64, u8) {
     div_lut::RECIPROCAL[d as u16 as usize]
 }
@@ -29,6 +31,7 @@ pub fn fast_divide_30bit_by_16bit(num: i32, inv_denom_and_bitlen: (i64, u8)) -> 
 }
 
 #[cfg(feature="simd")]
+#[inline(always)]
 pub fn fast_divide_30bit_i64x2_by_16bit(num: simd::i64x2, inv_denom_and_bitlen: (i64, u8)) -> simd::i64x2 {
     let idiv_mul_num = simd::i64x2::splat(inv_denom_and_bitlen.0) * num;
     let idiv_mul_num_shift_max_num = idiv_mul_num >> LOG_MAX_NUMERATOR;
@@ -43,11 +46,13 @@ pub fn fast_divide_30bit_i64x2_by_16bit(num: simd::i64x2, inv_denom_and_bitlen: 
 pub type Denominator8Type = u8;
 const SHIFT_16_BY_8:usize = 24;
 
+#[inline(always)]
 pub fn compute_divisor8(d: Denominator8Type) -> i32 {
     let del = 1;
     del +  (1 << SHIFT_16_BY_8) / i32::from(d)
 }
 #[cfg(not(feature="division_table_gen"))]
+#[inline(always)]
 pub fn lookup_divisor8(d: u8) -> i32 {
     div_lut::RECIPROCAL8[d as u8 as usize]
 }

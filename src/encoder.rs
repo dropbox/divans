@@ -166,6 +166,7 @@ pub trait EntropyDecoder {
 
 
 impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
+    #[inline(always)]
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer:&[u8],
                                      input_offset:&mut usize,
@@ -187,6 +188,7 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
                                       prob_of_false: u8) {
         *bit = self.get_bit(prob_of_false);
     }
+    #[inline(always)]
     fn get_or_put_nibble_without_billing<C: CDF16>(&mut self,
                                                    nibble: &mut u8,
                                                    prob: &C) -> ProbRange {

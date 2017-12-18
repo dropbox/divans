@@ -49,7 +49,8 @@ impl BaseCDF for SIMDFrequentistCDF16 {
     fn log_max(&self) -> Option<i8> { None }
     #[inline(always)]
     fn cdf(&self, symbol: u8) -> Prob {
-        self.cdf.extract(symbol as u32)
+        // for some reason it's way better to assert to the compiler "hey I'm within 0-15"
+        self.cdf.extract(symbol as u32 & 0xf)
     }
     fn valid(&self) -> bool {
         let mut prev = 0;
@@ -147,8 +148,11 @@ fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8,i32x8) {
     let self1 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi32(i16x8::from(upper_quad))};
     (self0, self1)
 }
+
+#[inline(always)]
 fn i32x8_tuple_to_i16x16(input0: i32x8, input1: i32x8) -> i16x16 {
     //FIXME: can potentially do this as some shuffles ??
+    // not sure why the compiler didn't like to inline it
     i16x16::new(input0.extract(0) as i16,
                 input0.extract(1) as i16,
                 input0.extract(2) as i16,

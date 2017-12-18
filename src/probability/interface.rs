@@ -72,6 +72,7 @@ pub trait BaseCDF {
         }
         sum
     }
+    #[inline(always)]
     fn sym_to_start_and_freq(&self,
                              sym: u8) -> SymStartFreq {
         let cdf_prev = if sym != 0 {self.div_by_max(i32::from(self.cdf(sym - 1)) << LOG2_SCALE)} else { 0 };
@@ -84,9 +85,11 @@ pub trait BaseCDF {
             sym: sym,
         }
     }
+    #[inline(always)]
     fn rescaled_cdf(&self, sym: u8) -> i32 {
         i32::from(self.cdf(sym)) << LOG2_SCALE
     }
+    #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;

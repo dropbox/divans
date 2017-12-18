@@ -79,10 +79,12 @@ impl BaseCDF for OptFrequentistCDF16 {
     fn used(&self) -> bool {
         self.cdf.used()
     }
+    #[inline(always)]
     fn max(&self) -> Prob {
         self.cdf.max()
     }
     fn log_max(&self) -> Option<i8> { None }
+    #[inline(always)]
     fn cdf(&self, symbol: u8) -> Prob {
         self.cdf.cdf(symbol)
     }

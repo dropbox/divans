@@ -28,15 +28,18 @@ impl BaseCDF for FrequentistCDF16 {
     fn used(&self) -> bool {
         self.entropy() != Self::default().entropy()
     }
+    #[inline(always)]
     fn max(&self) -> Prob {
         self.cdf[15]
     }
+    #[inline(always)]
     fn div_by_max(&self, val:i32) -> i32 {
         return val / i32::from(self.max())
     }
     fn log_max(&self) -> Option<i8> { None }
+    #[inline(always)]
     fn cdf(&self, symbol: u8) -> Prob {
-        self.cdf[symbol as usize]
+        self.cdf[symbol as usize & 0xf]
     }
     fn valid(&self) -> bool {
         let mut prev = 0;
@@ -51,6 +54,7 @@ impl BaseCDF for FrequentistCDF16 {
 }
 
 impl CDF16 for FrequentistCDF16 {
+    #[inline(always)]
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
         let mut retval = *self;
         let ourmax = i32::from(self.max());
@@ -66,6 +70,7 @@ impl CDF16 for FrequentistCDF16 {
         }
         retval
     }
+    #[inline(always)]
     fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
         let increment : Prob = speed as Prob;

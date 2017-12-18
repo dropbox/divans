@@ -12,12 +12,15 @@ macro_rules! define_codec_trait {
         #[derive(Default)]
         pub struct $name {}
         impl CodecTraits for $name {
+            #[inline(always)]
             fn materialized_prediction_mode(&self) -> bool {
                 $cm
             }
+            #[inline(always)]
             fn combine_literal_predictions(&self) -> bool {
                 $combine
             }
+            #[inline(always)]
             fn should_mix(&self, _high_nibble:bool) -> bool {
                 $mix
             }
