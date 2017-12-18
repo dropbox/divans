@@ -32,6 +32,7 @@ pub use self::interface::{
     StrideSelection,
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    CrossCommandBookKeeping,
 };
 
 pub mod copy;
@@ -41,22 +42,46 @@ pub mod context_map;
 pub mod block_type;
 pub mod priors;
 trait CodecTraits {
-    fn mixing(&self) -> u8;
+    fn materialized_prediction_mode(&self) -> bool;
 }
 struct MixingTrait{}
 impl CodecTraits for MixingTrait {
-    fn mixing(&self) -> u8 {1}
+    fn materialized_prediction_mode(&self) -> bool {
+        true
+    }
 }
 struct AveragingTrait{}
 impl CodecTraits for AveragingTrait {
-    fn mixing(&self) -> u8 {0}
+    fn materialized_prediction_mode(&self) -> bool {
+        true
+    }
 }
+
+struct ContextMapTrait{}
+impl CodecTraits for ContextMapTrait {
+    fn materialized_prediction_mode(&self) -> bool {
+        true
+    }
+}
+
+struct StrideTrait{}
+impl CodecTraits for StrideTrait {
+    fn materialized_prediction_mode(&self) -> bool {
+        false
+    }
+}
+
+
 static AVERAGING_TRAIT:AveragingTrait = AveragingTrait{};
 static MIXING_TRAIT:MixingTrait = MixingTrait{};
+static CONTEXT_MAP_TRAIT:ContextMapTrait = ContextMapTrait{};
+static STRIDE_TRAIT:StrideTrait = StrideTrait{};
 #[derive(Clone,Copy)]
 enum CodecTraitSelector {
     AveragingTrait(&'static AveragingTrait),
     MixingTrait(&'static MixingTrait),
+    ContextMapTrait(&'static ContextMapTrait),
+    StrideTrait(&'static StrideTrait),
 }
 
 
@@ -205,6 +230,25 @@ enum CodecTraitResult {
     Res(OneCommandReturn),
     UpdateCodecTraitAndAdvance(CodecTraitSelector),
 }
+
+fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
+                                           AllocU8:Allocator<u8>,
+                                           AllocCDF2:Allocator<CDF2>,
+                                           AllocCDF16:Allocator<Cdf16>>(
+    bk:&CrossCommandBookKeeping<Cdf16,AllocU8, AllocCDF2, AllocCDF16>
+) -> CodecTraitSelector {
+    if !bk.materialized_prediction_mode() {
+        return CodecTraitSelector::StrideTrait(&STRIDE_TRAIT);
+    }
+    if !bk.combine_literal_predictions {
+        return CodecTraitSelector::ContextMapTrait(&CONTEXT_MAP_TRAIT);
+    }
+    if bk.model_weights[0].should_mix() || bk.model_weights[1].should_mix() {
+        return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);
+    }
+    return CodecTraitSelector::AveragingTrait(&AVERAGING_TRAIT);
+}
+
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
@@ -367,6 +411,20 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
+                CodecTraitSelector::ContextMapTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::StrideTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
             }
             if let Some(update) = res.1 {
                 self.codec_traits = update;
@@ -480,9 +538,10 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                        BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::Begin),
-                        retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
+                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded)),
+                         retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
+                    //codec_trait_update = Some(construct_codec_trait_from_bookkeeping(self.cross_command_state.bk));
                 },
                 EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match *input_cmd {
@@ -668,6 +727,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
             }
             if let Some(ns) = new_state {
                 match ns {
+                    EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded) => {
+                        self.state = EncodeOrDecodeState::Begin;
+                        return CodecTraitResult::UpdateCodecTraitAndAdvance(
+                            construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
+                    },
                     EncodeOrDecodeState::Begin => {
                         self.state = EncodeOrDecodeState::Begin;
                         return CodecTraitResult::Res(OneCommandReturn::Advance);
