@@ -52,7 +52,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
                                                                               AllocU8,
                                                                               AllocCDF2,
                                                                               AllocCDF16>,
-                                                  ctraits: &'static CTraits) -> ByteContext {
+                                                  _ctraits: &'static CTraits) -> ByteContext {
     let stride = core::cmp::min(core::cmp::max(1, bk.stride), NUM_STRIDES as u8);
     let base_shift = 0x40 - stride * 8;
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
@@ -73,8 +73,8 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     };
     assert_eq!(selected_context, selected_contextA);
 */
-    debug_assert_eq!(bk.materialized_prediction_mode(), ctraits.materialized_prediction_mode());
-    let actual_context = if ctraits.materialized_prediction_mode() {
+    debug_assert_eq!(bk.materialized_prediction_mode(), CTraits::MATERIALIZED_PREDICTION_MODE);
+    let actual_context = if CTraits::MATERIALIZED_PREDICTION_MODE {
         let cmap_index = selected_context as usize + ((bk.get_literal_block_type() as usize) << 6);
         bk.literal_context_map.slice()[cmap_index as usize]
     } else {
@@ -203,14 +203,14 @@ impl<AllocU8:Allocator<u8>,
                          mut cur_nibble: u8,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
-                         ctraits: &'static CTraits,
+                         _ctraits: &'static CTraits,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
                                                             Cdf16,
                                                             AllocU8,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
-        debug_assert_eq!(ctraits.materialized_prediction_mode(), superstate.bk.materialized_prediction_mode());
+        debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
@@ -229,11 +229,11 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
                                             (cur_byte_prior as usize, byte_context.actual_context as usize))
         };
-        let prob = if ctraits.materialized_prediction_mode() {
-            debug_assert_eq!(ctraits.combine_literal_predictions(), superstate.bk.combine_literal_predictions);
-            if ctraits.combine_literal_predictions() {
+        let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
+            debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
+            if CTraits::COMBINE_LITERAL_PREDICTIONS {
                 debug_assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(),
-                                 ctraits.should_mix(high_nibble));
+                                 CTraits::SHOULD_MIX);
                 cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
             } else {
                 *cm_prob
@@ -245,7 +245,7 @@ impl<AllocU8:Allocator<u8>,
                                                                      &prob,
                                                                      BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
 
-        if ctraits.materialized_prediction_mode() && ctraits.combine_literal_predictions() && ctraits.should_mix(high_nibble) {
+        if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && CTraits::SHOULD_MIX {
             let model_probs = [
                 cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,

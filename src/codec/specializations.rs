@@ -3,27 +3,18 @@ use alloc::Allocator;
 pub use super::interface::CrossCommandBookKeeping;
 
 pub trait CodecTraits {
-    fn materialized_prediction_mode(&self) -> bool;
-    fn combine_literal_predictions(&self) -> bool;
-    fn should_mix(&self, high_nibble:bool) -> bool;
+    const MATERIALIZED_PREDICTION_MODE: bool;
+    const COMBINE_LITERAL_PREDICTIONS: bool;
+    const SHOULD_MIX: bool;
 }
 macro_rules! define_codec_trait {
     ($name: ident, $global: ident, context_map: $cm:expr, combine: $combine: expr, mix: $mix: expr) => {
         #[derive(Default)]
         pub struct $name {}
         impl CodecTraits for $name {
-            #[inline(always)]
-            fn materialized_prediction_mode(&self) -> bool {
-                $cm
-            }
-            #[inline(always)]
-            fn combine_literal_predictions(&self) -> bool {
-                $combine
-            }
-            #[inline(always)]
-            fn should_mix(&self, _high_nibble:bool) -> bool {
-                $mix
-            }
+            const MATERIALIZED_PREDICTION_MODE: bool = $cm;
+            const COMBINE_LITERAL_PREDICTIONS: bool = $combine;
+            const SHOULD_MIX: bool = $mix;
         }
         pub static $global: $name = $name{};
     }
