@@ -58,6 +58,8 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
     let prev_prev_byte = ((bk.last_8_literals >> 0x30) & 0xff) as u8;
+    let selected_context = bk.literal_lut0[prev_byte as usize] | bk.literal_lut1[prev_prev_byte as usize];
+    /*
     let selected_context = match bk.literal_prediction_mode.0 {
         LITERAL_PREDICTION_MODE_SIGN => (
             constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3
@@ -69,6 +71,8 @@ pub fn get_prev_word_context<Cdf16:CDF16,
         LITERAL_PREDICTION_MODE_LSB6 => prev_byte & 0x3f,
         _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
     };
+    assert_eq!(selected_context, selected_contextA);
+*/
     debug_assert_eq!(bk.materialized_prediction_mode(), ctraits.materialized_prediction_mode());
     let actual_context = if ctraits.materialized_prediction_mode() {
         let cmap_index = selected_context as usize + ((bk.get_literal_block_type() as usize) << 6);

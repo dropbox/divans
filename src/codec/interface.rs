@@ -5,6 +5,7 @@ use ::probability::{CDF2, CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::RepurposingAlloc;
+use ::constants;
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     CrossCommandBilling,
@@ -14,6 +15,10 @@ use ::interface::{
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
+    LITERAL_PREDICTION_MODE_SIGN,
+    LITERAL_PREDICTION_MODE_UTF8,
+    LITERAL_PREDICTION_MODE_MSB6,
+    LITERAL_PREDICTION_MODE_LSB6,
 };
 use super::priors::{
     LiteralCommandPriors,
@@ -131,6 +136,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_literal_adaptation: Speed,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
+    pub literal_lut0:[u8;256],
+    pub literal_lut1:[u8;256],
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -158,7 +165,46 @@ pub struct ByteContext {
   pub stride_byte: u8,
 }
 
-
+fn get_lut0(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
+    let mut ret = [0u8; 256];
+    match lpn.0 {
+        LITERAL_PREDICTION_MODE_SIGN =>
+            for (i, j) in ret.iter_mut().zip(constants::SIGNED_3_BIT_CONTEXT_LOOKUP.iter()) {
+                *i = *j << 3;
+            },
+        LITERAL_PREDICTION_MODE_UTF8 =>
+            for (i, j) in ret.iter_mut().zip(constants::UTF8_CONTEXT_LOOKUP.split_at(256).0.iter()) {
+                *i = *j;
+            },
+        LITERAL_PREDICTION_MODE_MSB6 =>
+            for (index, val) in ret.iter_mut().enumerate() {
+                *val = (index as u8) >> 2;
+            },
+        LITERAL_PREDICTION_MODE_LSB6 =>
+            for (index, val) in ret.iter_mut().enumerate() {
+                *val = (index as u8) & 0x3f;
+            },
+        _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
+    }
+    ret
+}
+fn get_lut1(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
+    let mut ret = [0u8; 256];
+    match lpn.0 {
+        LITERAL_PREDICTION_MODE_SIGN =>
+            for (i, j) in ret.iter_mut().zip(constants::SIGNED_3_BIT_CONTEXT_LOOKUP.iter()) {
+                *i = *j;
+            },
+        LITERAL_PREDICTION_MODE_UTF8 =>
+            for (i, j) in ret.iter_mut().zip(constants::UTF8_CONTEXT_LOOKUP.split_at(256).1.iter()) {
+                *i = *j;
+            },
+        LITERAL_PREDICTION_MODE_MSB6 => {}, // empty
+        LITERAL_PREDICTION_MODE_LSB6 => {}, // empty
+        _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
+    }
+    ret
+}
 
 impl<Cdf16:CDF16,
      AllocCDF2:Allocator<CDF2>,
@@ -211,6 +257,8 @@ impl<Cdf16:CDF16,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
+            literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
+            literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
@@ -402,6 +450,8 @@ impl<Cdf16:CDF16,
     pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) {
        self.next_state();
        self.literal_prediction_mode = new_mode;
+       self.literal_lut0 = get_lut0(new_mode);
+       self.literal_lut1 = get_lut1(new_mode);
     }
     pub fn obs_dict_state(&mut self) {
         self.next_state();
