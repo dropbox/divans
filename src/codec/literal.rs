@@ -43,6 +43,7 @@ pub struct LiteralState<AllocU8:Allocator<u8>> {
     pub state: LiteralSubstate,
 }
 
+#[inline(always)]
 pub fn get_prev_word_context<Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
                              AllocCDF2:Allocator<CDF2>,

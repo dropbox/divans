@@ -210,10 +210,12 @@ impl ANSDecoder {
         }
         return bytes_to_copy;
     }
+    #[inline(always)]
     fn helper_get_cdf_value_of_sym(&mut self) -> StartFreqType {
         debug_assert!(self.buffer_a_bytes_required == 0);
         return (self.state_a & SCALE_MASK) as i16;
     }
+    #[inline(always)]
     fn helper_advance_sym(&mut self, start: StartFreqType, freq: StartFreqType) {
         //perror!("inn:{:?} {} {}", self, start, freq);
         let x = (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK) - start as u64;
@@ -229,6 +231,7 @@ impl ANSDecoder {
         self.state_b = x;
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
+    #[inline(always)]
     fn get_nibble_internal<CDF:BaseCDF>(&mut self, cdf:CDF) -> (u8, ProbRange) {
         let cdf_offset = self.helper_get_cdf_value_of_sym();
         let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(cdf_offset);
@@ -372,6 +375,7 @@ impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
     }
 }
 impl ByteQueue for ANSDecoder {
+    #[inline(always)]
     fn num_push_bytes_avail(&self) -> usize {
         if self.buffer_a_bytes_required == 0 {
             return 0;
@@ -387,9 +391,11 @@ impl ByteQueue for ANSDecoder {
         }
         16
     }
+    #[inline(always)]
     fn num_pop_bytes_avail(&self) -> usize {
         0
     }
+    #[inline(always)]
     fn push_data(&mut self, data:&[u8]) -> usize {
         if self.buffer_a_bytes_required == 0 {
             return 0;
@@ -412,9 +418,11 @@ impl ByteQueue for ANSDecoder {
 }
 impl EntropyDecoder for ANSDecoder {
     type Queue = Self;
+    #[inline(always)]
     fn get_internal_buffer(&mut self) -> &mut Self::Queue {
         self
     }
+    #[inline(always)]
     fn get_nibble<CDF:CDF16>(&mut self, cdf:&CDF) -> (u8, ProbRange) {
         self.get_nibble_internal(*cdf)
     }

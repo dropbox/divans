@@ -11,6 +11,7 @@ pub struct SIMDFrequentistCDF16 {
 }
 
 impl SIMDFrequentistCDF16 {
+    #[inline(always)]
     fn new(input:i16x16) -> Self {
         let mut ret = SIMDFrequentistCDF16{
             cdf:input,
@@ -22,6 +23,7 @@ impl SIMDFrequentistCDF16 {
 }
 
 impl Default for SIMDFrequentistCDF16 {
+    #[inline(always)]
     fn default() -> Self {
         SIMDFrequentistCDF16::new(i16x16::new(4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64))
     }
@@ -29,17 +31,23 @@ impl Default for SIMDFrequentistCDF16 {
 
 
 impl BaseCDF for SIMDFrequentistCDF16 {
+    #[inline(always)]
     fn num_symbols() -> u8 { 16 }
+    #[inline(always)]
     fn used(&self) -> bool {
         self.entropy() != Self::default().entropy()
     }
+    #[inline(always)]
     fn max(&self) -> Prob {
         self.cdf.extract(15)
     }
+    #[inline(always)]
     fn div_by_max(&self, val:i32) -> i32 {
         numeric::fast_divide_30bit_by_16bit(val, self.inv_max)
     }
+    #[inline(always)]
     fn log_max(&self) -> Option<i8> { None }
+    #[inline(always)]
     fn cdf(&self, symbol: u8) -> Prob {
         self.cdf.extract(symbol as u32)
     }
@@ -71,6 +79,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         }
 }*/
     #[cfg(feature="avx2")]
+    #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
@@ -82,6 +91,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         self.sym_to_start_and_freq(symbol_id)
     }
     #[cfg(not(feature="avx2"))]
+    #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
@@ -98,6 +108,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         self.sym_to_start_and_freq(symbol_id)
     }
 }
+#[inline(always)]
 fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4,i64x4,i64x4,i64x4) {
     let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(input), 0xee)};
     let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
@@ -107,6 +118,7 @@ fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4,i64x4,i64x4,i64x4) {
     let self3 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm_alignr_epi8(upper_quad, upper_quad, 8)))};
     (self0, self1, self2, self3)
 }
+#[inline(always)]
 fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i64x4) -> i16x16 {
     //FIXME: can potentially do this as some shuffles ??
     i16x16::new(input0.extract(0) as i16,
@@ -127,6 +139,7 @@ fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i6
                 input3.extract(3) as i16)
 }
 
+#[inline(always)]
 fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8,i32x8) {
     let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(input), 0xee)};
     let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
@@ -156,6 +169,7 @@ fn i32x8_tuple_to_i16x16(input0: i32x8, input1: i32x8) -> i16x16 {
 
 
 impl CDF16 for SIMDFrequentistCDF16 {
+    #[inline(always)]
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
 
         let ourmax = i32::from(self.max());

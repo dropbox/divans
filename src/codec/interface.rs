@@ -176,11 +176,17 @@ impl<Cdf16:CDF16,
            btype_prior: AllocCDF16::AllocatedMemory,
            literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
-           dynamic_context_mixing: u8,
+           mut dynamic_context_mixing: u8,
            literal_adaptation_speed:Speed,
            do_context_map: bool,
            force_stride: StrideSelection) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
+        match force_stride {
+            StrideSelection::PriorDisabled => {},
+            _ => if dynamic_context_mixing == 0 && do_context_map {
+                dynamic_context_mixing = 1; // make sure to mix if user requested both context map and stride
+            },
+        }
         let mut ret = CrossCommandBookKeeping{
             model_weights:[super::weights::Weights::default(),
                            super::weights::Weights::default()],
@@ -264,6 +270,7 @@ impl<Cdf16:CDF16,
         self.literal_adaptation = ladaptation_rate;
     }
     pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
+        self.combine_literal_predictions = (context_mixing != 0) as bool;
         self.model_weights[0].set_mixing_param(context_mixing);
         self.model_weights[1].set_mixing_param(context_mixing);
     }
@@ -451,9 +458,7 @@ impl<Cdf16:CDF16,
         self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype.block_type());
         self.stride = btype.stride();
         if self.stride != 0 && self.materialized_context_map {
-            self.combine_literal_predictions = true;
-        } else {
-            self.combine_literal_predictions = false;
+            debug_assert!(self.combine_literal_predictions);
         }
     }
     pub fn obs_btypec(&mut self, btype:u8) {

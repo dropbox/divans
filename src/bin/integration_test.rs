@@ -162,7 +162,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     super::compress_raw(&mut in_buffer,
                         &mut dv_buffer,
                         super::CompressOptions{
-                            dynamic_context_mixing: Some(1),
+                            dynamic_context_mixing: Some(2),
                             literal_adaptation_speed: Some(Speed::GLACIAL),
                             do_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride

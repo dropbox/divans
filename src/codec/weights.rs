@@ -15,22 +15,24 @@ impl Weights {
     pub fn new() -> Self {
         Weights {
             model_weights:[1;2],
-            mixing_param: 0,
+            mixing_param: 1,
             normalized_weight: 1 << (BLEND_FIXED_POINT_PRECISION - 1),
         }
     }
+    #[inline(always)]
     pub fn update(&mut self, model_probs: [Prob; 2], weighted_prob: Prob) {
+        debug_assert!(self.mixing_param != 0);
         normalize_weights(&mut self.model_weights);
         let w0new = compute_new_weight(model_probs,
                                        weighted_prob,
                                        self.model_weights,
                                        false,
-                                       self.mixing_param);
+                                       self.mixing_param - 1);
         let w1new = compute_new_weight(model_probs,
                                        weighted_prob,
                                        self.model_weights,
                                        true,
-                                       self.mixing_param);
+                                       self.mixing_param - 1);
         self.model_weights = [w0new, w1new];
         self.normalized_weight = compute_normalized_weight(self.model_weights);
     }
@@ -38,13 +40,14 @@ impl Weights {
         self.mixing_param = param;
     }
     pub fn should_mix(&self) -> bool {
-        self.mixing_param != 0
+        self.mixing_param > 1
     }
     pub fn norm_weight(&self) -> i16 {
         self.normalized_weight
     }
 }
 
+#[inline(always)]
 fn compute_normalized_weight(model_weights: [i32;2]) -> i16 {
     let total = i64::from(model_weights[0]) + i64::from(model_weights[1]);
     let leading_zeros = total.leading_zeros();
@@ -66,6 +69,7 @@ fn fix_weights(weights: &mut [i32;2]) {
     }
 }
 
+#[inline(always)]
 fn normalize_weights(weights: &mut [i32;2]) {
     if ((weights[0]|weights[1])&0x7f000000) != 0 {
         fix_weights(weights);
@@ -99,6 +103,7 @@ fn compute_new_weight(probs: [Prob; 2],
 }
 
 #[cfg(not(features="floating_point_context_mixing"))]
+#[inline(always)]
 fn compute_new_weight(probs: [Prob; 2],
                       weighted_prob: Prob,
                       weights: [i32;2],

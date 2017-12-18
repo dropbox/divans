@@ -266,7 +266,7 @@ fn bench_no_ir<Run: Runner,
                 ItemVecAllocator::<divans::CDF2>::default(),
                 ItemVecAllocator::<divans::DefaultCDF16>::default(),
                 22, // window_size 
-                ts.adaptive_context_mixing() as u8,
+                ts.adaptive_context_mixing() as u8 * 2,
                 None, // speed
                 ts.use_context_map(),
                 ts.stride_selection(),
