@@ -13,7 +13,7 @@ pub trait CodecTraits {
     fn materialized_prediction_mode(&self) -> bool;
     fn combine_literal_predictions(&self) -> bool;
     fn should_mix(&self, high_nibble:bool) -> bool;
-    fn literal_prediction_mode(&self) -> u8;
+    fn literal_prediction_mode(&self) -> LiteralPredictionModeNibble;
 }
 macro_rules! define_codec_trait {
     ($name: ident, $global: ident, context_map: $cm:expr, combine: $combine: expr, mix: $mix: expr, pred: $prediction_mode: expr) => {
@@ -29,8 +29,8 @@ macro_rules! define_codec_trait {
             fn should_mix(&self, _high_nibble:bool) -> bool {
                 $mix
             }
-            fn literal_prediction_mode(&self) -> u8 {
-                $prediction_mode
+            fn literal_prediction_mode(&self) -> LiteralPredictionModeNibble {
+                LiteralPredictionModeNibble($prediction_mode)
             }
         }
         pub static $global: $name = $name{};

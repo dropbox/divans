@@ -5,7 +5,6 @@ use ::probability::{CDF2, CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::RepurposingAlloc;
-use ::constants;
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     CrossCommandBilling,
@@ -15,10 +14,6 @@ use ::interface::{
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
-    LITERAL_PREDICTION_MODE_SIGN,
-    LITERAL_PREDICTION_MODE_UTF8,
-    LITERAL_PREDICTION_MODE_MSB6,
-    LITERAL_PREDICTION_MODE_LSB6,
 };
 use super::priors::{
     LiteralCommandPriors,
@@ -29,7 +24,6 @@ use super::priors::{
     PredictionModePriors,
     BlockTypePriors,
     NUM_BLOCK_TYPES,
-    NUM_STRIDES,
 };
 use ::priors::PriorCollection;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
@@ -262,34 +256,6 @@ impl<Cdf16:CDF16,
             }
         }
         ret
-    }
-    pub fn get_prev_word_context(&self) -> ByteContext {
-        let stride = core::cmp::min(core::cmp::max(1, self.stride), NUM_STRIDES as u8);
-        let base_shift = 0x40 - stride * 8;
-        let stride_byte = ((self.last_8_literals >> base_shift) & 0xff) as u8;
-        let prev_byte = ((self.last_8_literals >> 0x38) & 0xff) as u8;
-        let prev_prev_byte = ((self.last_8_literals >> 0x30) & 0xff) as u8;
-        let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
-            | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
-        let sign_context =
-            (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) |
-        constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
-        let msb_context = prev_byte >> 2;
-        let lsb_context = prev_byte & 0x3f;
-        let selected_context = match self.literal_prediction_mode {
-            LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
-            LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
-            LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
-            LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
-            _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
-        };
-        let actual_context = if self.materialized_prediction_mode() {
-            let cmap_index = selected_context as usize + ((self.get_literal_block_type() as usize) << 6);
-            self.literal_context_map.slice()[cmap_index as usize]
-        } else {
-            selected_context
-        };
-        ByteContext{actual_context:actual_context, stride_byte: stride_byte}
     }
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map

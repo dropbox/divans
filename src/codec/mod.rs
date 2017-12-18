@@ -514,7 +514,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                          output_bytes: &mut [u8],
                                                          output_bytes_offset: &mut usize,
                                                          input_cmd: &Command<ISl>,
-                                                         _ctraits: &'static CTraits,
+                                                         ctraits: &'static CTraits,
                                                          is_end: bool) -> CodecTraitResult {
         loop {
             let new_state: Option<EncodeOrDecodeState<AllocU8>>;
@@ -674,12 +674,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(input_cmd,
                                                                                                                  &backing_store);
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
-                                                      src_literal_command,
-                                                      input_bytes,
-                                                      input_bytes_offset,
-                                                      output_bytes,
-                                                      output_bytes_offset
-                                                      ) {
+                                                     src_literal_command,
+                                                     input_bytes,
+                                                     input_bytes_offset,
+                                                     output_bytes,
+                                                     output_bytes_offset,
+                                                     ctraits) {
                         BrotliResult::ResultSuccess => {
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Literal(core::mem::replace(&mut lit_state.lc,
