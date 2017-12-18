@@ -26,6 +26,12 @@ use super::interface::{
     Nop
 };
 pub mod weights;
+pub mod specializations;
+use self::specializations::{
+    construct_codec_trait_from_bookkeeping,
+    CodecTraitSelector,
+    CodecTraits,
+};
 mod interface;
 use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
@@ -34,6 +40,15 @@ pub use self::interface::{
     CrossCommandState,
     CrossCommandBookKeeping,
 };
+use super::interface::{
+    ArithmeticEncoderOrDecoder,
+    Command,
+    CopyCommand,
+    DictCommand,
+    LiteralCommand,
+    LiteralPredictionModeNibble,
+    PredictionModeContextMap,
+};
 
 pub mod copy;
 pub mod dict;
@@ -41,48 +56,6 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
-trait CodecTraits {
-    fn materialized_prediction_mode(&self) -> bool;
-}
-struct MixingTrait{}
-impl CodecTraits for MixingTrait {
-    fn materialized_prediction_mode(&self) -> bool {
-        true
-    }
-}
-struct AveragingTrait{}
-impl CodecTraits for AveragingTrait {
-    fn materialized_prediction_mode(&self) -> bool {
-        true
-    }
-}
-
-struct ContextMapTrait{}
-impl CodecTraits for ContextMapTrait {
-    fn materialized_prediction_mode(&self) -> bool {
-        true
-    }
-}
-
-struct StrideTrait{}
-impl CodecTraits for StrideTrait {
-    fn materialized_prediction_mode(&self) -> bool {
-        false
-    }
-}
-
-
-static AVERAGING_TRAIT:AveragingTrait = AveragingTrait{};
-static MIXING_TRAIT:MixingTrait = MixingTrait{};
-static CONTEXT_MAP_TRAIT:ContextMapTrait = ContextMapTrait{};
-static STRIDE_TRAIT:StrideTrait = StrideTrait{};
-#[derive(Clone,Copy)]
-enum CodecTraitSelector {
-    AveragingTrait(&'static AveragingTrait),
-    MixingTrait(&'static MixingTrait),
-    ContextMapTrait(&'static ContextMapTrait),
-    StrideTrait(&'static StrideTrait),
-}
 
 
 
@@ -111,20 +84,6 @@ use super::probability::{CDF2, CDF16, Speed};
 ////        writeln!(&mut ::std::io::stderr(), $($val)*).unwrap();
 //    } }
 //);
-use super::interface::{
-    ArithmeticEncoderOrDecoder,
-    Command,
-    CopyCommand,
-    DictCommand,
-    LiteralCommand,
-    LiteralPredictionModeNibble,
-    PredictionModeContextMap,
-/*    LITERAL_PREDICTION_MODE_SIGN,
-    LITERAL_PREDICTION_MODE_UTF8,
-    LITERAL_PREDICTION_MODE_MSB6,
-    LITERAL_PREDICTION_MODE_LSB6,
-*/
-};
 
 
 
@@ -231,23 +190,6 @@ enum CodecTraitResult {
     UpdateCodecTraitAndAdvance(CodecTraitSelector),
 }
 
-fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
-                                           AllocU8:Allocator<u8>,
-                                           AllocCDF2:Allocator<CDF2>,
-                                           AllocCDF16:Allocator<Cdf16>>(
-    bk:&CrossCommandBookKeeping<Cdf16,AllocU8, AllocCDF2, AllocCDF16>
-) -> CodecTraitSelector {
-    if !bk.materialized_prediction_mode() {
-        return CodecTraitSelector::StrideTrait(&STRIDE_TRAIT);
-    }
-    if !bk.combine_literal_predictions {
-        return CodecTraitSelector::ContextMapTrait(&CONTEXT_MAP_TRAIT);
-    }
-    if bk.model_weights[0].should_mix() || bk.model_weights[1].should_mix() {
-        return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);
-    }
-    return CodecTraitSelector::AveragingTrait(&AVERAGING_TRAIT);
-}
 
 
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -269,7 +211,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                literal_adaptation_rate: Option<Speed>,
                do_context_map: bool,
                force_stride: interface::StrideSelection) -> Self {
-        DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
+        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
                                                     Cdf16,
@@ -288,8 +230,10 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      force_stride,
             ),
             state:EncodeOrDecodeState::Begin,
-            codec_traits: CodecTraitSelector::MixingTrait(&MIXING_TRAIT),
-        }
+            codec_traits: CodecTraitSelector::ContextMapTraitSign(&specializations::CONTEXT_MAP_TRAIT_SIGN),
+        };
+        ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
+        ret
     }
     pub fn get_coder(&self) -> &ArithmeticCoder {
         &self.cross_command_state.coder
@@ -316,7 +260,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                             output_bytes,
                                                             output_bytes_offset,
                                                             &nop,
-                                                            &AVERAGING_TRAIT,
+                                                            &specializations::CONTEXT_MAP_TRAIT_SIGN,
                                                             true) {
                         CodecTraitResult::Res(one_command_return) => match one_command_return {
                             OneCommandReturn::BufferExhausted(res) => {
@@ -397,28 +341,115 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
         loop {
             let res:(Option<BrotliResult>, Option<CodecTraitSelector>);
             match self.codec_traits {
-                CodecTraitSelector::AveragingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                CodecTraitSelector::AveragingTraitSign(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                             input_bytes_offset,
                                                                                             output_bytes,
                                                                                             output_bytes_offset,
                                                                                             input_commands,
                                                                                             input_command_offset,
                                                                                             tr),
-                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                CodecTraitSelector::MixingTraitSign(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                          input_bytes_offset,
                                                                                          output_bytes,
                                                                                          output_bytes_offset,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
-                CodecTraitSelector::ContextMapTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                CodecTraitSelector::ContextMapTraitSign(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                          input_bytes_offset,
                                                                                          output_bytes,
                                                                                          output_bytes_offset,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
-                CodecTraitSelector::StrideTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                CodecTraitSelector::StrideTraitSign(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+
+                CodecTraitSelector::AveragingTraitUTF8(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                            input_bytes_offset,
+                                                                                            output_bytes,
+                                                                                            output_bytes_offset,
+                                                                                            input_commands,
+                                                                                            input_command_offset,
+                                                                                            tr),
+                CodecTraitSelector::MixingTraitUTF8(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::ContextMapTraitUTF8(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::StrideTraitUTF8(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+
+                CodecTraitSelector::AveragingTraitMSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                            input_bytes_offset,
+                                                                                            output_bytes,
+                                                                                            output_bytes_offset,
+                                                                                            input_commands,
+                                                                                            input_command_offset,
+                                                                                            tr),
+                CodecTraitSelector::MixingTraitMSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::ContextMapTraitMSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::StrideTraitMSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+
+                CodecTraitSelector::AveragingTraitLSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                            input_bytes_offset,
+                                                                                            output_bytes,
+                                                                                            output_bytes_offset,
+                                                                                            input_commands,
+                                                                                            input_command_offset,
+                                                                                            tr),
+                CodecTraitSelector::MixingTraitLSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::ContextMapTraitLSB6(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::StrideTraitLSB6(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                          input_bytes_offset,
                                                                                          output_bytes,
                                                                                          output_bytes_offset,
@@ -538,10 +569,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded)),
+                         BrotliResult::ResultSuccess => new_state = Some(
+                             EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded)),
+                         // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
-                    //codec_trait_update = Some(construct_codec_trait_from_bookkeeping(self.cross_command_state.bk));
                 },
                 EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
                     let src_block_switch_literal = match *input_cmd {
