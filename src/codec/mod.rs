@@ -40,6 +40,26 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
+trait CodecTraits {
+    fn mixing(&self) -> u8;
+}
+struct MixingTrait{}
+impl CodecTraits for MixingTrait {
+    fn mixing(&self) -> u8 {1}
+}
+struct AveragingTrait{}
+impl CodecTraits for AveragingTrait {
+    fn mixing(&self) -> u8 {0}
+}
+static AVERAGING_TRAIT:AveragingTrait = AveragingTrait{};
+static MIXING_TRAIT:MixingTrait = MixingTrait{};
+#[derive(Clone,Copy)]
+enum CodecTraitSelector {
+    AveragingTrait(&'static AveragingTrait),
+    MixingTrait(&'static MixingTrait),
+}
+
+
 
 /*
 use std::io::Write;
@@ -174,12 +194,18 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            AllocCDF2,
                                            AllocCDF16>,
     state : EncodeOrDecodeState<AllocU8>,
+    codec_traits: CodecTraitSelector,
 }
 
 pub enum OneCommandReturn {
     Advance,
     BufferExhausted(BrotliResult),
 }
+enum CodecTraitResult {
+    Res(OneCommandReturn),
+    UpdateCodecTraitAndAdvance(CodecTraitSelector),
+}
+
 impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
      Specialization: EncoderOrDecoderSpecialization,
      Cdf16:CDF16,
@@ -218,6 +244,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                      force_stride,
             ),
             state:EncodeOrDecodeState::Begin,
+            codec_traits: CodecTraitSelector::MixingTrait(&MIXING_TRAIT),
         }
     }
     pub fn get_coder(&self) -> &ArithmeticCoder {
@@ -245,14 +272,20 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                             output_bytes,
                                                             output_bytes_offset,
                                                             &nop,
+                                                            &AVERAGING_TRAIT,
                                                             true) {
-                        OneCommandReturn::BufferExhausted(res) => {
-                            match res {
-                                BrotliResult::ResultSuccess => {},
-                                need => return need,
-                            }
+                        CodecTraitResult::Res(one_command_return) => match one_command_return {
+                            OneCommandReturn::BufferExhausted(res) => {
+                                match res {
+                                    BrotliResult::ResultSuccess => {},
+                                    need => return need,
+                                }
+                            },
+                            OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
                         },
-                        OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
+                        CodecTraitResult::UpdateCodecTraitAndAdvance(_) => {
+                            panic!("Unintended state: flush => UpdateCodeTraitAndAdvance");
+                        },
                     }
                     self.state = EncodeOrDecodeState::EncodedShutdownNode;
                 },
@@ -311,12 +344,47 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
         }
     }
     pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
-                                                  input_bytes: &[u8],
-                                                  input_bytes_offset: &mut usize,
-                                                  output_bytes: &mut [u8],
-                                                  output_bytes_offset: &mut usize,
-                                                  input_commands: &[Command<ISl>],
-                                                  input_command_offset: &mut usize) -> BrotliResult {
+                                                          input_bytes: &[u8],
+                                                          input_bytes_offset: &mut usize,
+                                                          output_bytes: &mut [u8],
+                                                          output_bytes_offset: &mut usize,
+                                                          input_commands: &[Command<ISl>],
+                                                          input_command_offset: &mut usize) -> BrotliResult {
+        loop {
+            let res:(Option<BrotliResult>, Option<CodecTraitSelector>);
+            match self.codec_traits {
+                CodecTraitSelector::AveragingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                            input_bytes_offset,
+                                                                                            output_bytes,
+                                                                                            output_bytes_offset,
+                                                                                            input_commands,
+                                                                                            input_command_offset,
+                                                                                            tr),
+                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+            }
+            if let Some(update) = res.1 {
+                self.codec_traits = update;
+            }
+            if let Some(result) = res.0 {
+                return result;
+            }
+        }
+    }
+    fn e_or_d_specialize<ISl:SliceWrapper<u8>+Default,
+                         CTraits:CodecTraits>(&mut self,
+                                              input_bytes: &[u8],
+                                              input_bytes_offset: &mut usize,
+                                              output_bytes: &mut [u8],
+                                              output_bytes_offset: &mut usize,
+                                              input_commands: &[Command<ISl>],
+                                              input_command_offset: &mut usize,
+                                              ctraits: &'static CTraits) -> (Option<BrotliResult>, Option<CodecTraitSelector>) {
         loop {
             let i_cmd_backing = Command::<ISl>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
@@ -327,26 +395,38 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
+                                                    ctraits,
                                                     false /* not end*/) {
-                OneCommandReturn::Advance => {
-                    *input_command_offset += 1;
-                    if input_commands.len() == *input_command_offset {
-                        return BrotliResult::NeedsMoreInput;
+                CodecTraitResult::Res(one_command_return) => match one_command_return {
+                    OneCommandReturn::Advance => {
+                        *input_command_offset += 1;
+                        if input_commands.len() == *input_command_offset {
+                            return (Some(BrotliResult::NeedsMoreInput), None);
+                        }
+                    },
+                    OneCommandReturn::BufferExhausted(result) => {
+                        return (Some(result), None);
                     }
                 },
-                OneCommandReturn::BufferExhausted(result) => {
-                    return result;
-                }
+                CodecTraitResult::UpdateCodecTraitAndAdvance(cts) => {
+                    *input_command_offset += 1;
+                    if input_commands.len() == *input_command_offset {
+                        return (Some(BrotliResult::NeedsMoreInput), Some(cts));
+                    }
+                    return (None, Some(cts));
+                },
             }
         }
     }
-    pub fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default>(&mut self,
-                                                  input_bytes: &[u8],
-                                                  input_bytes_offset: &mut usize,
-                                                  output_bytes: &mut [u8],
-                                                  output_bytes_offset: &mut usize,
-                                                  input_cmd: &Command<ISl>,
-                                                  is_end: bool) -> OneCommandReturn {
+    fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default,
+                                    CTraits:CodecTraits>(&mut self,
+                                                         input_bytes: &[u8],
+                                                         input_bytes_offset: &mut usize,
+                                                         output_bytes: &mut [u8],
+                                                         output_bytes_offset: &mut usize,
+                                                         input_cmd: &Command<ISl>,
+                                                         _ctraits: &'static CTraits,
+                                                         is_end: bool) -> CodecTraitResult {
         loop {
             let new_state: Option<EncodeOrDecodeState<AllocU8>>;
             match self.state {
@@ -355,16 +435,16 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     | EncodeOrDecodeState::CoderBufferDrain
                     | EncodeOrDecodeState::WriteChecksum(_) => {
                     // not allowed to encode additional commands after flush is invoked
-                    return OneCommandReturn::BufferExhausted(self::interface::Fail());
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                 }
                 EncodeOrDecodeState::DivansSuccess => {
-                    return OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess);
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess));
                 },
                 EncodeOrDecodeState::Begin => {
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(input_bytes, input_bytes_offset,
                                                                                       output_bytes, output_bytes_offset) {
                         BrotliResult::ResultSuccess => {},
-                        need_something => return OneCommandReturn::BufferExhausted(need_something),
+                        need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {
@@ -401,7 +481,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::Begin),
-                        retval => return OneCommandReturn::BufferExhausted(retval),
+                        retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
                 },
                 EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
@@ -423,7 +503,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::Begin);
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -447,7 +527,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::Begin);
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -472,7 +552,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::Begin);
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -494,7 +574,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                  CopyCommand::nop()))));
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -515,7 +595,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                     LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()))));
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -536,7 +616,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                                  DictCommand::nop()))));
                         },
                         retval => {
-                            return OneCommandReturn::BufferExhausted(retval);
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -553,13 +633,13 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         BrotliResult::NeedsMoreOutput => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             if self.cross_command_state.specialization.does_caller_want_original_file_bytes() {
-                                return OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput); // we need the caller to drain the buffer
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                             new_state = None;
                         },
                         BrotliResult::ResultFailure => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
-                            return OneCommandReturn::BufferExhausted(self::interface::Fail());
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                         },
                         BrotliResult::ResultSuccess => {
                             self.cross_command_state.bk.command_count += 1;
@@ -590,7 +670,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 match ns {
                     EncodeOrDecodeState::Begin => {
                         self.state = EncodeOrDecodeState::Begin;
-                        return OneCommandReturn::Advance;
+                        return CodecTraitResult::Res(OneCommandReturn::Advance);
                     },
                     _ => self.state = ns,
                 }
