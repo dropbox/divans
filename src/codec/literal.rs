@@ -58,9 +58,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
     let prev_prev_byte = ((bk.last_8_literals >> 0x30) & 0xff) as u8;
-    debug_assert_eq!(bk.literal_prediction_mode.0,
-                     ctraits.literal_prediction_mode().0);
-    let selected_context = match ctraits.literal_prediction_mode().0 {
+    let selected_context = match bk.literal_prediction_mode.0 {
         LITERAL_PREDICTION_MODE_SIGN => (
             constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3
         ) | constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize],
