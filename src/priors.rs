@@ -408,6 +408,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic]
     fn test_get_bad_tuple_index() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
@@ -418,6 +419,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic]
     fn test_get_bad_tuple_dimensionality() {
         let mut allocator = HeapAlloc::<FrequentistCDF16>::new(FrequentistCDF16::default());
