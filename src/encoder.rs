@@ -236,12 +236,16 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
         }
 );
 
+#[cfg(test)]
 mod test {
+    extern crate std;
+    use core::fmt::{Debug, Error};
+    use std::fmt::Formatter;
     use super::ByteQueue;
     use super::{EntropyEncoder, EntropyDecoder};
     use super::super::BrotliResult;
     #[allow(unused_imports)]
-    use probability::{CDF16, FrequentistCDF16, BlendCDF16, Speed};
+    use probability::{BaseCDF, CDF16, FrequentistCDF16, BlendCDF16, Speed};
     #[allow(unused)]
     struct MockByteQueue{}
     impl ByteQueue for MockByteQueue {
@@ -255,6 +259,15 @@ mod test {
         calls_to_put_bit: [[(bool, u8);4]; 16],
         num_calls: usize,
         queue: MockByteQueue,
+    }
+    impl Debug for FrequentistCDF16 {
+        fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+            let mut array = [0.0f32; 16];
+            for (i, array_item) in array.iter_mut().enumerate() {
+                *array_item = f32::from(self.cdf(i as u8)) / f32::from(self.max());
+            }
+            write!(f, "{:?}", array)
+        }
     }
     impl EntropyEncoder for MockBitCoder {
         type Queue = MockByteQueue;
@@ -324,6 +337,7 @@ mod test {
         assert_eq!(calls[2].1, lomed_prob);
         assert_eq!(calls[3].1, lo_prob);
     }
+
     #[cfg(test)]
     #[test]
     fn test_put_nibble() {
@@ -335,7 +349,7 @@ mod test {
                 bcdf.blend(j as u8, Speed::MED);
             }
         }
-        println!("{:?}", cdf.float_array());
+        println!("{:?}", cdf);
         let mut mock_encoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,
@@ -375,7 +389,7 @@ mod test {
                 bcdf.blend(j as u8, Speed::MED);
             }
         }
-        println!("{:?}", cdf.float_array());
+        println!("{:?}", cdf);
         let mut mock_decoder = MockBitCoder{
             calls_to_put_bit: [[(false,0);4];16],
             num_calls:0,

@@ -269,15 +269,6 @@ impl core::str::FromStr for Speed {
 
 pub trait CDF16: Sized + Default + Copy + BaseCDF {
     fn blend(&mut self, symbol: u8, dyn:Speed);
-
-    // TODO: this convenience function should probably live elsewhere.
-    fn float_array(&self) -> [f32; 16] {
-        let mut ret = [0.0f32; 16];
-        for (i, ret_item) in ret.iter_mut().enumerate() {
-            *ret_item = f32::from(self.cdf(i as u8)) / f32::from(self.max());
-       }
-        ret
-    }
     fn average(&self, other: &Self, mix_rate: i32) ->Self;
 }
 
@@ -322,7 +313,6 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         }
         self.cdf.blend(symbol, speed);
     }
-    fn float_array(&self) -> [f32; 16] { self.cdf.float_array() }
     fn average(&self, other: &Self, mix_rate: i32) -> Self {
         // NOTE(jongmin): The notion of averaging for a debug CDF is not well-formed
         // because its private fields depend on the blend history that's not preserved in averaging.
