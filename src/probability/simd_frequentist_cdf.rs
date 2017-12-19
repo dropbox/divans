@@ -47,14 +47,13 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         self.cdf.extract(symbol as u32 & 0xf)
     }
     fn valid(&self) -> bool {
-        let mut prev = 0;
-        let mut slice = [0i16;16];
+        let mut slice = [0i16; 16];
         self.cdf.store(&mut slice, 0);
-        for item in slice.iter() {
-            if *item <= prev {
+        for it in slice[0..15].iter().zip(slice[1..16].iter()) {
+            let (prev, next) = it;
+            if (*next <= *prev) {
                 return false;
             }
-            prev = *item;
         }
         self.inv_max == numeric::lookup_divisor(self.max())
     }
