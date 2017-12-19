@@ -36,9 +36,8 @@ impl DecoderSpecialization {
 
 
 impl EncoderOrDecoderSpecialization for DecoderSpecialization {
-    fn does_caller_want_original_file_bytes(&self) -> bool {
-        true
-    }
+    const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool = true;
+    const IS_DECODING_FILE: bool = true;
     fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&mut self,
                                                    m8:&mut AllocU8,
                                                    len: usize) -> AllocatedMemoryPrefix<u8, AllocU8> {
@@ -75,6 +74,7 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                                             backing: &'a DictCommand) -> &'a DictCommand {
         backing
     }
+    #[inline(always)]
     fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
                                                    _in_cmd: &LiteralCommand<ISlice>,
                                                    _index: usize) -> u8 {
@@ -82,13 +82,13 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
     }
     fn get_recoder_output<'a>(&'a mut self,
                               passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
-        assert_eq!(self.does_caller_want_original_file_bytes(), true);
+        assert_eq!(Self::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES, true);
         passed_in_output_bytes
     }
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
                                      _backing: &'a mut usize) -> &'a mut usize {
-        assert_eq!(self.does_caller_want_original_file_bytes(), true);
+        assert_eq!(Self::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES, true);
         passed_in_output_bytes
     }
                           

@@ -636,7 +636,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         BrotliResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
                         BrotliResult::NeedsMoreOutput => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
-                            if self.cross_command_state.specialization.does_caller_want_original_file_bytes() {
+                            if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                             new_state = None;

@@ -147,7 +147,11 @@ impl CopyState {
                     self.state = CopySubstate::DistanceLengthMnemonic;
                 },
                 CopySubstate::DistanceLengthMnemonic => {
-                    let mut beg_nib = superstate.bk.distance_mnemonic_code(in_cmd.distance);
+                    let mut beg_nib = if Specialization::IS_DECODING_FILE {
+                        15 // we can't search for mnemonic in empty in_cmd (not yet decoded)
+                    } else {
+                        superstate.bk.distance_mnemonic_code(in_cmd.distance)
+                    };
                     //let index = 0;
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {

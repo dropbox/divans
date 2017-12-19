@@ -54,6 +54,8 @@ pub enum StrideSelection {
 
 
 pub trait EncoderOrDecoderSpecialization {
+    const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool;
+    const IS_DECODING_FILE: bool;
     fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
                                                     len: usize) -> AllocatedMemoryPrefix<u8, AllocU8>;
@@ -72,7 +74,6 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize;
-    fn does_caller_want_original_file_bytes(&self) -> bool;
 }
 
 #[allow(non_snake_case)]
