@@ -12,6 +12,7 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 #![cfg_attr(feature="benchmark", feature(test))]
+#![feature(platform_intrinsics)]
 #![no_std]
 #[macro_use]
 
@@ -116,7 +117,7 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
 }
 
 pub trait DivansDecompressorFactory<
-     AllocU8:Allocator<u8>, 
+     AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
      type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
@@ -128,7 +129,7 @@ pub trait DivansDecompressorFactory<
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
-                        AllocCDF16:Allocator<interface::DefaultCDF16>>  
+                        AllocCDF16:Allocator<interface::DefaultCDF16>>
     DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
 
     fn finish_parsing_header(&mut self, window_size: usize) -> BrotliResult {
@@ -261,7 +262,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
 }
 
 pub struct DivansDecompressorFactoryStruct
-    <AllocU8:Allocator<u8>, 
+    <AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     p1: PhantomData<AllocU8>,
@@ -269,7 +270,7 @@ pub struct DivansDecompressorFactoryStruct
     p3: PhantomData<AllocCDF16>,
 }
 
-impl<AllocU8:Allocator<u8>, 
+impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> DivansDecompressorFactory<AllocU8,
                                                                               AllocCDF2,
@@ -277,5 +278,3 @@ impl<AllocU8:Allocator<u8>,
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
-
-
