@@ -239,9 +239,21 @@ fn bench_with_ir<Run: Runner,
     let ir_buffer = LimitedBuffer::new(cmd_ir_buffer.slice_mut());
     let mut buf_ir = BufReader::new(ir_buffer);
     let mut dv_buffer = LimitedBuffer::new(dv_backing_buffer.slice_mut());
+    let mixing_mode = if ts.adaptive_context_mixing() {
+        2
+    } else {
+        match ts.stride_selection() {
+            divans::StrideSelection::PriorDisabled => 0,
+            _ => if ts.use_context_map() {
+                1
+            } else {
+                0
+            }
+        }
+    };
     super::compress_ir(&mut buf_ir,
                        &mut dv_buffer,
-                       Some(if ts.adaptive_context_mixing() {2} else {1}),
+                       Some(mixing_mode),
                        Some(Speed::MUD),
                        ts.use_context_map(),
                        ts.stride_selection()).unwrap();
