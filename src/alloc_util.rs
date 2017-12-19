@@ -90,6 +90,7 @@ pub struct CachedAllocator<'a, T: 'a, AllocT: 'a + Allocator<T>, ShouldClear: Sh
 impl<'a, T: 'a, AllocT: 'a + Allocator<T>, ShouldClear: ShouldClearCacheOnAlloc<T>> Allocator<T> for CachedAllocator<'a, T, AllocT, ShouldClear> {
     type AllocatedMemory = AllocatedMemoryPrefix<T, AllocT>;
     fn alloc_cell(&mut self, s: usize) -> AllocatedMemoryPrefix<T, AllocT> {
+        // this saves in practice about 3 ms per megabyte for a typical file
         if self.alloc.cached_allocation.slice().len() >= s {
             let mut retval = core::mem::replace(
                 &mut self.alloc.cached_allocation,

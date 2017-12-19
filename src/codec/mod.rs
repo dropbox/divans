@@ -16,6 +16,7 @@
 use core;
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
+use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
 use super::interface::{
@@ -665,8 +666,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::Begin);
                             if let Command::Literal(ref mut l) = *o_cmd {
                                 let mfd = core::mem::replace(&mut l.data,
-                                                             AllocatedMemoryPrefix::<u8, AllocU8>::default()).0;
-                                self.cross_command_state.m8.free_cell(mfd);
+                                                             AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                self.cross_command_state.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(mfd);
                                 //FIXME: what about prob array: should that be freed
                             }
                         },
