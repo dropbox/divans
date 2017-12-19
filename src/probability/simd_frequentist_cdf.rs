@@ -134,17 +134,20 @@ fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i6
                 input3.extract(3) as i16)
 }
 
-#[inline(always)]
-fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8,i32x8) {
-    let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(input), 0xee)};
-    let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
-    let self0 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi32(i16x8::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(input))))};
-    let self1 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi32(i16x8::from(upper_quad))};
-    (self0, self1)
-}
-
 extern "platform-intrinsic" {
     pub fn simd_shuffle16<T, U>(x: T, y: T, idx: [u32; 16]) -> U;
+}
+
+#[inline(always)]
+fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8, i32x8) {
+    let zero = i16x16::splat(0);
+    unsafe {
+        let widened_lo: i16x16 = simd_shuffle16(
+            input, zero, [0, 16, 1, 16, 2, 16, 3, 16, 4, 16, 5, 16, 6, 16, 7, 16]);
+        let widened_hi: i16x16 = simd_shuffle16(
+            input, zero, [8, 16, 9, 16, 10, 16, 11, 16, 12, 16, 13, 16, 14, 16, 15, 16]);
+        (i32x8::from(widened_lo), i32x8::from(widened_hi))
+    }
 }
 
 #[inline(always)]
@@ -202,3 +205,29 @@ impl CDF16 for SIMDFrequentistCDF16 {
 }
 
 //__mmask16 _mm256_cmpge_epi16_mask (__m256i a, __m256i b)
+
+#[cfg(test)]
+mod test {
+    use super::{i16x16, i32x8, i32x8_tuple_to_i16x16, i16x16_to_i32x8_tuple};
+
+    #[test]
+    fn test_i32x8_tuple_to_i16x16() {
+        let input0 = i32x8::new(984414081, 278, 3410058, 421713, 3295297, 22420, 839546, 181135048);
+        let input1 = i32x8::new(570597, 12477978, 124711081, 86618, 1061795, 3018810, 5691, 342342);
+        let output = i32x8_tuple_to_i16x16(input0, input1);
+        for i in 0..8 {
+            assert_eq!(output.extract(i), (input0.extract(i) & 65535) as i16);
+            assert_eq!(output.extract(i+8), (input1.extract(i) & 65535) as i16);
+        }
+    }
+    #[test]
+    fn test_i16x16_to_i32x8_tuple() {
+        let input = i16x16::new(2619, 12771, 1898, 29313, 23504, 18725, 15115, 32179,
+                                18593, 13755, 18706, 2073, 15715, 17696, 25568, 12775);
+        let output = i16x16_to_i32x8_tuple(input);
+        for i in 0..8 {
+            assert_eq!(output.0.extract(i), input.extract(i) as i32);
+            assert_eq!(output.1.extract(i), input.extract(i+8) as i32);
+        }
+    }
+}
