@@ -16,7 +16,7 @@
 extern crate core;
 use divans;
 use core::cmp;
-use std::io::{self,Write, Seek, SeekFrom, BufReader};
+use std::io::{self,Write, BufReader};
 
 use super::ItemVecAllocator;
 use super::ItemVec;
@@ -32,7 +32,7 @@ use divans::PredictionModeContextMap;
 use divans::Compressor;
 use divans::DivansCompressorFactory;
 use divans::DivansCompressorFactoryStruct;
-use divans::{Speed, StrideSelection};
+use divans::Speed;
 
 
 #[cfg(feature="benchmark")]
@@ -236,10 +236,15 @@ fn bench_with_ir<Run: Runner,
     for (index, val) in input_buffer.slice_mut().iter_mut().enumerate() {
         *val = raw_file[index % raw_file.len()];
     }
-    let mut ir_buffer = LimitedBuffer::new(cmd_ir_buffer.slice_mut());
+    let ir_buffer = LimitedBuffer::new(cmd_ir_buffer.slice_mut());
     let mut buf_ir = BufReader::new(ir_buffer);
     let mut dv_buffer = LimitedBuffer::new(dv_backing_buffer.slice_mut());
-    super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::MUD), true, StrideSelection::UseBrotliRec).unwrap();
+    super::compress_ir(&mut buf_ir,
+                       &mut dv_buffer,
+                       Some(if ts.adaptive_context_mixing() {2} else {1}),
+                       Some(Speed::MUD),
+                       ts.use_context_map(),
+                       ts.stride_selection()).unwrap();
     {
         let mut decompress_lambda = || {
             dv_buffer.reset_read();
@@ -388,18 +393,81 @@ fn test_raw_adaptive_literal_stream() {
 #[test]
 fn test_raw_ir_literal_stream() {
     let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
-    let ir = super::integration_test::divans_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
     bench_with_ir(65536,
                   TestContextMixing{size:1024 * 1024},
                   0.6,
                   &mut Passthrough{},
                   &raw_file[..],
-                  1047728,
+                  1048682,
                   &ir[..],
-                  4275089,
+                  3321851,
                   );
 }
 
+#[cfg(feature="benchmark")]
+#[bench]
+fn bench_ir_decode_context_mixing_1024k(b: &mut Bencher) {
+    let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
+    let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    bench_with_ir(65536,
+                  TestContextMixing{size:1024 * 1024},
+                  0.6,
+                  &mut BenchmarkPassthrough(b),
+                  &raw_file[..],
+                  1048682,
+                  &ir[..],
+                  3321851,
+                  );
+}
+
+#[cfg(feature="benchmark")]
+#[bench]
+fn bench_ir_decode_pure_average_1024k(b: &mut Bencher) {
+    let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
+    let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    bench_with_ir(65536,
+                  TestContextMixingPureAverage{size:1024 * 1024},
+                  0.6,
+                  &mut BenchmarkPassthrough(b),
+                  &raw_file[..],
+                  1048682,
+                  &ir[..],
+                  3321851,
+                  );
+}
+
+#[cfg(feature="benchmark")]
+#[bench]
+fn bench_ir_decode_model_adapt_1024k(b: &mut Bencher) {
+    let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
+    let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    bench_with_ir(65536,
+                  TestAdapt{size:1024 * 1024},
+                  0.6,
+                  &mut BenchmarkPassthrough(b),
+                  &raw_file[..],
+                  1048682,
+                  &ir[..],
+                  3321851,
+                  );
+}
+
+#[cfg(feature="benchmark")]
+#[bench]
+fn bench_ir_decode_simple_1024k(b: &mut Bencher) {
+    let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
+    let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    bench_with_ir(65536,
+                  TestSimple{size:1024 * 1024},
+                  0.6,
+                  &mut BenchmarkPassthrough(b),
+                  &raw_file[..],
+                  1048682,
+                  &ir[..],
+                  3321851,
+                  );
+}
 
 #[cfg(feature="benchmark")]
 #[bench]
