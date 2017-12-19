@@ -16,8 +16,7 @@
 extern crate core;
 use divans;
 use core::cmp;
-use std::io;
-use std::io::Write;
+use std::io::{self,Write, Seek, SeekFrom, BufReader};
 
 use super::ItemVecAllocator;
 use super::ItemVec;
@@ -33,6 +32,7 @@ use divans::PredictionModeContextMap;
 use divans::Compressor;
 use divans::DivansCompressorFactory;
 use divans::DivansCompressorFactoryStruct;
+use divans::{Speed, StrideSelection};
 
 
 #[cfg(feature="benchmark")]
@@ -215,7 +215,46 @@ impl<'a> Runner for BenchmarkPassthrough<'a> {
 }
 
 
-
+fn bench_with_ir<Run: Runner,
+                 TS: TestSelection>(buffer_size: usize,
+                                    ts: TS,
+                                    ratio: f64,
+                                    runner: &mut Run,
+                                    raw_file: &[u8],
+                                    raw_bytes: usize,
+                                    ir_file: &[u8],
+                                    ir_bytes: usize) {
+    let mut m8 = ItemVecAllocator::<u8>::default();
+    let mut input_buffer = m8.alloc_cell(raw_bytes);
+    let mut cmd_ir_buffer = m8.alloc_cell(ir_bytes);
+    let mut rt_backing_buffer = m8.alloc_cell(raw_bytes);
+    let mut dv_backing_buffer = m8.alloc_cell(raw_bytes);
+    let mut rt_buffer = LimitedBuffer::new(rt_backing_buffer.slice_mut());
+    for (index, val) in cmd_ir_buffer.slice_mut().iter_mut().enumerate() {
+        *val = ir_file[index % ir_file.len()];
+    }
+    for (index, val) in input_buffer.slice_mut().iter_mut().enumerate() {
+        *val = raw_file[index % raw_file.len()];
+    }
+    let mut ir_buffer = LimitedBuffer::new(cmd_ir_buffer.slice_mut());
+    let mut buf_ir = BufReader::new(ir_buffer);
+    let mut dv_buffer = LimitedBuffer::new(dv_backing_buffer.slice_mut());
+    super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(Speed::MUD), true, StrideSelection::UseBrotliRec).unwrap();
+    {
+        let mut decompress_lambda = || {
+            dv_buffer.reset_read();
+            rt_buffer.reset();
+            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+            let actual_ratio =  dv_buffer.written().len() as f64 / input_buffer.slice().len() as f64;
+            if !(actual_ratio <= ratio) {
+                println!("Failed: actual buffer length {} dv_buffer size: {}", input_buffer.slice().len(), dv_buffer.written().len());
+            }
+            assert!(actual_ratio <= ratio);
+        };
+        runner.iter(&mut decompress_lambda);
+    }
+    assert_eq!(rt_buffer.written(), input_buffer.slice());
+}
 
 
 fn bench_no_ir<Run: Runner,
@@ -343,6 +382,22 @@ fn test_raw_adaptive_literal_stream() {
                 true,
                 true,
                 &mut Passthrough{});
+}
+
+
+#[test]
+fn test_raw_ir_literal_stream() {
+    let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
+    let ir = super::integration_test::divans_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+    bench_with_ir(65536,
+                  TestContextMixing{size:1024 * 1024},
+                  0.6,
+                  &mut Passthrough{},
+                  &raw_file[..],
+                  1047728,
+                  &ir[..],
+                  4275089,
+                  );
 }
 
 
