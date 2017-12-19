@@ -61,3 +61,26 @@ pub fn fast_divide_16bit_by_8bit(num: u16, inv_denom_and_bitlen: i32) -> i16 {
     (i64::from(inv_denom_and_bitlen) * i64::from(num) >> SHIFT_16_BY_8) as i16
 }
 
+
+#[cfg(test)]
+mod test {
+    use super::{fast_divide_30bit_by_16bit, lookup_divisor};
+
+    fn divide_30bit_by_16bit(num: i32, denom: i16) -> i32 {
+        fast_divide_30bit_by_16bit(num, lookup_divisor(denom))
+    }
+
+    #[test]
+    fn test_divide() {
+        let nums: [i32; 10] = [3032127, 5049117, 16427165, 23282359, 35903174,
+                               132971515, 163159927, 343856773, 935221996, 1829347323];
+        let denoms: [i16; 10] = [115, 248, 267, 764, 1337, 4005, 4965, 9846, 24693, 31604];
+        for n in nums.into_iter() {
+            for d in denoms.into_iter() {
+                let reference = n / (*d as i32);
+                let actual = divide_30bit_by_16bit(*n, *d);
+                assert_eq!(reference, actual);
+            }
+        }
+    }
+}
