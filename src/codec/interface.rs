@@ -141,12 +141,14 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
+#[inline(always)]
 fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
-    if val >= sub {
+    core::cmp::min(val.wrapping_sub(sub), val.wrapping_add(add))
+/*    if val >= sub {
         val - sub
     } else {
         val + add
-    }
+    }*/
 }
 pub fn round_up_mod_4(val: u8) -> u8 {
     ((val - 1)|3)+1
@@ -391,26 +393,35 @@ impl<Cdf16:CDF16,
         }
         15
     }
-
+    #[inline(always)]
     pub fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
-        match code {
+        /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
             0 => self.distance_lru[0],
             1 => self.distance_lru[1],
             2 => self.distance_lru[2],
             3 => self.distance_lru[3],
             4 => self.distance_lru[0] + 1,
-            5 => sub_or_add(self.distance_lru[0], 1, 4),
+            5 => self.distance_lru[0].wrapping_sub(1),
             6 => self.distance_lru[1] + 1,
-            7 => sub_or_add(self.distance_lru[1], 1, 3),
+            7 => self.distance_lru[1].wrapping_sub(1),
             8 => self.distance_lru[0] + 2,
-            9 => sub_or_add(self.distance_lru[0], 2, 5),
+            9 => self.distance_lru[0].wrapping_sub(2),
             10 => self.distance_lru[1] + 2,
-            11 => sub_or_add(self.distance_lru[1], 2, 4),
+            11 => self.distance_lru[1].wrapping_sub(2),
             12 => self.distance_lru[0] + 3,
-            13 => sub_or_add(self.distance_lru[0], 3, 6),
+            13 => self.distance_lru[0].wrapping_sub(3),
             14 => self.distance_lru[1] + 3,
+            15 => self.distance_lru[0], // logic error
             _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
+        }*/
+        if code < 4 {
+            return self.distance_lru[code as usize]; // less than four is a fetch
         }
+        let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
+        // the value depending on if its an even or odd code
+        // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
+        let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
+        ((self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand) as u32
     }
     pub fn distance_mnemonic_code(&self, d: u32) -> u8 {
         for i in 0..15 {
