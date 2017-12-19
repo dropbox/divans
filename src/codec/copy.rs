@@ -38,6 +38,7 @@ pub struct CopyState {
 
 
 impl CopyState {
+    #[inline(always)]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
