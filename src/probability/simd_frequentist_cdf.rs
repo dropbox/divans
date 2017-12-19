@@ -43,7 +43,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
     fn log_max(&self) -> Option<i8> { None }
     #[inline(always)]
     fn cdf(&self, symbol: u8) -> Prob {
-        // for some reason it's way better to assert to the compiler "hey I'm within 0-15"
+        // bypass the internal assert by hinting to the compiler that symbol is 4-bit.
         self.cdf.extract(symbol as u32 & 0xf)
     }
     fn valid(&self) -> bool {
@@ -102,39 +102,38 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         self.sym_to_start_and_freq(symbol_id)
     }
 }
-#[inline(always)]
-fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4,i64x4,i64x4,i64x4) {
-    let upper_quad_replicated = unsafe{stdsimd::vendor::_mm256_permute4x64_epi64(i64x4::from(input), 0xee)};
-    let upper_quad = unsafe{stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(upper_quad_replicated))};
-    let self0 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(input))))};
-    let self1 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm_alignr_epi8(stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(input)),stdsimd::vendor::_mm256_castsi256_si128(__m256i::from(input)), 8)))};
-    let self2 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(upper_quad))};
-    let self3 = unsafe{stdsimd::vendor::_mm256_cvtepi16_epi64(i16x8::from(stdsimd::vendor::_mm_alignr_epi8(upper_quad, upper_quad, 8)))};
-    (self0, self1, self2, self3)
-}
-#[inline(always)]
-fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i64x4) -> i16x16 {
-    //FIXME: can potentially do this as some shuffles ??
-    i16x16::new(input0.extract(0) as i16,
-                input0.extract(1) as i16,
-                input0.extract(2) as i16,
-                input0.extract(3) as i16,
-                input1.extract(0) as i16,
-                input1.extract(1) as i16,
-                input1.extract(2) as i16,
-                input1.extract(3) as i16,
-                input2.extract(0) as i16,
-                input2.extract(1) as i16,
-                input2.extract(2) as i16,
-                input2.extract(3) as i16,
-                input3.extract(0) as i16,
-                input3.extract(1) as i16,
-                input3.extract(2) as i16,
-                input3.extract(3) as i16)
-}
 
 extern "platform-intrinsic" {
+    pub fn simd_shuffle4<T, U>(x: T, y: T, idx: [u32; 4]) -> U;
     pub fn simd_shuffle16<T, U>(x: T, y: T, idx: [u32; 16]) -> U;
+}
+
+#[inline(always)]
+fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4, i64x4, i64x4, i64x4) {
+    let zero = i16x16::splat(0);
+    unsafe {
+        let widened_q0: i16x16 = simd_shuffle16(
+            input, zero, [0, 16, 16, 16, 1, 16, 16, 16, 2, 16, 16, 16, 3, 16, 16, 16]);
+        let widened_q1: i16x16 = simd_shuffle16(
+            input, zero, [4, 16, 16, 16, 5, 16, 16, 16, 6, 16, 16, 16, 7, 16, 16, 16]);
+        let widened_q2: i16x16 = simd_shuffle16(
+            input, zero, [8, 16, 16, 16, 9, 16, 16, 16, 10, 16, 16, 16, 11, 16, 16, 16]);
+        let widened_q3: i16x16 = simd_shuffle16(
+            input, zero, [12, 16, 16, 16, 13, 16, 16, 16, 14, 16, 16, 16, 15, 16, 16, 16]);
+        (i64x4::from(widened_q0), i64x4::from(widened_q1), i64x4::from(widened_q2), i64x4::from(widened_q3))
+    }
+}
+
+#[inline(always)]
+fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i64x4) -> i16x16 {
+    unsafe {
+        let input01: i16x16 = simd_shuffle16(i16x16::from(input0), i16x16::from(input1),
+                                             [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let input23: i16x16 = simd_shuffle16(i16x16::from(input2), i16x16::from(input3),
+                                             [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let output: i64x4 = simd_shuffle4(i64x4::from(input01), i64x4::from(input23), [0, 1, 4, 5]);
+        i16x16::from(output)
+    }
 }
 
 #[inline(always)]
@@ -207,7 +206,8 @@ impl CDF16 for SIMDFrequentistCDF16 {
 
 #[cfg(test)]
 mod test {
-    use super::{i16x16, i32x8, i32x8_tuple_to_i16x16, i16x16_to_i32x8_tuple};
+    use super::{i16x16, i32x8, i64x4};
+    use super::{i16x16_to_i32x8_tuple, i16x16_to_i64x4_tuple, i32x8_tuple_to_i16x16, i64x4_tuple_to_i16x16};
 
     #[test]
     fn test_i32x8_tuple_to_i16x16() {
@@ -227,6 +227,43 @@ mod test {
         for i in 0..8 {
             assert_eq!(output.0.extract(i), input.extract(i) as i32);
             assert_eq!(output.1.extract(i), input.extract(i+8) as i32);
+        }
+    }
+
+    #[test]
+    fn test_i64x4_tuple_to_i16x16() {
+        let mut seed = 1u64;
+        let mut input: [i64x4; 4] = [i64x4::splat(0); 4];
+        // Generate input vectors such that each 16-bit lane is unique.
+        for i in 0..4 {
+            let mut array: [i64; 4] = [0; 4];
+            for j in 0..4 {
+                array[j] = (((100 + i * 4 + j) as i64) +
+                            (((200 + i * 4 + j) as i64) << 16) +
+                            (((300 + i * 4 + j) as i64) << 32) +
+                            (((400 + i * 4 + j) as i64) << 48));
+            }
+            input[i] = i64x4::load(&array, 0);
+        }
+        let output = i64x4_tuple_to_i16x16(input[0], input[1], input[2], input[3]);
+        for i in 0..4 {
+            assert_eq!(output.extract(i), (input[0].extract(i) & 65535) as i16);
+            assert_eq!(output.extract(i+4), (input[1].extract(i) & 65535) as i16);
+            assert_eq!(output.extract(i+8), (input[2].extract(i) & 65535) as i16);
+            assert_eq!(output.extract(i+12), (input[3].extract(i) & 65535) as i16);
+        }
+    }
+
+    #[test]
+    fn test_i16x16_to_i64x4_tuple() {
+        let input = i16x16::new(2619, 12771, 1898, 29313, 23504, 18725, 15115, 32179,
+                                18593, 13755, 18706, 2073, 15715, 17696, 25568, 12775);
+        let output = i16x16_to_i64x4_tuple(input);
+        for i in 0..4 {
+            assert_eq!(output.0.extract(i), input.extract(i) as i64);
+            assert_eq!(output.1.extract(i), input.extract(i+4) as i64);
+            assert_eq!(output.2.extract(i), input.extract(i+8) as i64);
+            assert_eq!(output.3.extract(i), input.extract(i+12) as i64);
         }
     }
 }
