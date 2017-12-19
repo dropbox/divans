@@ -46,22 +46,26 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
         }
         AllocatedMemoryPrefix::<u8, AllocU8>::new(m8, self.max_size)
     }
+    #[inline(always)]
     fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                       _data:&'a [Command<ISlice>],
                                                       _offset: usize,
                                                       backing:&'a Command<ISlice>) -> &'a Command<ISlice> {
         backing
     }
+    #[inline(always)]
     fn get_output_command<'a, AllocU8:Allocator<u8>>(&self, data:&'a mut [Command<AllocatedMemoryPrefix<u8, AllocU8>>],
                                                      offset: usize,
                                                      _backing:&'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>> {
         &mut data[offset]
     }
+    #[inline(always)]
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                             _data: &'a Command<ISlice>,
                                                             backing: &'a CopyCommand) -> &'a CopyCommand {
         backing
     }
+    #[inline(always)]
     fn get_source_literal_command<'a,
                                   ISlice:SliceWrapper<u8>
                                          +Default>(&self,
@@ -69,6 +73,7 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                                    backing: &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice> {
         backing
     }
+    #[inline(always)]
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                             _data: &'a Command<ISlice>,
                                                             backing: &'a DictCommand) -> &'a DictCommand {
@@ -80,11 +85,13 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                                    _index: usize) -> u8 {
         0
     }
+    #[inline(always)]
     fn get_recoder_output<'a>(&'a mut self,
                               passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
         assert_eq!(Self::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES, true);
         passed_in_output_bytes
     }
+    #[inline(always)]
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
                                      _backing: &'a mut usize) -> &'a mut usize {

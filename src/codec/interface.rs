@@ -151,13 +151,15 @@ fn sub_or_add(val: u32, sub: u32, add: u32) -> u32 {
         val + add
     }*/
 }
+#[inline(always)]
 pub fn round_up_mod_4(val: u8) -> u8 {
     ((val - 1)|3)+1
 }
-
+#[inline(always)]
 pub fn round_up_mod_4_u32(val: u32) -> u32 {
     ((val - 1)|3)+1
 }
+#[inline(always)]
 pub fn default_literal_speed() -> Speed {
     Speed::MUD
 }

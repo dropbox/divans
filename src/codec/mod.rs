@@ -561,7 +561,10 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 },
                 EncodeOrDecodeState::Copy(ref mut copy_state) => {
-                    let backing_store = CopyCommand::nop();
+                    let backing_store = CopyCommand{
+                        distance:1,
+                        num_bytes:0,
+                    };
                     let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
                                                                                                            &backing_store);
                     match copy_state.encode_or_decode(&mut self.cross_command_state,

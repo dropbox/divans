@@ -423,7 +423,7 @@ fn bench_ir_decode_context_mixing_1024k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn bench_ir_decode_pure_average_1024k(b: &mut Bencher) {
+fn bench_ir_decode_context_pure_average_1024k(b: &mut Bencher) {
     let raw_file = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
     let ir = super::integration_test::brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
     bench_with_ir(65536,
