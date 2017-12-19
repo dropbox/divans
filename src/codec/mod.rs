@@ -251,11 +251,11 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub fn flush(&mut self,
                  output_bytes: &mut [u8],
                  output_bytes_offset: &mut usize) -> BrotliResult{
+        let nop = Command::<AllocU8::AllocatedMemory>::nop();
         loop {
             match self.state {
                 EncodeOrDecodeState::Begin => {
                     let mut unused = 0usize;
-                    let nop = Command::<AllocU8::AllocatedMemory>::nop();
                     match self.encode_or_decode_one_command(&[],
                                                             &mut unused,
                                                             output_bytes,
@@ -388,8 +388,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                               input_commands: &[Command<ISl>],
                                               input_command_offset: &mut usize,
                                               ctraits: &'static CTraits) -> (Option<BrotliResult>, Option<CodecTraitSelector>) {
+        let i_cmd_backing = Command::<ISl>::nop();
         loop {
-            let i_cmd_backing = Command::<ISl>::nop();
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
                                                                                    *input_command_offset,
                                                                                    &i_cmd_backing);
@@ -579,7 +579,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             self.cross_command_state.bk.obs_distance(&copy_state.cc);
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Copy(core::mem::replace(&mut copy_state.cc,
-                                                                 CopyCommand::nop()))));
+                                                                 CopyCommand{distance:1, num_bytes:0}))));
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
