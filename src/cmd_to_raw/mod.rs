@@ -46,20 +46,28 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             total_offset:0,
         }
     }
+    #[inline(always)]
     pub fn num_bytes_encoded(&self) -> usize {
         self.total_offset
     }
-    pub fn last_8_literals(&self) -> [u8; 8] {
+    #[cold]
+    fn fallback_last_8_literals(&self) -> [u8; 8] {
+        let len = self.ring_buffer.slice().len();
         let mut ret = [0u8; 8];
-        if self.ring_buffer_decode_index < 8 {
-            let len = self.ring_buffer.slice().len();
-            for i in 0..8 {
-                ret[i] = self.ring_buffer.slice()[(self.ring_buffer_decode_index as usize + len - i - 1) & (len - 1)];
-            }
-        } else {
-            ret.clone_from_slice(self.ring_buffer.slice().split_at(self.ring_buffer_decode_index as usize - 8).1.split_at(8).0);
+        for i in 0..8 {
+            ret[i] = self.ring_buffer.slice()[(self.ring_buffer_decode_index as usize + len - i - 1) & (len - 1)];
         }
         ret
+    }
+    #[inline(always)]
+    pub fn last_8_literals(&self) -> [u8; 8] {
+        if self.ring_buffer_decode_index < 8 {
+            self.fallback_last_8_literals()
+        } else {
+            let mut ret = [0u8; 8];
+            ret.clone_from_slice(self.ring_buffer.slice().split_at(self.ring_buffer_decode_index as usize - 8).1.split_at(8).0);
+            ret
+        }
     }
     // this copies as much data as possible from the RingBuffer
     // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
@@ -95,6 +103,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         BrotliResult::ResultSuccess
     }
     fn decode_space_left_in_ring_buffer(&self) -> u32 {
+        // tried optimizing with predicates but no luck: the branch wins here (largely coherent; does less work in the common case)
+        // also do not inline: the branch predictor is forgetful about the branch here if this gets inlined everywhere
         if self.ring_buffer_output_index <= self.ring_buffer_decode_index {
             return self.ring_buffer_output_index + self.ring_buffer.slice().len() as u32 - 1 - self.ring_buffer_decode_index;
         }
