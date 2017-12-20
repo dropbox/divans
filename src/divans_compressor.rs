@@ -22,7 +22,24 @@ use super::raw_to_cmd;
 use super::slice_util;
 use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
+pub use super::interface::{
+    BlockSwitch,
+    LiteralBlockSwitch,
+    Command,
+    Compressor,
+    CopyCommand,
+    Decompressor,
+    DictCommand,
+    RandLiteralCommand,
+    LiteralCommand,
+    Nop,
+    NewWithAllocator,
+    ArithmeticEncoderOrDecoder,
+    LiteralPredictionModeNibble,
+    PredictionModeContextMap,
+    FeatureFlagSliceType,
+    free_cmd,
+    };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
@@ -182,7 +199,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         }
         BrotliResult::ResultSuccess
     }
-        fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
+    fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                           freeze_dried_cmd_start: &mut usize,
                           freeze_dried_cmd_end: &mut usize,
                           input:&[Command<slice_util::SliceReference<'a, u8>>]) {
@@ -195,6 +212,11 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
                         prob: freeze_dry(&lit.prob),
+                    })
+                },
+                Command::RandLiteral(ref lit) => {
+                    Command::RandLiteral(RandLiteralCommand::<slice_util::SliceReference<'static, u8>> {
+                        data: lit.data.freeze_dry(),
                     })
                 },
                 Command::PredictionMode(ref pm) => {

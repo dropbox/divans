@@ -47,12 +47,14 @@ use super::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
+    RandLiteralCommand,
     LiteralPredictionModeNibble,
     PredictionModeContextMap,
 };
 
 pub mod copy;
 pub mod dict;
+pub mod rand_literal;
 pub mod literal;
 pub mod context_map;
 pub mod block_type;
@@ -95,6 +97,7 @@ use super::probability::{CDF2, CDF16, Speed};
 enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     Begin,
     Literal(literal::LiteralState<AllocU8>),
+    RandLiteral(rand_literal::RandLiteralState<AllocU8>),
     Dict(dict::DictState),
     Copy(copy::CopyState),
     BlockSwitchLiteral(block_type::LiteralBlockTypeState),
@@ -134,6 +137,7 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         Command::BlockSwitchCommand(_) => 0x5,
         Command::BlockSwitchDistance(_) => 0x6,
         Command::PredictionMode(_) => 0x7,
+        Command::RandLiteral(_) => 0x8,
     }
 }
 #[cfg(feature="bitcmdselect")]
@@ -161,6 +165,10 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
      5 => EncodeOrDecodeState::BlockSwitchCommand(block_type::BlockTypeState::Begin),
      6 => EncodeOrDecodeState::BlockSwitchDistance(block_type::BlockTypeState::Begin),
      7 => EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::Begin),
+     8 => EncodeOrDecodeState::RandLiteral(rand_literal::RandLiteralState {
+                                lc:RandLiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+                                state:rand_literal::RandLiteralSubstate::Begin,
+                            }),
      0xf => EncodeOrDecodeState::DivansSuccess,
       _ => panic!("unimpl"),
    }
@@ -588,8 +596,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 },
                 EncodeOrDecodeState::Literal(ref mut lit_state) => {
                     let backing_store = LiteralCommand::nop();
-                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(input_cmd,
-                                                                                                                 &backing_store);
+                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
+                        input_cmd,
+                        &backing_store);
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
                                                      src_literal_command,
                                                      input_bytes,
@@ -601,6 +610,28 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
                                 Command::Literal(core::mem::replace(&mut lit_state.lc,
                                                                     LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()))));
+                        },
+                        retval => {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                        }
+                    }
+                },
+                EncodeOrDecodeState::RandLiteral(ref mut lit_state) => {
+                    let backing_store = LiteralCommand::nop();
+                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
+                        input_cmd,
+                        &backing_store);
+                    match lit_state.encode_or_decode(&mut self.cross_command_state,
+                                                     src_literal_command,
+                                                     input_bytes,
+                                                     input_bytes_offset,
+                                                     output_bytes,
+                                                     output_bytes_offset) {
+                        BrotliResult::ResultSuccess => {
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
+                                Command::RandLiteral(core::mem::replace(
+                                    &mut lit_state.lc,
+                                    RandLiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()))));
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -664,11 +695,23 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                 | (u64::from(last_8[6])<<0x30)
                                 | (u64::from(last_8[7])<<0x38);
                             new_state = Some(EncodeOrDecodeState::Begin);
-                            if let Command::Literal(ref mut l) = *o_cmd {
-                                let mfd = core::mem::replace(&mut l.data,
-                                                             AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                self.cross_command_state.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(mfd);
-                                //FIXME: what about prob array: should that be freed
+                            match *o_cmd {
+                                Command::Literal(ref mut l) => {
+                                    let mfd = core::mem::replace(
+                                        &mut l.data,
+                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                    self.cross_command_state.m8.use_cached_allocation::<
+                                            UninitializedOnAlloc>().free_cell(mfd);
+                                    //FIXME: what about prob array: should that be freed
+                                },
+                                Command::RandLiteral(ref mut l) => {
+                                    let mfd = core::mem::replace(
+                                        &mut l.data,
+                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                    self.cross_command_state.m8.use_cached_allocation::<
+                                            UninitializedOnAlloc>().free_cell(mfd);
+                                },
+                                _ => {},
                             }
                         },
                     }

@@ -189,9 +189,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
         retval
     }
-    fn parse_literal<SliceType:SliceWrapper<u8>>(&mut self,
-                                                        lit:&LiteralCommand<SliceType>) -> BrotliResult {
-       let data = lit.data.slice();
+    fn parse_literal(&mut self, data:&[u8]) -> BrotliResult {
        let data_len = data.len(); 
         if data_len < self.input_sub_offset { // this means user passed us different data a second time
            return BrotliResult::ResultFailure;
@@ -292,7 +290,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         match *cmd {
               Command::Copy(ref copy) => self.parse_copy(copy),
               Command::Dict(ref dict) => self.parse_dictionary(dict),
-              Command::Literal(ref literal) => self.parse_literal(literal),
+              Command::Literal(ref literal) => self.parse_literal(literal.slice()),
+              Command::RandLiteral(ref literal) => self.parse_literal(literal.slice()),
               Command::PredictionMode(_)
               | Command::BlockSwitchCommand(_)
               | Command::BlockSwitchDistance(_)
