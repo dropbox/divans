@@ -1,4 +1,24 @@
-use super::{BLEND_FIXED_POINT_PRECISION, CDF16, Speed};
+use super::{BLEND_FIXED_POINT_PRECISION, CDF16, Prob, ProbRange, Speed};
+
+#[cfg(test)]
+pub fn test_sym_to_start_and_freq<T: CDF16>() {
+    let mut cdf = T::default();
+    for i in 0..100 {
+        cdf.blend((i & 0xf) as u8, Speed::MED);
+        let mut last_prob_range: ProbRange = ProbRange { start:0, freq:0 };
+        for sym in 0..16 {
+            let result = cdf.sym_to_start_and_freq(sym as u8);
+            assert_eq!(sym as u8, result.sym);
+            // NOTE: the +1 is to mirror the default implementation of sym_to_start_and_freq,
+            // which does +1 to the interpolated Prob value.
+            let expected_start: Prob = 1 + if sym == 0 { 0 } else {
+                last_prob_range.start + last_prob_range.freq
+            };
+            assert_eq!(result.range.start, expected_start);
+            last_prob_range = result.range.clone();
+        }
+    }
+}
 
 #[cfg(test)]
 pub fn test_cdf_offset_to_sym_start_and_freq<T: CDF16>() {
@@ -93,6 +113,7 @@ macro_rules! define_common_tests_helper {
 macro_rules! declare_common_tests {
     ($cdf_ty: ident) => {
         define_common_tests_helper!($cdf_ty;
+                                    test_sym_to_start_and_freq,
                                     test_cdf_offset_to_sym_start_and_freq,
                                     test_stationary_probability,
                                     test_nonzero_pdf);
