@@ -117,3 +117,19 @@ impl CDF16 for OptFrequentistCDF16 {
         self.inv_max_and_bitlen = numeric::lookup_divisor(self.max());
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::OptFrequentistCDF16;
+    declare_common_tests!(OptFrequentistCDF16);
+
+    #[test]
+    fn test_cdf_opt_eq_baseline() {
+        use super::FrequentistCDF16;
+        use super::super::common_tests;
+        common_tests::operation_test_helper(&mut FrequentistCDF16::default(),
+                                            &mut FrequentistCDF16::default(),
+                                            &mut OptFrequentistCDF16::default(),
+                                            &mut OptFrequentistCDF16::default());
+    }
+}

@@ -205,3 +205,21 @@ impl CDF16 for BlendCDF16 {
 
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::{BlendCDF16, to_blend, to_blend_lut};
+    declare_common_tests!(BlendCDF16);
+
+    #[test]
+    fn test_blend_lut() {
+        for i in 0..16 {
+            let a = to_blend(i as u8);
+            let b = to_blend_lut(i as u8);
+            for j in 0..16 {
+                assert_eq!(a[j], b[j]);
+            }
+        }
+    }
+
+}

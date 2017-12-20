@@ -387,3 +387,28 @@ impl<Cdf16> DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
         }
     }
 }
+
+#[cfg(test)]
+#[cfg(feature="debug_entropy")]
+mod test {
+    use super::{BaseCDF, CDF16, Speed};
+    use super::super::{DebugWrapperCDF16, FrequentistCDF16, };
+    type DebugWrapperCDF16Impl = DebugWrapperCDF16<FrequentistCDF16>;
+    declare_common_tests!(DebugWrapperCDF16Impl);
+
+    #[test]
+    fn test_debug_info() {
+        let mut wrapper_cdf = DebugWrapperCDF16::<FrequentistCDF16>::default();
+        let mut reference_cdf = FrequentistCDF16::default();
+        let num_samples = 1234usize;
+        for i in 0..num_samples {
+            wrapper_cdf.blend((i & 0xf) as u8, Speed::MED);
+            reference_cdf.blend((i & 0xf) as u8, Speed::MED);
+        }
+        assert!(wrapper_cdf.num_samples().is_some());
+        assert_eq!(wrapper_cdf.num_samples().unwrap(), num_samples as u32);
+
+        use super::super::common_tests;
+        common_tests::assert_cdf_eq(&reference_cdf, &wrapper_cdf.cdf);
+    }
+}

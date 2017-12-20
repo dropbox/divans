@@ -205,9 +205,23 @@ impl CDF16 for SIMDFrequentistCDF16 {
 //__mmask16 _mm256_cmpge_epi16_mask (__m256i a, __m256i b)
 
 #[cfg(test)]
+#[cfg(feature="simd")]
 mod test {
     use super::{i16x16, i32x8, i64x4};
-    use super::{i16x16_to_i32x8_tuple, i16x16_to_i64x4_tuple, i32x8_tuple_to_i16x16, i64x4_tuple_to_i16x16};
+    use super::{i16x16_to_i32x8_tuple, i16x16_to_i64x4_tuple,
+                i32x8_tuple_to_i16x16, i64x4_tuple_to_i16x16};
+    use super::SIMDFrequentistCDF16;
+
+    declare_common_tests!(SIMDFrequentistCDF16);
+
+    #[test]
+    fn test_cdf_simd_eq_opt() {
+        use super::super::{common_tests, OptFrequentistCDF16};
+        common_tests::operation_test_helper(&mut SIMDFrequentistCDF16::default(),
+                                            &mut SIMDFrequentistCDF16::default(),
+                                            &mut OptFrequentistCDF16::default(),
+                                            &mut OptFrequentistCDF16::default());
+    }
 
     #[test]
     fn test_i32x8_tuple_to_i16x16() {

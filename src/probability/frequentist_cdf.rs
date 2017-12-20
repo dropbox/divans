@@ -84,3 +84,9 @@ impl CDF16 for FrequentistCDF16 {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::FrequentistCDF16;
+    declare_common_tests!(FrequentistCDF16);
+}
