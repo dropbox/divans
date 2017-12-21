@@ -1,4 +1,4 @@
-use super::{BLEND_FIXED_POINT_PRECISION, CDF16, Prob, ProbRange, Speed};
+use super::{BLEND_FIXED_POINT_PRECISION, CDF16, LOG2_SCALE, Prob, ProbRange, Speed};
 
 #[cfg(test)]
 pub fn test_sym_to_start_and_freq<T: CDF16>() {
@@ -25,13 +25,18 @@ pub fn test_cdf_offset_to_sym_start_and_freq<T: CDF16>() {
     let mut cdf = T::default();
     for i in 0..100 {
         cdf.blend((i & 0xf) as u8, Speed::MED);
-        for val in 0..cdf.max() {
-            let sym_start_freq = cdf.cdf_offset_to_sym_start_and_freq(val);
+        let mut prev_sym: u8 = 0;
+        for val in 0..(1i32 << LOG2_SCALE) {
+            let result = cdf.cdf_offset_to_sym_start_and_freq(val as Prob);
             // TODO: The following comparisons should not have +1's, but
             // cdf_offset_to_sym_start_and_freq(...) implementation at the moment is HAX.
-            assert!(sym_start_freq.range.start <= val + 1);
-            assert!(val <= sym_start_freq.range.start + sym_start_freq.range.freq);
+            assert!(prev_sym <= result.sym);
+            // check that val falls in the range defined by the return value.
+            assert!(result.range.start as i32 <= val + 1);
+            assert!(val <= (result.range.start as i32) + (result.range.freq as i32));
+            prev_sym = result.sym;
         }
+        assert_eq!(prev_sym, 15);
     }
 }
 
