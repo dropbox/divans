@@ -12,7 +12,7 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 #![cfg_attr(feature="benchmark", feature(test))]
-#![feature(platform_intrinsics)]
+#![cfg_attr(feature="simd", feature(platform_intrinsics))]
 #![no_std]
 #[macro_use]
 
