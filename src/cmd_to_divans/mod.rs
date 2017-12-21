@@ -16,7 +16,7 @@ use alloc::{SliceWrapper, Allocator};
 
 use codec::EncoderOrDecoderSpecialization;
 
-use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
+use super::interface::{CopyCommand,DictCommand,LiteralCommand,RandLiteralCommand,Command};
 
 use slice_util::AllocatedMemoryPrefix;
 pub struct EncoderSpecialization {
@@ -78,18 +78,28 @@ impl EncoderOrDecoderSpecialization for EncoderSpecialization {
             _ => backing,
         }        
     }
+    fn get_source_rand_literal_command<'a,
+                                       ISlice:SliceWrapper<u8>
+                                       +Default>(&self,
+                                                 data: &'a Command<ISlice>,
+                                                 backing: &'a RandLiteralCommand<ISlice>) -> &'a RandLiteralCommand<ISlice> {
+        match *data {
+            Command::RandLiteral(ref lc) => lc,
+            _ => backing,
+        }
+    }
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self,
                                                             data: &'a Command<ISlice>,
                                                             backing: &'a DictCommand) -> &'a DictCommand {
         match *data {
             Command::Dict(ref dc) => dc,
             _ => backing,
-        }                
+        }
     }
-    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
-                                                   in_cmd: &LiteralCommand<ISlice>,
-                                                   index: usize) -> u8 {
-        in_cmd.data.slice()[index]
+    fn get_literal_byte(&self,
+                        in_cmd: &[u8],
+                        index: usize) -> u8 {
+        in_cmd[index]
     }
     fn get_recoder_output<'a>(&'a mut self,
                               _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {

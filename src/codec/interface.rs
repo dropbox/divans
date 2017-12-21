@@ -13,6 +13,7 @@ use ::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
+    RandLiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
     LITERAL_PREDICTION_MODE_SIGN,
@@ -23,6 +24,7 @@ use ::interface::{
 use super::priors::{
     LiteralCommandPriors,
     LiteralCommandPriorsCM,
+    RandLiteralCommandPriors,
     CopyCommandPriors,
     DictCommandPriors,
     CrossCommandPriors,
@@ -65,11 +67,14 @@ pub trait EncoderOrDecoderSpecialization {
                                                      offset: usize,
                                                      backing:&'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>;
     fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a CopyCommand) -> &'a CopyCommand;
-    fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>, &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
+    fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>,
+                                                                       &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
+    fn get_source_rand_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>,
+                                                                            &'a RandLiteralCommand<ISlice>) -> &'a RandLiteralCommand<ISlice>;
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
-    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
-                                                   in_cmd: &LiteralCommand<ISlice>,
-                                                   index: usize) -> u8;
+    fn get_literal_byte(&self,
+                        in_cmd_slice: &[u8],
+                        index: usize) -> u8;
     fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
@@ -114,6 +119,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub distance_context_map: AllocU8::AllocatedMemory,
     pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
+    pub rand_lit_priors: RandLiteralCommandPriors<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -220,6 +226,7 @@ impl<Cdf16:CDF16,
                                                     AllocCDF16> {
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cm_lit_prior: AllocCDF16::AllocatedMemory,
+           rand_lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
@@ -273,6 +280,9 @@ impl<Cdf16:CDF16,
             },
             lit_priors: LiteralCommandPriors {
                 priors: lit_prior
+            },
+            rand_lit_priors: RandLiteralCommandPriors {
+                priors: rand_lit_prior
             },
             cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
@@ -573,6 +583,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let rand_lit_prior = mcdf16.alloc_cell(RandLiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
@@ -593,7 +604,8 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior, cc_priors, copy_priors,
+            bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior, rand_lit_prior,
+                                            cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,

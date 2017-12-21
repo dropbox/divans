@@ -10,7 +10,6 @@ use super::interface::{
     CrossCommandState,
     round_up_mod_4,
 };
-use super::specializations::CodecTraits;
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     BillingDesignation,
@@ -43,7 +42,6 @@ impl<AllocU8:Allocator<u8>,
                        Specialization:EncoderOrDecoderSpecialization,
                        AllocCDF2:Allocator<CDF2>,
                        AllocCDF16:Allocator<Cdf16>,
-                       CTraits:CodecTraits,
                        >(&mut self,
                          mut cur_nibble: u8,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
@@ -58,6 +56,10 @@ impl<AllocU8:Allocator<u8>,
             BillingDesignation::RandLiteralCommand(
                 RandLiteralSubstate::LiteralNibbleIndex(0)));
         cur_nibble
+    }
+    pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32,
+                                                           _in_cmd: &RandLiteralCommand<ISlice>) -> RandLiteralSubstate {
+        RandLiteralSubstate::LiteralNibbleIndex(index)
     }
     pub fn encode_or_decode<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -97,7 +99,7 @@ impl<AllocU8:Allocator<u8>,
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, literal_len.wrapping_sub(1)) as u8;
-                    let mut nibble_prob = superstate.bk.lit_priors.get(
+                    let mut nibble_prob = superstate.bk.rand_lit_priors.get(
                         RandLiteralNibblePriorType::CountSmall, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
@@ -112,7 +114,7 @@ impl<AllocU8:Allocator<u8>,
                 RandLiteralSubstate::LiteralCountFirst => {
                     let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(RandLiteralNibblePriorType::SizeBegNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.rand_lit_priors.get(RandLiteralNibblePriorType::SizeBegNib, (ctype,));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
@@ -129,7 +131,7 @@ impl<AllocU8:Allocator<u8>,
                 RandLiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(RandLiteralNibblePriorType::SizeLastNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.rand_lit_priors.get(RandLiteralNibblePriorType::SizeLastNib, (ctype,));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
@@ -143,7 +145,7 @@ impl<AllocU8:Allocator<u8>,
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(RandLiteralNibblePriorType::SizeMantissaNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.rand_lit_priors.get(RandLiteralNibblePriorType::SizeMantissaNib, (ctype,));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
@@ -160,7 +162,7 @@ impl<AllocU8:Allocator<u8>,
                 RandLiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
+                    let mut byte_to_encode_val: u8 = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
                     {
                         let cur_nibble = self.code_nibble(byte_to_encode_val & 0xf,
                                                           superstate,
@@ -179,7 +181,7 @@ impl<AllocU8:Allocator<u8>,
                 RandLiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
+                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
                     let high_nibble = self.code_nibble(byte_to_encode_val >> 4, superstate);
                     match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                         BrotliResult::ResultSuccess => {},

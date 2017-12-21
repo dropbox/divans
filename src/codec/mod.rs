@@ -617,8 +617,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                     }
                 },
                 EncodeOrDecodeState::RandLiteral(ref mut lit_state) => {
-                    let backing_store = LiteralCommand::nop();
-                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
+                    let backing_store = RandLiteralCommand::nop();
+                    let src_literal_command = self.cross_command_state.specialization.get_source_rand_literal_command(
                         input_cmd,
                         &backing_store);
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
@@ -711,7 +711,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                     self.cross_command_state.m8.use_cached_allocation::<
                                             UninitializedOnAlloc>().free_cell(mfd);
                                 },
-                                _ => {},
+                                Command::Dict(_) |
+                                Command::Copy(_) |
+                                Command::BlockSwitchCommand(_) |
+                                Command::BlockSwitchLiteral(_) |
+                                Command::BlockSwitchDistance(_) |
+                                Command::PredictionMode(_) => {},
                             }
                         },
                     }

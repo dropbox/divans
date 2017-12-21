@@ -19,6 +19,7 @@ use super::probability;
 use super::codec::copy::CopySubstate;
 use super::codec::dict::DictSubstate;
 use super::codec::literal::LiteralSubstate;
+use super::codec::rand_literal::RandLiteralSubstate;
 use super::codec::context_map::PredictionModeState;
 use super::codec::block_type::BlockTypeState;
 pub use super::codec::StrideSelection;
@@ -154,6 +155,7 @@ pub enum BillingDesignation {
     CopyCommand(CopySubstate),
     DictCommand(DictSubstate),
     LiteralCommand(LiteralSubstate),
+    RandLiteralCommand(RandLiteralSubstate),
     CrossCommand(CrossCommandBilling),
     PredModeCtxMap(PredictionModeState),
     BlockType(BlockTypeState),

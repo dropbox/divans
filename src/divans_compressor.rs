@@ -134,15 +134,22 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
    }
    for item in ret[start_index..end_index].iter_mut() {
        match *item {
-       Command::Literal(ref mut lit) => {
-           lit.data = lit.data.thaw(ring_buffer);
-           assert_eq!(lit.prob.slice().len(), 0);
-       },
-       Command::PredictionMode(ref mut pm) => {
-           pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
-           pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
-       },
-       _ => {},       
+           Command::Literal(ref mut lit) => {
+               lit.data = lit.data.thaw(ring_buffer);
+               assert_eq!(lit.prob.slice().len(), 0);
+           },
+           Command::RandLiteral(ref mut lit) => {
+               lit.data = lit.data.thaw(ring_buffer);
+           },
+           Command::PredictionMode(ref mut pm) => {
+               pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
+               pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
+           },
+           Command::Dict(_) |
+           Command::Copy(_) |
+           Command::BlockSwitchCommand(_) |
+           Command::BlockSwitchLiteral(_) |
+           Command::BlockSwitchDistance(_) => {}
        }
 //       item.apply_array(|array_item:&mut slice_util::SliceReference<'a, u8>| *array_item = array_item.thaw(ring_buffer));
    }
