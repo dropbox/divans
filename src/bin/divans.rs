@@ -39,6 +39,7 @@ use divans::FeatureFlagSliceType;
 use divans::CopyCommand;
 use divans::LiteralBlockSwitch;
 use divans::LiteralCommand;
+use divans::RandLiteralCommand;
 use divans::LiteralPredictionModeNibble;
 use divans::PredictionModeContextMap;
 use divans::Command;
@@ -406,6 +407,32 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 return Err(external_probs_err);
             },
         }
+    } else if cmd == "rndins"{
+        if command_vec.len() < 3 {
+            if command_vec.len() == 2 && command_vec[1] == "0" {
+                return Ok(None);
+            }
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      String::from("insert needs 3 arguments, not (") + s + ")"));
+        }
+        let expected_len = match command_vec[1].parse::<usize>() {
+            Ok(el) => el,
+            Err(msg) => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              msg.description()));
+            }
+        };
+        if expected_len ==  0 {
+            return Ok(None);
+        }
+        let data = try!(hex_string_to_vec(command_vec[2]));
+        if data.len() != expected_len {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      String::from("Length does not match ") + s))
+        }
+        return Ok(Some(Command::RandLiteral(RandLiteralCommand{
+            data:ItemVec(data),
+        })));
     }
     Err(io::Error::new(io::ErrorKind::InvalidInput,
                        String::from("Unknown ") + s))
