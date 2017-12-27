@@ -252,8 +252,12 @@ impl<AllocU8:Allocator<u8>,
             ];
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
-        nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
-        cm_prob.blend(cur_nibble, Speed::GLACIAL);
+        if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
+            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+        }
+        if CTraits::MATERIALIZED_PREDICTION_MODE {
+            cm_prob.blend(cur_nibble, Speed::GLACIAL);
+        }
         cur_nibble
     }
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>) -> LiteralSubstate {
