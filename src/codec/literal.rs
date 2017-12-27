@@ -204,6 +204,7 @@ impl<AllocU8:Allocator<u8>,
                          mut cur_nibble: u8,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
+                         high_entropy: bool,
                          _ctraits: &'static CTraits,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
@@ -216,19 +217,19 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
                                           byte_context.actual_context as usize,
-                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1)))
+                                          high_entropy as usize))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                          (byte_context.stride_byte as usize,
                                           cur_byte_prior as usize,
-                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES-1)))
+                                          high_entropy as usize))
         };
         let cm_prob = if high_nibble {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                            (byte_context.actual_context as usize,))
+                                            (byte_context.actual_context as usize, high_entropy as usize))
         } else {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                            (cur_byte_prior as usize, byte_context.actual_context as usize))
+                                            (cur_byte_prior as usize, byte_context.actual_context as usize, high_entropy as usize))
         };
         let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
@@ -253,8 +254,8 @@ impl<AllocU8:Allocator<u8>,
             ];
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
-        nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
-        cm_prob.blend(cur_nibble, Speed::GLACIAL);
+        nibble_prob.blend(cur_nibble, Speed::MUD);
+        cm_prob.blend(cur_nibble, Speed::MUD);
         cur_nibble
     }
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>) -> LiteralSubstate {
@@ -412,6 +413,7 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
+                    let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
@@ -421,6 +423,7 @@ impl<AllocU8:Allocator<u8>,
                                                           byte_to_encode_val & 0xf,
                                                           byte_context,
                                                           prior_nibble >> 4,
+                                                          high_entropy,
                                                           ctraits,
                                                           superstate,
                                                           );
@@ -437,6 +440,7 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
+                    let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
@@ -444,6 +448,7 @@ impl<AllocU8:Allocator<u8>,
                                                       byte_to_encode_val >> 4,
                                                       byte_context,
                                                       0,
+                                                      high_entropy,
                                                       ctraits,
                                                       superstate,
                                                       );
@@ -457,6 +462,7 @@ impl<AllocU8:Allocator<u8>,
                                                     byte_to_encode_val & 0xf,
                                                     byte_context,
                                                     cur_nibble,
+                                                    high_entropy,
                                                     ctraits,
                                                     superstate,
                                                     ) | (cur_nibble << 4);
