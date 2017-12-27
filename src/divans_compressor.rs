@@ -219,6 +219,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
                         prob: freeze_dry(&lit.prob),
+                        high_entropy: lit.high_entropy,
                     })
                 },
                 Command::RandLiteral(ref lit) => {

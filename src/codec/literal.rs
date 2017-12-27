@@ -28,7 +28,7 @@ use ::priors::PriorCollection;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralSubstate {
     Begin,
-    LiteralCountSmall,
+    LiteralCountSmall(bool),
     LiteralCountFirst,
     LiteralCountLengthGreater14Less25,
     LiteralCountMantissaNibbles(u8, u32),
@@ -38,6 +38,7 @@ pub enum LiteralSubstate {
     FullyDecoded,
 }
 
+const NUM_LITERAL_LENGTH_MNEMONIC: u32 = 14;
 pub struct LiteralState<AllocU8:Allocator<u8>> {
     pub lc:LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>,
     pub state: LiteralSubstate,
@@ -284,7 +285,7 @@ impl<AllocU8:Allocator<u8>,
                           output_offset: &mut usize,
                           ctraits: &'static CTraits) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
-        let serialized_large_literal_len  = literal_len.wrapping_sub(16);
+        let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
         loop {
@@ -301,19 +302,25 @@ impl<AllocU8:Allocator<u8>,
             });
             match self.state {
                 LiteralSubstate::Begin => {
-                    self.state = LiteralSubstate::LiteralCountSmall;
+                    self.state = LiteralSubstate::LiteralCountSmall(false);
                 },
-                LiteralSubstate::LiteralCountSmall => {
+                LiteralSubstate::LiteralCountSmall(high_entropy_flag) => {
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut shortcut_nib = core::cmp::min(15, literal_len.wrapping_sub(1)) as u8;
+                    let mut shortcut_nib = core::cmp::min(NUM_LITERAL_LENGTH_MNEMONIC, literal_len.wrapping_sub(1)) as u8;
+                    if in_cmd.high_entropy && !high_entropy_flag {
+                        shortcut_nib = NUM_LITERAL_LENGTH_MNEMONIC as u8 + 1;
+                    }
                     let mut nibble_prob = superstate.bk.lit_priors.get(
                         LiteralNibblePriorType::CountSmall, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
 
-                    if shortcut_nib == 15 {
+                    if shortcut_nib as u32 == NUM_LITERAL_LENGTH_MNEMONIC {
                         self.state = LiteralSubstate::LiteralCountFirst;
+                    } else if shortcut_nib as u32 == 1 + NUM_LITERAL_LENGTH_MNEMONIC {
+                        self.lc.high_entropy = true;
+                        self.state = LiteralSubstate::LiteralCountSmall(true); // right now just 
                     } else {
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(shortcut_nib as usize + 1);
                         self.state = self.get_nibble_code_state(0, in_cmd);
@@ -329,7 +336,8 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(16 + beg_nib as usize);
+                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                            NUM_LITERAL_LENGTH_MNEMONIC as usize + 1 + beg_nib as usize);
                         self.state = self.get_nibble_code_state(0, in_cmd);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
@@ -358,7 +366,8 @@ impl<AllocU8:Allocator<u8>,
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
                     if next_len_remaining == 0 {
-                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(next_decoded_so_far as usize + 16);
+                        self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                            next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1);
                         self.state = self.get_nibble_code_state(0, in_cmd);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
