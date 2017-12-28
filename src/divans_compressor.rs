@@ -22,7 +22,23 @@ use super::raw_to_cmd;
 use super::slice_util;
 use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
+pub use super::interface::{
+    BlockSwitch,
+    LiteralBlockSwitch,
+    Command,
+    Compressor,
+    CopyCommand,
+    Decompressor,
+    DictCommand,
+    LiteralCommand,
+    Nop,
+    NewWithAllocator,
+    ArithmeticEncoderOrDecoder,
+    LiteralPredictionModeNibble,
+    PredictionModeContextMap,
+    FeatureFlagSliceType,
+    free_cmd,
+    };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
@@ -117,15 +133,19 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
    }
    for item in ret[start_index..end_index].iter_mut() {
        match *item {
-       Command::Literal(ref mut lit) => {
-           lit.data = lit.data.thaw(ring_buffer);
-           assert_eq!(lit.prob.slice().len(), 0);
-       },
-       Command::PredictionMode(ref mut pm) => {
-           pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
-           pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
-       },
-       _ => {},       
+           Command::Literal(ref mut lit) => {
+               lit.data = lit.data.thaw(ring_buffer);
+               assert_eq!(lit.prob.slice().len(), 0);
+           },
+           Command::PredictionMode(ref mut pm) => {
+               pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
+               pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
+           },
+           Command::Dict(_) |
+           Command::Copy(_) |
+           Command::BlockSwitchCommand(_) |
+           Command::BlockSwitchLiteral(_) |
+           Command::BlockSwitchDistance(_) => {}
        }
 //       item.apply_array(|array_item:&mut slice_util::SliceReference<'a, u8>| *array_item = array_item.thaw(ring_buffer));
    }
@@ -182,7 +202,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         }
         BrotliResult::ResultSuccess
     }
-        fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
+    fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                           freeze_dried_cmd_start: &mut usize,
                           freeze_dried_cmd_end: &mut usize,
                           input:&[Command<slice_util::SliceReference<'a, u8>>]) {
@@ -195,6 +215,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
                         data: lit.data.freeze_dry(),
                         prob: freeze_dry(&lit.prob),
+                        high_entropy: lit.high_entropy,
                     })
                 },
                 Command::PredictionMode(ref pm) => {

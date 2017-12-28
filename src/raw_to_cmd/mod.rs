@@ -109,6 +109,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                                                        self.ring_buffer_output_index as usize,
                                                        max_copy),
                        prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
+                       high_entropy: false,
                    });
                *output_offset += 1;
            }
@@ -128,6 +129,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                                                    self.ring_buffer_output_index as usize,
                                                    max_copy),
                    prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
+                   high_entropy: false,
                });
            *output_offset += 1;
            assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);

@@ -25,6 +25,7 @@ pub enum LiteralNibblePriorType {
     SizeMantissaNib,
 }
 
+
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::FirstNibble, 256, NUM_BLOCK_TYPES, NUM_STRIDES),
                      (LiteralNibblePriorType::SecondNibble, 256, 16, NUM_STRIDES),
@@ -40,6 +41,19 @@ define_prior_struct!(LiteralCommandPriorsCM, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum RandLiteralNibblePriorType {
+    CountSmall,
+    SizeBegNib,
+    SizeLastNib,
+    SizeMantissaNib,
+}
+define_prior_struct!(RandLiteralCommandPriors, RandLiteralNibblePriorType,
+                     (RandLiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
+                     (RandLiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
+                     (RandLiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
+                     (RandLiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum CopyCommandNibblePriorType {

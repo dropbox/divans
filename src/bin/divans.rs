@@ -364,7 +364,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 })));
             }
         }
-    } else if cmd == "insert"{
+    } else if cmd == "insert" || cmd == "rndins" {
         if command_vec.len() < 3 {
             if command_vec.len() == 2 && command_vec[1] == "0" {
                 return Ok(None);
@@ -398,8 +398,9 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         match deserialize_external_probabilities(&probs) {
             Ok(external_probs) => {
                 return Ok(Some(Command::Literal(LiteralCommand{
-                        data:ItemVec(data),
-                        prob:external_probs,
+                    data:ItemVec(data),
+                    high_entropy:cmd == "rndins",
+                    prob:external_probs,
                          })));
             },
             Err(external_probs_err) => {

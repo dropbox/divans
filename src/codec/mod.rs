@@ -588,8 +588,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                 },
                 EncodeOrDecodeState::Literal(ref mut lit_state) => {
                     let backing_store = LiteralCommand::nop();
-                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(input_cmd,
-                                                                                                                 &backing_store);
+                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
+                        input_cmd,
+                        &backing_store);
                     match lit_state.encode_or_decode(&mut self.cross_command_state,
                                                      src_literal_command,
                                                      input_bytes,
@@ -664,11 +665,21 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                 | (u64::from(last_8[6])<<0x30)
                                 | (u64::from(last_8[7])<<0x38);
                             new_state = Some(EncodeOrDecodeState::Begin);
-                            if let Command::Literal(ref mut l) = *o_cmd {
-                                let mfd = core::mem::replace(&mut l.data,
-                                                             AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                self.cross_command_state.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(mfd);
-                                //FIXME: what about prob array: should that be freed
+                            match *o_cmd {
+                                Command::Literal(ref mut l) => {
+                                    let mfd = core::mem::replace(
+                                        &mut l.data,
+                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                    self.cross_command_state.m8.use_cached_allocation::<
+                                            UninitializedOnAlloc>().free_cell(mfd);
+                                    //FIXME: what about prob array: should that be freed
+                                },
+                                Command::Dict(_) |
+                                Command::Copy(_) |
+                                Command::BlockSwitchCommand(_) |
+                                Command::BlockSwitchLiteral(_) |
+                                Command::BlockSwitchDistance(_) |
+                                Command::PredictionMode(_) => {},
                             }
                         },
                     }

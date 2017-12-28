@@ -307,6 +307,7 @@ fn bench_no_ir<Run: Runner,
         Command::Literal(LiteralCommand{
             data:cmd_data_buffer,
             prob:FeatureFlagSliceType::<ItemVec<u8>>::default(),
+            high_entropy:false,
         }),
     ];
     let mut dv_buffer = LimitedBuffer::new(dv_backing_buffer.slice_mut());//UnlimitedBuffer::new(&[]);//LimitedBuffer::new(dv_backing_buffer.slice_mut());

@@ -80,9 +80,9 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
         backing
     }
     #[inline(always)]
-    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
-                                                   _in_cmd: &LiteralCommand<ISlice>,
-                                                   _index: usize) -> u8 {
+    fn get_literal_byte(&self,
+                        _in_cmd_slice: &[u8],
+                        _index: usize) -> u8 {
         0
     }
     #[inline(always)]
