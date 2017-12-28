@@ -386,7 +386,7 @@ impl<AllocU8:Allocator<u8>,
                     let byte_index = (nibble_index as usize) >> 1;
                     let high_nibble = (nibble_index & 1) == 0;
                     let shift : u8 = if high_nibble { 4 } else { 0 };
-                    let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index)
+                    let mut cur_nibble = (superstate.specialization.get_literal_byte(in_cmd, byte_index)
                                           >> shift) & 0xf;
                     assert!(in_cmd.prob.slice().is_empty() || (in_cmd.prob.slice().len() == 8 * in_cmd.data.slice().len()));
                     {
@@ -421,7 +421,7 @@ impl<AllocU8:Allocator<u8>,
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
                     let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
+                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
@@ -448,7 +448,7 @@ impl<AllocU8:Allocator<u8>,
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
                     let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
-                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd.data.slice(), byte_index);
+                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
                     let cur_nibble = self.code_nibble(true,
                                                       byte_to_encode_val >> 4,

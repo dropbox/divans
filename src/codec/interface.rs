@@ -68,9 +68,9 @@ pub trait EncoderOrDecoderSpecialization {
     fn get_source_literal_command<'a, ISlice:SliceWrapper<u8>+Default>(&self, &'a Command<ISlice>,
                                                                        &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice>;
     fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self, &'a Command<ISlice>, &'a DictCommand) -> &'a DictCommand;
-    fn get_literal_byte(&self,
-                        in_cmd_slice: &[u8],
-                        index: usize) -> u8;
+    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
+                                                   in_cmd: &LiteralCommand<ISlice>,
+                                                   index: usize) -> u8;
     fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
     fn get_recoder_output_offset<'a>(&self,
                                      passed_in_output_bytes: &'a mut usize,
