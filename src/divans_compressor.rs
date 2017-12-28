@@ -30,7 +30,6 @@ pub use super::interface::{
     CopyCommand,
     Decompressor,
     DictCommand,
-    RandLiteralCommand,
     LiteralCommand,
     Nop,
     NewWithAllocator,
@@ -138,9 +137,6 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
                lit.data = lit.data.thaw(ring_buffer);
                assert_eq!(lit.prob.slice().len(), 0);
            },
-           Command::RandLiteral(ref mut lit) => {
-               lit.data = lit.data.thaw(ring_buffer);
-           },
            Command::PredictionMode(ref mut pm) => {
                pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
                pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
@@ -220,11 +216,6 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                         data: lit.data.freeze_dry(),
                         prob: freeze_dry(&lit.prob),
                         high_entropy: lit.high_entropy,
-                    })
-                },
-                Command::RandLiteral(ref lit) => {
-                    Command::RandLiteral(RandLiteralCommand::<slice_util::SliceReference<'static, u8>> {
-                        data: lit.data.freeze_dry(),
                     })
                 },
                 Command::PredictionMode(ref pm) => {

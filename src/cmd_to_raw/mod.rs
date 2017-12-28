@@ -291,7 +291,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
               Command::Copy(ref copy) => self.parse_copy(copy),
               Command::Dict(ref dict) => self.parse_dictionary(dict),
               Command::Literal(ref literal) => self.parse_literal(literal.slice()),
-              Command::RandLiteral(ref literal) => self.parse_literal(literal.slice()),
               Command::PredictionMode(_)
               | Command::BlockSwitchCommand(_)
               | Command::BlockSwitchDistance(_)

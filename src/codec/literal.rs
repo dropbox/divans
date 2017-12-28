@@ -204,7 +204,7 @@ impl<AllocU8:Allocator<u8>,
                          mut cur_nibble: u8,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
-                         high_entropy: bool,
+                         _high_entropy: bool,
                          _ctraits: &'static CTraits,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
@@ -217,19 +217,21 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
                                           byte_context.actual_context as usize,
-                                          high_entropy as usize))
+                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
+                                          ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                          (byte_context.stride_byte as usize,
                                           cur_byte_prior as usize,
-                                          high_entropy as usize))
+                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
+                                          ))
         };
         let cm_prob = if high_nibble {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                            (byte_context.actual_context as usize, high_entropy as usize))
+                                            (byte_context.actual_context as usize,))
         } else {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                            (cur_byte_prior as usize, byte_context.actual_context as usize, high_entropy as usize))
+                                            (cur_byte_prior as usize, byte_context.actual_context as usize))
         };
         let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);

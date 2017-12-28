@@ -16,7 +16,7 @@ use alloc::{SliceWrapper, Allocator};
 
 use codec::EncoderOrDecoderSpecialization;
 
-use super::interface::{CopyCommand,DictCommand,LiteralCommand,RandLiteralCommand,Command};
+use super::interface::{CopyCommand,DictCommand,LiteralCommand,Command};
 
 use slice_util::AllocatedMemoryPrefix;
 
@@ -71,14 +71,6 @@ impl EncoderOrDecoderSpecialization for DecoderSpecialization {
                                          +Default>(&self,
                                                    _data: &'a Command<ISlice>,
                                                    backing: &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice> {
-        backing
-    }
-    #[inline(always)]
-    fn get_source_rand_literal_command<'a,
-                                       ISlice:SliceWrapper<u8>
-                                       +Default>(&self,
-                                                 _data: &'a Command<ISlice>,
-                                                 backing: &'a RandLiteralCommand<ISlice>) -> &'a RandLiteralCommand<ISlice> {
         backing
     }
     #[inline(always)]
