@@ -20,6 +20,14 @@
 #[cfg(feature="billing")]
 #[macro_use]
 extern crate std;
+
+#[cfg(not(feature="no-stdlib"))]
+#[cfg(not(feature="safe"))]
+#[cfg(not(test))]
+#[cfg(not(feature="billing"))]
+#[macro_use]
+extern crate std;
+
 #[cfg(feature="simd")]
 extern crate stdsimd;
 
@@ -65,14 +73,13 @@ pub use cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 pub use divans_compressor::{DivansCompressor, DivansCompressorFactoryStruct};
 use core::marker::PhantomData;
-
+mod ffi;
+pub use ffi::*;
 
 pub use probability::Speed;
 
 
 pub use probability::CDF2;
-
-
 
 pub struct HeaderParser<AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
@@ -120,7 +127,7 @@ pub trait DivansDecompressorFactory<
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
-     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
+    type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
     fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
         DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16)})
     }
@@ -188,6 +195,11 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                                      true,
                                                                                      codec::StrideSelection::UseBrotliRec), 0));
         BrotliResult::ResultSuccess
+    }
+    pub fn free_ref(&mut self) {
+        if let DivansDecompressor::Decode(ref mut decoder, _bytes_encoded) = *self {
+            decoder.free_ref();
+        }
     }
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         match self {
@@ -278,3 +290,5 @@ impl<AllocU8:Allocator<u8>,
     for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
+
+

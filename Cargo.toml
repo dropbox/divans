@@ -12,6 +12,9 @@ keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
 build = "build.rs"
 
+[lib]
+crate-type=["cdylib", "rlib"]
+
 [[bin]]
 doc = false
 name = "divans"

@@ -132,8 +132,11 @@ impl<T, AllocT: Allocator<T>> RepurposingAlloc<T, AllocT> {
     pub fn get_base_alloc(&mut self) -> &mut AllocT {
         &mut self.alloc
     }
+    pub fn free_ref(&mut self) {
+        self.alloc.free_cell(core::mem::replace(&mut self.cached_allocation, AllocT::AllocatedMemory::default()));
+    }
     pub fn free(mut self) -> AllocT {
-        self.alloc.free_cell(self.cached_allocation);
+        self.free_ref();
         self.alloc
     }
 }

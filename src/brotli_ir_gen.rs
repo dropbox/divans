@@ -217,12 +217,19 @@ impl<SelectedCDF:CDF16,
             return BrotliResult::NeedsMoreInput
         }
     }
-    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
-                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
+    fn free_internal(&mut self) {
         self.brotli_data.free(&mut self.brotli_encoder.m8);
         self.divans_data.free(&mut self.codec.get_m8().get_base_alloc());
-        let (m8, mcdf2, mcdf16) = self.codec.free();
         brotli::enc::encode::BrotliEncoderDestroyInstance(&mut self.brotli_encoder);
+    }
+    pub fn free_ref(&mut self) {
+        self.free_internal();
+        self.codec.free_ref();
+    }
+    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
+                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT) {
+        self.free_internal();
+        let (m8, mcdf2, mcdf16) = self.codec.free();
         (m8, self.brotli_encoder.m32, mcdf2, mcdf16, self.brotli_encoder.m8, self.brotli_encoder.m16,self.brotli_encoder.mi32, self.brotli_encoder.mc,
          self.mf64, self.mfv, self.mhl, self.mhc, self.mhd, self.mhp, self.mct, self.mht)
     }

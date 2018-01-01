@@ -202,6 +202,9 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         self.cross_command_state.free()
     }
+    pub fn free_ref(&mut self) {
+        self.cross_command_state.free_ref()
+    }
     pub fn new(m8:AllocU8,
                mcdf2:AllocCDF2,
                mcdf16:AllocCDF16,

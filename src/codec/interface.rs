@@ -605,7 +605,7 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
             ),
         }
     }
-    pub fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+    fn free_internal(&mut self) {
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
@@ -618,6 +618,13 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         self.mcdf16.free_cell(cdf16c);
         self.mcdf16.free_cell(cdf16d);
         self.mcdf16.free_cell(cdf16e);
+    }
+    pub fn free_ref(&mut self) {
+        self.free_internal();
+        self.m8.free_ref();
+    }
+    pub fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+        self.free_internal();
         (self.m8.free(), self.mcdf2, self.mcdf16)
     }
 }
