@@ -6,8 +6,13 @@ use brotli;
 use std::vec::Vec;
 use std::boxed::Box;
 use std::os::raw::c_void;
+use core::slice;
+use brotli::BrotliResult;
 use super::alloc;
 use super::DivansCompressorFactory;
+use super::DivansDecompressorFactory;
+use super::interface::Compressor;
+use super::interface::Decompressor;
 pub extern "C" fn hello_rust() -> *const u8 {
     "Hello, world!\0".as_ptr()
 }
@@ -77,14 +82,14 @@ pub struct CAllocator {
     free_func: Option<extern "C" fn(data: *mut c_void, ptr: *mut c_void) -> ()>,
     opaque: *mut c_void,
 }
-
+type DecompressorFactory = super::DivansDecompressorFactoryStruct<SubclassableAllocator<u8>,
+                                                                  SubclassableAllocator<super::CDF2>,
+                                                                  SubclassableAllocator<super::DefaultCDF16>>;
 #[repr(C)]
 #[no_mangle]
 pub struct DivansDecompressorState {
     custom_allocator: CAllocator,
-    decompressor: super::DivansDecompressor<<super::DivansDecompressorFactoryStruct<SubclassableAllocator<u8>,
-                                                                            SubclassableAllocator<super::CDF2>,
-                                                                            SubclassableAllocator<super::DefaultCDF16>> as super::DivansDecompressorFactory<SubclassableAllocator<u8>, SubclassableAllocator<super::CDF2>, SubclassableAllocator<super::DefaultCDF16>>>::DefaultDecoder,
+    decompressor: super::DivansDecompressor<<DecompressorFactory as super::DivansDecompressorFactory<SubclassableAllocator<u8>, SubclassableAllocator<super::CDF2>, SubclassableAllocator<super::DefaultCDF16>>>::DefaultDecoder,
                                      SubclassableAllocator<u8>,
                                      SubclassableAllocator<super::CDF2>,
                                      SubclassableAllocator<super::DefaultCDF16>>,
@@ -168,7 +173,15 @@ impl Default for DivansCompressOptions {
 
 
 #[no_mangle]
-pub extern fn new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
+pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
+    divans_new_compressor_with_custom_alloc(CAllocator{
+        alloc_func:None,
+        free_func:None,
+        opaque: core::ptr::null_mut(),
+    })
+}
+#[no_mangle]
+pub extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
     let opts = DivansCompressOptions::default();
     Box::<DivansCompressorState>::into_raw(Box::<DivansCompressorState>::new(DivansCompressorState{
         custom_allocator:allocators.clone(),
@@ -202,10 +215,140 @@ pub extern fn new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut Di
     }))
 }
 
+
 #[no_mangle]
-pub unsafe extern fn free_compressor(state_ptr: *mut DivansCompressorState) {
+pub type DivansResult = u8;
+pub const DIVANS_SUCCESS: DivansResult = 0;
+pub const DIVANS_NEEDS_MORE_INPUT: DivansResult = 1;
+pub const DIVANS_NEEDS_MORE_OUTPUT: DivansResult = 2;
+pub const DIVANS_FAILURE: DivansResult = 3;
+
+
+#[no_mangle]
+pub unsafe extern fn divans_encode(state_ptr: *mut DivansCompressorState,
+                                   input_buf_ptr: *const u8, input_size: usize, input_offset_ptr: *mut usize,
+                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+    let input_buf = slice::from_raw_parts(input_buf_ptr, input_size);
+    let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
+    match input_offset_ptr.as_mut() {
+        None => return DIVANS_FAILURE,
+        Some(input_offset) => {
+            match output_offset_ptr.as_mut() {
+                None => return DIVANS_FAILURE,
+                Some(output_offset) => {
+                    match state_ptr.as_mut() {
+                        None => return DIVANS_FAILURE,
+                        Some(state_ref) => {
+                            match state_ref.compressor.encode(input_buf, input_offset, output_buf, output_offset) {
+                                BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
+                                BrotliResult::ResultFailure => return DIVANS_FAILURE,
+                                BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
+                                BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
+                                         output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+    let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
+    match output_offset_ptr.as_mut() {
+        None => return DIVANS_FAILURE,
+        Some(output_offset) => {
+            match state_ptr.as_mut() {
+                None => return DIVANS_FAILURE,
+                Some(state_ref) => {
+                    match state_ref.compressor.flush(output_buf, output_offset) {
+                        BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
+                        BrotliResult::ResultFailure => return DIVANS_FAILURE,
+                        BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
+                        BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorState) {
     let _state = Box::from_raw(state_ptr);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+#[no_mangle]
+pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
+    divans_new_decompressor_with_custom_alloc(CAllocator{
+        alloc_func:None,
+        free_func:None,
+        opaque: core::ptr::null_mut(),
+    })
+}
+
+#[no_mangle]
+pub extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansDecompressorState{
+    let opts = DivansCompressOptions::default();
+    Box::<DivansDecompressorState>::into_raw(Box::<DivansDecompressorState>::new(DivansDecompressorState{
+        custom_allocator:allocators.clone(),
+        decompressor:DecompressorFactory::new(
+            SubclassableAllocator::<u8>::new(allocators.clone()),
+            SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
+            SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
+        ),
+    }))
+}
+
+
+#[no_mangle]
+pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
+                                   input_buf_ptr: *const u8, input_size: usize, input_offset_ptr: *mut usize,
+                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+    let input_buf = slice::from_raw_parts(input_buf_ptr, input_size);
+    let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
+    match input_offset_ptr.as_mut() {
+        None => return DIVANS_FAILURE,
+        Some(input_offset) => {
+            match output_offset_ptr.as_mut() {
+                None => return DIVANS_FAILURE,
+                Some(output_offset) => {
+                    match state_ptr.as_mut() {
+                        None => return DIVANS_FAILURE,
+                        Some(state_ref) => {
+                            match state_ref.decompressor.decode(input_buf, input_offset, output_buf, output_offset) {
+                                BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
+                                BrotliResult::ResultFailure => return DIVANS_FAILURE,
+                                BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
+                                BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+#[no_mangle]
+pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressorState) {
+    let _state = Box::from_raw(state_ptr);
+}
+
 
 /*
     let mut m8 = SubclassableAllocator::<u8>::default();
