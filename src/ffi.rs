@@ -49,12 +49,22 @@ impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
         &mut self.0[index]
     }
 }
+impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
+    fn drop (&mut self) {
+        if self.0.len() != 0 {
+            print!("leaking memory block of length {} element size: {}\n", self.0.len(), core::mem::size_of::<Ty>());
 
+            let to_forget = core::mem::replace(self, MemoryBlock::default());
+            core::mem::forget(to_forget);// leak it -- it's the only safe way with custom allocators
+        }
+    }
+}
 struct SubclassableAllocator<Ty:Sized+Default> {
     _ty: core::marker::PhantomData<Ty>,
     alloc: CAllocator
     // have alternative ty here
 }
+
 impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
     fn new(sub_alloc:CAllocator) -> Self {
         SubclassableAllocator::<Ty>{
@@ -71,7 +81,7 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
             let typed_ptr = unsafe {core::mem::transmute::<*mut c_void, *mut Ty>(ptr)};
             let slice_ref = unsafe {core::slice::from_raw_parts_mut(typed_ptr, size)};
             for item in slice_ref.iter_mut() {
-                *item = Ty::default();
+                unsafe{core::ptr::write(item, Ty::default())};
             }
             return MemoryBlock(unsafe{Box::from_raw(slice_ref)})
         }

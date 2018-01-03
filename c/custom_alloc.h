@@ -43,3 +43,25 @@ void custom_free(void* opaque, void *mfd) {
         free(local_mfd);
     }
 }
+
+
+void custom_atoi(char * dst, size_t data) {
+    if (!data) {
+        memcpy(dst, "0\0", 2);
+        return;
+    }
+    char *ptr = dst;
+    while(data) {
+        *ptr = '0' + (data % 10);
+        ++ptr;
+        data /= 10;
+    }
+    *ptr = '\0';
+    int del = (int)(ptr - dst);
+    int i;
+    for (i = 0;i < del/2;i+= 1) {
+        char tmp = dst[i];
+        dst[i] = *(ptr - i - 1);
+        *(ptr - i - 1) = tmp;
+    }
+}

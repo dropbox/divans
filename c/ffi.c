@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include "ffi.h"
 #include "custom_alloc.h"
 #include "vec_u8.h"
@@ -75,6 +78,7 @@ DivansResult decompress(const unsigned char *data, size_t len, struct VecU8 *ret
 
 int main(int argc, char**argv) {
     custom_free(&use_fake_malloc, memset(custom_malloc(&use_fake_malloc, 127), 0x7e, 127));
+
     const unsigned char* data = example;
     size_t len = sizeof(example);
     unsigned char* to_free = NULL;
@@ -120,8 +124,25 @@ int main(int argc, char**argv) {
             fprintf(stderr, "Roundtrip Contents mismatch\n");
             abort();
         }
+#ifdef _WIN32
         printf("File length %ld reduced to %ld, %0.2f%%\n",
                (long)len, (long)divans_file.size,(double)divans_file.size * 100.0 / (double)len);
+#else
+        char buf[512];
+        (void)write(1, "File length ", strlen("File Length "));
+        custom_atoi(buf, len);
+        (void)write(1, buf, strlen(buf));
+        (void)write(1, " reduced to ", strlen(" reduced to "));
+        custom_atoi(buf, divans_file.size);
+        (void)write(1, buf, strlen(buf));
+        (void)write(1, ", ", strlen(", "));
+        custom_atoi(buf, divans_file.size * 100 / len);
+        (void)write(1, buf, strlen(buf));
+        (void)write(1, ".", strlen("."));
+        custom_atoi(buf, ((divans_file.size * 1000000 + len/2)/ len) % 10000 + 10000);
+        (void)write(1, buf + 1, strlen(buf) - 1);
+        (void)write(1, "%\n", strlen("%\n"));
+#endif
         release_vec_u8(&divans_file);
         release_vec_u8(&rt_file);
     }
