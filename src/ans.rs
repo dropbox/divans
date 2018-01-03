@@ -66,6 +66,9 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
         let data = m8.alloc_cell(MAX_BUFFER_SIZE);
         ByteStack {data: data, nbytes: MAX_BUFFER_SIZE}
     }
+    fn free(&mut self, m8: &mut A) {
+        m8.free_cell(core::mem::replace(&mut self.data, A::AllocatedMemory::default()));
+    }
 }
 
 impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
@@ -155,6 +158,8 @@ impl Default for ANSDecoder {
 impl<A: Allocator<u8>> NewWithAllocator<A> for ANSDecoder {
     fn new(_m8: &mut A) -> Self {
         Self::default()
+    }
+    fn free(&mut self, _m8: &mut A){
     }
 }
 
@@ -251,6 +256,10 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
         let p = ByteStack::<A>::new(m8);
         assert!(p.stack_bytes_avail() == (NUM_SYMBOLS_BEFORE_FLUSH << 2) as usize);
         ANSEncoder{q:q, start_freq:p}
+    }
+    fn free(&mut self, m8: &mut A) {
+        self.q.free(m8);
+        self.start_freq.free(m8);
     }
 }
 

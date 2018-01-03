@@ -18,10 +18,10 @@ pub extern "C" fn hello_rust() -> *const u8 {
 }
 
 #[derive(Debug)]
-pub struct MemoryBlock<Ty:Sized+Default>(Vec<Ty>);
+pub struct MemoryBlock<Ty:Sized+Default>(Box<[Ty]>);
 impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
     fn default() -> Self {
-        MemoryBlock(Vec::<Ty>::new())
+        MemoryBlock(Vec::<Ty>::new().into_boxed_slice())
     }
 }
 impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
@@ -66,10 +66,28 @@ impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
 impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
     type AllocatedMemory = MemoryBlock<Ty>;
     fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
-        MemoryBlock(vec![Ty::default();size])
+        if let Some(alloc_fn) = self.alloc.alloc_func {
+            let ptr = alloc_fn(self.alloc.opaque, size * core::mem::size_of::<Ty>());
+            let typed_ptr = unsafe {core::mem::transmute::<*mut c_void, *mut Ty>(ptr)};
+            let slice_ref = unsafe {core::slice::from_raw_parts_mut(typed_ptr, size)};
+            for item in slice_ref.iter_mut() {
+                *item = Ty::default();
+            }
+            return MemoryBlock(unsafe{Box::from_raw(slice_ref)})
+        }
+        MemoryBlock(vec![Ty::default();size].into_boxed_slice())
     }
-    fn free_cell(&mut self, _bv:MemoryBlock<Ty>) {
-
+    fn free_cell(&mut self, mut bv:MemoryBlock<Ty>) {
+        if (*bv.0).len() != 0 {
+            if let Some(_) = self.alloc.alloc_func {
+                let slice_ptr = (*bv.0).as_mut_ptr();
+                let _box_ptr = Box::into_raw(core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice()));
+                if let Some(free_fn) = self.alloc.free_func {
+                    
+                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>(slice_ptr))};
+                }
+            }
+        }
     }
 }
 

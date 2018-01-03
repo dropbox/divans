@@ -24,6 +24,7 @@ use super::interface::{
     CrossCommandBilling,
     BlockSwitch,
     LiteralBlockSwitch,
+    NewWithAllocator,
     Nop
 };
 pub mod weights;
@@ -193,10 +194,10 @@ enum CodecTraitResult {
 
 
 
-impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+impl<AllocU8: Allocator<u8>,
+     ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
      Specialization: EncoderOrDecoderSpecialization,
      Cdf16:CDF16,
-     AllocU8: Allocator<u8>,
      AllocCDF2: Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {

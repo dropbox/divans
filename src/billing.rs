@@ -53,6 +53,9 @@ impl<AllocU8:Allocator<u8>,
            _phantom:PhantomData::<AllocU8>::default(),
        }
    }
+    fn free(&mut self, m8: &mut AllocU8) {
+        self.coder.free(m8);
+    }
 }
 
 #[cfg(feature="billing")]

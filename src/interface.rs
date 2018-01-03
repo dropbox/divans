@@ -171,6 +171,7 @@ pub enum CrossCommandBilling {
 
 pub trait NewWithAllocator<AllocU8: Allocator<u8>> {
     fn new(m8: &mut AllocU8) -> Self;
+    fn free(&mut self, m8: &mut AllocU8);
 }
 
 pub trait BillingCapability { // maybe we should have called it capa-bill-ity

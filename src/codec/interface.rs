@@ -19,6 +19,7 @@ use ::interface::{
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
     LITERAL_PREDICTION_MODE_LSB6,
+    NewWithAllocator,
 };
 use super::priors::{
     LiteralCommandPriors,
@@ -549,12 +550,12 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
 }
 
-impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
-      Specialization:EncoderOrDecoderSpecialization,
+impl <AllocU8:Allocator<u8>,
       Cdf16:CDF16,
-                             AllocU8:Allocator<u8>,
-                             AllocCDF2:Allocator<CDF2>,
-                             AllocCDF16:Allocator<Cdf16>
+      AllocCDF2:Allocator<CDF2>,
+      AllocCDF16:Allocator<Cdf16>,
+      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
+      Specialization:EncoderOrDecoderSpecialization,
       > CrossCommandState<ArithmeticCoder,
                           Specialization,
                           Cdf16,
@@ -611,13 +612,22 @@ impl <ArithmeticCoder:ArithmeticEncoderOrDecoder,
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16e = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16e = core::mem::replace(&mut self.bk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16f = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16g = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
+        self.coder.free(self.m8.get_base_alloc());
+        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.literal_context_map,
+                                                              AllocU8::AllocatedMemory::default()));
+        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
+                                                              AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16b);
         self.mcdf16.free_cell(cdf16c);
         self.mcdf16.free_cell(cdf16d);
         self.mcdf16.free_cell(cdf16e);
+        self.mcdf16.free_cell(cdf16f);
+        self.mcdf16.free_cell(cdf16g);
     }
     pub fn free_ref(&mut self) {
         self.free_internal();

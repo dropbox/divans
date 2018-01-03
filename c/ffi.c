@@ -1,7 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 #include "ffi.h"
+#include "custom_alloc.h"
+#include "vec_u8.h"
 const unsigned char example[]=
     "Mary had a little lamb. Its fleece was white as snow.\n"
     "And every where that Mary went, the lamb was sure to go.\n"
@@ -11,62 +14,12 @@ const unsigned char example[]=
     "\x11\x99\x2f\xfc\xfe\xef\xff\xd8\xfd\x9c\x43"
     "Additional testing characters here";
 
-uint64_t round_up_to_power_of_two(uint64_t v) {
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    {
-        uint64_t tmp = v;
-        tmp >>= 32;
-        v |= tmp;
-    }
-    v++;
-    return v;
-}
 
-struct VecU8 {
-    unsigned char *data;
-    size_t size;
-};
-struct VecU8 new_vec_u8() {
-    struct VecU8 ret;
-    ret.data = NULL;
-    ret.size = 0;
-    return ret;
-}
-void push_vec_u8(struct VecU8 *thus, const unsigned char*data, size_t size) {
-    size_t new_actual_size = thus->size + size;
-    if (size == 0 || new_actual_size < thus->size) {
-        return;
-    }
-    {
-        size_t new_alloc_size = round_up_to_power_of_two(new_actual_size);
-        if (thus->size == 0 || round_up_to_power_of_two(thus->size) != new_alloc_size ) {
-            thus->data = (unsigned char*)realloc(thus->data, new_alloc_size);
-        }
-        if (new_alloc_size < new_actual_size) {
-            abort(); // assert
-        }
-        memcpy(thus->data + thus->size, data, size);
-        thus->size = new_actual_size;
-    }
-}
-
-void release_vec_u8(struct VecU8 *thus) {
-    if (thus->size) {
-        free(thus->data);
-        thus->size = 0;
-        thus->data = NULL;
-    }
-}
 
 #define BUF_SIZE 65536
 DivansResult compress(const unsigned char *data, size_t len, struct VecU8 *ret_buffer) {
     unsigned char buf[BUF_SIZE];
-    struct CAllocator alloc = {NULL, NULL, NULL};
+    struct CAllocator alloc = {custom_malloc, custom_free, custom_alloc_opaque};
     struct DivansCompressorState *state = divans_new_compressor_with_custom_alloc(alloc);
     while (len) {
         size_t read_offset = 0;
@@ -99,7 +52,7 @@ DivansResult compress(const unsigned char *data, size_t len, struct VecU8 *ret_b
 
 DivansResult decompress(const unsigned char *data, size_t len, struct VecU8 *ret_buffer) {
     unsigned char buf[BUF_SIZE];
-    struct CAllocator alloc = {NULL, NULL, NULL};
+    struct CAllocator alloc = {custom_malloc, custom_free, custom_alloc_opaque};
     struct DivansDecompressorState *state = divans_new_decompressor_with_custom_alloc(alloc);
     DivansResult res;
     do {
@@ -121,6 +74,7 @@ DivansResult decompress(const unsigned char *data, size_t len, struct VecU8 *ret
 }
 
 int main(int argc, char**argv) {
+    custom_free(&use_fake_malloc, memset(custom_malloc(&use_fake_malloc, 127), 0x7e, 127));
     const unsigned char* data = example;
     size_t len = sizeof(example);
     unsigned char* to_free = NULL;
