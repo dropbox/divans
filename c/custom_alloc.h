@@ -1,10 +1,10 @@
 int use_real_malloc = 1;
 int use_fake_malloc = 0;
-void* custom_alloc_opaque = &use_fake_malloc;
-unsigned char huge_buffer[1024*1024 * 512];
+void* custom_alloc_opaque = &use_real_malloc;
+unsigned char huge_buffer[1024*1024 * 255];
 size_t huge_buffer_offset = 0;
 const uint32_t science = 0x5C1E11CE;
-void * custom_malloc(void* opaque, size_t data) {
+void * custom_malloc_f(void* opaque, size_t data) {
     void * retval;
     size_t amt = data + 2*sizeof(opaque) + 4;
     if (opaque == &use_fake_malloc) {
@@ -18,7 +18,8 @@ void * custom_malloc(void* opaque, size_t data) {
     memcpy((char*)retval + 4 + sizeof(opaque), &data, sizeof(size_t));
     return retval + sizeof(opaque) + sizeof(size_t) + 4;
 }
-void custom_free(void* opaque, void *mfd) {
+void * (*custom_malloc)(void* opaque, size_t data) = &custom_malloc_f;
+void custom_free_f(void* opaque, void *mfd) {
     void * local_opaque;
     uint32_t local_science;
     size_t local_size = 0;
@@ -44,7 +45,7 @@ void custom_free(void* opaque, void *mfd) {
     }
 }
 
-
+void (*custom_free)(void* opaque, void *mfd) = &custom_free_f;
 void custom_atoi(char * dst, size_t data) {
     if (!data) {
         memcpy(dst, "0\0", 2);

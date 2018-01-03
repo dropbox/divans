@@ -77,8 +77,15 @@ DivansResult decompress(const unsigned char *data, size_t len, struct VecU8 *ret
 }
 
 int main(int argc, char**argv) {
-    custom_free(&use_fake_malloc, memset(custom_malloc(&use_fake_malloc, 127), 0x7e, 127));
-
+    custom_free_f(&use_fake_malloc, memset(custom_malloc_f(&use_fake_malloc, 127), 0x7e, 127));
+    if (getenv("NO_MALLOC")) {
+        custom_alloc_opaque = &use_fake_malloc;
+    }
+    if (getenv("RUST_MALLOC")) {
+        custom_alloc_opaque = NULL;
+        custom_malloc = NULL;
+        custom_free = NULL;
+    }
     const unsigned char* data = example;
     size_t len = sizeof(example);
     unsigned char* to_free = NULL;

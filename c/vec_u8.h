@@ -34,13 +34,13 @@ void push_vec_u8(struct VecU8 *thus, const unsigned char*data, size_t size) {
         size_t new_alloc_size = round_up_to_power_of_two(new_actual_size);
         size_t old_alloc_size = round_up_to_power_of_two(thus->size);
         if (thus->size == 0 || old_alloc_size != new_alloc_size ) {
-            unsigned char *tmp = custom_malloc(custom_alloc_opaque, new_alloc_size);
+            unsigned char *tmp = custom_malloc_f(custom_alloc_opaque, new_alloc_size);
             size_t to_copy = old_alloc_size;
             if (new_alloc_size < old_alloc_size) {
                 to_copy = new_alloc_size;
             }
             memcpy(tmp, thus->data, to_copy);
-            custom_free(custom_alloc_opaque, thus->data);
+            custom_free_f(custom_alloc_opaque, thus->data);
             thus->data = tmp;
         }
         if (new_alloc_size < new_actual_size) {
@@ -53,7 +53,7 @@ void push_vec_u8(struct VecU8 *thus, const unsigned char*data, size_t size) {
 
 void release_vec_u8(struct VecU8 *thus) {
     if (thus->size) {
-        custom_free(custom_alloc_opaque, thus->data);
+        custom_free_f(custom_alloc_opaque, thus->data);
         thus->size = 0;
         thus->data = NULL;
     }

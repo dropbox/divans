@@ -49,6 +49,7 @@ impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
         &mut self.0[index]
     }
 }
+
 impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
     fn drop (&mut self) {
         if self.0.len() != 0 {
@@ -96,6 +97,8 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
                     
                     unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>(slice_ptr))};
                 }
+            } else {
+                let _to_free = core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice());
             }
         }
     }
@@ -318,6 +321,7 @@ pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
 pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorState) {
     if let Some(_) = (*state_ptr).custom_allocator.alloc_func {
         if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+            let _to_free = core::ptr::read(state_ptr);
             let ptr = core::mem::transmute::<*mut DivansCompressorState, *mut c_void>(state_ptr);
             free_fn((*state_ptr).custom_allocator.opaque, ptr);
         }
@@ -403,6 +407,8 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
 pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressorState) {
     if let Some(_) = (*state_ptr).custom_allocator.alloc_func {
         if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+            //(*state_ptr).drop();
+            let _to_free = core::ptr::read(state_ptr);
             let ptr = core::mem::transmute::<*mut DivansDecompressorState, *mut c_void>(state_ptr);
             free_fn((*state_ptr).custom_allocator.opaque, ptr);
         }
