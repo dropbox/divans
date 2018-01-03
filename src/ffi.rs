@@ -202,16 +202,19 @@ impl Default for DivansCompressOptions {
 
 #[no_mangle]
 pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
-    divans_new_compressor_with_custom_alloc(CAllocator{
-        alloc_func:None,
-        free_func:None,
-        opaque: core::ptr::null_mut(),
-    })
+    unsafe {
+        divans_new_compressor_with_custom_alloc(CAllocator{
+            alloc_func:None,
+            free_func:None,
+            opaque: core::ptr::null_mut(),
+        })
+    }
 }
+
 #[no_mangle]
-pub extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
+pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
     let opts = DivansCompressOptions::default();
-    Box::<DivansCompressorState>::into_raw(Box::<DivansCompressorState>::new(DivansCompressorState{
+    let to_box = DivansCompressorState{
         custom_allocator:allocators.clone(),
         compressor:BrotliFactory::new(
             SubclassableAllocator::<u8>::new(allocators.clone()),
@@ -240,7 +243,15 @@ pub extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> 
              opts.lgblock,),
             
         ),
-    }))
+    };
+    if let Some(alloc_fn) = allocators.alloc_func {
+        let ptr = alloc_fn(allocators.opaque, core::mem::size_of::<DivansCompressorState>());
+        let divans_compressor_state_ptr = core::mem::transmute::<*mut c_void, *mut DivansCompressorState>(ptr);
+        core::ptr::write(divans_compressor_state_ptr, to_box);
+        divans_compressor_state_ptr
+    } else {
+        Box::<DivansCompressorState>::into_raw(Box::<DivansCompressorState>::new(to_box))
+    }
 }
 
 
@@ -305,7 +316,14 @@ pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
 
 #[no_mangle]
 pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorState) {
-    let _state = Box::from_raw(state_ptr);
+    if let Some(_) = (*state_ptr).custom_allocator.alloc_func {
+        if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+            let ptr = core::mem::transmute::<*mut DivansCompressorState, *mut c_void>(state_ptr);
+            free_fn((*state_ptr).custom_allocator.opaque, ptr);
+        }
+    } else {
+        let _state = Box::from_raw(state_ptr);
+    }
 }
 
 
@@ -321,24 +339,33 @@ pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorStat
 
 #[no_mangle]
 pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
-    divans_new_decompressor_with_custom_alloc(CAllocator{
-        alloc_func:None,
-        free_func:None,
-        opaque: core::ptr::null_mut(),
-    })
+    unsafe {
+        divans_new_decompressor_with_custom_alloc(CAllocator{
+            alloc_func:None,
+            free_func:None,
+            opaque: core::ptr::null_mut(),
+        })
+    }
 }
 
 #[no_mangle]
-pub extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansDecompressorState{
-    let opts = DivansCompressOptions::default();
-    Box::<DivansDecompressorState>::into_raw(Box::<DivansDecompressorState>::new(DivansDecompressorState{
+pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansDecompressorState{
+    let to_box = DivansDecompressorState{
         custom_allocator:allocators.clone(),
         decompressor:DecompressorFactory::new(
             SubclassableAllocator::<u8>::new(allocators.clone()),
             SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
             SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
         ),
-    }))
+    };
+    if let Some(alloc_fn) = allocators.alloc_func {
+        let ptr = alloc_fn(allocators.opaque, core::mem::size_of::<DivansDecompressorState>());
+        let divans_decompressor_state_ptr = core::mem::transmute::<*mut c_void, *mut DivansDecompressorState>(ptr);
+        core::ptr::write(divans_decompressor_state_ptr, to_box);
+        divans_decompressor_state_ptr
+    } else {
+        Box::<DivansDecompressorState>::into_raw(Box::<DivansDecompressorState>::new(to_box))
+    }
 }
 
 
@@ -374,7 +401,14 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
 
 #[no_mangle]
 pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressorState) {
-    let _state = Box::from_raw(state_ptr);
+    if let Some(_) = (*state_ptr).custom_allocator.alloc_func {
+        if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+            let ptr = core::mem::transmute::<*mut DivansDecompressorState, *mut c_void>(state_ptr);
+            free_fn((*state_ptr).custom_allocator.opaque, ptr);
+        }
+    } else {
+        let _state = Box::from_raw(state_ptr);
+    }
 }
 
 
