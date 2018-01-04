@@ -1,11 +1,12 @@
-#![cfg(not(feature="no-stdlib"))]
 #![cfg(not(feature="safe"))]
+
 #[no_mangle]
 use core;
 use brotli;
+#[cfg(not(feature="no-stdlib"))]
 use std::vec::Vec;
+#[cfg(not(feature="no-stdlib"))]
 use std::boxed::Box;
-use std::os::raw::c_void;
 use core::slice;
 use brotli::BrotliResult;
 use super::alloc;
@@ -16,6 +17,11 @@ use super::DivansCompressorFactoryStruct;
 use super::probability::Speed;
 use super::interface::{Compressor, Decompressor, DivansCompressorOptions, BrotliCompressionSetting, StrideSelection};
 
+#[allow(non_camel_case_types)]
+#[repr(u8)]
+enum c_void{
+    _Nothing = 0,
+}
 
 #[no_mangle]
 pub type DivansResult = u8;
@@ -311,6 +317,14 @@ pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
     }
 }
 
+#[cfg(feature="no-stdlib")]
+fn divans_new_compressor_without_custom_alloc(_to_box: DivansCompressorState) -> *mut DivansCompressorState{
+    panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
+}
+#[cfg(not(feature="no-stdlib"))]
+fn divans_new_compressor_without_custom_alloc(to_box: DivansCompressorState) -> *mut DivansCompressorState{
+    Box::<DivansCompressorState>::into_raw(Box::<DivansCompressorState>::new(to_box))
+}
 #[no_mangle]
 pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
     let to_box = DivansCompressorState{
@@ -323,7 +337,7 @@ pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocat
         core::ptr::write(divans_compressor_state_ptr, to_box);
         divans_compressor_state_ptr
     } else {
-        Box::<DivansCompressorState>::into_raw(Box::<DivansCompressorState>::new(to_box))
+        divans_new_compressor_without_custom_alloc(to_box)
     }
 }
 
@@ -381,6 +395,16 @@ pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
     }
 }
 
+#[cfg(not(feature="no-stdlib"))]
+unsafe fn free_compressor_no_custom_alloc(state_ptr: *mut DivansCompressorState) {
+    let _state = Box::from_raw(state_ptr);
+}
+
+#[cfg(feature="no-stdlib")]
+unsafe fn free_compressor_no_custom_alloc(_state_ptr: *mut DivansCompressorState) {
+    unreachable!();
+}
+
 #[no_mangle]
 pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorState) {
     if let Some(_) = (*state_ptr).custom_allocator.alloc_func {
@@ -390,7 +414,7 @@ pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorStat
             free_fn((*state_ptr).custom_allocator.opaque, ptr);
         }
     } else {
-        let _state = Box::from_raw(state_ptr);
+        free_compressor_no_custom_alloc(state_ptr)
     }
 }
 
@@ -411,6 +435,18 @@ pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
     }
 }
 
+
+#[cfg(feature="no-stdlib")]
+fn divans_new_decompressor_without_custom_alloc(_to_box: DivansDecompressorState) -> *mut DivansDecompressorState{
+    panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
+}
+
+#[cfg(not(feature="no-stdlib"))]
+fn divans_new_decompressor_without_custom_alloc(to_box: DivansDecompressorState) -> *mut DivansDecompressorState{
+    Box::<DivansDecompressorState>::into_raw(Box::<DivansDecompressorState>::new(to_box))
+}
+
+
 #[no_mangle]
 pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansDecompressorState{
     let to_box = DivansDecompressorState{
@@ -427,7 +463,7 @@ pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAlloc
         core::ptr::write(divans_decompressor_state_ptr, to_box);
         divans_decompressor_state_ptr
     } else {
-        Box::<DivansDecompressorState>::into_raw(Box::<DivansDecompressorState>::new(to_box))
+        divans_new_decompressor_without_custom_alloc(to_box)
     }
 }
 
@@ -461,6 +497,16 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
     }
 }
 
+#[cfg(not(feature="no-stdlib"))]
+unsafe fn free_decompressor_no_custom_alloc(state_ptr: *mut DivansDecompressorState) {
+    let _state = Box::from_raw(state_ptr);
+}
+
+#[cfg(feature="no-stdlib")]
+unsafe fn free_decompressor_no_custom_alloc(_state_ptr: *mut DivansDecompressorState) {
+    unreachable!();
+}
+
 
 #[no_mangle]
 pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressorState) {
@@ -472,44 +518,47 @@ pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressor
             free_fn((*state_ptr).custom_allocator.opaque, ptr);
         }
     } else {
-        let _state = Box::from_raw(state_ptr);
+        free_decompressor_no_custom_alloc(state_ptr);
     }
 }
 
 
+#[cfg(not(feature="no-stdlib"))]
 #[derive(Debug)]
 pub struct MemoryBlock<Ty:Sized+Default>(Box<[Ty]>);
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
     fn default() -> Self {
         MemoryBlock(Vec::<Ty>::new().into_boxed_slice())
     }
 }
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
     fn slice(&self) -> &[Ty] {
         &self.0[..]
     }
 }
-
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
     fn slice_mut(&mut self) -> &mut [Ty] {
         &mut self.0[..]
     }
 }
-
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
     type Output = Ty;
     fn index(&self, index:usize) -> &Ty {
         &self.0[index]
     }
 }
-
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
 
     fn index_mut(&mut self, index:usize) -> &mut Ty {
         &mut self.0[index]
     }
 }
-
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
     fn drop (&mut self) {
         if self.0.len() != 0 {
@@ -534,6 +583,7 @@ impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
         }
     }
 }
+#[cfg(not(feature="no-stdlib"))]
 impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
     type AllocatedMemory = MemoryBlock<Ty>;
     fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
@@ -558,6 +608,98 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
                 }
             } else {
                 let _to_free = core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice());
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+static mut G_SLICE:&mut[u8] = &mut[];
+#[cfg(feature="no-stdlib")]
+#[derive(Debug)]
+pub struct MemoryBlock<Ty:Sized+Default>(*mut[Ty]);
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
+    fn default() -> Self {
+        MemoryBlock(unsafe{core::mem::transmute::<*mut [u8], *mut[Ty]>(G_SLICE.as_mut())})
+    }
+}
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
+    fn slice(&self) -> &[Ty] {
+/*        if core::mem::transmute::<*mut [Ty], *mut c_void>(self.0).is_null() {
+            &[]
+        } else {*/
+            unsafe{self.0.as_mut().unwrap()}
+    //}
+    }
+}
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
+    fn slice_mut(&mut self) -> &mut [Ty] {
+       unsafe{self.0.as_mut().unwrap()}
+    }
+}
+
+#[cfg(feature="no-stdlib")]
+#[lang="panic_fmt"]
+extern fn panic_fmt(_: ::core::fmt::Arguments, _: &'static str, _: u32) -> ! {
+    loop {}
+}
+
+
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
+    type Output = Ty;
+    fn index(&self, index:usize) -> &Ty {
+        unsafe{&(*self.0)[index]}
+    }
+}
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
+
+    fn index_mut(&mut self, index:usize) -> &mut Ty {
+        unsafe{&mut (*self.0)[index]}
+    }
+}
+
+#[cfg(feature="no-stdlib")]
+impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
+    type AllocatedMemory = MemoryBlock<Ty>;
+    fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
+        if let Some(alloc_fn) = self.alloc.alloc_func {
+            let ptr = alloc_fn(self.alloc.opaque, size * core::mem::size_of::<Ty>());
+            let typed_ptr = unsafe {core::mem::transmute::<*mut c_void, *mut Ty>(ptr)};
+            let slice_ref = unsafe {core::slice::from_raw_parts_mut(typed_ptr, size)};
+            for item in slice_ref.iter_mut() {
+                unsafe{core::ptr::write(item, Ty::default())};
+            }
+            return MemoryBlock(slice_ref.as_mut())
+        } else {
+            panic!("Must provide allocators in no-stdlib code");
+        }
+    }
+    fn free_cell(&mut self, mut bv:MemoryBlock<Ty>) {
+        use alloc::SliceWrapper;
+        use alloc::SliceWrapperMut;
+        if bv.slice().len() != 0 {
+            if let Some(_) = self.alloc.alloc_func {
+                if let Some(free_fn) = self.alloc.free_func {
+                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>((&mut bv.slice_mut()[0])))};
+                }
+                core::mem::replace(&mut bv, MemoryBlock::<Ty>::default());
+            } else {
+                panic!("Must provide allocators in no-stdlib code");
             }
         }
     }

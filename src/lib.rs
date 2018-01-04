@@ -13,6 +13,8 @@
 //   limitations under the License.
 #![cfg_attr(feature="benchmark", feature(test))]
 #![cfg_attr(feature="simd", feature(platform_intrinsics))]
+#![cfg_attr(feature="no-stdlib", feature(lang_items))]
+
 #![no_std]
 #[macro_use]
 

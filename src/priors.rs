@@ -261,6 +261,7 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
     }
 }
 
+#[cfg(not(feature="no-stdlib"))]
 mod test {
     use core;
     use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};

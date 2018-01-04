@@ -29,6 +29,16 @@ pub struct SymStartFreq {
     pub sym: u8,
 }
 
+#[cfg(not(feature="no-stdlib"))]
+fn log2(x:f64) -> f64 {
+    x.log2()
+}
+
+#[cfg(feature="no-stdlib")]
+fn log2(x:f64) -> f64 {
+    (63 - (x as u64).leading_zeros()) as f64 // hack
+}
+
 // Common interface for CDF2 and CDF16, with optional methods.
 pub trait BaseCDF {
 
@@ -67,7 +77,7 @@ pub trait BaseCDF {
             let v = self.pdf(i as u8);
             sum += if v == 0 { 0.0f64 } else {
                 let v_f64 = f64::from(v) / f64::from(self.max());
-                v_f64 * (-v_f64.log2())
+                v_f64 * (log2(-v_f64))
             };
         }
         sum
@@ -306,7 +316,7 @@ impl<Cdf16> CDF16 for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 {
     fn blend(&mut self, symbol: u8, speed: Speed) {
         self.counts[symbol as usize] += 1;
         let p = self.cdf.pdf(symbol) as f64 / self.cdf.max() as f64;
-        self.cost += -p.log2();
+        self.cost += -log2(p);
         match self.true_entropy() {
             None => {},
             Some(e) => { self.rolling_entropy_sum += e; }
@@ -357,7 +367,7 @@ impl<Cdf16> BaseCDF for DebugWrapperCDF16<Cdf16> where Cdf16: CDF16 + BaseCDF {
             for i in 0..16 {
                 sum += if self.counts[i] == 0 { 0.0f64 } else {
                     let p = (self.counts[i] as f64) / (num_samples as f64);
-                    p * (-p.log2())
+                    p * (log2(-p))
                 };
             }
             Some(sum)
