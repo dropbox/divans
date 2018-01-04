@@ -81,6 +81,10 @@ pub use probability::Speed;
 
 pub use probability::CDF2;
 
+pub use interface::BrotliCompressionSetting;
+pub use interface::DivansCompressorOptions;
+
+
 pub struct HeaderParser<AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
                         AllocCDF16:Allocator<interface::DefaultCDF16>> {

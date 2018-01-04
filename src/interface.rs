@@ -225,3 +225,28 @@ pub trait DivansCompressorFactory<
            force_stride: StrideSelection,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }
+
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum BrotliCompressionSetting {
+    UseInternalCommandSelection = 0,
+    UseBrotliCommandSelection = 1,
+    UseBrotliBitstream = 2,
+}
+impl Default for BrotliCompressionSetting {
+    fn default() ->Self {
+        BrotliCompressionSetting::UseBrotliCommandSelection
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct DivansCompressorOptions{
+    pub literal_adaptation: Option<probability::Speed>,
+    pub window_size: Option<i32>,
+    pub lgblock: Option<u32>,
+    pub quality: Option<u16>,
+    pub dynamic_context_mixing: Option<u8>,
+    pub use_brotli: BrotliCompressionSetting,
+    pub use_context_map: bool,
+    pub force_stride_value: StrideSelection,
+}

@@ -53,6 +53,11 @@ pub enum StrideSelection {
     UseBrotliRec = 9u8,
 }
 
+impl Default for StrideSelection {
+    fn default() -> Self {
+        StrideSelection::UseBrotliRec
+    }
+}
 
 pub trait EncoderOrDecoderSpecialization {
     const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool;

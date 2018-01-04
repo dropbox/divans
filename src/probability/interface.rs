@@ -237,7 +237,7 @@ impl CDF2 {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[repr(u16)]
 pub enum Speed {
     GEOLOGIC = 2,

@@ -117,7 +117,7 @@ impl<AllocU8:Allocator<u8>,
             header_progress: 0,
             window_size: window_size as u8,
         }
-    }
+     }
 }
 
 pub fn make_header(window_size: u8) -> [u8; interface::HEADER_LENGTH] {
@@ -245,6 +245,10 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     }
     pub fn get_m8(&mut self) -> &mut RepurposingAlloc<u8, AllocU8> {
        self.codec.get_m8()
+    }
+    pub fn free_ref(&mut self) {
+        self.cmd_assembler.free(&mut self.m32);
+        self.codec.free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {
         let (m8, mcdf2, mcdf16) = self.codec.free();

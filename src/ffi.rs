@@ -11,8 +11,9 @@ use brotli::BrotliResult;
 use super::alloc;
 use super::DivansCompressorFactory;
 use super::DivansDecompressorFactory;
-use super::interface::Compressor;
-use super::interface::Decompressor;
+//use super::DivansDecompressorFactoryStruct;
+use super::DivansCompressorFactoryStruct;
+use super::interface::{Compressor, Decompressor, DivansCompressorOptions, BrotliCompressionSetting};
 pub extern "C" fn hello_rust() -> *const u8 {
     "Hello, world!\0".as_ptr()
 }
@@ -146,39 +147,173 @@ type BrotliFactory = super::BrotliDivansHybridCompressorFactory<SubclassableAllo
                                                          SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
                                                          SubclassableAllocator<brotli::enc::histogram::ContextType>,
                                                          SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
+type InternalCompressorFactory = DivansCompressorFactoryStruct<SubclassableAllocator<u8>,
+                                                         SubclassableAllocator<super::CDF2>,
+                                                         SubclassableAllocator<super::DefaultCDF16>>;
+enum CompressorState {
+    OptionStage(DivansCompressorOptions),
+    BrotliCompressor(super::BrotliDivansHybridCompressor<super::DefaultCDF16,
+                                                         <BrotliFactory as super::DivansCompressorFactory<SubclassableAllocator<u8>,
+                                                                                                          SubclassableAllocator<u32>,
+                                                                                                           SubclassableAllocator<super::CDF2>,
+                                                                                                          SubclassableAllocator<super::DefaultCDF16>>
+                                                          >::DefaultEncoder,
+                                                         SubclassableAllocator<u8>,
+                                                         SubclassableAllocator<u16>,
+                                                         SubclassableAllocator<u32>,
+                                                         SubclassableAllocator<i32>,
+                                                         SubclassableAllocator<brotli::enc::command::Command>,
+                                                         SubclassableAllocator<super::CDF2>,
+                                                         SubclassableAllocator<super::DefaultCDF16>,
+                                                         SubclassableAllocator<brotli::enc::util::floatX>,
+                                                         SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
+                                                         SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
+                                                         SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
+                                                         SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
+                                                         SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
+                                                         SubclassableAllocator<brotli::enc::histogram::ContextType>,
+                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>>),
+    InternalCompressor(super::DivansCompressor<<InternalCompressorFactory as super::DivansCompressorFactory<SubclassableAllocator<u8>,
+                                                                                                             SubclassableAllocator<u32>,
+                                                                                                             SubclassableAllocator<super::CDF2>,
+                                                                                                             SubclassableAllocator<super::DefaultCDF16>>
+                                               >::DefaultEncoder,
+                       SubclassableAllocator<u8>,
+                       SubclassableAllocator<u32>,
+                       SubclassableAllocator<super::CDF2>,
+                       SubclassableAllocator<super::DefaultCDF16>>),
+}
+
+impl Default for CompressorState {
+    fn default() -> Self {
+        CompressorState::OptionStage(DivansCompressorOptions::default())
+    }
+}
+impl CompressorState {
+    fn start(&mut self, allocators: &CAllocator, opts:DivansCompressorOptions) {
+        match opts.use_brotli {
+            BrotliCompressionSetting::UseInternalCommandSelection => {
+                core::mem::replace(self,
+                                   CompressorState::InternalCompressor(
+                                       InternalCompressorFactory::new(
+                                           SubclassableAllocator::<u8>::new(allocators.clone()),
+                                           SubclassableAllocator::<u32>::new(allocators.clone()),
+                                           SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
+                                           SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
+                                           opts.window_size.unwrap_or(21) as usize,
+                                           opts.dynamic_context_mixing.unwrap_or(0),
+                                           opts.literal_adaptation,
+                                           opts.use_context_map,
+                                           opts.force_stride_value,
+                                           ())));
+            },
+            _ => {
+                core::mem::replace(self,
+                                   CompressorState::BrotliCompressor(
+                                       BrotliFactory::new(
+                                           SubclassableAllocator::<u8>::new(allocators.clone()),
+                                           SubclassableAllocator::<u32>::new(allocators.clone()),
+                                           SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
+                                           SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
+                                           opts.window_size.unwrap_or(21) as usize,
+                                           opts.dynamic_context_mixing.unwrap_or(0),
+                                           opts.literal_adaptation,
+                                           opts.use_context_map,
+                                           opts.force_stride_value,
+                                           (
+                                               SubclassableAllocator::<u8>::new(allocators.clone()),
+                                               SubclassableAllocator::<u16>::new(allocators.clone()),
+                                               SubclassableAllocator::<i32>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::command::Command>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::util::floatX>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::vectorization::Mem256f>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::histogram::HistogramLiteral>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::histogram::HistogramCommand>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::histogram::HistogramDistance>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
+                                               opts.quality,
+                                               opts.lgblock
+                                           ))));
+            
+            }
+
+        }
+    }
+    fn encode(&mut self,
+              input_buf:&[u8],
+              input_offset: &mut usize,
+              output_buf:&mut[u8],
+              output_offset: &mut usize,
+              allocators: &CAllocator) -> DivansResult {
+        if let CompressorState::OptionStage(opts) = *self {
+            self.start(allocators, opts);
+        }
+        let res = match *self {
+            CompressorState::OptionStage(_) => unreachable!(),
+            CompressorState::BrotliCompressor(ref mut compressor) => {
+                compressor.encode(input_buf, input_offset, output_buf, output_offset)
+            },
+            CompressorState::InternalCompressor(ref mut compressor) => {
+                compressor.encode(input_buf, input_offset, output_buf, output_offset)
+            },
+        };
+        match res {
+            BrotliResult::ResultSuccess => DIVANS_SUCCESS,
+            BrotliResult::ResultFailure => DIVANS_FAILURE,
+            BrotliResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
+            BrotliResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
+        }
+    }
+    fn flush(&mut self,
+              output_buf:&mut[u8],
+             output_offset: &mut usize,
+             allocators: &CAllocator) -> DivansResult {
+        if let CompressorState::OptionStage(opts) = *self {
+            self.start(allocators, opts);
+        }
+        let res = match *self {
+            CompressorState::OptionStage(_) => unreachable!(),
+            CompressorState::BrotliCompressor(ref mut compressor) => {
+                compressor.flush(output_buf, output_offset)
+            },
+            CompressorState::InternalCompressor(ref mut compressor) => {
+                compressor.flush(output_buf, output_offset)
+            },
+        };
+        match res {
+            BrotliResult::ResultSuccess => DIVANS_SUCCESS,
+            BrotliResult::ResultFailure => DIVANS_FAILURE,
+            BrotliResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
+            BrotliResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
+        }
+    }
+}
+
 
 #[repr(C)]
 #[no_mangle]
 pub struct DivansCompressorState {
     pub custom_allocator: CAllocator,
-    compressor: super::BrotliDivansHybridCompressor<super::DefaultCDF16,
-                                                    <BrotliFactory as super::DivansCompressorFactory<SubclassableAllocator<u8>,
-                                                                                                     SubclassableAllocator<u32>,
-                                                                                                     SubclassableAllocator<super::CDF2>,
-                                                                                                     SubclassableAllocator<super::DefaultCDF16>>>::DefaultEncoder,
-                                                    SubclassableAllocator<u8>,
-                                                    SubclassableAllocator<u16>,
-                                                    SubclassableAllocator<u32>,
-                                                    SubclassableAllocator<i32>,
-                                                    SubclassableAllocator<brotli::enc::command::Command>,
-                                                    SubclassableAllocator<super::CDF2>,
-                                                    SubclassableAllocator<super::DefaultCDF16>,
-                                                    SubclassableAllocator<brotli::enc::util::floatX>,
-                                                    SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
-                                                    SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
-                                                    SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
-                                                    SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
-                                                    SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
-                                                    SubclassableAllocator<brotli::enc::histogram::ContextType>,
-                                                    SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>>,
+    compressor: CompressorState
 }
 
 impl Drop for DivansCompressorState {
     fn drop(&mut self) {
-        self.compressor.free_ref();
+        match self.compressor {
+            CompressorState::OptionStage(_) => {},
+            CompressorState::BrotliCompressor(ref mut compressor) => {
+                compressor.free_ref();
+              
+            },
+            CompressorState::InternalCompressor(ref mut compressor) => {
+                compressor.free_ref();
+            }
+        }
     }
 }
-
+/*
 pub struct DivansCompressOptions {
    pub quality: Option<u16>,
    pub window_size: Option<i32>,
@@ -188,7 +323,7 @@ pub struct DivansCompressOptions {
    pub literal_adaptation_speed: Option<super::Speed>,
    pub dynamic_context_mixing: Option<u8>
 }
-impl Default for DivansCompressOptions {
+impl Default for DivansCompressorOptions {
     fn default() -> Self {
         DivansCompressOptions{
             quality:None,
@@ -201,7 +336,7 @@ impl Default for DivansCompressOptions {
         }
     }
 }
-
+*/
 
 #[no_mangle]
 pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
@@ -216,36 +351,9 @@ pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
 
 #[no_mangle]
 pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansCompressorState{
-    let opts = DivansCompressOptions::default();
     let to_box = DivansCompressorState{
         custom_allocator:allocators.clone(),
-        compressor:BrotliFactory::new(
-            SubclassableAllocator::<u8>::new(allocators.clone()),
-            SubclassableAllocator::<u32>::new(allocators.clone()),
-            SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
-            SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
-            opts.window_size.unwrap_or(21) as usize,
-            opts.dynamic_context_mixing.unwrap_or(0),
-            opts.literal_adaptation_speed,
-            opts.do_context_map,
-            opts.force_stride_value,
-            (
-                SubclassableAllocator::<u8>::new(allocators.clone()),
-             SubclassableAllocator::<u16>::new(allocators.clone()),
-             SubclassableAllocator::<i32>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::command::Command>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::util::floatX>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::vectorization::Mem256f>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::histogram::HistogramLiteral>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::histogram::HistogramCommand>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::histogram::HistogramDistance>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
-             SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
-             opts.quality,
-             opts.lgblock,),
-            
-        ),
+        compressor:CompressorState::default(),
     };
     if let Some(alloc_fn) = allocators.alloc_func {
         let ptr = alloc_fn(allocators.opaque, core::mem::size_of::<DivansCompressorState>());
@@ -281,12 +389,7 @@ pub unsafe extern fn divans_encode(state_ptr: *mut DivansCompressorState,
                     match state_ptr.as_mut() {
                         None => return DIVANS_FAILURE,
                         Some(state_ref) => {
-                            match state_ref.compressor.encode(input_buf, input_offset, output_buf, output_offset) {
-                                BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
-                                BrotliResult::ResultFailure => return DIVANS_FAILURE,
-                                BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
-                                BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
-                            }
+                            return state_ref.compressor.encode(input_buf, input_offset, output_buf, output_offset, &state_ref.custom_allocator);
                         }
                     }
                 }
@@ -305,12 +408,7 @@ pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
             match state_ptr.as_mut() {
                 None => return DIVANS_FAILURE,
                 Some(state_ref) => {
-                    match state_ref.compressor.flush(output_buf, output_offset) {
-                        BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
-                        BrotliResult::ResultFailure => return DIVANS_FAILURE,
-                        BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
-                        BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
-                    }
+                    return state_ref.compressor.flush(output_buf, output_offset, &state_ref.custom_allocator);
                 }
             }
         }
