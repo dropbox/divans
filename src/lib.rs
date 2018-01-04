@@ -14,9 +14,12 @@
 #![cfg_attr(feature="benchmark", feature(test))]
 #![cfg_attr(feature="simd", feature(platform_intrinsics))]
 #![cfg_attr(feature="no-stdlib", feature(lang_items))]
+#![cfg_attr(feature="no-stdlib", feature(compiler_builtins_lib))]
 
 #![no_std]
-#[macro_use]
+
+
+extern crate compiler_builtins;
 
 #[cfg(not(test))]
 #[cfg(feature="billing")]
