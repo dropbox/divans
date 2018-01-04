@@ -13,97 +13,30 @@ use super::DivansCompressorFactory;
 use super::DivansDecompressorFactory;
 //use super::DivansDecompressorFactoryStruct;
 use super::DivansCompressorFactoryStruct;
-use super::interface::{Compressor, Decompressor, DivansCompressorOptions, BrotliCompressionSetting};
-pub extern "C" fn hello_rust() -> *const u8 {
-    "Hello, world!\0".as_ptr()
-}
+use super::probability::Speed;
+use super::interface::{Compressor, Decompressor, DivansCompressorOptions, BrotliCompressionSetting, StrideSelection};
 
-#[derive(Debug)]
-pub struct MemoryBlock<Ty:Sized+Default>(Box<[Ty]>);
-impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
-    fn default() -> Self {
-        MemoryBlock(Vec::<Ty>::new().into_boxed_slice())
-    }
-}
-impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
-    fn slice(&self) -> &[Ty] {
-        &self.0[..]
-    }
-}
 
-impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
-    fn slice_mut(&mut self) -> &mut [Ty] {
-        &mut self.0[..]
-    }
-}
+#[no_mangle]
+pub type DivansResult = u8;
+pub const DIVANS_SUCCESS: DivansResult = 0;
+pub const DIVANS_NEEDS_MORE_INPUT: DivansResult = 1;
+pub const DIVANS_NEEDS_MORE_OUTPUT: DivansResult = 2;
+pub const DIVANS_FAILURE: DivansResult = 3;
 
-impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
-    type Output = Ty;
-    fn index(&self, index:usize) -> &Ty {
-        &self.0[index]
-    }
-}
 
-impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
 
-    fn index_mut(&mut self, index:usize) -> &mut Ty {
-        &mut self.0[index]
-    }
-}
+type DivansOptionSelect = u8;
 
-impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
-    fn drop (&mut self) {
-        if self.0.len() != 0 {
-            print!("leaking memory block of length {} element size: {}\n", self.0.len(), core::mem::size_of::<Ty>());
-
-            let to_forget = core::mem::replace(self, MemoryBlock::default());
-            core::mem::forget(to_forget);// leak it -- it's the only safe way with custom allocators
-        }
-    }
-}
-struct SubclassableAllocator<Ty:Sized+Default> {
-    _ty: core::marker::PhantomData<Ty>,
-    alloc: CAllocator
-    // have alternative ty here
-}
-
-impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
-    fn new(sub_alloc:CAllocator) -> Self {
-        SubclassableAllocator::<Ty>{
-            _ty:core::marker::PhantomData::<Ty>::default(),
-            alloc:sub_alloc,
-        }
-    }
-}
-impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
-    type AllocatedMemory = MemoryBlock<Ty>;
-    fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
-        if let Some(alloc_fn) = self.alloc.alloc_func {
-            let ptr = alloc_fn(self.alloc.opaque, size * core::mem::size_of::<Ty>());
-            let typed_ptr = unsafe {core::mem::transmute::<*mut c_void, *mut Ty>(ptr)};
-            let slice_ref = unsafe {core::slice::from_raw_parts_mut(typed_ptr, size)};
-            for item in slice_ref.iter_mut() {
-                unsafe{core::ptr::write(item, Ty::default())};
-            }
-            return MemoryBlock(unsafe{Box::from_raw(slice_ref)})
-        }
-        MemoryBlock(vec![Ty::default();size].into_boxed_slice())
-    }
-    fn free_cell(&mut self, mut bv:MemoryBlock<Ty>) {
-        if (*bv.0).len() != 0 {
-            if let Some(_) = self.alloc.alloc_func {
-                let slice_ptr = (*bv.0).as_mut_ptr();
-                let _box_ptr = Box::into_raw(core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice()));
-                if let Some(free_fn) = self.alloc.free_func {
-                    
-                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>(slice_ptr))};
-                }
-            } else {
-                let _to_free = core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice());
-            }
-        }
-    }
-}
+pub const DIVANS_OPTION_QUALITY:DivansOptionSelect = 1;
+pub const DIVANS_OPTION_WINDOW_SIZE:DivansOptionSelect = 2;
+pub const DIVANS_OPTION_LGBLOCK:DivansOptionSelect = 3;
+pub const DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING:DivansOptionSelect = 4;
+pub const DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION:DivansOptionSelect = 5;
+pub const DIVANS_OPTION_USE_BROTLI_BITSTREAM:DivansOptionSelect = 6;
+pub const DIVANS_OPTION_USE_CONTEXT_MAP:DivansOptionSelect = 7;
+pub const DIVANS_OPTION_FORCE_STRIDE_VALUE:DivansOptionSelect = 8;
+pub const DIVANS_OPTION_LITERAL_ADAPTATION:DivansOptionSelect = 9;
 
 
 #[repr(C)]
@@ -190,6 +123,59 @@ impl Default for CompressorState {
     }
 }
 impl CompressorState {
+    fn set_option(&mut self, selector: DivansOptionSelect, value: u32) -> DivansResult {
+        if let CompressorState::OptionStage(ref mut opts) = *self {
+            match selector {
+                DIVANS_OPTION_QUALITY => {opts.quality = Some(value as u16);},
+                DIVANS_OPTION_WINDOW_SIZE => {opts.window_size = Some(value as i32);},
+                DIVANS_OPTION_LGBLOCK => {opts.lgblock = Some(value);},
+                DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING => {opts.dynamic_context_mixing = Some(value as u8);},
+                DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION => {opts.use_brotli = match value {
+                    0 => BrotliCompressionSetting::UseInternalCommandSelection,
+                    1 => BrotliCompressionSetting::UseBrotliCommandSelection,
+                    2 => BrotliCompressionSetting::UseBrotliBitstream,
+                    _ => return DIVANS_FAILURE,
+                };},
+                DIVANS_OPTION_USE_BROTLI_BITSTREAM => {opts.use_brotli = match value {
+                    1 => BrotliCompressionSetting::UseBrotliBitstream,
+                    _ => return DIVANS_FAILURE,
+                };},
+                DIVANS_OPTION_USE_CONTEXT_MAP => {opts.use_context_map = match value {
+                    1 => true,
+                    0 => false,
+                    _ => return DIVANS_FAILURE,
+                };},
+                DIVANS_OPTION_FORCE_STRIDE_VALUE => {opts.force_stride_value = match value {
+                    0 => StrideSelection::PriorDisabled,
+                    1 => StrideSelection::Stride1,
+                    2 => StrideSelection::Stride2,
+                    3 => StrideSelection::Stride3,
+                    4 => StrideSelection::Stride4,
+                    5 => StrideSelection::Stride5,
+                    6 => StrideSelection::Stride6,
+                    7 => StrideSelection::Stride7,
+                    8 => StrideSelection::Stride8,
+                    _ => return DIVANS_FAILURE,
+                };},
+                DIVANS_OPTION_LITERAL_ADAPTATION => {
+                    opts.literal_adaptation = Some(match value {
+                        0 => Speed::GEOLOGIC,
+                        1 => Speed::GLACIAL,
+                        2 => Speed::MUD,
+                        3 => Speed::SLOW,
+                        4 => Speed::MED,
+                        5 => Speed::FAST,
+                        6 => Speed::PLANE,
+                        7 => Speed::ROCKET,
+                        _ => return DIVANS_FAILURE,
+                    });
+                },
+                _ => return DIVANS_FAILURE,
+            }
+            return DIVANS_SUCCESS;
+        }
+        DIVANS_FAILURE
+    }
     fn start(&mut self, allocators: &CAllocator, opts:DivansCompressorOptions) {
         match opts.use_brotli {
             BrotliCompressionSetting::UseInternalCommandSelection => {
@@ -313,30 +299,6 @@ impl Drop for DivansCompressorState {
         }
     }
 }
-/*
-pub struct DivansCompressOptions {
-   pub quality: Option<u16>,
-   pub window_size: Option<i32>,
-   pub lgblock: Option<u32>,
-   pub do_context_map: bool,
-   pub force_stride_value: super::StrideSelection,
-   pub literal_adaptation_speed: Option<super::Speed>,
-   pub dynamic_context_mixing: Option<u8>
-}
-impl Default for DivansCompressorOptions {
-    fn default() -> Self {
-        DivansCompressOptions{
-            quality:None,
-            window_size:None,
-            lgblock:None,
-            do_context_map:true,
-            force_stride_value: super::StrideSelection::UseBrotliRec,
-            literal_adaptation_speed:None,
-            dynamic_context_mixing:None,
-        }
-    }
-}
-*/
 
 #[no_mangle]
 pub extern fn divans_new_compressor() -> *mut DivansCompressorState{
@@ -367,13 +329,17 @@ pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocat
 
 
 #[no_mangle]
-pub type DivansResult = u8;
-pub const DIVANS_SUCCESS: DivansResult = 0;
-pub const DIVANS_NEEDS_MORE_INPUT: DivansResult = 1;
-pub const DIVANS_NEEDS_MORE_OUTPUT: DivansResult = 2;
-pub const DIVANS_FAILURE: DivansResult = 3;
-
-
+pub unsafe extern fn divans_set_option(state_ptr: *mut DivansCompressorState,
+                                       selector: DivansOptionSelect,
+                                       value: u32) -> DivansResult {
+    match state_ptr.as_mut() {
+        None => DIVANS_FAILURE,
+        Some(state_ref) => {
+            state_ref.compressor.set_option(selector, value)
+        }
+    }
+}
+     
 #[no_mangle]
 pub unsafe extern fn divans_encode(state_ptr: *mut DivansCompressorState,
                                    input_buf_ptr: *const u8, input_size: usize, input_offset_ptr: *mut usize,
@@ -427,11 +393,6 @@ pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorStat
         let _state = Box::from_raw(state_ptr);
     }
 }
-
-
-
-
-
 
 
 
@@ -516,20 +477,88 @@ pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressor
 }
 
 
-/*
-    let mut m8 = SubclassableAllocator::<u8>::default();
-    let mut ibuffer = m8.alloc_cell(buffer_size);
-    let mut obuffer = m8.alloc_cell(buffer_size);
-    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                         ItemVecAllocator<divans::CDF2>,
-                                         ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
-                                                                ItemVecAllocator::<divans::CDF2>::default(),
-  
-}*/
-/*
-#[no_mangle]
-pub extern fn decompressor_init() -> *DivansDecompressorState {
-    
+#[derive(Debug)]
+pub struct MemoryBlock<Ty:Sized+Default>(Box<[Ty]>);
+impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
+    fn default() -> Self {
+        MemoryBlock(Vec::<Ty>::new().into_boxed_slice())
+    }
+}
+impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
+    fn slice(&self) -> &[Ty] {
+        &self.0[..]
+    }
 }
 
-*/
+impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
+    fn slice_mut(&mut self) -> &mut [Ty] {
+        &mut self.0[..]
+    }
+}
+
+impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
+    type Output = Ty;
+    fn index(&self, index:usize) -> &Ty {
+        &self.0[index]
+    }
+}
+
+impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
+
+    fn index_mut(&mut self, index:usize) -> &mut Ty {
+        &mut self.0[index]
+    }
+}
+
+impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
+    fn drop (&mut self) {
+        if self.0.len() != 0 {
+            print!("leaking memory block of length {} element size: {}\n", self.0.len(), core::mem::size_of::<Ty>());
+
+            let to_forget = core::mem::replace(self, MemoryBlock::default());
+            core::mem::forget(to_forget);// leak it -- it's the only safe way with custom allocators
+        }
+    }
+}
+struct SubclassableAllocator<Ty:Sized+Default> {
+    _ty: core::marker::PhantomData<Ty>,
+    alloc: CAllocator
+    // have alternative ty here
+}
+
+impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
+    fn new(sub_alloc:CAllocator) -> Self {
+        SubclassableAllocator::<Ty>{
+            _ty:core::marker::PhantomData::<Ty>::default(),
+            alloc:sub_alloc,
+        }
+    }
+}
+impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
+    type AllocatedMemory = MemoryBlock<Ty>;
+    fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
+        if let Some(alloc_fn) = self.alloc.alloc_func {
+            let ptr = alloc_fn(self.alloc.opaque, size * core::mem::size_of::<Ty>());
+            let typed_ptr = unsafe {core::mem::transmute::<*mut c_void, *mut Ty>(ptr)};
+            let slice_ref = unsafe {core::slice::from_raw_parts_mut(typed_ptr, size)};
+            for item in slice_ref.iter_mut() {
+                unsafe{core::ptr::write(item, Ty::default())};
+            }
+            return MemoryBlock(unsafe{Box::from_raw(slice_ref)})
+        }
+        MemoryBlock(vec![Ty::default();size].into_boxed_slice())
+    }
+    fn free_cell(&mut self, mut bv:MemoryBlock<Ty>) {
+        if (*bv.0).len() != 0 {
+            if let Some(_) = self.alloc.alloc_func {
+                let slice_ptr = (*bv.0).as_mut_ptr();
+                let _box_ptr = Box::into_raw(core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice()));
+                if let Some(free_fn) = self.alloc.free_func {
+                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>(slice_ptr))};
+                }
+            } else {
+                let _to_free = core::mem::replace(&mut bv.0, Vec::<Ty>::new().into_boxed_slice());
+            }
+        }
+    }
+}

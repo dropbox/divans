@@ -6,6 +6,7 @@
 #include <unistd.h>
 #endif
 #include "ffi.h"
+#include "arg.h"
 #include "custom_alloc.h"
 #include "vec_u8.h"
 const unsigned char example[]=
@@ -20,10 +21,12 @@ const unsigned char example[]=
 
 
 #define BUF_SIZE 65536
-DivansResult compress(const unsigned char *data, size_t len, struct VecU8 *ret_buffer) {
+DivansResult compress(const unsigned char *data, size_t len, struct VecU8 *ret_buffer,
+                      int argc, char** argv) {
     unsigned char buf[BUF_SIZE];
     struct CAllocator alloc = {custom_malloc, custom_free, custom_alloc_opaque};
     struct DivansCompressorState *state = divans_new_compressor_with_custom_alloc(alloc);
+    set_options(state, argc, argv);
     while (len) {
         size_t read_offset = 0;
         size_t buf_offset = 0;
@@ -89,22 +92,22 @@ int main(int argc, char**argv) {
     const unsigned char* data = example;
     size_t len = sizeof(example);
     unsigned char* to_free = NULL;
-    if (argc > 1) {
-        FILE * fp = fopen(argv[1], "rb");
+    if (find_first_arg(argc, argv)) {
+        FILE * fp = fopen(find_first_arg(argc, argv), "rb");
         if (fp != NULL) {
-            fseek(fp, 0, SEEK_END);
+            (void)fseek(fp, 0, SEEK_END);
             len = ftell(fp);
-            fseek(fp, 0, SEEK_SET);
+            (void)fseek(fp, 0, SEEK_SET);
             to_free = malloc(len);
-            fread(to_free, 1, len, fp);
+            (void)fread(to_free, 1, len, fp);
             data = to_free;
-            fclose(fp);
+            (void)fclose(fp);
         }
     }
     {
         struct VecU8 divans_file = new_vec_u8();
         struct VecU8 rt_file = new_vec_u8();
-        DivansResult res = compress(data, len, &divans_file);
+        DivansResult res = compress(data, len, &divans_file, argc, argv);
         if (res != DIVANS_SUCCESS) {
             fprintf(stderr, "Failed to compress code:%d\n", (int) res);
             abort();
