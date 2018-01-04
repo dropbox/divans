@@ -637,26 +637,32 @@ impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
 #[cfg(feature="no-stdlib")]
 impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
     fn slice(&self) -> &[Ty] {
-/*        if core::mem::transmute::<*mut [Ty], *mut c_void>(self.0).is_null() {
+        if unsafe{(*self.0).len()} == 0 {
             &[]
-        } else {*/
-            unsafe{self.0.as_mut().unwrap()}
-    //}
+        } else {
+            unsafe{core::slice::from_raw_parts(&(*self.0)[0], (*self.0).len())}
+        }
     }
 }
 #[cfg(feature="no-stdlib")]
 impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
     fn slice_mut(&mut self) -> &mut [Ty] {
-       unsafe{self.0.as_mut().unwrap()}
+        if unsafe{(*self.0).len()} == 0 {
+            &mut []
+        } else {
+            unsafe{core::slice::from_raw_parts_mut(&mut (*self.0)[0], (*self.0).len())}
+        }
     }
 }
 
 #[cfg(feature="no-stdlib")]
+#[cfg(not(feature="no-stdlib-rust-binding"))]
 #[lang="panic_fmt"]
 extern fn panic_fmt(_: ::core::fmt::Arguments, _: &'static str, _: u32) -> ! {
     loop {}
 }
 #[cfg(feature="no-stdlib")]
+#[cfg(not(feature="no-stdlib-rust-binding"))]
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {
 }
