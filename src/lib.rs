@@ -15,6 +15,7 @@
 #![cfg_attr(feature="simd", feature(platform_intrinsics))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(lang_items)))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(compiler_builtins_lib)))]
+#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", crate_type="cdylib"))]
 #![no_std]
 
 #[cfg(not(feature="no-stdlib-rust-binding"))]

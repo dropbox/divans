@@ -14,6 +14,9 @@
 #![cfg_attr(feature="benchmark", feature(test))]
 
 extern crate core;
+#[cfg(feature="no-stdlib-rlib")]
+extern crate divans_no_stdlib as divans;
+#[cfg(not(feature="no-stdlib-rlib"))]
 extern crate divans;
 extern crate brotli;
 extern crate alloc_no_stdlib as alloc;
