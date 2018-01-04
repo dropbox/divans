@@ -656,7 +656,9 @@ impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
 extern fn panic_fmt(_: ::core::fmt::Arguments, _: &'static str, _: u32) -> ! {
     loop {}
 }
-
+#[lang = "eh_personality"]
+extern "C" fn eh_personality() {
+}
 
 #[cfg(feature="no-stdlib")]
 impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {

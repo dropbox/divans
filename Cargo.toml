@@ -13,7 +13,7 @@ readme = "README.md"
 build = "build.rs"
 
 [lib]
-crate-type=["cdylib", "rlib"]
+crate-type=["cdylib", "rlib", "staticlib"]
 
 [[bin]]
 doc = false
