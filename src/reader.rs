@@ -4,7 +4,8 @@ pub use alloc::HeapAlloc;
 use std::io;
 use std::io::{Read};
 use super::BrotliResult;
-use ::interface::{Compressor, DivansCompressorFactory};
+use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
+use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
 
@@ -196,3 +197,103 @@ impl<R:Read> DivansBrotliHybridCompressorReader<R> {
                        ))
     }
 }
+
+
+type DivansCustomFactory = ::DivansCompressorFactoryStruct<HeapAlloc<u8>,
+                                                         HeapAlloc<::CDF2>,
+                                                         HeapAlloc<::DefaultCDF16>>;
+type DivansCustomConstructedCompressor = <DivansCustomFactory as ::DivansCompressorFactory<HeapAlloc<u8>,
+                                                                                           HeapAlloc<u32>,
+                                                                                           HeapAlloc<::CDF2>,
+                                                                                           HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
+pub struct DivansExperimentalCompressorReader<R:Read>(GenReader<R,
+                                                                DivansCustomConstructedCompressor,
+                                                                 <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory,
+                                                               >);
+impl<R:Read> Read for DivansExperimentalCompressorReader<R> {
+	fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+        self.0.read(buf)
+    }
+}
+impl<R:Read> DivansExperimentalCompressorReader<R> {
+    pub fn new(reader: R, opts: interface::DivansCompressorOptions, mut buffer_size: usize) -> Self {
+       if buffer_size == 0 {
+          buffer_size = 4096;
+       }
+       let mut m8 = HeapAlloc::<u8>::new(0);
+       let buffer = m8.alloc_cell(buffer_size);
+       DivansExperimentalCompressorReader::<R>(
+           GenReader::<R,
+                       DivansCustomConstructedCompressor,
+                       <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory>::new(
+                          reader,
+                          DivansCustomFactory::new(
+                                           m8,
+                                           HeapAlloc::<u32>::new(0),
+                                           HeapAlloc::<::CDF2>::new(::CDF2::default()),
+                                           HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                                           opts.window_size.unwrap_or(21) as usize,
+                                           opts.dynamic_context_mixing.unwrap_or(0),
+                                           opts.literal_adaptation,
+                                           opts.use_context_map,
+                                           opts.force_stride_value,
+                                           ()),
+                          buffer,
+                          true,
+                       ))
+    }
+}
+
+
+type StandardDivansDecompressorFactory = ::DivansDecompressorFactoryStruct<HeapAlloc<u8>,
+                                                                     HeapAlloc<::CDF2>,
+                                                                     HeapAlloc<::DefaultCDF16>>;
+type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompressorFactory as ::DivansDecompressorFactory<HeapAlloc<u8>,
+                                                                                                       HeapAlloc<::CDF2>,
+                                                                                                                            HeapAlloc<::DefaultCDF16>>
+                                                           >::DefaultDecoder,
+                                                          HeapAlloc<u8>,
+                                                          HeapAlloc<::CDF2>,
+                                                          HeapAlloc<::DefaultCDF16>>;
+impl Processor for DivansConstructedDecompressor {
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult {
+       self.decode(input, input_offset, output, output_offset)
+   }
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult{
+       let mut input_offset = 0usize;
+       self.decode(&[], &mut input_offset, output, output_offset)
+   }
+
+}
+pub struct DivansDecompressorReader<R:Read>(GenReader<R,
+                                                      DivansConstructedDecompressor,
+                                                      <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory,
+                                                      >);
+impl<R:Read> Read for DivansDecompressorReader<R> {
+	fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+        self.0.read(buf)
+    }
+}
+impl<R:Read> DivansDecompressorReader<R> {
+    pub fn new(reader: R, mut buffer_size: usize) -> Self {
+       if buffer_size == 0 {
+          buffer_size = 4096;
+       }
+       let mut m8 = HeapAlloc::<u8>::new(0);
+       let buffer = m8.alloc_cell(buffer_size);
+       DivansDecompressorReader::<R>(
+           GenReader::<R,
+                       DivansConstructedDecompressor,
+                       <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory>::new(
+                          reader,
+                          StandardDivansDecompressorFactory::new(
+                              m8,
+                              HeapAlloc::<::CDF2>::new(::CDF2::default()),
+                              HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                          ),
+                          buffer,
+                          false,
+                       ))
+    }
+}
+

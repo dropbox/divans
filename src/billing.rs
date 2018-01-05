@@ -169,10 +169,10 @@ macro_rules! DefaultDecoderType(
 
 #[cfg(feature="billing")]
 macro_rules! DefaultEncoderType(
-    () => { super::billing::BillingArithmeticCoder<AllocU8, super::ans::ANSEncoder<AllocU8>> }
+    () => { super::billing::BillingArithmeticCoder<AllocU8, ::ans::ANSEncoder<AllocU8>> }
 );
 
 #[cfg(feature="billing")]
 macro_rules! DefaultDecoderType(
-    () => { billing::BillingArithmeticCoder<AllocU8, ans::ANSDecoder> }
+    () => { billing::BillingArithmeticCoder<AllocU8, ::ans::ANSDecoder> }
 );
