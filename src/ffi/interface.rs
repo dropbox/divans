@@ -1,0 +1,40 @@
+#[allow(non_camel_case_types)]
+#[repr(u8)]
+pub enum c_void{
+    _Nothing = 0,
+}
+
+#[no_mangle]
+pub type DivansResult = u8;
+pub const DIVANS_SUCCESS: DivansResult = 0;
+pub const DIVANS_NEEDS_MORE_INPUT: DivansResult = 1;
+pub const DIVANS_NEEDS_MORE_OUTPUT: DivansResult = 2;
+pub const DIVANS_FAILURE: DivansResult = 3;
+
+
+
+pub type DivansOptionSelect = u8;
+
+pub const DIVANS_OPTION_QUALITY:DivansOptionSelect = 1;
+pub const DIVANS_OPTION_WINDOW_SIZE:DivansOptionSelect = 2;
+pub const DIVANS_OPTION_LGBLOCK:DivansOptionSelect = 3;
+pub const DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING:DivansOptionSelect = 4;
+pub const DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION:DivansOptionSelect = 5;
+pub const DIVANS_OPTION_USE_BROTLI_BITSTREAM:DivansOptionSelect = 6;
+pub const DIVANS_OPTION_USE_CONTEXT_MAP:DivansOptionSelect = 7;
+pub const DIVANS_OPTION_FORCE_STRIDE_VALUE:DivansOptionSelect = 8;
+pub const DIVANS_OPTION_LITERAL_ADAPTATION:DivansOptionSelect = 9;
+
+
+#[repr(C)]
+#[no_mangle]
+#[derive(Clone)]
+pub struct CAllocator {
+    pub alloc_func: Option<extern "C" fn(data: *mut c_void, size: usize) -> *mut c_void>,
+    pub free_func: Option<extern "C" fn(data: *mut c_void, ptr: *mut c_void) -> ()>,
+    pub opaque: *mut c_void,
+}
+
+
+
+
