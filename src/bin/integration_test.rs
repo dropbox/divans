@@ -16,16 +16,8 @@
 extern crate core;
 use std::io;
 
-use std::io::Write;
 use std::io::BufReader;
 use core::cmp;
-use super::brotli_decompressor;
-use super::brotli_decompressor::BrotliResult;
-use super::brotli_decompressor::BrotliDecompressStream;
-use super::brotli_decompressor::BrotliState;
-use super::brotli_decompressor::HuffmanCode;
-use super::util::HeapAllocator;
-use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 use divans::{Speed, StrideSelection};
 pub struct UnlimitedBuffer {
   pub data: Vec<u8>,
@@ -69,49 +61,6 @@ impl io::Write for UnlimitedBuffer {
   }
 }
 
-pub fn brotli_decompress_internal(brotli_file : &[u8]) -> Result<Box<[u8]>, io::Error> {
-  let mut brotli_state =
-      BrotliState::new(HeapAllocator::<u8> { default_value: 0 },
-                       HeapAllocator::<u32> { default_value: 0 },
-                       HeapAllocator::<HuffmanCode> { default_value: HuffmanCode::default() });
-  let buffer_limit = 65536;
-  let mut buffer = brotli_state.alloc_u8.alloc_cell(buffer_limit);
-  let mut available_out: usize = buffer.slice().len();
-
-  let mut available_in: usize = brotli_file.len();
-  let mut input_offset: usize = 0;
-  let mut output_offset: usize = 0;
-  let mut uncompressed_file_from_brotli = UnlimitedBuffer::new(&[]);
-  loop {
-    let mut written = 0usize;
-    let result = BrotliDecompressStream(&mut available_in,
-                                    &mut input_offset,
-                                    brotli_file,
-                                    &mut available_out,
-                                    &mut output_offset,
-                                    buffer.slice_mut(),
-                                    &mut written,
-                                    &mut brotli_state);
-    match result {
-      BrotliResult::NeedsMoreInput => {
-        panic!("File should have been in brotli format") 
-      }
-      BrotliResult::NeedsMoreOutput => {
-        try!(uncompressed_file_from_brotli.write_all(&buffer.slice()[..output_offset]));
-        output_offset = 0;
-        available_out = buffer.slice().len();
-      }
-      BrotliResult::ResultSuccess => {
-         try!(uncompressed_file_from_brotli.write_all(&buffer.slice()[..output_offset]));
-         break;
-      },
-      BrotliResult::ResultFailure => panic!("FAILURE"),
-    }
-  }
-  brotli_state.BrotliStateCleanup();
-  
-  Ok(uncompressed_file_from_brotli.data.into_boxed_slice())
-}
 
 pub fn divans_decompress_internal(mut brotli_file : &[u8]) -> Result<Box<[u8]>, io::Error> {
   let mut uncompressed_file_from_divans = UnlimitedBuffer::new(&[]);
@@ -122,35 +71,36 @@ pub fn divans_decompress_internal(mut brotli_file : &[u8]) -> Result<Box<[u8]>, 
 
 #[test]
 fn test_ends_with_truncated_dictionary() {
-   let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/ends_with_truncated_dictionary.br")).unwrap();
-   let div_raw = divans_decompress_internal(include_bytes!("../../testdata/ends_with_truncated_dictionary.ir")).unwrap();
+   let raw_file = include_bytes!("../../testdata/ends_with_truncated_dictionary");
+   let div_input = include_bytes!("../../testdata/ends_with_truncated_dictionary.ir");
+   let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
-   assert_eq!(raw_file, div_raw);
+   assert_eq!(&raw_file[..], &div_raw[..]);
 }
 #[test]
 fn test_random_then_unicode() {
-   let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/random_then_unicode.ir.br")).unwrap();
+   let raw_file = include_bytes!("../../testdata/random_then_unicode");
+   let div_input = include_bytes!("../../testdata/random_then_unicode.ir");
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
-   assert_eq!(raw_file, div_raw);
+   assert_eq!(&raw_file[..], &div_raw[..]);
 }
 #[test]
 fn test_alice29() {
-   let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/alice29.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/alice29-priors.ir.br")).unwrap();
+   let raw_file = include_bytes!("../../testdata/alice29");
+   let div_input = include_bytes!("../../testdata/alice29-priors.ir");
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
-   assert_eq!(raw_file, div_raw);
+   assert_eq!(&raw_file[..], &div_raw[..]);
 }
 #[test]
 fn test_asyoulik() {
-   let raw_file = brotli_decompress_internal(include_bytes!("../../testdata/asyoulik.br")).unwrap();
-   let div_input = brotli_decompress_internal(include_bytes!("../../testdata/asyoulik.ir.br")).unwrap();
+   let raw_file = include_bytes!("../../testdata/asyoulik");
+   let div_input = include_bytes!("../../testdata/asyoulik.ir");
    assert_eq!(div_input.len(), 541890);
    let div_raw = divans_decompress_internal(&*div_input).unwrap();
    assert_eq!(raw_file.len(), div_raw.len());
-   assert_eq!(raw_file, div_raw);
+   assert_eq!(&raw_file[..], &div_raw[..]);
 }
 
 
@@ -195,21 +145,15 @@ fn test_e2e_ones_tinybuf() {
     e2e_no_ir(1, false, false, &data[..], 0.99);
 }
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
-   let raw_text_as_br = include_bytes!("../../testdata/alice29.br");
-   let mut raw_text_buffer = UnlimitedBuffer::new(&[]);
-   let mut raw_text_as_br_buffer = UnlimitedBuffer::new(raw_text_as_br);
-   brotli_decompressor::BrotliDecompress(&mut raw_text_as_br_buffer,
-        &mut raw_text_buffer).unwrap();
+   let raw_text_slice = include_bytes!("../../testdata/alice29");
+   let raw_text_buffer = UnlimitedBuffer::new(&raw_text_slice[..]);
    e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
    e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
-   let mut ir_as_br_buffer = if use_serialized_priors {
-       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir.br"))
+   let ir_buffer = if use_serialized_priors {
+       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir"))
    } else {
-       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29.ir.br"))
+       UnlimitedBuffer::new(include_bytes!("../../testdata/alice29.ir"))
    };
-   let mut ir_buffer = UnlimitedBuffer::new(&[]);
-   brotli_decompressor::BrotliDecompress(&mut ir_as_br_buffer,
-        &mut ir_buffer).unwrap();
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);

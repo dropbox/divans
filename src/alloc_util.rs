@@ -152,6 +152,7 @@ impl<T, AllocT: Allocator<T>> Allocator<T> for RepurposingAlloc<T, AllocT> {
 }
 
 #[cfg(test)]
+#[cfg(not(feature="no-stdlib"))]
 mod test {
     use core;
     use alloc::HeapAlloc;
