@@ -5,7 +5,7 @@ use ::interface;
 use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
-use ::billing;
+
 use ::BrotliResult;
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};

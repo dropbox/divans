@@ -85,12 +85,22 @@ mod ffi;
 #[cfg(not(feature="safe"))]
 pub use ffi::*;
 mod reader;
+mod writer;
 #[cfg(not(feature="no-stdlib"))]
 pub use reader::DivansBrotliHybridCompressorReader;
 #[cfg(not(feature="no-stdlib"))]
 pub use reader::DivansExperimentalCompressorReader;
 #[cfg(not(feature="no-stdlib"))]
 pub use reader::DivansDecompressorReader;
+
+#[cfg(not(feature="no-stdlib"))]
+pub use writer::DivansBrotliHybridCompressorWriter;
+#[cfg(not(feature="no-stdlib"))]
+pub use writer::DivansExperimentalCompressorWriter;
+#[cfg(not(feature="no-stdlib"))]
+pub use writer::DivansDecompressorWriter;
+
+
 pub use probability::Speed;
 
 

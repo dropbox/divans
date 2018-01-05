@@ -158,21 +158,21 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> BillingCapability 
 
 #[cfg(not(feature="billing"))]
 macro_rules! DefaultEncoderType(
-    () => {super::ans::ANSEncoder<AllocU8>}
+    () => {::ans::ANSEncoder<AllocU8>}
 );
 
 #[cfg(not(feature="billing"))]
 macro_rules! DefaultDecoderType(
-    () => {ans::ANSDecoder}
+    () => {::ans::ANSDecoder}
 );
 
 
 #[cfg(feature="billing")]
 macro_rules! DefaultEncoderType(
-    () => { super::billing::BillingArithmeticCoder<AllocU8, ::ans::ANSEncoder<AllocU8>> }
+    () => { ::billing::BillingArithmeticCoder<AllocU8, ::ans::ANSEncoder<AllocU8>> }
 );
 
 #[cfg(feature="billing")]
 macro_rules! DefaultDecoderType(
-    () => { billing::BillingArithmeticCoder<AllocU8, ::ans::ANSDecoder> }
+    () => { ::billing::BillingArithmeticCoder<AllocU8, ::ans::ANSDecoder> }
 );
