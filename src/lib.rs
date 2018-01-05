@@ -79,7 +79,9 @@ pub use cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 pub use divans_compressor::{DivansCompressor, DivansCompressorFactoryStruct};
 use core::marker::PhantomData;
+#[cfg(not(feature="safe"))]
 mod ffi;
+#[cfg(not(feature="safe"))]
 pub use ffi::*;
 
 pub use probability::Speed;
