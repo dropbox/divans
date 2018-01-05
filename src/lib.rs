@@ -83,7 +83,7 @@ use core::marker::PhantomData;
 mod ffi;
 #[cfg(not(feature="safe"))]
 pub use ffi::*;
-
+pub mod reader;
 pub use probability::Speed;
 
 
