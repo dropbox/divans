@@ -21,7 +21,7 @@ pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor,
 
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
-use super::resizable_byte_buffer::ResizableByteBuffer;
+use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
 use super::brotli::BrotliResult;
 use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};

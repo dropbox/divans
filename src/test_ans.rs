@@ -12,7 +12,7 @@ use super::ans::{
 };
 use super::probability::{Speed, BaseCDF, CDF16, BLEND_FIXED_POINT_PRECISION};
 use ::DefaultCDF16;
-use encoder::{
+use arithmetic_coder::{
     EntropyEncoder,
     EntropyDecoder,
     ByteQueue,

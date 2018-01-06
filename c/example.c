@@ -5,7 +5,7 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-#include "ffi.h"
+#include "divans/ffi.h"
 #include "arg.h"
 #include "custom_alloc.h"
 #include "vec_u8.h"

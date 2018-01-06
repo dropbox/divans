@@ -47,7 +47,7 @@ extern crate std;
 
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli;
-pub mod resizable_byte_buffer;
+pub mod resizable_buffer;
 pub mod interface;
 pub mod slice_util;
 pub mod alloc_util;
@@ -55,7 +55,7 @@ mod probability;
 #[macro_use]
 mod priors;
 #[macro_use]
-mod encoder;
+mod arithmetic_coder;
 mod debug_encoder;
 mod cmd_to_raw;
 mod raw_to_cmd;

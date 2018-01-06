@@ -27,7 +27,7 @@ use super::interface::{
     BillingCapability,
 };
 use super::BrotliResult;
-use super::encoder::{
+use super::arithmetic_coder::{
     EntropyEncoder,
     EntropyDecoder,
     ByteQueue,

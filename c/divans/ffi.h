@@ -22,8 +22,11 @@ typedef uint8_t DivansOptionSelect;
 #define DIVANS_OPTION_FORCE_STRIDE_VALUE 8
 #define DIVANS_OPTION_LITERAL_ADAPTATION 9
 
+/// a struct specifying custom allocators for divans to use instead of the builtin rust allocators.
+/// if all 3 values are set to NULL, the Rust allocators are used instead.
 struct CAllocator {
-    void* (*alloc_func)(void * opaque, size_t data);
+    /// Allocate length bytes. The returned pointer must be 32-byte aligned unless divans was built without features=simd
+    void* (*alloc_func)(void * opaque, size_t length);
     void (*free_func)(void * opaque, void * mfd);
     void * opaque;
 };

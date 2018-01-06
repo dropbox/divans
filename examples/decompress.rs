@@ -11,7 +11,8 @@ fn main() {
         use std::io::{Read, Write};
         let mut reader = divans::DivansDecompressorReader::new(
             stdin,
-            4096 /* buffer size */);
+            4096, // buffer size
+        );
         let mut buf = [0u8; 4096];
         loop {
             match reader.read(&mut buf[..]) {
