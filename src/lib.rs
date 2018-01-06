@@ -11,6 +11,10 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
+//! This is documentation for the `divans` crate
+//!
+//! The `divans` crate is meant to be used for generic data compression
+
 #![cfg_attr(feature="benchmark", feature(test))]
 #![cfg_attr(feature="simd", feature(platform_intrinsics))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(lang_items)))]
