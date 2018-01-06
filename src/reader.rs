@@ -296,4 +296,118 @@ impl<R:Read> DivansDecompressorReader<R> {
                        ))
     }
 }
+#[cfg(test)]
+mod test {
+    use std::vec::Vec;
+    use std::io;
+    use std::io::{Read, Write};
+    use core::cmp;
+    use ::interface;
+    pub struct UnlimitedBuffer {
+        pub data: Vec<u8>,
+        pub read_offset: usize,
+    }
 
+    impl UnlimitedBuffer {
+        pub fn new(buf: &[u8]) -> Self {
+            let mut ret = UnlimitedBuffer {
+                data: Vec::<u8>::new(),
+                read_offset: 0,
+            };
+            ret.data.extend(buf);
+            return ret;
+        }
+        #[allow(unused)]
+        pub fn written(&self) -> &[u8] {
+            &self.data[..]
+        }
+    }
+
+    impl io::Read for UnlimitedBuffer {
+        fn read(self: &mut Self, buf: &mut [u8]) -> io::Result<usize> {
+            let bytes_to_read = cmp::min(buf.len(), self.data.len() - self.read_offset);
+            if bytes_to_read > 0 {
+                buf[0..bytes_to_read].clone_from_slice(&self.data[self.read_offset..
+                                                                  self.read_offset + bytes_to_read]);
+            }
+            self.read_offset += bytes_to_read;
+            return Ok(bytes_to_read);
+        }
+    }
+
+    impl io::Write for UnlimitedBuffer {
+        fn write(self: &mut Self, buf: &[u8]) -> io::Result<usize> {
+            self.data.extend(buf);
+            return Ok(buf.len());
+        }
+        fn flush(self: &mut Self) -> io::Result<()> {
+            return Ok(());
+        }
+    }
+
+    struct Tee<'a, R:io::Read> {
+        reader: R,
+        output: &'a mut UnlimitedBuffer,
+    }
+    impl<'a, R:Read> io::Read for Tee<'a, R> {
+        fn read(&mut self, data: &mut[u8]) -> io::Result<usize> {
+            let ret = self.reader.read(data);
+            match ret {
+                Err(_) => {},
+                Ok(size) => {
+                    let xret = self.output.write(&data[..size]);
+                    if let Ok(xsize) = xret {
+                        assert_eq!(xsize, size); // we know unlimited buffer won't let us down
+                    } else {
+                        unreachable!();
+                    }
+                }
+            }
+            ret
+        }
+    }
+    fn hy_reader_tst(data:&[u8], opts: interface::DivansCompressorOptions, buffer_size: usize){
+        let source = UnlimitedBuffer::new(data);
+        let compress = ::DivansBrotliHybridCompressorReader::<UnlimitedBuffer>::new(source, opts, buffer_size);
+        let mut ub = UnlimitedBuffer::new(&mut []);
+        {
+            let tee = Tee::<::DivansBrotliHybridCompressorReader<UnlimitedBuffer>> {
+                reader:compress,
+                output: &mut ub,
+            };
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size);
+            let mut local_buffer = vec![0u8; buffer_size];
+            let mut offset: usize = 0;
+            loop {
+                match decompress.read(&mut local_buffer[..]) {
+                    Err(e) => panic!(e),
+                    Ok(size) => {
+                        if size == 0 {
+                            break;
+                        }
+                        assert_eq!(&data[offset..offset+size], &local_buffer[..size]);
+                        offset += size;
+                    }
+                }
+            }
+            assert_eq!(offset, data.len());
+        }
+        assert!(ub.data.len() < data.len());
+        print!("Compressed {} to {}...", ub.data.len(), data.len());
+    }
+    #[test]
+    fn test_hybrid_reader_compressor_on_alice_small_buffer() {
+        hy_reader_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(16),
+                           lgblock:Some(16),
+                           quality:Some(11),
+                           dynamic_context_mixing:None,
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::default(),
+                       },
+                       1);
+    }
+}

@@ -141,7 +141,7 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
 fn use_legacy_bitwise_command_type_code() -> bool {
     true
 }
-fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) -> EncodeOrDecodeState<AllocU8> {
+fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8, is_end: bool) -> EncodeOrDecodeState<AllocU8> {
    match command_type_code {
       1 => EncodeOrDecodeState::Copy(copy::CopyState {
                             cc: CopyCommand {
@@ -162,7 +162,11 @@ fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8) ->
      5 => EncodeOrDecodeState::BlockSwitchCommand(block_type::BlockTypeState::Begin),
      6 => EncodeOrDecodeState::BlockSwitchDistance(block_type::BlockTypeState::Begin),
      7 => EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::Begin),
-     0xf => EncodeOrDecodeState::DivansSuccess,
+     0xf => if is_end {
+         EncodeOrDecodeState::DivansSuccess // encoder flows through this path
+     } else {
+         EncodeOrDecodeState::WriteChecksum(0)
+     },
       _ => panic!("unimpl"),
    }
 }
@@ -309,7 +313,9 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     let bytes_remaining = output_bytes.len() - *output_bytes_offset;
+                    let checksum_cur_index = count;
                     let bytes_needed = CHECKSUM_LENGTH - count;
+
                     let count_to_copy = core::cmp::min(bytes_remaining,
                                                        bytes_needed);
                     let checksum = [b'~',
@@ -321,7 +327,7 @@ impl<AllocU8: Allocator<u8>,
                                     b's',
                                     b'~'];
                     output_bytes.split_at_mut(*output_bytes_offset).1.split_at_mut(
-                        count_to_copy).0.clone_from_slice(checksum.split_at(count_to_copy).0);
+                        count_to_copy).0.clone_from_slice(checksum.split_at(checksum_cur_index).1.split_at(count_to_copy).0);
                     *output_bytes_offset += count_to_copy;
                     if bytes_needed <= bytes_remaining {
                         self.state = EncodeOrDecodeState::DivansSuccess;
@@ -439,11 +445,41 @@ impl<AllocU8: Allocator<u8>,
             match self.state {
                 EncodeOrDecodeState::EncodedShutdownNode
                     | EncodeOrDecodeState::ShutdownCoder
-                    | EncodeOrDecodeState::CoderBufferDrain
-                    | EncodeOrDecodeState::WriteChecksum(_) => {
+                    | EncodeOrDecodeState::CoderBufferDrain => {
                     // not allowed to encode additional commands after flush is invoked
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
-                }
+                },
+                EncodeOrDecodeState::WriteChecksum(count) => {
+                    // decoder only operation
+                    let checksum_cur_index = count;
+                    let bytes_needed = CHECKSUM_LENGTH - count;
+
+                    let to_check = core::cmp::min(input_bytes.len() - *input_bytes_offset,
+                                                  bytes_needed);
+                    if to_check == 0 {
+                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreInput));
+                    }
+                    let checksum = [b'~',
+                                    b'd',
+                                    b'i',
+                                    b'v',
+                                    b'a',
+                                    b'n',
+                                    b's',
+                                    b'~'];
+                    for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
+                        input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
+                        if *chk != *fil {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                        }
+                    }
+                    *input_bytes_offset += to_check;
+                    if bytes_needed != to_check {
+                        new_state = Some(EncodeOrDecodeState::WriteChecksum(count + to_check));
+                    } else {
+                        new_state = Some(EncodeOrDecodeState::DivansSuccess);
+                    }
+                },
                 EncodeOrDecodeState::DivansSuccess => {
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess));
                 },
@@ -462,7 +498,7 @@ impl<AllocU8: Allocator<u8>,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
                         command_type_prob.blend(command_type_code, Speed::ROCKET);
                     }
-                    let command_state = get_command_state_from_nibble(command_type_code);
+                    let command_state = get_command_state_from_nibble(command_type_code, is_end);
                     match command_state {
                         EncodeOrDecodeState::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
                         EncodeOrDecodeState::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
