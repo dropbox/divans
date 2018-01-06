@@ -275,3 +275,195 @@ impl<W:Write> DivansDecompressorWriter<W> {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use core;
+    use std::vec::Vec;
+    use std::io;
+    use std::io::Write;
+    use ::interface;
+    pub struct UnlimitedBuffer {
+        pub data: Vec<u8>,
+        pub read_offset: usize,
+    }
+
+    impl UnlimitedBuffer {
+        pub fn new(buf: &[u8]) -> Self {
+            let mut ret = UnlimitedBuffer {
+                data: Vec::<u8>::new(),
+                read_offset: 0,
+            };
+            ret.data.extend(buf);
+            return ret;
+        }
+        #[allow(unused)]
+        pub fn written(&self) -> &[u8] {
+            &self.data[..]
+        }
+    }
+
+    impl io::Write for UnlimitedBuffer {
+        fn write(self: &mut Self, buf: &[u8]) -> io::Result<usize> {
+            self.data.extend(buf);
+            return Ok(buf.len());
+        }
+        fn flush(self: &mut Self) -> io::Result<()> {
+            return Ok(());
+        }
+    }
+
+    struct Tee<'a, W:io::Write> {
+        writer: W,
+        output: &'a mut UnlimitedBuffer,
+    }
+    impl<'a, W:Write> io::Write for Tee<'a, W> {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            let ret = self.writer.write(data);
+            match ret {
+                Err(_) => {},
+                Ok(size) => {
+                    let xret = self.output.write(&data[..size]);
+                    if let Ok(xsize) = xret {
+                        assert_eq!(xsize, size); // we know unlimited buffer won't let us down
+                    } else {
+                        unreachable!();
+                    }
+                }
+            }
+            ret
+        }
+        fn flush(&mut self) -> io::Result<()> {
+           self.writer.flush()
+        }
+    }
+    fn hy_writer_tst(data:&[u8], opts: interface::DivansCompressorOptions, buffer_size: usize){
+        let mut dest = UnlimitedBuffer::new(&[]);
+        let mut ub = UnlimitedBuffer::new(&mut []);
+        {
+          let tmp = UnlimitedBuffer::new(&[]);
+          let dest_tee = Tee::<UnlimitedBuffer> {
+              writer: tmp,
+              output: &mut dest,
+          };
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size);
+            let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
+                writer:decompress,
+                output: &mut ub,
+            };
+            let mut compress = ::DivansBrotliHybridCompressorWriter::new(tee, opts, buffer_size);
+            let mut offset: usize = 0;
+            while offset < data.len() {
+                match compress.write(&data[offset..core::cmp::min(offset + buffer_size, data.len())]) {
+                    Err(e) => panic!(e),
+                    Ok(size) => {
+                        if size == 0 {
+                            break;
+                        }
+                        offset += size;
+                    }
+                }
+            }
+            if let Err(e) = compress.flush() {
+                 panic!(e);
+            }
+        }
+        assert_eq!(dest.written(), data);
+        assert!(ub.data.len() < data.len());
+        print!("Compressed {} to {}...\n", ub.data.len(), data.len());
+    }
+    fn experimental_writer_tst(data:&[u8], opts: interface::DivansCompressorOptions, buffer_size: usize){
+        let mut dest = UnlimitedBuffer::new(&[]);
+        let mut ub = UnlimitedBuffer::new(&mut []);
+        {
+          let tmp = UnlimitedBuffer::new(&[]);
+          let dest_tee = Tee::<UnlimitedBuffer> {
+              writer: tmp,
+              output: &mut dest,
+          };
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size);
+            let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
+                writer:decompress,
+                output: &mut ub,
+            };
+            let mut compress = ::DivansBrotliHybridCompressorWriter::new(tee, opts, buffer_size);
+            let mut offset: usize = 0;
+            while offset < data.len() {
+                match compress.write(&data[offset..core::cmp::min(offset + buffer_size, data.len())]) {
+                    Err(e) => panic!(e),
+                    Ok(size) => {
+                        if size == 0 {
+                            break;
+                        }
+                        offset += size;
+                    }
+                }
+            }
+            if let Err(e) = compress.flush() {
+                 panic!(e);
+            }
+        }
+        assert_eq!(dest.written(), data);
+        assert!(ub.data.len() < data.len());
+        print!("Compressed {} to {}...\n", ub.data.len(), data.len());
+    }
+    #[test]
+    fn test_hybrid_writer_compressor_on_alice_small_buffer() {
+        hy_writer_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(16),
+                           lgblock:Some(16),
+                           quality:Some(11),
+                           dynamic_context_mixing:None,
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::default(),
+                       },
+                       1);
+    }
+    #[test]
+    fn test_hybrid_writer_compressor_on_alice_full() {
+        hy_writer_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:None,
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       4095);
+    }
+    #[test]
+    fn test_hybrid_writer_compressor_on_unicode_full() {
+        hy_writer_tst(include_bytes!("../testdata/random_then_unicode"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:Some(8),
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       4095);
+    }
+    #[test]
+    fn test_experimental_writer_compressor_on_alice_full() {
+        experimental_writer_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:None,
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       3);
+    }
+}

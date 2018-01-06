@@ -393,7 +393,36 @@ mod test {
             assert_eq!(offset, data.len());
         }
         assert!(ub.data.len() < data.len());
-        print!("Compressed {} to {}...", ub.data.len(), data.len());
+        print!("Compressed {} to {}...\n", ub.data.len(), data.len());
+    }
+    fn experimental_reader_tst(data:&[u8], opts: interface::DivansCompressorOptions, buffer_size: usize){
+        let source = UnlimitedBuffer::new(data);
+        let compress = ::DivansExperimentalCompressorReader::<UnlimitedBuffer>::new(source, opts, buffer_size);
+        let mut ub = UnlimitedBuffer::new(&mut []);
+        {
+            let tee = Tee::<::DivansExperimentalCompressorReader<UnlimitedBuffer>> {
+                reader:compress,
+                output: &mut ub,
+            };
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size);
+            let mut local_buffer = vec![0u8; buffer_size];
+            let mut offset: usize = 0;
+            loop {
+                match decompress.read(&mut local_buffer[..]) {
+                    Err(e) => panic!(e),
+                    Ok(size) => {
+                        if size == 0 {
+                            break;
+                        }
+                        assert_eq!(&data[offset..offset+size], &local_buffer[..size]);
+                        offset += size;
+                    }
+                }
+            }
+            assert_eq!(offset, data.len());
+        }
+        assert!(ub.data.len() < data.len());
+        print!("Compressed {} to {}...\n", ub.data.len(), data.len());
     }
     #[test]
     fn test_hybrid_reader_compressor_on_alice_small_buffer() {
@@ -409,5 +438,50 @@ mod test {
                            force_stride_value: interface::StrideSelection::default(),
                        },
                        1);
+    }
+    #[test]
+    fn test_hybrid_reader_compressor_on_alice_full() {
+        hy_reader_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:None,
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       4095);
+    }
+    #[test]
+    fn test_hybrid_reader_compressor_on_unicode_full() {
+        hy_reader_tst(include_bytes!("../testdata/random_then_unicode"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:Some(8),
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       4095);
+    }
+    #[test]
+    fn test_experimental_reader_compressor_on_alice_full() {
+        experimental_reader_tst(include_bytes!("../testdata/alice29"),
+                       interface::DivansCompressorOptions{
+                           literal_adaptation:None,
+                           window_size:Some(22),
+                           lgblock:None,
+                           quality:None,
+                           dynamic_context_mixing:Some(2),
+                           use_brotli:interface::BrotliCompressionSetting::default(),
+                           use_context_map:true,
+                           force_stride_value: interface::StrideSelection::Stride1,
+                       },
+                       3);
     }
 }
