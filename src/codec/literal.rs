@@ -216,12 +216,12 @@ impl<AllocU8:Allocator<u8>,
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
-                                          byte_context.actual_context as usize,
+                                          0*byte_context.actual_context as usize,
                                           core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize,
+                                         (0xf & byte_context.stride_byte as usize,
                                           cur_byte_prior as usize,
                                           core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
                                           ))
@@ -231,7 +231,7 @@ impl<AllocU8:Allocator<u8>,
                                             (byte_context.actual_context as usize,))
         } else {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                            (cur_byte_prior as usize, byte_context.actual_context as usize))
+                                            (0*cur_byte_prior as usize, byte_context.actual_context as usize))
         };
         let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
