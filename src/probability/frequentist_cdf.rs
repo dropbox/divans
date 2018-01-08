@@ -52,7 +52,7 @@ impl BaseCDF for FrequentistCDF16 {
         true
     }
 }
-
+const MIN_PDF_VAL: i16 = 1;
 impl CDF16 for FrequentistCDF16 {
     #[inline(always)]
     fn average(&self, other:&Self, mix_rate:i32) -> Self {
@@ -86,9 +86,9 @@ impl CDF16 for FrequentistCDF16 {
     fn populate_from_pdf(&mut self, pop:&[u8]) {
        assert_eq!(pop.len(), 16);
        let loaded_cdf_weight = 2;
-       self.cdf[0] = i16::from(pop[0]) << DESERIALIZED_CDF_WEIGHT;
+       self.cdf[0] = core::cmp::max(i16::from(pop[0]) << DESERIALIZED_CDF_WEIGHT, MIN_PDF_VAL);
        for index in 1..16 {
-          self.cdf[index] = self.cdf[index - 1] + (i16::from(pop[index]) << loaded_cdf_weight);
+          self.cdf[index] = self.cdf[index - 1] + core::cmp::max((i16::from(pop[index]) << loaded_cdf_weight), MIN_PDF_VAL);
        }
     }
 }

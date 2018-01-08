@@ -297,7 +297,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                                       "highnibblepdf must have 256 entries, each 16 long"));
             }
         }
-        while ret.nibble_pdf.0.len() != 256 * 16 && ret.nibble_pdf.0.len() != 0 {
+        while ret.nibble_pdf.0.len() < 256 * 16 * 2 && ret.nibble_pdf.0.len() != 0 {
                ret.nibble_pdf.0.push(0);
         }
         return Ok(Some(Command::PredictionMode(ret)));
