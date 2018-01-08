@@ -116,6 +116,10 @@ impl CDF16 for OptFrequentistCDF16 {
         self.cdf.blend(symbol, speed);
         self.inv_max_and_bitlen = numeric::lookup_divisor(self.max());
     }
+    fn populate_from_pdf(&mut self, pop:&[u8]) {
+        self.cdf.populate_from_pdf(pop);
+        self.inv_max_and_bitlen = numeric::lookup_divisor(self.max());
+    }
 }
 
 #[cfg(test)]

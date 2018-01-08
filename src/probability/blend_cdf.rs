@@ -204,6 +204,9 @@ impl CDF16 for BlendCDF16 {
 
 
     }
+    fn populate_from_pdf(&mut self, pop:&[u8]) {
+    unimplemented!();
+    }
 }
 
 #[cfg(test)]

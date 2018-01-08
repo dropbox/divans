@@ -1,6 +1,7 @@
 use core;
 pub type Prob = i16; // can be i32
 pub const MAX_FREQUENTIST_PROB: Prob = 0x4000;
+pub const DESERIALIZED_CDF_WEIGHT:u8 = 2;
 #[cfg(feature="billing")]
 use std::io::Write;
 #[cfg(feature="billing")]
@@ -280,6 +281,7 @@ impl core::str::FromStr for Speed {
 pub trait CDF16: Sized + Default + Copy + BaseCDF {
     fn blend(&mut self, symbol: u8, dyn:Speed);
     fn average(&self, other: &Self, mix_rate: i32) ->Self;
+    fn populate_from_pdf(&mut self, population:&[u8]);
 }
 
 pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;

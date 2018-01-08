@@ -22,6 +22,7 @@ use ::interface::{
     NewWithAllocator,
 };
 use super::priors::{
+    LiteralNibblePriorType,
     LiteralCommandPriors,
     LiteralCommandPriorsCM,
     CopyCommandPriors,
@@ -342,6 +343,31 @@ impl<Cdf16:CDF16,
     }
     pub fn reset_context_map_lru(&mut self) {
         self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    }
+    pub fn obs_literal_pdfs(&mut self, nibble_cdfs:&[u8]) -> BrotliResult {
+        if nibble_cdfs.len() != 256 * 16 * 2 {
+           return BrotliResult::ResultFailure;
+        }
+        let (low_nibble_pdf, high_nibble_pdf) = nibble_cdfs.split_at(256 * 16);
+        for prev_byte in 0..256 {
+           for actual_context in 0..256 {
+               let mut cdf_to_change = self.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                             (prev_byte,
+                                              actual_context,
+                                              0));
+               cdf_to_change.populate_from_pdf(high_nibble_pdf.split_at(prev_byte <<4).1.split_at(16).0);
+            }
+        }
+        for prev_byte in 0..256 {
+           for prev_nibble in 0..16 {
+               let mut cdf_to_change = self.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+                                             (prev_byte,
+                                              prev_nibble,
+                                              0));
+               cdf_to_change.populate_from_pdf(low_nibble_pdf.split_at(((prev_byte &0xf) <<8) | (prev_nibble<< 4)).1.split_at(16).0);
+            }
+        }
+        BrotliResult::ResultSuccess
     }
     pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
         self.materialized_context_map = true;

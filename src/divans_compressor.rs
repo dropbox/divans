@@ -140,6 +140,7 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
            Command::PredictionMode(ref mut pm) => {
                pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
                pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
+               pm.nibble_pdf = pm.nibble_pdf.thaw(ring_buffer);
            },
            Command::Dict(_) |
            Command::Copy(_) |
@@ -223,6 +224,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                         literal_prediction_mode: pm.literal_prediction_mode,
                         literal_context_map: pm.literal_context_map.freeze_dry(),
                         distance_context_map: pm.literal_context_map.freeze_dry(),
+                        nibble_pdf: pm.nibble_pdf.freeze_dry(),
                     })
                 },
                 Command::Copy(ref c) => {

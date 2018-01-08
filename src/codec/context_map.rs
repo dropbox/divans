@@ -226,7 +226,11 @@ impl PredictionModeState {
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
                PredictionModeState::FullyDecoded => {
-                   return BrotliResult::ResultSuccess;
+                   if in_cmd.nibble_pdf.slice().len() != 0 { // FIXME: this must be the decoded, not encoded, state
+                     return superstate.bk.obs_literal_pdfs(in_cmd.nibble_pdf.slice());
+                   } else {
+                     return BrotliResult::ResultSuccess;
+                   }
                }
             }
         }

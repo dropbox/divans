@@ -115,4 +115,6 @@ impl CDF16 for ExternalProbCDF16 {
     fn blend(&mut self, symbol: u8, speed: Speed) {
         return;
     }
+    fn populate_from_pdf(&mut self, pop:&[u8]) {
+    }
 }

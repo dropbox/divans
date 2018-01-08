@@ -1,5 +1,5 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, MAX_FREQUENTIST_PROB};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, MAX_FREQUENTIST_PROB, DESERIALIZED_CDF_WEIGHT};
 fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
     if val != 0 {
         1 << shift_val
@@ -82,6 +82,14 @@ impl CDF16 for FrequentistCDF16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
             }
         }
+    }
+    fn populate_from_pdf(&mut self, pop:&[u8]) {
+       assert_eq!(pop.len(), 16);
+       let loaded_cdf_weight = 2;
+       self.cdf[0] = i16::from(pop[0]) << DESERIALIZED_CDF_WEIGHT;
+       for index in 1..16 {
+          self.cdf[index] = self.cdf[index - 1] + (i16::from(pop[index]) << loaded_cdf_weight);
+       }
     }
 }
 

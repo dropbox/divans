@@ -212,6 +212,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
             literal_prediction_mode: pmode,
             literal_context_map: ItemVec::<u8>::default(),
             distance_context_map: ItemVec::<u8>::default(),
+            nibble_pdf: ItemVec::<u8>::default(),
         };
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
@@ -248,6 +249,56 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                     },
                 }
             }
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lownibblepdf") {
+            for low_nibble_pdf_val in command_vec.split_at(index + 1).1.iter() {
+                match low_nibble_pdf_val.parse::<i64>() {
+                    Ok(el) => {
+                        if el <= 255 && el >= 0 {
+                            ret.nibble_pdf.0.push(el as u8);
+                        } else {
+                            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      low_nibble_pdf_val.to_string() +
+                                                      " low_nibble_pdf_val must be u8"));
+                        }
+                    },
+                    Err(_) => {
+                        break;
+                    },
+                }
+            }
+            if ret.nibble_pdf.0.len() != 256 * 16 {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "lownibblepdf must have 256 entries, each 16 long"));
+            }
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "highnibblepdf") {
+            while ret.nibble_pdf.0.len() != 256 * 16 {
+               ret.nibble_pdf.0.push(0);
+            }
+            for high_nibble_pdf_val in command_vec.split_at(index + 1).1.iter() {
+                match high_nibble_pdf_val.parse::<i64>() {
+                    Ok(el) => {
+                        if el <= 255 && el >= 0 {
+                            ret.nibble_pdf.0.push(el as u8);
+                        } else {
+                            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      high_nibble_pdf_val.to_string() +
+                                                      " high_nibble_pdf_val must be u8"));
+                        }
+                    },
+                    Err(_) => {
+                        break;
+                    },
+                }
+            }
+            if ret.nibble_pdf.0.len() != 2 * 256 * 16 {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                      "highnibblepdf must have 256 entries, each 16 long"));
+            }
+        }
+        while ret.nibble_pdf.0.len() != 256 * 16 && ret.nibble_pdf.0.len() != 0 {
+               ret.nibble_pdf.0.push(0);
         }
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {

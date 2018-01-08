@@ -289,6 +289,7 @@ fn bench_no_ir<Run: Runner,
     let mut rt_backing_buffer = m8.alloc_cell(input_buffer.slice().len() + 16);
     let mut cm = m8.alloc_cell(256);
     let mut dm = m8.alloc_cell(256);
+    let npdf = ItemVec::<u8>::default();//m8.alloc_cell(256 * 16 * 2);
     for (index, item) in cm.slice_mut().iter_mut().enumerate() {
         *item = (index & 63) as u8;
     }
@@ -302,6 +303,7 @@ fn bench_no_ir<Run: Runner,
             literal_prediction_mode: ts.prediction_mode(),
             literal_context_map: cm,
             distance_context_map: dm,
+            nibble_pdf: npdf,
         }),
         Command::BlockSwitchLiteral(LiteralBlockSwitch::new(1, 2)),
         Command::Literal(LiteralCommand{

@@ -1,5 +1,5 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE, MAX_FREQUENTIST_PROB};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE, MAX_FREQUENTIST_PROB, DESERIALIZED_CDF_WEIGHT};
 use super::numeric;
 use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 use stdsimd;
@@ -192,6 +192,20 @@ impl CDF16 for SIMDFrequentistCDF16 {
             cdf_max = self.max();
         }
         self.inv_max = numeric::lookup_divisor(cdf_max);
+    }
+    fn populate_from_pdf(&mut self, pop:&[u8]) {
+       assert_eq!(pop.len(), 16);
+       let loaded_cdf_weight = 2;
+       let mut cdf = [0i16; 16];
+       cdf[0] = i16::from(pop[0]) << DESERIALIZED_CDF_WEIGHT;
+       for index in 1..16 {
+          cdf[index] = cdf[index - 1] + (i16::from(pop[index]) << DESERIALIZED_CDF_WEIGHT);
+       }
+       self.cdf = i16x16::new(
+           cdf[0], cdf[1], cdf[2], cdf[3], cdf[4], cdf[5], cdf[6], cdf[7],
+           cdf[8], cdf[9], cdf[10], cdf[11], cdf[12], cdf[13], cdf[14], cdf[15],
+           );
+       self.inv_max = numeric::lookup_divisor(self.max());
     }
 }
 
