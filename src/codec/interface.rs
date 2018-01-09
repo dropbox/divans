@@ -360,7 +360,7 @@ impl<Cdf16:CDF16,
         }
         for prev_byte in 0..256 {
            for prev_nibble in 0..16 {
-               let mut cdf_to_change = self.lit_priors.get(LiteralNibblePriorType::FirstNibble,
+               let mut cdf_to_change = self.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                              (prev_byte,
                                               prev_nibble,
                                               0));

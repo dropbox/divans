@@ -52,7 +52,7 @@ impl BaseCDF for FrequentistCDF16 {
         true
     }
 }
-const MIN_PDF_VAL: i16 = 1;
+const MIN_PDF_VAL: i16 = 0;
 impl CDF16 for FrequentistCDF16 {
     #[inline(always)]
     fn average(&self, other:&Self, mix_rate:i32) -> Self {

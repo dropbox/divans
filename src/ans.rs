@@ -266,6 +266,7 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
     fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) -> ProbRange {
         let start_freq = cdf.sym_to_start_and_freq(sym).range;
+        assert!(start_freq.freq != 0);
         if !(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE)) {
             debug_assert!(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE));
         }

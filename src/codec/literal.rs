@@ -217,13 +217,13 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
                                           byte_context.actual_context as usize,
-                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
+                                          0,//core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                          (byte_context.stride_byte as usize,
                                           cur_byte_prior as usize,
-                                          core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
+                                          0,//core::cmp::min(superstate.bk.stride as usize, NUM_STRIDES - 1),
                                           ))
         };
         let cm_prob = if high_nibble {
@@ -248,7 +248,6 @@ impl<AllocU8:Allocator<u8>,
         let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
                                                                      &prob,
                                                                      BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
-
         if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && CTraits::SHOULD_MIX {
             let model_probs = [
                 cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
