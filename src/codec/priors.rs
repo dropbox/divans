@@ -6,7 +6,7 @@ use ::priors::{PriorCollection, PriorMultiIndex};
 #[cfg(feature="debug_entropy")]
 use ::priors::summarize_prior_billing;
 pub const NUM_BLOCK_TYPES:usize = 256;
-pub const NUM_STRIDES:usize = 1;
+pub const NUM_STRIDES:usize = 8;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use probability::BaseCDF;
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
@@ -27,8 +27,8 @@ pub enum LiteralNibblePriorType {
 
 
 define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, 256, NUM_BLOCK_TYPES, NUM_STRIDES),
-                     (LiteralNibblePriorType::SecondNibble, 256, 16, NUM_STRIDES),
+                     (LiteralNibblePriorType::FirstNibble, 256, NUM_BLOCK_TYPES, 1),
+                     (LiteralNibblePriorType::SecondNibble, 256, 16, 1),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),

@@ -460,6 +460,9 @@ impl<AllocU8:Allocator<u8>,
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
                                                        1);
+        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
+                                                       0);
         ret
     }
 }
