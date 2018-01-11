@@ -20,6 +20,7 @@ fn main() {
                 use_brotli:divans::BrotliCompressionSetting::default(), // ignored
                 use_context_map:true, // whether we should use the brotli context map in addition to the last 8 bits of each byte as a prior
                 force_stride_value: divans::StrideSelection::UseBrotliRec, // if we should use brotli to decide on the stride
+                stride_detection_quality: Some(1),
             },
             4096, // internal buffer size
         );

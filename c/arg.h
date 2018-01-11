@@ -33,6 +33,14 @@ void set_options(struct DivansCompressorState *state, int argc, char **argv) {
             ret = divans_set_option(state, DIVANS_OPTION_USE_CONTEXT_MAP, 1);
             assert(ret == DIVANS_SUCCESS);
         }
+        if (strstr(argv[i], "-bs") == argv[i]) {
+            ret = divans_set_option(state, DIVANS_OPTION_STRIDE_DETECTION_QUALITY, 1);
+            assert(ret == DIVANS_SUCCESS);
+        }
+        if (strstr(argv[i], "-as") == argv[i]) {
+            ret = divans_set_option(state, DIVANS_OPTION_STRIDE_DETECTION_QUALITY, 2);
+            assert(ret == DIVANS_SUCCESS);
+        }
     }
     for (i = 1; i < argc; ++i) {
         if (strstr(argv[i], "-s") == argv[i]) {

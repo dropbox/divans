@@ -143,11 +143,11 @@ impl<AllocU8:Allocator<u8>,
             let nibble_prob = if high_nibble {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                              (k0 * 16 + k1,
-                                              actual_context,
+                                              actual_context ^ (stride << 4) as usize,
                                               0))
             } else {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                             (k0 * 16 + k1,
+                                             ((k0 * 16 + k1) ^ (stride << 4) as usize,
                                               cur_byte_prior as usize,
                                               0))
             };
@@ -216,12 +216,12 @@ impl<AllocU8:Allocator<u8>,
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
-                                          byte_context.actual_context as usize,
+                                          byte_context.actual_context as usize ^ (superstate.bk.stride << 4) as usize,
                                           0,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize,
+                                         (byte_context.stride_byte as usize ^ (superstate.bk.stride << 4) as usize,
                                           cur_byte_prior as usize,
                                           0,
                                           ))

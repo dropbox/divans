@@ -364,6 +364,8 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
 }
 type LgWin = Option<u32>;
 type Quality = Option<u16>;
+type StrideDetectionQuality = Option<u8>;
+
 impl<AllocU8:Allocator<u8>,
      AllocU16:Allocator<u16>,
      AllocI32:Allocator<i32>,
@@ -402,7 +404,8 @@ impl<AllocU8:Allocator<u8>,
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT,
                              Quality,
-                             LgWin);
+                             LgWin,
+                             StrideDetectionQuality);
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
                dynamic_context_mixing: u8,
                literal_adaptation_rate: Option<Speed>,
@@ -456,13 +459,13 @@ impl<AllocU8:Allocator<u8>,
                                                        additional_args.13.unwrap_or(18));
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
-                                                       additional_args.12.unwrap_or(10) as u32);
+                                                       u32::from(additional_args.12.unwrap_or(10)));
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
                                                        1);
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
-                                                       0);
+                                                       u32::from(additional_args.14.unwrap_or(0)));
         ret
     }
 }

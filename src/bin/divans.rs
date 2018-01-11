@@ -782,7 +782,8 @@ pub struct CompressOptions {
    pub do_context_map: bool,
    pub force_stride_value: StrideSelection,
    pub literal_adaptation_speed: Option<Speed>,
-   pub dynamic_context_mixing: Option<u8>
+   pub dynamic_context_mixing: Option<u8>,
+   pub stride_detection_quality: Option<u8>,
 }
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
@@ -819,6 +820,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
              opts.quality,
              opts.lgblock,
+             opts.stride_detection_quality,
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -1101,6 +1103,7 @@ fn main() {
     let mut window_size: Option<i32> = None;
     let mut lgwin: Option<u32> = None;
     let mut quality: Option<u16> = None;
+    let mut stride_detection_quality: Option<u8> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
     let mut doubledash = false;
@@ -1168,6 +1171,14 @@ fn main() {
                     '=').parse::<i32>().unwrap();
                     window_size=Some(fs);
                     continue;
+                }
+                if argument == "-brotlistride" {
+                    force_stride_value = StrideSelection::UseBrotliRec;
+                    stride_detection_quality = Some(1)
+                }
+                if argument == "-advbrotlistride" {
+                    force_stride_value = StrideSelection::UseBrotliRec;
+                    stride_detection_quality = Some(2)
                 }
                 if argument.starts_with("-stride") || argument == "-s" {
                     if argument.starts_with("-stride=") {
@@ -1292,6 +1303,7 @@ fn main() {
                                                quality: quality,
                                                window_size: window_size,
                                                lgblock: lgwin,
+                                               stride_detection_quality: stride_detection_quality,
                                            },
                                            buffer_size, use_brotli) {
                             Ok(_) => {}
@@ -1333,6 +1345,7 @@ fn main() {
                                            quality: quality,
                                            window_size: window_size,
                                            lgblock: lgwin,
+                                           stride_detection_quality: stride_detection_quality,
                                        },
                                        buffer_size,
                                        use_brotli) {
@@ -1370,6 +1383,7 @@ fn main() {
                                        quality: quality,
                                        window_size: window_size,
                                        lgblock: lgwin,
+                                       stride_detection_quality: stride_detection_quality,
                                    },
                                    buffer_size,
                                    use_brotli) {

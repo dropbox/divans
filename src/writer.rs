@@ -162,7 +162,8 @@ impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
                                                HeapAlloc::<brotli::enc::histogram::ContextType>::new(brotli::enc::histogram::ContextType::default()),
                                                HeapAlloc::<brotli::enc::entropy_encode::HuffmanTree>::new(brotli::enc::entropy_encode::HuffmanTree::default()),
                                                opts.quality,
-                                               opts.lgblock
+                                               opts.lgblock,
+                                               opts.stride_detection_quality,
                                            )),
                           buffer,
                           true,
@@ -418,6 +419,7 @@ mod test {
                            use_brotli:interface::BrotliCompressionSetting::default(),
                            use_context_map:true,
                            force_stride_value: interface::StrideSelection::default(),
+                           stride_detection_quality: Some(2),
                        },
                        1);
     }
@@ -433,6 +435,7 @@ mod test {
                            use_brotli:interface::BrotliCompressionSetting::default(),
                            use_context_map:true,
                            force_stride_value: interface::StrideSelection::Stride1,
+                           stride_detection_quality: None,
                        },
                        4095);
     }
@@ -448,6 +451,7 @@ mod test {
                            use_brotli:interface::BrotliCompressionSetting::default(),
                            use_context_map:true,
                            force_stride_value: interface::StrideSelection::Stride1,
+                           stride_detection_quality: None,
                        },
                        4095);
     }
@@ -462,7 +466,8 @@ mod test {
                            dynamic_context_mixing:Some(2),
                            use_brotli:interface::BrotliCompressionSetting::default(),
                            use_context_map:true,
-                           force_stride_value: interface::StrideSelection::Stride1,
+                           force_stride_value: interface::StrideSelection::UseBrotliRec,
+                           stride_detection_quality: Some(1),
                        },
                        3);
     }
