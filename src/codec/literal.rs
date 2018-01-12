@@ -205,6 +205,7 @@ impl<AllocU8:Allocator<u8>,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
                          _high_entropy: bool,
+                         stride: u8,
                          _ctraits: &'static CTraits,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
@@ -216,12 +217,12 @@ impl<AllocU8:Allocator<u8>,
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
-                                          byte_context.actual_context as usize ^ (superstate.bk.stride << 4) as usize,
+                                          byte_context.actual_context as usize ^ (stride << 4) as usize,
                                           0,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize ^ (superstate.bk.stride << 4) as usize,
+                                         (byte_context.stride_byte as usize ^ (stride << 4) as usize,
                                           cur_byte_prior as usize,
                                           0,
                                           ))
@@ -292,6 +293,7 @@ impl<AllocU8:Allocator<u8>,
                           output_offset: &mut usize,
                           ctraits: &'static CTraits) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
+        let stride = superstate.bk.stride;
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
@@ -430,6 +432,7 @@ impl<AllocU8:Allocator<u8>,
                                                           byte_context,
                                                           prior_nibble >> 4,
                                                           high_entropy,
+                                                          stride,
                                                           ctraits,
                                                           superstate,
                                                           );
@@ -455,6 +458,7 @@ impl<AllocU8:Allocator<u8>,
                                                       byte_context,
                                                       0,
                                                       high_entropy,
+                                                      stride,
                                                       ctraits,
                                                       superstate,
                                                       );
@@ -469,6 +473,7 @@ impl<AllocU8:Allocator<u8>,
                                                     byte_context,
                                                     cur_nibble,
                                                     high_entropy,
+                                                    stride,
                                                     ctraits,
                                                     superstate,
                                                     ) | (cur_nibble << 4);
