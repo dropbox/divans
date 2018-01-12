@@ -2,7 +2,7 @@ use core;
 use brotli::BrotliResult;
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
 use ::constants;
-use super::priors::{LiteralNibblePriorType, NUM_STRIDES};
+use super::priors::LiteralNibblePriorType;
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::UninitializedOnAlloc;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
@@ -52,10 +52,10 @@ pub fn get_prev_word_context<Cdf16:CDF16,
                              CTraits:CodecTraits>(bk: &CrossCommandBookKeeping<Cdf16,
                                                                               AllocU8,
                                                                               AllocCDF2,
-                                                                              AllocCDF16>,
+                                                                               AllocCDF16>,
                                                   _ctraits: &'static CTraits) -> ByteContext {
-    let stride = core::cmp::min(core::cmp::max(1, bk.stride), NUM_STRIDES as u8);
-    let base_shift = 0x40 - stride * 8;
+    let local_stride = if CTraits::HAVE_STRIDE { core::cmp::max(1, bk.stride) } else {1};
+    let base_shift = 0x40 - local_stride * 8;
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
     let prev_prev_byte = ((bk.last_8_literals >> 0x30) & 0xff) as u8;
@@ -81,7 +81,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     } else {
         selected_context
     };
-    ByteContext{actual_context:actual_context, stride_byte: stride_byte}
+    ByteContext{actual_context:actual_context, stride_byte: stride_byte, stride: local_stride}
 }
 
 
@@ -104,7 +104,7 @@ impl<AllocU8:Allocator<u8>,
                                                              AllocCDF16>,
                          in_cmd_prob_slice: &[u8]) -> u8 {
         let high_nibble = (nibble_index & 1) == 0;
-        let stride = core::cmp::min(core::cmp::max(1, superstate.bk.stride), NUM_STRIDES as u8);
+        let stride = core::cmp::max(1, superstate.bk.stride);
         let base_shift = 0x40 - stride * 8;
         let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
         let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
@@ -143,11 +143,11 @@ impl<AllocU8:Allocator<u8>,
             let nibble_prob = if high_nibble {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                              (k0 * 16 + k1,
-                                              actual_context ^ (stride << 4) as usize,
+                                              actual_context ^ ((stride - 1) << 4) as usize,
                                               0))
             } else {
                 superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                             ((k0 * 16 + k1) ^ (stride << 4) as usize,
+                                             ((k0 * 16 + k1) ^ ((stride - 1) << 4) as usize,
                                               cur_byte_prior as usize,
                                               0))
             };
@@ -205,7 +205,6 @@ impl<AllocU8:Allocator<u8>,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
                          _high_entropy: bool,
-                         stride: u8,
                          _ctraits: &'static CTraits,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
@@ -214,15 +213,16 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
         debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
+        let stride_xor = if CTraits::HAVE_STRIDE {(byte_context.stride as usize - 1) << 4} else {0};
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
-                                          byte_context.actual_context as usize ^ (stride << 4) as usize,
+                                          byte_context.actual_context as usize ^ stride_xor,
                                           0,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize ^ (stride << 4) as usize,
+                                         (byte_context.stride_byte as usize ^ stride_xor,
                                           cur_byte_prior as usize,
                                           0,
                                           ))
@@ -293,7 +293,6 @@ impl<AllocU8:Allocator<u8>,
                           output_offset: &mut usize,
                           ctraits: &'static CTraits) -> BrotliResult {
         let literal_len = in_cmd.data.slice().len() as u32;
-        let stride = superstate.bk.stride;
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
@@ -424,7 +423,8 @@ impl<AllocU8:Allocator<u8>,
                     let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
-                    let byte_context = get_prev_word_context(&superstate.bk, ctraits);
+                    let byte_context = get_prev_word_context(&superstate.bk,
+                                                             ctraits);
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
                         let cur_nibble = self.code_nibble(false,
@@ -432,7 +432,6 @@ impl<AllocU8:Allocator<u8>,
                                                           byte_context,
                                                           prior_nibble >> 4,
                                                           high_entropy,
-                                                          stride,
                                                           ctraits,
                                                           superstate,
                                                           );
@@ -458,7 +457,6 @@ impl<AllocU8:Allocator<u8>,
                                                       byte_context,
                                                       0,
                                                       high_entropy,
-                                                      stride,
                                                       ctraits,
                                                       superstate,
                                                       );
@@ -473,7 +471,6 @@ impl<AllocU8:Allocator<u8>,
                                                     byte_context,
                                                     cur_nibble,
                                                     high_entropy,
-                                                    stride,
                                                     ctraits,
                                                     superstate,
                                                     ) | (cur_nibble << 4);

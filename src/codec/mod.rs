@@ -107,6 +107,7 @@ enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
     CoderBufferDrain,
+    UpdateCodecTrait,
     WriteChecksum(usize),
 }
 
@@ -366,6 +367,13 @@ impl<AllocU8: Allocator<u8>,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
+                CodecTraitSelector::StrideTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
                 CodecTraitSelector::ContextMapTrait(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                          input_bytes_offset,
                                                                                          output_bytes,
@@ -373,7 +381,21 @@ impl<AllocU8: Allocator<u8>,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
-                CodecTraitSelector::StrideTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                CodecTraitSelector::StridedAveragingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                            input_bytes_offset,
+                                                                                            output_bytes,
+                                                                                            output_bytes_offset,
+                                                                                            input_commands,
+                                                                                            input_command_offset,
+                                                                                            tr),
+                CodecTraitSelector::StridedMixingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
+                                                                                         input_bytes_offset,
+                                                                                         output_bytes,
+                                                                                         output_bytes_offset,
+                                                                                         input_commands,
+                                                                                         input_command_offset,
+                                                                                         tr),
+                CodecTraitSelector::StridedStrideTrait(tr) => res = self.e_or_d_specialize(input_bytes,
                                                                                          input_bytes_offset,
                                                                                          output_bytes,
                                                                                          output_bytes_offset,
@@ -523,8 +545,7 @@ impl<AllocU8: Allocator<u8>,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                         BrotliResult::ResultSuccess => new_state = Some(
-                             EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded)),
+                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::UpdateCodecTrait),
                          // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
@@ -541,11 +562,17 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
+                            let old_stride = self.cross_command_state.bk.stride;
                             self.cross_command_state.bk.obs_btypel(match *block_type_state {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
                                 _ => panic!("illegal output state"),
                             });
-                            new_state = Some(EncodeOrDecodeState::Begin);
+                            if (old_stride <= 1) != (self.cross_command_state.bk.stride <= 1) {
+                                new_state = Some(EncodeOrDecodeState::UpdateCodecTrait);
+                                // we need to chage to update codec trait
+                            } else {
+                                new_state = Some(EncodeOrDecodeState::Begin);
+                            }
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -724,10 +751,13 @@ impl<AllocU8: Allocator<u8>,
                         },
                     }
                 },
+                EncodeOrDecodeState::UpdateCodecTrait => {
+                    new_state = Some(EncodeOrDecodeState::UpdateCodecTrait);
+                },
             }
             if let Some(ns) = new_state {
                 match ns {
-                    EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::FullyDecoded) => {
+                    EncodeOrDecodeState::UpdateCodecTrait => {
                         self.state = EncodeOrDecodeState::Begin;
                         return CodecTraitResult::UpdateCodecTraitAndAdvance(
                             construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
