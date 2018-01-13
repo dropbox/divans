@@ -1,7 +1,6 @@
 use core;
 use brotli::BrotliResult;
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
-use ::constants;
 use super::priors::LiteralNibblePriorType;
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::UninitializedOnAlloc;
@@ -18,11 +17,6 @@ use ::interface::{
     ArithmeticEncoderOrDecoder,
     BillingDesignation,
     LiteralCommand,
-    LiteralPredictionModeNibble,
-    LITERAL_PREDICTION_MODE_SIGN,
-    LITERAL_PREDICTION_MODE_UTF8,
-    LITERAL_PREDICTION_MODE_MSB6,
-    LITERAL_PREDICTION_MODE_LSB6,
 };
 use ::priors::PriorCollection;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -87,7 +81,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
 
 impl<AllocU8:Allocator<u8>,
                          > LiteralState<AllocU8> {
-    pub fn code_nibble_with_ecdf<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+    pub fn ecdf_write_nibble<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Cdf16:CDF16,
                         Specialization:EncoderOrDecoderSpecialization,
                         AllocCDF2:Allocator<CDF2>,
@@ -95,7 +89,7 @@ impl<AllocU8:Allocator<u8>,
                        >(&mut self,
                          nibble_index: u32,
                          mut cur_nibble: u8,
-                         cur_byte_prior: u8,
+                         _cur_byte_prior: u8,
                           superstate: &mut CrossCommandState<ArithmeticCoder,
                                                              Specialization,
                                                              Cdf16,
@@ -104,93 +98,19 @@ impl<AllocU8:Allocator<u8>,
                                                              AllocCDF16>,
                          in_cmd_prob_slice: &[u8]) -> u8 {
         let high_nibble = (nibble_index & 1) == 0;
-        let stride = core::cmp::max(1, superstate.bk.stride);
-        let base_shift = 0x40 - stride * 8;
-        let k0 = ((superstate.bk.last_8_literals >> (base_shift+4)) & 0xf) as usize;
-        let k1 = ((superstate.bk.last_8_literals >> base_shift) & 0xf) as usize;
-        let selected_context:usize;
-        let actual_context: usize;
-        {
-            let prev_byte = ((superstate.bk.last_8_literals >> 0x38) & 0xff) as u8;
-            let prev_prev_byte = ((superstate.bk.last_8_literals >> 0x30) & 0xff) as u8;
-            let utf_context = constants::UTF8_CONTEXT_LOOKUP[prev_byte as usize]
-                | constants::UTF8_CONTEXT_LOOKUP[prev_prev_byte as usize + 256];
-            let sign_context =
-                (constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_byte as usize] << 3) |
-            constants::SIGNED_3_BIT_CONTEXT_LOOKUP[prev_prev_byte as usize];
-            let msb_context = prev_byte >> 2;
-            let lsb_context = prev_byte & 0x3f;
-            selected_context = match superstate.bk.literal_prediction_mode {
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_SIGN) => sign_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_UTF8) => utf_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_MSB6) => msb_context,
-                LiteralPredictionModeNibble(LITERAL_PREDICTION_MODE_LSB6) => lsb_context,
-                _ => panic!("Internal Error: parsed nibble prediction mode has more than 2 bits"),
-            } as usize;
-            let cmap_index = selected_context as usize + 64 * superstate.bk.get_literal_block_type() as usize;
-            actual_context = if superstate.bk.materialized_prediction_mode() {
-                superstate.bk.literal_context_map.slice()[cmap_index as usize] as usize
-            } else {
-                selected_context
-            };
-            //if shift != 0 {
-            //println_stderr!("___{}{}{}",
-            //                prev_prev_byte as u8 as char,
-            //                prev_byte as u8 as char,
-            //                superstate.specialization.get_literal_byte(in_cmd, byte_index) as char);
-            //                }
-            let materialized_prediction_mode = superstate.bk.materialized_prediction_mode();
-            let nibble_prob = if high_nibble {
-                superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                             (k0 * 16 + k1,
-                                              actual_context ^ ((stride - 1) << 4) as usize,
-                                              0))
-            } else {
-                superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                             ((k0 * 16 + k1) ^ ((stride - 1) << 4) as usize,
-                                              cur_byte_prior as usize,
-                                              0))
-            };
-            let cm_prob = if high_nibble {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                (0,//(-(superstate.bk.prior_depth as i8) & selected_context as i8) as usize,
-                                                 actual_context,))
-            } else {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                (0,//(-(superstate.bk.prior_depth as i8) & selected_context as i8) as usize,
-                                                 cur_byte_prior as usize, actual_context))
-            };
-            let prob = if materialized_prediction_mode {
-                if superstate.bk.combine_literal_predictions {
-                    cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
-                } else {
-                    *cm_prob
-                }
-            } else {
-                *nibble_prob
-            };
-            let mut ecdf = ExternalProbCDF16::default();
-            let shift_offset = if high_nibble { 4usize } else { 0usize };
-            let byte_index = (nibble_index as usize) >> 1;
-            let en = byte_index*8 + shift_offset + 4;
-            let weighted_prob_range = if en <= in_cmd_prob_slice.len() {
-                let st = en - 4;
-                let probs = [in_cmd_prob_slice[st], in_cmd_prob_slice[st + 1],
+        let mut ecdf = ExternalProbCDF16::default();
+        let shift_offset = if high_nibble { 4usize } else { 0usize };
+        let byte_index = (nibble_index as usize) >> 1;
+        let en = byte_index*8 + shift_offset + 4;
+        if en <= in_cmd_prob_slice.len() {
+            let nibble_prob = Cdf16::default();
+            let st = en - 4;
+            let probs = [in_cmd_prob_slice[st], in_cmd_prob_slice[st + 1],
                              in_cmd_prob_slice[st + 2], in_cmd_prob_slice[st + 3]];
-                ecdf.init(cur_nibble, &probs, nibble_prob);
-                superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)))
-            } else {
-                superstate.coder.get_or_put_nibble(&mut cur_nibble, &prob, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)))
-            };
-            if materialized_prediction_mode && superstate.bk.model_weights[high_nibble as usize].should_mix() {
-                let model_probs = [
-                    cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                ];
-                superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
-            }
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
-            cm_prob.blend(cur_nibble, Speed::GLACIAL);
+            ecdf.init(cur_nibble, &probs, &nibble_prob);
+            superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
+        } else {
+            superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
         }
         cur_nibble
     }
@@ -401,7 +321,7 @@ impl<AllocU8:Allocator<u8>,
                         {
                             prior_nibble = self.lc.data.slice()[byte_index];
                         }
-                        cur_nibble = self.code_nibble_with_ecdf(nibble_index,
+                        cur_nibble = self.ecdf_write_nibble(nibble_index,
                                                                 cur_nibble,
                                                                 prior_nibble >> 4,
                                                                 superstate,

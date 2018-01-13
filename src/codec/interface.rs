@@ -132,7 +132,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
     pub stride: u8,
-    pub prior_depth: u8,
+    pub cm_prior_depth_mask: u8,
+    pub prior_bytes_depth_mask: u8,
     pub last_dlen: u8,
     pub last_clen: u8,
     pub last_llen: u32,
@@ -253,7 +254,8 @@ impl<Cdf16:CDF16,
         let mut ret = CrossCommandBookKeeping{
             model_weights:[super::weights::Weights::default(),
                            super::weights::Weights::default()],
-            prior_depth:0,
+            cm_prior_depth_mask:0xff,
+            prior_bytes_depth_mask:0x0,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
@@ -337,7 +339,10 @@ impl<Cdf16:CDF16,
         self.literal_adaptation = ladaptation_rate;
     }
     pub fn obs_prior_depth(&mut self, prior_depth: u8) {
-        self.prior_depth = prior_depth;
+        //self.prior_depth = prior_depth;
+        self.cm_prior_depth_mask = ((1u32 << core::cmp::min(prior_depth, 8)) - 1) as u8;
+        self.prior_bytes_depth_mask = ((1u32 << (7 - core::cmp::min(prior_depth, 8))) - 1) as u8;
+        self.prior_bytes_depth_mask = !self.prior_bytes_depth_mask; //bitwise not to grab upper bit
     }
     pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
         self.combine_literal_predictions = (context_mixing != 0) as bool;
