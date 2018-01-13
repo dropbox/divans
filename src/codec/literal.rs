@@ -48,7 +48,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
                                                                               AllocCDF2,
                                                                                AllocCDF16>,
                                                   _ctraits: &'static CTraits) -> ByteContext {
-    let local_stride = if CTraits::HAVE_STRIDE { core::cmp::max(1, bk.stride) } else {1};
+    let local_stride = if CTraits::HAVE_STRIDE { bk.stride } else {1};
     let base_shift = 0x40 - local_stride * 8;
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
@@ -75,7 +75,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     } else {
         selected_context
     };
-    ByteContext{actual_context:actual_context, selected_context: selected_context, stride_byte: stride_byte, stride: local_stride}
+    ByteContext{actual_context:actual_context, stride_byte: stride_byte}
 }
 
 
@@ -135,7 +135,7 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
         debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
-        let stride_xor = if CTraits::HAVE_STRIDE {(byte_context.stride as usize - 1) << 4} else {0};
+        let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize,
