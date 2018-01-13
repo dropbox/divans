@@ -53,6 +53,11 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
     let prev_prev_byte = ((bk.last_8_literals >> 0x30) & 0xff) as u8;
+    let stride_second_byte = if CTraits::HAVE_STRIDE {
+        prev_byte
+    }else {
+        prev_prev_byte
+    };
     let selected_context = bk.literal_lut0[prev_byte as usize] | bk.literal_lut1[prev_prev_byte as usize];
     /*
     let selected_context = match bk.literal_prediction_mode.0 {
@@ -75,7 +80,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     } else {
         selected_context
     };
-    ByteContext{actual_context:actual_context, stride_byte: stride_byte}
+    ByteContext{actual_context:actual_context, stride_byte: stride_byte, stride_second_byte:stride_second_byte}
 }
 
 
@@ -138,13 +143,13 @@ impl<AllocU8:Allocator<u8>,
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         (byte_context.stride_byte as usize,
-                                          byte_context.actual_context as usize ^ stride_xor,
+                                         (byte_context.stride_byte as usize ^ stride_xor,
+                                          (byte_context.actual_context as usize & superstate.bk.cm_prior_depth_mask as usize ) ^ (byte_context.stride_second_byte as usize & superstate.bk.prior_bytes_depth_mask as usize),
                                           0,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize ^ stride_xor,
+                                         ((byte_context.stride_byte as usize &  superstate.bk.second_nibble_depth_mask as usize)^ stride_xor,
                                           cur_byte_prior as usize,
                                           0,
                                           ))

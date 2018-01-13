@@ -134,6 +134,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub stride: u8,
     pub cm_prior_depth_mask: u8,
     pub prior_bytes_depth_mask: u8,
+    pub second_nibble_depth_mask: u8,
     pub last_dlen: u8,
     pub last_clen: u8,
     pub last_llen: u32,
@@ -178,6 +179,7 @@ pub fn default_literal_speed() -> Speed {
 pub struct ByteContext {
   pub actual_context: u8,
   pub stride_byte: u8,
+  pub stride_second_byte: u8,
 }
 
 fn get_lut0(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
@@ -254,6 +256,7 @@ impl<Cdf16:CDF16,
                            super::weights::Weights::default()],
             cm_prior_depth_mask:0xff,
             prior_bytes_depth_mask:0x0,
+            second_nibble_depth_mask:0xff,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
@@ -338,9 +341,64 @@ impl<Cdf16:CDF16,
     }
     pub fn obs_prior_depth(&mut self, prior_depth: u8) {
         //self.prior_depth = prior_depth;
-        self.cm_prior_depth_mask = ((1u32 << core::cmp::min(prior_depth, 8)) - 1) as u8;
-        self.prior_bytes_depth_mask = ((1u32 << (7 - core::cmp::min(prior_depth, 8))) - 1) as u8;
-        self.prior_bytes_depth_mask = !self.prior_bytes_depth_mask; //bitwise not to grab upper bit
+        match prior_depth {
+            0 | 1 | 2 | 3 | 4 => {
+                self.cm_prior_depth_mask = 0xff;
+                self.prior_bytes_depth_mask = 0x0;
+                self.second_nibble_depth_mask = 0xf0 | ((1 << prior_depth) - 1);
+            },
+            5 => {
+                self.cm_prior_depth_mask = 0x0;
+                self.prior_bytes_depth_mask = 0xff;
+                self.second_nibble_depth_mask = 0xf3;
+            },
+            6 => {
+                self.cm_prior_depth_mask = 0x0;
+                self.prior_bytes_depth_mask = 0xff;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            7 => {
+                self.cm_prior_depth_mask = 0x7f;
+                self.prior_bytes_depth_mask = 0x8 << 4;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            8 => {
+                self.cm_prior_depth_mask = 0x3f;
+                self.prior_bytes_depth_mask = 0xc << 4;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            9 => {
+                self.cm_prior_depth_mask = 0x1f;
+                self.prior_bytes_depth_mask = 0xe << 4;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            0xa => {
+                self.cm_prior_depth_mask = 0xf;
+                self.prior_bytes_depth_mask = 0xf << 4;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            0xb => {
+                self.cm_prior_depth_mask = 0x7;
+                self.prior_bytes_depth_mask = 0xf8;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            0xd => {
+                self.cm_prior_depth_mask = 0x3;
+                self.prior_bytes_depth_mask = 0xfc;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            0xe => {
+                self.cm_prior_depth_mask = 0x1;
+                self.prior_bytes_depth_mask = 0xfe;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            0xf => {
+                self.cm_prior_depth_mask = 0x0;
+                self.prior_bytes_depth_mask = 0xff;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            _ => panic!("not possible"),
+        }
     }
     pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
         self.combine_literal_predictions = (context_mixing != 0) as bool;
