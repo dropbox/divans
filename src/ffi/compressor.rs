@@ -111,6 +111,9 @@ impl CompressorState {
                         _ => return DIVANS_FAILURE,
                     });
                 },
+                DIVANS_OPTION_PRIOR_DEPTH => {
+                    opts.prior_depth = Some(value as u8);
+                },
                 _ => return DIVANS_FAILURE,
             }
             return DIVANS_SUCCESS;
@@ -129,6 +132,7 @@ impl CompressorState {
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
                                            opts.window_size.unwrap_or(21) as usize,
                                            opts.dynamic_context_mixing.unwrap_or(0),
+                                           opts.prior_depth,
                                            opts.literal_adaptation,
                                            opts.use_context_map,
                                            opts.force_stride_value,
@@ -144,6 +148,7 @@ impl CompressorState {
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
                                            opts.window_size.unwrap_or(21) as usize,
                                            opts.dynamic_context_mixing.unwrap_or(0),
+                                           opts.prior_depth,
                                            opts.literal_adaptation,
                                            opts.use_context_map,
                                            opts.force_stride_value,

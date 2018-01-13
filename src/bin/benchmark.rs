@@ -132,6 +132,7 @@ fn init_shuffle_384(src: &mut [u8]) -> u8 {
 trait TestSelection : Clone + Copy {
     fn size(&self) -> usize;
     fn use_context_map(&self) -> bool;
+    fn prior_depth(&self) -> Option<u8>;
     fn stride_selection(&self) -> divans::StrideSelection;
     fn adaptive_context_mixing(&self) -> bool;
     fn prediction_mode(&self) -> LiteralPredictionModeNibble;
@@ -156,6 +157,9 @@ impl TestSelection for TestContextMixing {
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {true}
     fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::UseBrotliRec}
+    fn prior_depth(&self) -> Option<u8> {
+        Some(0)
+    }
     fn adaptive_context_mixing(&self) -> bool {true}
     fn prediction_mode(&self) -> LiteralPredictionModeNibble {
         LiteralPredictionModeNibble::utf8()
@@ -163,6 +167,9 @@ impl TestSelection for TestContextMixing {
 }
 
 impl TestSelection for TestContextMixingPureAverage {
+    fn prior_depth(&self) -> Option<u8> {
+        Some(0)
+    }
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {true}
     fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::UseBrotliRec}
@@ -173,6 +180,9 @@ impl TestSelection for TestContextMixingPureAverage {
 }
 
 impl TestSelection for TestAdapt {
+    fn prior_depth(&self) -> Option<u8> {
+        Some(0)
+    }
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {true}
     fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::PriorDisabled}
@@ -183,6 +193,9 @@ impl TestSelection for TestAdapt {
 }
 
 impl TestSelection for TestSimple {
+    fn prior_depth(&self) -> Option<u8> {
+        Some(0)
+    }
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {false}
     fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::Stride1}
@@ -254,6 +267,7 @@ fn bench_with_ir<Run: Runner,
     super::compress_ir(&mut buf_ir,
                        &mut dv_buffer,
                        Some(mixing_mode),
+                       None,
                        Some(Speed::MUD),
                        ts.use_context_map(),
                        ts.stride_selection()).unwrap();
@@ -324,6 +338,7 @@ fn bench_no_ir<Run: Runner,
                 ItemVecAllocator::<divans::DefaultCDF16>::default(),
                 22, // window_size 
                 ts.adaptive_context_mixing() as u8 * 2,
+                ts.prior_depth(), // prior depth
                 None, // speed
                 ts.use_context_map(),
                 ts.stride_selection(),

@@ -132,12 +132,14 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
     pub stride: u8,
+    pub prior_depth: u8,
     pub last_dlen: u8,
     pub last_clen: u8,
     pub last_llen: u32,
     pub last_4_states: u8,
     pub materialized_context_map: bool,
     pub combine_literal_predictions: bool,
+    pub desired_prior_depth: u8,
     pub desired_context_mixing: u8,
     pub literal_prediction_mode: LiteralPredictionModeNibble,
     pub literal_adaptation: Speed,
@@ -173,9 +175,10 @@ pub fn default_literal_speed() -> Speed {
 
 #[derive(Clone,Copy,Debug)]
 pub struct ByteContext {
-  pub actual_context: u8,
-  pub stride_byte: u8,
   pub stride: u8,
+  pub stride_byte: u8,
+  pub actual_context: u8,
+  pub selected_context: u8,
 }
 
 fn get_lut0(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
@@ -236,6 +239,7 @@ impl<Cdf16:CDF16,
            literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
            mut dynamic_context_mixing: u8,
+           prior_depth: u8,
            literal_adaptation_speed:Speed,
            do_context_map: bool,
            force_stride: StrideSelection) -> Self {
@@ -249,6 +253,8 @@ impl<Cdf16:CDF16,
         let mut ret = CrossCommandBookKeeping{
             model_weights:[super::weights::Weights::default(),
                            super::weights::Weights::default()],
+            prior_depth:0,
+            desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
             literal_adaptation: default_literal_speed(),
@@ -329,6 +335,9 @@ impl<Cdf16:CDF16,
     }
     pub fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
         self.literal_adaptation = ladaptation_rate;
+    }
+    pub fn obs_prior_depth(&mut self, prior_depth: u8) {
+        self.prior_depth = prior_depth;
     }
     pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8) {
         self.combine_literal_predictions = (context_mixing != 0) as bool;
@@ -569,15 +578,16 @@ impl <AllocU8:Allocator<u8>,
                           AllocCDF2,
                           AllocCDF16> {
     pub fn new(mut m8: AllocU8,
-           mcdf2:AllocCDF2,
-           mut mcdf16:AllocCDF16,
-           coder: ArithmeticCoder,
-           spc: Specialization,
-           ring_buffer_size: usize,
-           dynamic_context_mixing: u8,
+               mcdf2:AllocCDF2,
+               mut mcdf16:AllocCDF16,
+               coder: ArithmeticCoder,
+               spc: Specialization,
+               ring_buffer_size: usize,
+               dynamic_context_mixing: u8,
+               prior_depth:u8,
                literal_adaptation_rate :Speed,
                do_context_map:bool,
-           force_stride: StrideSelection) -> Self {
+               force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
@@ -606,6 +616,7 @@ impl <AllocU8:Allocator<u8>,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
+                                            prior_depth,
                                             literal_adaptation_rate,
                                             do_context_map,
                                             force_stride,

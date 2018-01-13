@@ -18,6 +18,7 @@ use ::probability::{Speed, CDF2, CDF16};
 pub enum PredictionModeState {
     Begin,
     DynamicContextMixing,
+    PriorDepth,
     LiteralAdaptationRate,
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
@@ -90,6 +91,17 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    superstate.bk.obs_dynamic_context_mixing(beg_nib);
+                   *self = PredictionModeState::PriorDepth;
+               },
+               PredictionModeState::PriorDepth => {
+                   let mut beg_nib = superstate.bk.desired_prior_depth;
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(
+                           PredictionModePriorType::PriorDepth, (0,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       nibble_prob.blend(beg_nib, Speed::FAST);
+                   }
+                   superstate.bk.obs_prior_depth(beg_nib);
                    *self = PredictionModeState::LiteralAdaptationRate;
                },
                PredictionModeState::LiteralAdaptationRate => {

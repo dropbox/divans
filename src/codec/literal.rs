@@ -81,7 +81,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     } else {
         selected_context
     };
-    ByteContext{actual_context:actual_context, stride_byte: stride_byte, stride: local_stride}
+    ByteContext{actual_context:actual_context, selected_context: selected_context, stride_byte: stride_byte, stride: local_stride}
 }
 
 
@@ -153,10 +153,12 @@ impl<AllocU8:Allocator<u8>,
             };
             let cm_prob = if high_nibble {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                (actual_context,))
+                                                (0,//(-(superstate.bk.prior_depth as i8) & selected_context as i8) as usize,
+                                                 actual_context,))
             } else {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                (cur_byte_prior as usize, actual_context))
+                                                (0,//(-(superstate.bk.prior_depth as i8) & selected_context as i8) as usize,
+                                                 cur_byte_prior as usize, actual_context))
             };
             let prob = if materialized_prediction_mode {
                 if superstate.bk.combine_literal_predictions {
@@ -227,12 +229,16 @@ impl<AllocU8:Allocator<u8>,
                                           0,
                                           ))
         };
+        
         let cm_prob = if high_nibble {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                            (byte_context.actual_context as usize,))
+                                            (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                                             byte_context.actual_context as usize,))
         } else {
             superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                            (cur_byte_prior as usize, byte_context.actual_context as usize))
+                                            (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                                             cur_byte_prior as usize,
+                                             byte_context.actual_context as usize))
         };
         let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);

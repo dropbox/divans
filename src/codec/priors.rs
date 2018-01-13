@@ -35,8 +35,8 @@ define_prior_struct!(LiteralCommandPriors, LiteralNibblePriorType,
                      (LiteralNibblePriorType::SizeMantissaNib, NUM_BLOCK_TYPES));
 
 define_prior_struct!(LiteralCommandPriorsCM, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::FirstNibble, NUM_BLOCK_TYPES),
-                     (LiteralNibblePriorType::SecondNibble, 16, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::FirstNibble, 256, NUM_BLOCK_TYPES),
+                     (LiteralNibblePriorType::SecondNibble, 256, 16, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::CountSmall, NUM_BLOCK_TYPES, 16),
                      (LiteralNibblePriorType::SizeBegNib, NUM_BLOCK_TYPES),
                      (LiteralNibblePriorType::SizeLastNib, NUM_BLOCK_TYPES),
@@ -109,6 +109,7 @@ define_prior_struct!(BlockTypePriors, BlockTypePriorType,
 pub enum PredictionModePriorType {
     Only,
     DynamicContextMixingSpeed,
+    PriorDepth,
     LiteralSpeed,
     Mnemonic,
     FirstNibble,

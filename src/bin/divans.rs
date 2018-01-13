@@ -782,6 +782,7 @@ pub struct CompressOptions {
    pub do_context_map: bool,
    pub force_stride_value: StrideSelection,
    pub literal_adaptation_speed: Option<Speed>,
+   pub prior_depth: Option<u8>,
    pub dynamic_context_mixing: Option<u8>,
    pub stride_detection_quality: Option<u8>,
 }
@@ -803,6 +804,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
             opts.dynamic_context_mixing.unwrap_or(0),
+            opts.prior_depth,
             opts.literal_adaptation_speed,
             opts.do_context_map,
             opts.force_stride_value,
@@ -840,6 +842,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
             opts.dynamic_context_mixing.unwrap_or(0),
+            opts.prior_depth,
             opts.literal_adaptation_speed, opts.do_context_map, opts.force_stride_value, (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -854,6 +857,7 @@ fn compress_ir<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer,
     dynamic_context_mixing: Option<u8>,
+    prior_depth: Option<u8>,
     literal_adaptation_speed: Option<Speed>,
     do_context_map: bool,
     force_stride_value:StrideSelection) -> io::Result<()> {
@@ -883,6 +887,7 @@ fn compress_ir<Reader:std::io::BufRead,
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         window_size as usize,
         dynamic_context_mixing.unwrap_or(0),
+        prior_depth,
         literal_adaptation_speed,
         do_context_map,
         force_stride_value,
@@ -1106,6 +1111,7 @@ fn main() {
     let mut stride_detection_quality: Option<u8> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
+    let mut force_prior_depth: Option<u8> = None;
     let mut doubledash = false;
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
@@ -1157,6 +1163,23 @@ fn main() {
                         'y').trim_matches(
                         '=').parse::<u16>().unwrap();
                     quality=Some(fs);
+                    continue;
+                }
+                if argument.starts_with("-p") {
+                    let fs = argument.trim_matches(
+                        '-').trim_matches(
+                        'p').trim_matches(
+                        'r').trim_matches(
+                        'i').trim_matches(
+                        'o').trim_matches(
+                        'r').trim_matches(
+                        'd').trim_matches(
+                        'e').trim_matches(
+                        'p').trim_matches(
+                        't').trim_matches(
+                        'h').trim_matches(
+                    '=').parse::<i32>().unwrap();
+                    force_prior_depth=Some(fs as u8);
                     continue;
                 }
                 if argument.starts_with("-w") || argument.starts_with("-window=") {
@@ -1287,7 +1310,7 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress && !raw_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), literal_adaptation.clone(), use_context_map, force_stride_value) {
+                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation.clone(), use_context_map, force_stride_value) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1299,6 +1322,7 @@ fn main() {
                                                dynamic_context_mixing: dynamic_context_mixing.clone(),
                                                literal_adaptation_speed: literal_adaptation.clone(),
                                                do_context_map: use_context_map,
+                                               prior_depth: force_prior_depth,
                                                force_stride_value: force_stride_value,
                                                quality: quality,
                                                window_size: window_size,
@@ -1330,7 +1354,7 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress && !raw_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value) {
+                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1341,6 +1365,7 @@ fn main() {
                                            dynamic_context_mixing: dynamic_context_mixing.clone(),
                                            literal_adaptation_speed: literal_adaptation.clone(),
                                            do_context_map: use_context_map,
+                                           prior_depth: force_prior_depth,
                                            force_stride_value: force_stride_value,
                                            quality: quality,
                                            window_size: window_size,
@@ -1368,7 +1393,7 @@ fn main() {
             if do_compress && !raw_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), literal_adaptation, use_context_map, force_stride_value) {
+                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1380,6 +1405,7 @@ fn main() {
                                        literal_adaptation_speed: literal_adaptation.clone(),
                                        do_context_map: use_context_map,
                                        force_stride_value: force_stride_value,
+                                       prior_depth: force_prior_depth,
                                        quality: quality,
                                        window_size: window_size,
                                        lgblock: lgwin,
