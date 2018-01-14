@@ -1129,10 +1129,19 @@ fn main() {
                         'b').trim_matches('s').parse::<usize>().unwrap();
                     continue;
                 }
-                if argument.starts_with("-b") {
+                if argument.starts_with("-benchmark") {
                     num_benchmarks = argument.trim_matches(
                         '-').trim_matches(
-                        'b').parse::<usize>().unwrap();
+                        'b').trim_matches(
+                        'e').trim_matches(
+                        'n').trim_matches(
+                        'c').trim_matches(
+                        'h').trim_matches(
+                        'm').trim_matches(
+                        'a').trim_matches(
+                        'r').trim_matches(
+                        'k').trim_matches(
+                        '=').parse::<usize>().unwrap();
                     continue;
                 }
                 if argument == "--recode" {
@@ -1197,11 +1206,13 @@ fn main() {
                 }
                 if argument == "-brotlistride" {
                     force_stride_value = StrideSelection::UseBrotliRec;
-                    stride_detection_quality = Some(1)
+                    stride_detection_quality = Some(1);
+                    continue;
                 }
                 if argument == "-advbrotlistride" {
                     force_stride_value = StrideSelection::UseBrotliRec;
-                    stride_detection_quality = Some(2)
+                    stride_detection_quality = Some(2);
+                    continue;
                 }
                 if argument.starts_with("-stride") || argument == "-s" {
                     if argument.starts_with("-stride=") {
