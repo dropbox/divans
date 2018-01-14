@@ -25,6 +25,7 @@ use super::priors::{
     LiteralCommandPriors,
     LiteralCommandPriorsCM,
     CopyCommandPriors,
+    CopyCommandAdvPriors,
     DictCommandPriors,
     CrossCommandPriors,
     PredictionModePriors,
@@ -123,6 +124,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
+    pub copy_adv_priors: CopyCommandAdvPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
     pub prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
     pub cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
@@ -232,6 +234,7 @@ impl<Cdf16:CDF16,
            cm_lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
+           copy_adv_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
            pred_prior: AllocCDF16::AllocatedMemory,
            btype_prior: AllocCDF16::AllocatedMemory,
@@ -293,6 +296,9 @@ impl<Cdf16:CDF16,
             },
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
+            },
+            copy_adv_priors: CopyCommandAdvPriors {
+                priors: copy_adv_prior
             },
             dict_priors: DictCommandPriors {
                 priors: dict_prior
@@ -595,6 +601,7 @@ impl <AllocU8:Allocator<u8>,
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let copy_adv_priors = mcdf16.alloc_cell(CopyCommandAdvPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
@@ -615,7 +622,7 @@ impl <AllocU8:Allocator<u8>,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
             bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior,
-                                            cc_priors, copy_priors,
+                                            cc_priors, copy_priors, copy_adv_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
@@ -635,6 +642,7 @@ impl <AllocU8:Allocator<u8>,
         let cdf16e = core::mem::replace(&mut self.bk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16f = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16g = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16h = core::mem::replace(&mut self.bk.copy_adv_priors.priors, AllocCDF16::AllocatedMemory::default());
         self.coder.free(self.m8.get_base_alloc());
         self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.literal_context_map,
                                                               AllocU8::AllocatedMemory::default()));
@@ -648,6 +656,7 @@ impl <AllocU8:Allocator<u8>,
         self.mcdf16.free_cell(cdf16e);
         self.mcdf16.free_cell(cdf16f);
         self.mcdf16.free_cell(cdf16g);
+        self.mcdf16.free_cell(cdf16h);
     }
     pub fn free_ref(&mut self) {
         self.free_internal();

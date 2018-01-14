@@ -14,7 +14,7 @@ use ::interface::{
 };
 use ::priors::PriorCollection;
 use ::probability::{Speed, CDF16, CDF2};
-use super::priors::CopyCommandNibblePriorType;
+use super::priors::{CopyCommandNibblePriorType, CopyCommandAdvPriorType};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CopySubstate {
     Begin,
@@ -157,7 +157,12 @@ impl CopyState {
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize, ((superstate.bk.last_llen < 8) as usize)));
+                            CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize,
+                            ((superstate.bk.last_llen < 8) as usize)));
+                        let mut nibble_prob_adv = superstate.bk.copy_adv_priors.get(
+                            CopyCommandAdvPriorType::DistanceMnemonicAdv, (actual_prior as usize,
+                            (core::cmp::min(superstate.bk.last_llen, 16) as usize)));
+                        
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         nibble_prob.blend(beg_nib, Speed::MUD);
                     }

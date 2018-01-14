@@ -67,6 +67,18 @@ pub enum CopyCommandNibblePriorType {
     CountLastNib,
     CountMantissaNib,
 }
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum CopyCommandAdvPriorType {
+    DistanceBegAdv,
+    DistanceLastAdv,
+    DistanceMnemonicAdv,
+    DistanceMantissaAdv,
+    CountSmall,
+    CountBegNib,
+    CountLastNib,
+    CountMantissaNib,
+}
 const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
@@ -77,6 +89,17 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::CountBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::CountLastNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::CountMantissaNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS));
+
+define_prior_struct!(CopyCommandAdvPriors, CopyCommandAdvPriorType,
+                     (CopyCommandAdvPriorType::DistanceBegAdv, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS, 8),
+                     (CopyCommandAdvPriorType::DistanceMnemonicAdv, NUM_BLOCK_TYPES, 16),
+                     (CopyCommandAdvPriorType::DistanceLastAdv, NUM_BLOCK_TYPES, 8),
+                     (CopyCommandAdvPriorType::DistanceMantissaAdv, NUM_BLOCK_TYPES, 5, 12),
+                     (CopyCommandAdvPriorType::CountSmall, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
+                     (CopyCommandAdvPriorType::CountBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
+                     (CopyCommandAdvPriorType::CountLastNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
+                     (CopyCommandAdvPriorType::CountMantissaNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS));
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum DictCommandNibblePriorType {
     SizeBegNib,
