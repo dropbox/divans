@@ -161,10 +161,17 @@ impl CopyState {
                             ((superstate.bk.last_llen < 8) as usize)));
                         let mut nibble_prob_adv = superstate.bk.copy_adv_priors.get(
                             CopyCommandAdvPriorType::DistanceMnemonicAdv, (actual_prior as usize,
-                            (core::cmp::min(superstate.bk.last_llen, 16) as usize)));
-                        
-                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                            (core::cmp::min(superstate.bk.last_llen, 15) as usize)));
+                        let prob = nibble_prob_adv.average(nibble_prob, superstate.bk.distance_mnemonic_model_weight.norm_weight() as u16 as i32);
+                        let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut beg_nib, &prob, billing);
+                        let model_probs = [
+                            nibble_prob_adv.sym_to_start_and_freq(beg_nib).range.freq,
+                            nibble_prob.sym_to_start_and_freq(beg_nib).range.freq,
+                        ];
+                        superstate.bk.distance_mnemonic_model_weight.update(model_probs, weighted_prob_range.freq);
+
                         nibble_prob.blend(beg_nib, Speed::MUD);
+                        nibble_prob_adv.blend(beg_nib, Speed::MED);
                     }
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     if beg_nib == 15 {
@@ -198,12 +205,22 @@ impl CopyState {
                 },
                 CopySubstate::DistanceLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
-                    let index = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8 - self.cc.num_bytes.leading_zeros()) as usize >> 2;
+                    let index = core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8 - self.cc.num_bytes.leading_zeros();
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                        CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index as usize));
+                    let mut nibble_prob_adv = superstate.bk.copy_adv_priors.get(
+                        CopyCommandAdvPriorType::DistanceBegAdv, (actual_prior as usize, core::cmp::min(self.cc.num_bytes, 63) as usize));
+                    let prob = nibble_prob_adv.average(nibble_prob, superstate.bk.distance_length_model_weight.norm_weight() as u16 as i32);
+                    let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut beg_nib, &prob, billing);
+
+                    let model_probs = [
+                        nibble_prob_adv.sym_to_start_and_freq(beg_nib).range.freq,
+                        nibble_prob.sym_to_start_and_freq(beg_nib).range.freq,
+                    ];
+                    superstate.bk.distance_length_model_weight.update(model_probs, weighted_prob_range.freq);
                     nibble_prob.blend(beg_nib, Speed::PLANE);
+                    nibble_prob_adv.blend(beg_nib, Speed::ROCKET);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else {

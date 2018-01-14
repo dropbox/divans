@@ -91,8 +91,8 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::CountMantissaNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS));
 
 define_prior_struct!(CopyCommandAdvPriors, CopyCommandAdvPriorType,
-                     (CopyCommandAdvPriorType::DistanceBegAdv, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS, 8),
-                     (CopyCommandAdvPriorType::DistanceMnemonicAdv, NUM_BLOCK_TYPES, 16),
+                     (CopyCommandAdvPriorType::DistanceBegAdv, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
+                     (CopyCommandAdvPriorType::DistanceMnemonicAdv, NUM_BLOCK_TYPES, 32),
                      (CopyCommandAdvPriorType::DistanceLastAdv, NUM_BLOCK_TYPES, 8),
                      (CopyCommandAdvPriorType::DistanceMantissaAdv, NUM_BLOCK_TYPES, 5, 12),
                      (CopyCommandAdvPriorType::CountSmall, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
