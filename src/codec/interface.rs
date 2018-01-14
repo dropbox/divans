@@ -412,8 +412,8 @@ impl<Cdf16:CDF16,
     }
 
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
-        let dtype = self.get_distance_block_type();
-        let distance_map_index = dtype as usize * 4 + core::cmp::min(copy_len as usize - 1, 3);
+        let dtype = self.get_distance_block_type() as usize;
+        let distance_map_index = dtype * 4 + core::cmp::min(core::cmp::max(copy_len, 2) - 2, 3) as usize;
         self.distance_context_map.slice()[distance_map_index] as usize
     }
     pub fn reset_context_map_lru(&mut self) {
