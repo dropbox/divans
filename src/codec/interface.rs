@@ -355,29 +355,34 @@ impl<Cdf16:CDF16,
             6 => {
                 self.cm_prior_depth_mask = 0x0;
                 self.prior_bytes_depth_mask = 0xff;
-                self.second_nibble_depth_mask = 0xff;
+                self.second_nibble_depth_mask = 0xf7;
             },
             7 => {
+                self.cm_prior_depth_mask = 0x0;
+                self.prior_bytes_depth_mask = 0xff;
+                self.second_nibble_depth_mask = 0xff;
+            },
+            8 => {
                 self.cm_prior_depth_mask = 0x7f;
                 self.prior_bytes_depth_mask = 0x8 << 4;
                 self.second_nibble_depth_mask = 0xff;
             },
-            8 => {
+            9 => {
                 self.cm_prior_depth_mask = 0x3f;
                 self.prior_bytes_depth_mask = 0xc << 4;
                 self.second_nibble_depth_mask = 0xff;
             },
-            9 => {
+            0xa => {
                 self.cm_prior_depth_mask = 0x1f;
                 self.prior_bytes_depth_mask = 0xe << 4;
                 self.second_nibble_depth_mask = 0xff;
             },
-            0xa => {
+            0xb => {
                 self.cm_prior_depth_mask = 0xf;
                 self.prior_bytes_depth_mask = 0xf << 4;
                 self.second_nibble_depth_mask = 0xff;
             },
-            0xb => {
+            0xc => {
                 self.cm_prior_depth_mask = 0x7;
                 self.prior_bytes_depth_mask = 0xf8;
                 self.second_nibble_depth_mask = 0xff;
