@@ -76,13 +76,24 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * core::cmp::min(superstate.bk.last_llen as usize - 1, 3);
+                    debug_assert_eq!(superstate.bk.last_4_states>> 6, 1);
+                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * core::cmp::min(superstate.bk.last_llen as usize - 1, 6);
+                    let index_adv = core::cmp::min(superstate.bk.last_llen as usize - 1, 16) + 16 * core::cmp::min(superstate.bk.last_clen as usize - 1, 6);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
-                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    let mut nibble_prob_adv = superstate.bk.copy_adv_priors.get(
+                        CopyCommandAdvPriorType::CountSmall, (ctype, index_adv));
+                    let prob = nibble_prob_adv.average(nibble_prob, superstate.bk.copy_count_small_weight.norm_weight() as u16 as i32);
+                    let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut shortcut_nib, &prob, billing);
+                    let model_probs = [
+                        nibble_prob_adv.sym_to_start_and_freq(shortcut_nib).range.freq,
+                        nibble_prob.sym_to_start_and_freq(shortcut_nib).range.freq,
+                    ];
+                    superstate.bk.copy_count_small_weight.update(model_probs, weighted_prob_range.freq);
                     nibble_prob.blend(shortcut_nib, Speed::MED);
+                    nibble_prob_adv.blend(shortcut_nib, Speed::MED);
 
                     if shortcut_nib == 15 {
                         self.state = CopySubstate::CountLengthFirst;
@@ -101,7 +112,7 @@ impl CopyState {
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountBegNib, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                    nibble_prob.blend(beg_nib, Speed::FAST);
+                    nibble_prob.blend(beg_nib, Speed::ROCKET);
 
                     if beg_nib == 15 {
                         self.state = CopySubstate::CountLengthGreater18Less25;
