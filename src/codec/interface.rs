@@ -116,6 +116,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub model_weights: [super::weights::Weights;2],
     pub distance_mnemonic_model_weight: super::weights::Weights,
     pub distance_length_model_weight: super::weights::Weights,
+    pub literal_count_weight: super::weights::Weights,
+    pub cross_type_weight: super::weights::Weights,
     pub last_8_literals: u64,
     pub decode_byte_count: u32,
     pub command_count:u32,
@@ -125,6 +127,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
+    pub cc_priors_adv: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     pub copy_adv_priors: CopyCommandAdvPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -235,6 +238,7 @@ impl<Cdf16:CDF16,
     fn new(lit_prior: AllocCDF16::AllocatedMemory,
            cm_lit_prior: AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
+           cc_prior_adv: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            copy_adv_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
@@ -259,6 +263,8 @@ impl<Cdf16:CDF16,
                            super::weights::Weights::default()],
             distance_mnemonic_model_weight: super::weights::Weights::default(),
             distance_length_model_weight: super::weights::Weights::default(),
+            literal_count_weight:  super::weights::Weights::default(),
+            cross_type_weight:  super::weights::Weights::default(),
             cm_prior_depth_mask:0xff,
             prior_bytes_depth_mask:0x0,
             desired_prior_depth:prior_depth,
@@ -297,6 +303,9 @@ impl<Cdf16:CDF16,
             },
             cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
+            },
+            cc_priors_adv: CrossCommandPriors::<Cdf16, AllocCDF16> {
+                priors: cc_prior_adv
             },
             copy_priors: CopyCommandPriors {
                 priors: copy_prior
@@ -481,13 +490,13 @@ impl<Cdf16:CDF16,
         self.num_literals_coded += 1;
         self.last_8_literals >>= 0x8;
         self.last_8_literals |= u64::from(b) << 0x38;
-    }
+    }/*
     pub fn get_command_type_prob(&mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
                            ((self.last_8_literals>>0x3e) as usize &0xf)))
-    }
+    }*/
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
@@ -508,6 +517,9 @@ impl<Cdf16:CDF16,
     pub fn obs_literal_state(&mut self) {
         self.next_state();
         self.last_4_states |= 128;
+    }
+    pub fn obs_other_state(&mut self) {
+        self.next_state();
     }
     pub fn obs_distance(&mut self, cc:&CopyCommand) {
         if cc.num_bytes < self.distance_cache.len() as u32{
@@ -608,6 +620,7 @@ impl <AllocU8:Allocator<u8>,
         let copy_adv_priors = mcdf16.alloc_cell(CopyCommandAdvPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let cc_priors_adv = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let literal_context_map = m8.alloc_cell(64 * NUM_BLOCK_TYPES);
@@ -626,7 +639,7 @@ impl <AllocU8:Allocator<u8>,
             mcdf2:mcdf2,
             mcdf16:mcdf16,
             bk:CrossCommandBookKeeping::new(lit_priors, cm_lit_prior,
-                                            cc_priors, copy_priors, copy_adv_priors,
+                                            cc_priors, cc_priors_adv, copy_priors, copy_adv_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
@@ -647,6 +660,7 @@ impl <AllocU8:Allocator<u8>,
         let cdf16f = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16g = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16h = core::mem::replace(&mut self.bk.copy_adv_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16i = core::mem::replace(&mut self.bk.cc_priors_adv.priors, AllocCDF16::AllocatedMemory::default());
         self.coder.free(self.m8.get_base_alloc());
         self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.literal_context_map,
                                                               AllocU8::AllocatedMemory::default()));
@@ -661,6 +675,7 @@ impl <AllocU8:Allocator<u8>,
         self.mcdf16.free_cell(cdf16f);
         self.mcdf16.free_cell(cdf16g);
         self.mcdf16.free_cell(cdf16h);
+        self.mcdf16.free_cell(cdf16i);
     }
     pub fn free_ref(&mut self) {
         self.free_internal();

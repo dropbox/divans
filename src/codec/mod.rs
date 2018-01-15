@@ -58,7 +58,7 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
-
+use ::priors::PriorCollection;
 
 
 /*
@@ -515,19 +515,37 @@ impl<AllocU8: Allocator<u8>,
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {
-                        let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
-                        self.cross_command_state.coder.get_or_put_nibble(
+                        let command_type_prob = self.cross_command_state.bk.cc_priors.get(
+                            CrossCommandBilling::FullSelection,
+                            ((self.cross_command_state.bk.last_4_states as usize) >> 6,// last state only
+                             ((self.cross_command_state.bk.last_8_literals>>0x3e) as usize &0xf)));
+                        let relevant_len = self.cross_command_state.bk.last_clen;
+                        let trunc_relevant_len = core::cmp::min(core::cmp::max(2, relevant_len as usize), 5) - 2;
+                        let command_type_prob_adv = self.cross_command_state.bk.cc_priors_adv.get(
+                            CrossCommandBilling::FullSelection,
+                            (trunc_relevant_len,
+                             (self.cross_command_state.bk.last_4_states as usize >> 2)));
+                        let prob = command_type_prob_adv.average(command_type_prob, self.cross_command_state.bk.cross_type_weight.norm_weight() as u16 as i32);
+                        let weighted_prob_range =  self.cross_command_state.coder.get_or_put_nibble(
                             &mut command_type_code,
-                            command_type_prob,
+                            &prob,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
+                        
                         command_type_prob.blend(command_type_code, Speed::ROCKET);
+                        command_type_prob_adv.blend(command_type_code, Speed::FAST);
+                        let model_probs = [
+                            command_type_prob_adv.sym_to_start_and_freq(command_type_code).range.freq,
+                            command_type_prob.sym_to_start_and_freq(command_type_code).range.freq,
+                        ];
+                        self.cross_command_state.bk.literal_count_weight.update(model_probs, weighted_prob_range.freq);
+
                     }
                     let command_state = get_command_state_from_nibble(command_type_code, is_end);
                     match command_state {
                         EncodeOrDecodeState::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
                         EncodeOrDecodeState::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
                         EncodeOrDecodeState::Literal(_) => { self.cross_command_state.bk.obs_literal_state(); },
-                        _ => {},
+                        _ => { self.cross_command_state.bk.obs_other_state(); },
                     }
                     new_state = Some(command_state);
                 },

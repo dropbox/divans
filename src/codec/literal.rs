@@ -239,16 +239,26 @@ impl<AllocU8:Allocator<u8>,
                     self.state = LiteralSubstate::LiteralCountSmall(false);
                 },
                 LiteralSubstate::LiteralCountSmall(high_entropy_flag) => {
-                    let index = 0;
+                    let index_a = core::cmp::min(superstate.bk.last_clen as usize, 8);
+                    let index_b = core::cmp::min(superstate.bk.last_llen as usize, 15);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(NUM_LITERAL_LENGTH_MNEMONIC, literal_len.wrapping_sub(1)) as u8;
                     if in_cmd.high_entropy && !high_entropy_flag {
                         shortcut_nib = NUM_LITERAL_LENGTH_MNEMONIC as u8 + 1;
                     }
-                    let mut nibble_prob = superstate.bk.lit_priors.get(
-                        LiteralNibblePriorType::CountSmall, (ctype, index));
-                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
-                    nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
+                    let mut nibble_prob = superstate.bk.lit_cm_priors.get(
+                        LiteralNibblePriorType::CountSmall, (ctype, index_a as usize));
+                    let mut nibble_prob_adv = superstate.bk.lit_priors.get(
+                        LiteralNibblePriorType::CountSmall, (ctype, index_b as usize));
+                    let prob = nibble_prob_adv.average(nibble_prob, superstate.bk.literal_count_weight.norm_weight() as u16 as i32);
+                    let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut shortcut_nib, &prob, billing);
+                    nibble_prob.blend(shortcut_nib, Speed::PLANE);// checked med
+                    nibble_prob_adv.blend(shortcut_nib, Speed::GLACIAL);// checked med
+                    let model_probs = [
+                        nibble_prob_adv.sym_to_start_and_freq(shortcut_nib).range.freq,
+                        nibble_prob.sym_to_start_and_freq(shortcut_nib).range.freq,
+                    ];
+                    superstate.bk.literal_count_weight.update(model_probs, weighted_prob_range.freq);
 
                     if shortcut_nib as u32 == NUM_LITERAL_LENGTH_MNEMONIC {
                         self.state = LiteralSubstate::LiteralCountFirst;
