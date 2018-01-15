@@ -518,13 +518,13 @@ impl<AllocU8: Allocator<u8>,
                         let command_type_prob = self.cross_command_state.bk.cc_priors.get(
                             CrossCommandBilling::FullSelection,
                             ((self.cross_command_state.bk.last_4_states as usize) >> 6,// last state only
-                             ((self.cross_command_state.bk.last_8_literals>>0x3e) as usize &0xf)));
+                             ((self.cross_command_state.bk.last_8_literals>>0x3c) as usize &0xf)));
                         let relevant_len = self.cross_command_state.bk.last_clen;
                         let trunc_relevant_len = core::cmp::min(core::cmp::max(2, relevant_len as usize), 5) - 2;
                         let command_type_prob_adv = self.cross_command_state.bk.cc_priors_adv.get(
                             CrossCommandBilling::FullSelection,
                             (trunc_relevant_len,
-                             (self.cross_command_state.bk.last_4_states as usize >> 2)));
+                             (self.cross_command_state.bk.last_4_states as usize >> 4)));
                         let prob = command_type_prob_adv.average(command_type_prob, self.cross_command_state.bk.cross_type_weight.norm_weight() as u16 as i32);
                         let weighted_prob_range =  self.cross_command_state.coder.get_or_put_nibble(
                             &mut command_type_code,
