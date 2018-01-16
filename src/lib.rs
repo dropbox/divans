@@ -109,6 +109,8 @@ pub use probability::Speed;
 
 
 pub use probability::CDF2;
+pub use probability::CDF16;
+pub use probability::BaseCDF;
 
 pub use interface::BrotliCompressionSetting;
 pub use interface::DivansCompressorOptions;
