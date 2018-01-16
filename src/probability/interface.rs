@@ -251,7 +251,7 @@ impl CDF2 {
 #[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum Speed {
-    GEOLOGIC =0x7f00_0001,
+    GEOLOGIC =0x4000_0001,
     GLACIAL =0x0a00_0004,
     MUD =   0x2000_0010,
     SLOW =  0x3000_0020,
