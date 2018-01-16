@@ -169,10 +169,11 @@ impl PredictionModeState {
                        res
                    };
                    {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (superstate.bk.last_cm_mnemonic as usize,));
                        superstate.coder.get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
-                       nibble_prob.blend(mnemonic_nibble, Speed::MED);
+                       nibble_prob.blend(mnemonic_nibble, Speed::MUD);
                    }
+                   superstate.bk.last_cm_mnemonic = mnemonic_nibble;
                    if mnemonic_nibble == 14 {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
@@ -208,10 +209,11 @@ impl PredictionModeState {
                    } else {
                        cur_context_map[index as usize] >> 4
                    };
-                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble,
+                                                                             ((superstate.bk.last_cm_byte as usize )>> 4,));
 
                    superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
-                   nibble_prob.blend(msn_nib, Speed::MED);
+                   nibble_prob.blend(msn_nib, Speed::MUD);
                    *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, msn_nib);
                },
                PredictionModeState::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
@@ -226,11 +228,12 @@ impl PredictionModeState {
                        cur_context_map[index as usize] & 0xf
                    };
                    {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (0,));
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble,
+                                                                                 (superstate.bk.last_cm_byte as usize & 0xf,));
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
-                       nibble_prob.blend(lsn_nib, Speed::MED);
+                       nibble_prob.blend(lsn_nib, Speed::MUD);
                    }
                    if let BrotliResult::ResultFailure = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
                        return BrotliResult::ResultFailure;

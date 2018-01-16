@@ -146,6 +146,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub last_clen: u8,
     pub last_llen: u32,
     pub last_4_states: u8,
+    pub last_cm_mnemonic: u8,
+    pub last_cm_byte: u8,
     pub materialized_context_map: bool,
     pub combine_literal_predictions: bool,
     pub desired_prior_depth: u8,
@@ -289,6 +291,8 @@ impl<Cdf16:CDF16,
             materialized_context_map: false,
             combine_literal_predictions: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
+            last_cm_mnemonic: 14,
+            last_cm_byte: 0,
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
@@ -378,6 +382,7 @@ impl<Cdf16:CDF16,
         self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     }
     pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> BrotliResult {
+        self.last_cm_byte = val;
         self.materialized_context_map = true;
         let target_array = match context_map_type {
             ContextMapType::Literal => self.literal_context_map.slice_mut(),
