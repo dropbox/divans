@@ -32,7 +32,11 @@ fn eval_stream<Reader:std::io::BufRead>(
                     return Ok(cost);
                 }
                 let line = buffer.trim().to_string();
-                let prior_val: Vec<String> = line.split(' ').map(|s| s.to_string()).collect();
+                let mut prior_val: Vec<String> = if let Some(_) = line.find(",") {
+                     line.split(',').map(|s| s.to_string()).collect()
+                } else {
+                     line.split(' ').map(|s| s.to_string()).collect()
+                };
                 let prior = if is_hex {
                     match u64::from_str_radix(&prior_val[0], 16) {
                         Err(_) => return Err(std::io::Error::new(ErrorKind::InvalidData,prior_val[0].clone())),
