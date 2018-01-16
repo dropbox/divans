@@ -1,5 +1,5 @@
 use core;
-use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, MAX_FREQUENTIST_PROB};
+use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION};
 fn to_bit_i32(val: i32, shift_val: u8) -> u32 {
     if val != 0 {
         1 << shift_val
@@ -73,11 +73,11 @@ impl CDF16 for FrequentistCDF16 {
     #[inline(always)]
     fn blend(&mut self, symbol: u8, speed: Speed) {
         const CDF_BIAS : [Prob;16] = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-        let increment : Prob = speed as Prob;
+        let increment : Prob = speed.inc() as Prob;
         for i in (symbol as usize)..16 {
             self.cdf[i] = self.cdf[i].wrapping_add(increment);
         }
-        if self.cdf[15] >= MAX_FREQUENTIST_PROB {
+        if self.cdf[15] >= speed.lim() {
             for i in 0..16 {
                 self.cdf[i] = self.cdf[i].wrapping_add(CDF_BIAS[i]).wrapping_sub(self.cdf[i].wrapping_add(CDF_BIAS[i]) >> 2);
             }

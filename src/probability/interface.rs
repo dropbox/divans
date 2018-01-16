@@ -1,6 +1,7 @@
 use core;
 pub type Prob = i16; // can be i32
-pub const MAX_FREQUENTIST_PROB: Prob = 0x4000;
+pub const
+MAX_FREQUENTIST_PROB: Prob = 0xa00;
 #[cfg(feature="billing")]
 use std::io::Write;
 #[cfg(feature="billing")]
@@ -248,18 +249,28 @@ impl CDF2 {
     }
 }
 #[derive(Clone, Copy)]
-#[repr(u16)]
+#[repr(u32)]
 pub enum Speed {
-    GEOLOGIC = 2,
-    GLACIAL = 4,
-    MUD = 16,
-    SLOW = 32,
-    MED = 48,
-    FAST = 96,
-    PLANE = 128,
-    ROCKET = 384,
+    GEOLOGIC =0x7f000001,
+    GLACIAL =0x0a000004,
+    MUD =   0x20000010,
+    SLOW =  0x30000020,
+    MED =   0x40000030,
+    FAST =  0x40000060,
+    PLANE = 0x60000080,
+    ROCKET =0x70000180,
 }
 
+impl Speed {
+    #[inline(always)]
+    pub fn lim(&self) -> i16 {
+        ((*self as u32) >> 16) as i16
+    }
+    #[inline(always)]
+    pub fn inc(&self) -> i16 {
+        *self as i16
+    }
+}
 impl core::str::FromStr for Speed {
     type Err = ();
     fn from_str(inp:&str) -> Result<Speed, Self::Err> {
