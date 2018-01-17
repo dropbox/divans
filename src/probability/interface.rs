@@ -251,19 +251,20 @@ impl CDF2 {
 #[derive(Clone, Copy)]
 #[repr(u32)]
 pub enum Speed {
-    GEOLOGIC =0x7f000001,
-    GLACIAL =0x0a000004,
-    MUD =   0x20000010,
-    SLOW =  0x30000020,
-    MED =   0x40000030,
-    FAST =  0x40000060,
-    PLANE = 0x60000080,
-    ROCKET =0x70000180,
+    GEOLOGIC =0x4000_0001,
+    GLACIAL =0x0a00_0004,
+    MUD =   0x2000_0010,
+    SLOW =  0x3000_0020,
+    MED =   0x4000_0030,
+    FAST =  0x4000_0060,
+    PLANE = 0x4000_0080,
+    ROCKET =0x4000_0180,
 }
 
 impl Speed {
     #[inline(always)]
     pub fn lim(&self) -> i16 {
+        debug_assert!(((*self as u32) >> 16) <= 0x4000); // otherwise some sse hax fail
         ((*self as u32) >> 16) as i16
     }
     #[inline(always)]
