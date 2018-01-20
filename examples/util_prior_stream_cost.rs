@@ -19,7 +19,6 @@ fn eval_stream<Reader:std::io::BufRead>(
 ) -> Result<f64> {
     let mut sub_streams = HashMap::<u64, vec::Vec<u8>>::new();
     let mut buffer = String::new();
-    let mut stream_state = HashMap::<(u64, u8), divans::DefaultCDF16>::new();
     let mut cost: f64 = 0.0;
     loop {
         buffer.clear();
@@ -78,23 +77,27 @@ fn eval_stream<Reader:std::io::BufRead>(
         Some(_) => &specified_speed[..],
         None => &trial_speeds[..],
     };
-    for (&prior, sub_stream) in sub_streams.iter() {
+    for (_prior, sub_stream) in sub_streams.iter() {
         let mut best_cost_high: Option<f64> = None;
         let mut best_cost_low: Option<f64> = None;
         for cur_speed in speed_choice.iter() {
             let mut cur_cost_high: f64 = 0.0;
             let mut cur_cost_low: f64 = 0.0;
+            let mut cdf0 = divans::DefaultCDF16::default();
+            let mut cdf1a = [
+                divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
+                divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
+                divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
+                divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
+                ];
             for val in sub_stream.iter() {
                 let val_nibbles = (val >> 4, val & 0xf);
-                let prior_index_0 = (prior, 0xff);
-                let prior_index_1 = (prior, val_nibbles.0);
                 {
-                    let mut cdf0 = &mut stream_state.entry(prior_index_0).or_insert(divans::DefaultCDF16::default());
-                    cur_cost_high += determine_cost(cdf0, val_nibbles.0);
+                    cur_cost_high += determine_cost(&cdf0, val_nibbles.0);
                     cdf0.blend(val_nibbles.0, *cur_speed);
                 }
                 {
-                    let mut cdf1 = &mut stream_state.entry(prior_index_1).or_insert(divans::DefaultCDF16::default());
+                    let cdf1 = &mut cdf1a[val_nibbles.0 as usize];
                     cur_cost_low += determine_cost(cdf1, val_nibbles.1);
                     cdf1.blend(val_nibbles.1, *cur_speed);
                 }

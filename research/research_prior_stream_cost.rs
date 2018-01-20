@@ -97,7 +97,7 @@ fn eval_stream<Reader:std::io::BufRead>(
     let mut sub_streams = HashMap::<u64, vec::Vec<u8>>::new();
     let mut best_speed = BTreeMap::<(u64, bool), (Speed, f64)>::new();
     let mut buffer = String::new();
-    let mut stream_state = HashMap::<(u64, u8), DefaultCDF16>::new();
+    //let mut stream_state = HashMap::<(u64, u8), DefaultCDF16>::new();
     let mut cost: f64 = 0.0;
     loop {
         buffer.clear();
@@ -204,19 +204,24 @@ Speed { inc: 7, max: 16384 },
         let mut best_speed_low = Speed::default();
         let mut best_cost_low: Option<f64> = None;
         for cur_speed in speed_choice.iter() {
+            let mut cdf0 = DefaultCDF16::default();
+            let mut cdf1a = [
+                DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(),
+                DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(),
+                DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(),
+                DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(), DefaultCDF16::default(),
+                ];
+                            
             let mut cur_cost_high: f64 = 0.0;
             let mut cur_cost_low: f64 = 0.0;
             for val in sub_stream.iter() {
                 let val_nibbles = (val >> 4, val & 0xf);
-                let prior_index_0 = (prior, 0xff);
-                let prior_index_1 = (prior, val_nibbles.0);
                 {
-                    let mut cdf0 = &mut stream_state.entry(prior_index_0).or_insert(DefaultCDF16::default());
-                    cur_cost_high += determine_cost(cdf0, val_nibbles.0);
+                    cur_cost_high += determine_cost(&cdf0, val_nibbles.0);
                     cdf0.blend(val_nibbles.0, *cur_speed);
                 }
                 {
-                    let mut cdf1 = &mut stream_state.entry(prior_index_1).or_insert(DefaultCDF16::default());
+                    let cdf1 = &mut cdf1a[val_nibbles.0 as usize];
                     cur_cost_low += determine_cost(cdf1, val_nibbles.1);
                     cdf1.blend(val_nibbles.1, *cur_speed);
                 }
