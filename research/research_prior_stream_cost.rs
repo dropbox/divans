@@ -29,8 +29,8 @@ impl Speed {
             self.max += 0x400;
         }
         if self.max > MAX_MAX {
-            self.inc += 1;
-            //self.inc = self.inc / 2 + (self.inc & 1);
+            self.inc *= 3;
+            self.inc = self.inc / 2 + (self.inc & 1);
             self.max = MIN_MAX;
         }
     }
@@ -157,38 +157,45 @@ fn eval_stream<Reader:std::io::BufRead>(
         cur_speed.inc();
     }
     let preselected_speeds = [
-Speed {          inc: 13, max: 5120 },
-Speed { inc: 1, max: 1024 },
-Speed { inc: 1, max: 12288 },
-Speed { inc: 1, max: 13312 },
-Speed { inc: 1, max: 14336 },
-Speed { inc: 1, max: 15360 },
-Speed { inc: 1, max: 16384 },
-Speed { inc: 1, max: 3072 },
-Speed { inc: 1, max: 7168 },
-Speed { inc: 1, max: 9216 },
-Speed { inc: 20, max: 10240 },
-Speed { inc: 28, max: 11264 },
-Speed { inc: 2, max: 1024 },
-Speed { inc: 2, max: 10240 },
-Speed { inc: 2, max: 15360 },
-Speed { inc: 2, max: 3072 },
-Speed { inc: 2, max: 5120 },
-Speed { inc: 2, max: 9216 },
-Speed { inc: 3, max: 1024 },
-Speed { inc: 3, max: 10240 },
-Speed { inc: 4, max: 1024 },
-Speed { inc: 4, max: 11264 },
-Speed { inc: 4, max: 14336 },
-Speed { inc: 5, max: 1024 },
-Speed { inc: 5, max: 13312 },
-Speed { inc: 5, max: 16384 },
-Speed { inc: 5, max: 7168 },
-Speed { inc: 6, max: 1024 },
-Speed { inc: 7, max: 1024 },
-Speed { inc: 7, max: 16384 },
-    Speed { inc: 8, max: 1024},
-
+        Speed { inc: 1, max: 32 },
+        Speed { inc: 1, max: 64 },
+        Speed { inc: 1, max: 96 },
+        Speed { inc: 1, max: 128 },
+        Speed { inc: 1, max: 256 },
+        Speed { inc: 1, max: 384 },
+        Speed { inc: 1, max: 512 },
+        Speed { inc: 1, max: 1024 },
+        Speed { inc: 1, max: 2048 },
+        Speed { inc: 1, max: 4096 },
+        Speed { inc: 1, max: 8192 },
+        Speed { inc: 1, max: 16384 },
+        Speed { inc: 2, max: 512 },
+        Speed { inc: 2, max: 1024 },
+        Speed { inc: 2, max: 2048 },
+        Speed { inc: 2, max: 4096 },
+        Speed { inc: 3, max: 512 },
+        Speed { inc: 3, max: 2048 },
+        Speed { inc: 4, max: 512 },
+        Speed { inc: 4, max: 2048 },
+        Speed { inc: 5, max: 8192 },
+        Speed { inc: 6, max: 2048 },
+        Speed { inc: 6, max: 4096 },
+        Speed { inc: 10, max: 2048 },
+        Speed { inc: 12, max: 4096 },
+        Speed { inc: 16, max: 8192 },
+        Speed { inc: 24, max: 16384 },
+        Speed { inc: 32, max: 16384},
+        Speed { inc: 48, max: 16384},
+        Speed { inc: 64, max: 16384},
+        Speed { inc: 96, max: 16384},
+        Speed { inc: 128, max: 16384},
+        Speed { inc: 192, max: 16384},
+        Speed { inc: 256, max: 16384},
+        Speed { inc: 320, max: 16384},
+        Speed { inc: 384, max: 16384},
+        Speed { inc: 512, max: 16384},
+        Speed { inc: 768, max: 16384},
+        Speed { inc: 1024, max: 16384},
     ];
     let speed_choice = match speed {
         Some(_) => &specified_speed[..],
