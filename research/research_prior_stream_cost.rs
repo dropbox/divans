@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::collections::BTreeMap;
 use std::vec;
 
-const NUM_SPEED:usize = 256;
-const MAX_MAX: i32 = 25000;
-const MIN_MAX: i32 = 0xa00;
+const NUM_SPEED:usize = 512;
+const MAX_MAX: i32 = 16384;
+const MIN_MAX: i32 = 0x200;
 #[derive(Clone, Copy, Debug)]
 struct Speed {
     inc: i32,
@@ -24,13 +24,13 @@ impl Default for Speed {
 impl Speed {
     fn inc(&mut self) {
         if self.max == MIN_MAX {
-            self.max += 0x600;
+            self.max += 0x200;
         } else {
-            self.max += 0x800;
+            self.max += 0x400;
         }
         if self.max > MAX_MAX {
-            self.inc *= 3;
-            self.inc = self.inc / 2 + (self.inc & 1);
+            self.inc += 1;
+            //self.inc = self.inc / 2 + (self.inc & 1);
             self.max = MIN_MAX;
         }
     }
@@ -91,10 +91,11 @@ fn determine_cost(cdf: &DefaultCDF16,
 fn eval_stream<Reader:std::io::BufRead>(
     r :&mut Reader,
     speed: Option<Speed>,
+    use_preselected: bool, 
     is_hex: bool
 ) -> Result<f64> {
     let mut sub_streams = HashMap::<u64, vec::Vec<u8>>::new();
-    let mut best_speed = BTreeMap::<(u64, bool), Speed>::new();
+    let mut best_speed = BTreeMap::<(u64, bool), (Speed, f64)>::new();
     let mut buffer = String::new();
     let mut stream_state = HashMap::<(u64, u8), DefaultCDF16>::new();
     let mut cost: f64 = 0.0;
@@ -155,9 +156,47 @@ fn eval_stream<Reader:std::io::BufRead>(
         *val = cur_speed;
         cur_speed.inc();
     }
+    let preselected_speeds = [
+Speed {          inc: 13, max: 5120 },
+Speed { inc: 1, max: 1024 },
+Speed { inc: 1, max: 12288 },
+Speed { inc: 1, max: 13312 },
+Speed { inc: 1, max: 14336 },
+Speed { inc: 1, max: 15360 },
+Speed { inc: 1, max: 16384 },
+Speed { inc: 1, max: 3072 },
+Speed { inc: 1, max: 7168 },
+Speed { inc: 1, max: 9216 },
+Speed { inc: 20, max: 10240 },
+Speed { inc: 28, max: 11264 },
+Speed { inc: 2, max: 1024 },
+Speed { inc: 2, max: 10240 },
+Speed { inc: 2, max: 15360 },
+Speed { inc: 2, max: 3072 },
+Speed { inc: 2, max: 5120 },
+Speed { inc: 2, max: 9216 },
+Speed { inc: 3, max: 1024 },
+Speed { inc: 3, max: 10240 },
+Speed { inc: 4, max: 1024 },
+Speed { inc: 4, max: 11264 },
+Speed { inc: 4, max: 14336 },
+Speed { inc: 5, max: 1024 },
+Speed { inc: 5, max: 13312 },
+Speed { inc: 5, max: 16384 },
+Speed { inc: 5, max: 7168 },
+Speed { inc: 6, max: 1024 },
+Speed { inc: 7, max: 1024 },
+Speed { inc: 7, max: 16384 },
+    Speed { inc: 8, max: 1024},
+
+    ];
     let speed_choice = match speed {
         Some(_) => &specified_speed[..],
-        None => &trial_speeds[..],
+        None => if use_preselected {
+            &preselected_speeds[..]
+        } else {
+            &trial_speeds[..]
+        },
     };
     for (&prior, sub_stream) in sub_streams.iter() {
         let mut best_cost_high: Option<f64> = None;
@@ -203,13 +242,13 @@ fn eval_stream<Reader:std::io::BufRead>(
                 } else {bc}),
             };
         }
-        best_speed.insert((prior, false), best_speed_low);
-        best_speed.insert((prior, true), best_speed_high);
+        best_speed.insert((prior, false), (best_speed_low, best_cost_low.unwrap()));
+        best_speed.insert((prior, true), (best_speed_high, best_cost_high.unwrap()));
         cost += best_cost_high.unwrap();
         cost += best_cost_low.unwrap();
     }
     for (prior, val) in best_speed.iter() {
-        print!("{:?} {:?} {}\n", prior, val, (val.max as f64)/val.inc as f64);
+        print!("{:?} {:?} cost: {}\n", prior, val.0, val.1);
     }
     
     Ok(cost)
@@ -221,8 +260,9 @@ fn main() {
     let stdin = stdin.lock();
     let mut buffered_in = BufReader::new(stdin);
     let mut speed: Option<Speed> = None;
-    if env::args_os().len() == 2 {
-        panic!("Must supply both speed and max");
+    let use_preselected = env::args_os().len() == 2;
+    if use_preselected {
+        print!("arg count == 1 Using preselected list\n");
     }
     if env::args_os().len() > 2 {
         let mut first:i32 = 0;
@@ -239,6 +279,6 @@ fn main() {
         }
         speed = Some(Speed{inc:first, max:second});
     }
-    let cost = eval_stream(&mut buffered_in, speed, true).unwrap();
+    let cost = eval_stream(&mut buffered_in, speed, use_preselected, true).unwrap();
     println!("{} bytes; {} bits", ((cost + 0.99) as u64) as f64 / 8.0, (cost + 0.99) as u64);
 }
