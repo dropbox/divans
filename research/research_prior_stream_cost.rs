@@ -7,10 +7,12 @@ use std::vec;
 const NUM_SPEED:usize = 512;
 const MAX_MAX: i32 = 16384;
 const MIN_MAX: i32 = 0x200;
+const BLEND_FIXED_POINT_PRECISION:i8=16;
+type Prob=i32;
 #[derive(Clone, Copy, Debug)]
 struct Speed {
-    inc: i32,
-    max: i32,
+    inc: Prob,
+    max: Prob,
 }
 
 impl Default for Speed {
@@ -35,8 +37,93 @@ impl Speed {
         }
     }
 }
+
+const CDF_MAX: Prob = 32767;
 #[derive(Clone,Copy)]
-struct FrequentistCDF16([i32;16]);
+struct BlendCDF16([Prob;16]);
+impl Default for BlendCDF16 {
+    fn default() -> Self {
+        BlendCDF16(
+            [0;16]
+        )
+    }
+}
+pub fn to_blend_lut(symbol: u8) -> [Prob;16] {
+    const DEL: Prob = CDF_MAX - 16;
+    static CDF_SELECTOR : [[Prob;16];16] = [
+        [DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,DEL,DEL as Prob],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,DEL as Prob]];
+    CDF_SELECTOR[symbol as usize]
+}
+impl BlendCDF16 {
+    fn max(&self) -> Prob {
+        CDF_MAX as Prob
+    }
+
+    fn pdf(&self, symbol: u8) -> Prob {
+        let mut ret = if symbol == 0 {
+           self.cdf(0)
+        } else {
+           self.cdf(symbol) - self.cdf(symbol - 1)
+        };
+        if ret == 0 {
+            ret = self.cdf(symbol);
+            if symbol != 0 {
+               ret -= self.cdf(symbol - 1);
+            }
+        }
+        assert!(ret != 0);
+        ret
+    }
+    fn cdf(&self, symbol: u8) -> Prob {
+        match symbol {
+            15 => self.max(),
+            _ => {
+                // We want self.cdf[15] to be normalized to CDF_MAX, so take the difference to
+                // be the latent bias term coming from a uniform distribution.
+                let bias = CDF_MAX - self.0[15];
+                debug_assert!(bias >= 16);
+                self.0[symbol as usize] as Prob + ((i32::from(bias) * (i32::from(symbol + 1))) >> 4) as Prob
+            }
+        }
+    }
+    fn blend_internal(&mut self, to_blend: [Prob;16], mix_rate: Prob) {
+        self.0 = mul_blend(self.0, to_blend, mix_rate, /*1(self.count & 0xf)*/0x0 << (BLEND_FIXED_POINT_PRECISION - 4));
+        if self.0[15] < (CDF_MAX - 16) - (self.0[15] >> 1) {
+            for i in 0..16 {
+                self.0[i] += self.0[i] >> 1;
+            }
+        }
+        assert!(self.0[15] <= CDF_MAX - 16);
+
+    }
+
+    fn blend(&mut self, nibble: u8, speed:Speed) {
+        let old_self = *self;
+        let to_blend = to_blend_lut(nibble);
+        let mr = speed.inc;
+        self.blend_internal(to_blend, mr);
+        // Reduce the weight of bias in the first few iterations.
+    }
+}
+
+
+#[derive(Clone,Copy)]
+struct FrequentistCDF16([Prob;16]);
 
 impl Default for FrequentistCDF16 {
     fn default() -> Self {
@@ -47,18 +134,18 @@ impl Default for FrequentistCDF16 {
 }
 
 impl FrequentistCDF16 {
-    fn max(&self) -> i32 {
+    fn max(&self) -> Prob {
         self.0[15]
     }
-    fn pdf(&self, nibble: u8) -> i32 {
+    fn pdf(&self, nibble: u8) -> Prob {
         if nibble == 0 {
             self.0[0]
         } else {
-            self.0[nibble as usize] - self.0[nibble as usize - 1]
+            self.0[nibble as usize] - self.0[nibble as usize-1]
         }
     }
-    fn assert_ok(&self, _old: FrequentistCDF16) {
-        let mut last = 0i32;
+    fn assert_ok(&self, _old: [i32;16]) {
+        let mut last = 0;
         for item in self.0.iter() {
             assert!(*item != last);
             last = *item;
@@ -71,15 +158,61 @@ impl FrequentistCDF16 {
         }
         if self.max() >= speed.max {
             for (index, item) in self.0.iter_mut().enumerate() {
-                let cdf_bias = 1 + index as i32;
+                let cdf_bias = 1 + index as Prob;
                 *item = *item + cdf_bias - (*item  + cdf_bias) / 2;
             }
         }
-        self.assert_ok(old_self);
+        self.assert_ok(old_self.0);
     }
 }
 
-type DefaultCDF16 = FrequentistCDF16;
+
+pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : Prob, bias : Prob) -> [Prob;16] {
+    let blend = i64::from(if blend > 16384 {16384} else {blend});
+    let bias = i64::from(bias);
+    const SCALE :i64 = 1 << BLEND_FIXED_POINT_PRECISION;
+    let mut epi32:[i64;8] = [i64::from(to_blend[0]),
+                             i64::from(to_blend[1]),
+                             i64::from(to_blend[2]),
+                             i64::from(to_blend[3]),
+                             i64::from(to_blend[4]),
+                             i64::from(to_blend[5]),
+                             i64::from(to_blend[6]),
+                             i64::from(to_blend[7])];
+    let scale_minus_blend = SCALE - blend;
+    for i in 0..8 {
+        epi32[i] *= blend;
+        epi32[i] += i64::from(baseline[i]) * scale_minus_blend + bias;
+        epi32[i] >>= BLEND_FIXED_POINT_PRECISION;
+    }
+    let mut retval : [Prob;16] =[epi32[0] as Prob,
+                                 epi32[1] as Prob,
+                                 epi32[2] as Prob,
+                                 epi32[3] as Prob,
+                                 epi32[4] as Prob,
+                                 epi32[5] as Prob,
+                                 epi32[6] as Prob,
+                                 epi32[7] as Prob,
+                                 0,0,0,0,0,0,0,0];
+    let mut epi32:[i64;8] = [i64::from(to_blend[8]),
+                             i64::from(to_blend[9]),
+                             i64::from(to_blend[10]),
+                             i64::from(to_blend[11]),
+                             i64::from(to_blend[12]),
+                             i64::from(to_blend[13]),
+                             i64::from(to_blend[14]),
+                             i64::from(to_blend[15])];
+    for i in 8..16 {
+        epi32[i - 8] *= blend;
+        epi32[i - 8] += i64::from(baseline[i]) * scale_minus_blend + bias;
+        retval[i] = (epi32[i - 8] >> BLEND_FIXED_POINT_PRECISION) as Prob;
+    }
+    retval
+}
+
+
+//type DefaultCDF16 = FrequentistCDF16;
+type DefaultCDF16 = BlendCDF16;
 fn determine_cost(cdf: &DefaultCDF16,
                   nibble: u8) -> f64 {
     let pdf = cdf.pdf(nibble);
@@ -277,15 +410,15 @@ fn main() {
         print!("arg count == 1 Using preselected list\n");
     }
     if env::args_os().len() > 2 {
-        let mut first:i32 = 0;
-        let mut second:i32 = 0;
+        let mut first:Prob = 0;
+        let mut second:Prob = 0;
         for argument in env::args().skip(1) {
-            first = argument.parse::<i32>().unwrap();
+            first = argument.parse::<Prob>().unwrap();
             break;
             //speed = Some(argument.parse::<Speed>().unwrap());
         }
         for argument in env::args().skip(2) {
-            second = argument.parse::<i32>().unwrap();
+            second = argument.parse::<Prob>().unwrap();
             break;
             //speed = Some(argument.parse::<Speed>().unwrap());
         }
