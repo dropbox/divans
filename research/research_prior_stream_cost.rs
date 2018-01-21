@@ -13,6 +13,7 @@ type Prob=i32;
 struct Speed {
     inc: Prob,
     max: Prob,
+    algo: u8,
 }
 
 impl Default for Speed {
@@ -20,6 +21,7 @@ impl Default for Speed {
         Speed{
             inc:1,
             max:MIN_MAX,
+            algo: 0,
         }
     }
 }
@@ -122,6 +124,7 @@ impl BlendCDF16 {
 }
 
 
+
 #[derive(Clone,Copy)]
 struct FrequentistCDF16([Prob;16]);
 
@@ -136,6 +139,9 @@ impl Default for FrequentistCDF16 {
 impl FrequentistCDF16 {
     fn max(&self) -> Prob {
         self.0[15]
+    }
+    fn cdf(&self, nibble: u8) -> Prob {
+       self.0[nibble as usize]
     }
     fn pdf(&self, nibble: u8) -> Prob {
         if nibble == 0 {
@@ -165,8 +171,6 @@ impl FrequentistCDF16 {
         self.assert_ok(old_self.0);
     }
 }
-
-
 pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : Prob, bias : Prob) -> [Prob;16] {
     let blend = i64::from(if blend > 16384 {16384} else {blend});
     let bias = i64::from(bias);
@@ -211,8 +215,63 @@ pub fn mul_blend(baseline: [Prob;16], to_blend: [Prob;16], blend : Prob, bias : 
 }
 
 
+#[derive(Clone,Copy)]
+enum CombinationCDF16 {
+  Freq(FrequentistCDF16),
+  Blend(BlendCDF16),
+}
+impl Default for CombinationCDF16 {
+  fn default() -> Self {
+     CombinationCDF16::Freq(FrequentistCDF16::default())
+  }
+}
+
+impl CombinationCDF16 {
+    fn max(&self) -> Prob {
+        match *self {
+           CombinationCDF16::Freq(x) => x.max(),
+           CombinationCDF16::Blend(x) => x.max(),
+        }
+    }
+    fn pdf(&self, nibble: u8) -> Prob {
+        match *self {
+           CombinationCDF16::Freq(x) => x.pdf(nibble),
+           CombinationCDF16::Blend(x) => x.pdf(nibble),
+        }
+    }
+    fn cdf(&self, nibble: u8) -> Prob {
+        match *self {
+           CombinationCDF16::Freq(x) => x.cdf(nibble),
+           CombinationCDF16::Blend(x) => x.cdf(nibble),
+        }
+    }
+    fn blend(&mut self, nibble: u8, speed:Speed) {
+       if speed.algo == 0 {
+          if let CombinationCDF16::Freq(_x) = *self {
+          } else {
+             *self = CombinationCDF16::Freq(FrequentistCDF16::default());
+          }
+       }
+       if speed.algo == 1 {
+          if let CombinationCDF16::Blend(_x) = *self {
+          } else {
+             *self = CombinationCDF16::Blend(BlendCDF16::default());
+          }          
+       }
+       match *self {
+           CombinationCDF16::Freq(ref mut x) => x.blend(nibble, speed),
+           CombinationCDF16::Blend(ref mut x) => x.blend(nibble, speed),
+       }
+    }
+}
+
+
 //type DefaultCDF16 = FrequentistCDF16;
-type DefaultCDF16 = BlendCDF16;
+//type DefaultCDF16 = BlendCDF16;
+type DefaultCDF16 = CombinationCDF16;
+
+
+
 fn determine_cost(cdf: &DefaultCDF16,
                   nibble: u8) -> f64 {
     let pdf = cdf.pdf(nibble);
@@ -290,45 +349,70 @@ fn eval_stream<Reader:std::io::BufRead>(
         cur_speed.inc();
     }
     let preselected_speeds = [
-        Speed { inc: 1, max: 32 },
-        Speed { inc: 1, max: 64 },
-        Speed { inc: 1, max: 96 },
-        Speed { inc: 1, max: 128 },
-        Speed { inc: 1, max: 256 },
-        Speed { inc: 1, max: 384 },
-        Speed { inc: 1, max: 512 },
-        Speed { inc: 1, max: 1024 },
-        Speed { inc: 1, max: 2048 },
-        Speed { inc: 1, max: 4096 },
-        Speed { inc: 1, max: 8192 },
-        Speed { inc: 1, max: 16384 },
-        Speed { inc: 2, max: 512 },
-        Speed { inc: 2, max: 1024 },
-        Speed { inc: 2, max: 2048 },
-        Speed { inc: 2, max: 4096 },
-        Speed { inc: 3, max: 512 },
-        Speed { inc: 3, max: 2048 },
-        Speed { inc: 4, max: 512 },
-        Speed { inc: 4, max: 2048 },
-        Speed { inc: 5, max: 8192 },
-        Speed { inc: 6, max: 2048 },
-        Speed { inc: 6, max: 4096 },
-        Speed { inc: 10, max: 2048 },
-        Speed { inc: 12, max: 4096 },
-        Speed { inc: 16, max: 8192 },
-        Speed { inc: 24, max: 16384 },
-        Speed { inc: 32, max: 16384},
-        Speed { inc: 48, max: 16384},
-        Speed { inc: 64, max: 16384},
-        Speed { inc: 96, max: 16384},
-        Speed { inc: 128, max: 16384},
-        Speed { inc: 192, max: 16384},
-        Speed { inc: 256, max: 16384},
-        Speed { inc: 320, max: 16384},
-        Speed { inc: 384, max: 16384},
-        Speed { inc: 512, max: 16384},
-        Speed { inc: 768, max: 16384},
-        Speed { inc: 1024, max: 16384},
+        Speed { inc: 0, max: 32, algo: 0, },
+        Speed { inc: 1, max: 32, algo: 0, },
+        Speed { inc: 1, max: 64, algo: 0, },
+        Speed { inc: 1, max: 96, algo: 0, },
+        Speed { inc: 1, max: 128, algo: 0, },
+        Speed { inc: 1, max: 256, algo: 0, },
+        Speed { inc: 1, max: 384, algo: 0, },
+        Speed { inc: 1, max: 512, algo: 0, },
+        Speed { inc: 1, max: 1024, algo: 0, },
+        Speed { inc: 1, max: 2048, algo: 0, },
+        Speed { inc: 1, max: 4096, algo: 0, },
+        Speed { inc: 1, max: 8192, algo: 0, },
+        Speed { inc: 1, max: 16384, algo: 0, },
+        Speed { inc: 2, max: 512, algo: 0, },
+        Speed { inc: 2, max: 1024, algo: 0, },
+        Speed { inc: 2, max: 2048, algo: 0, },
+        Speed { inc: 2, max: 4096, algo: 0, },
+        Speed { inc: 3, max: 512, algo: 0, },
+        Speed { inc: 3, max: 2048, algo: 0, },
+        Speed { inc: 4, max: 512, algo: 0, },
+        Speed { inc: 4, max: 2048, algo: 0, },
+        Speed { inc: 5, max: 8192, algo: 0, },
+        Speed { inc: 6, max: 2048, algo: 0, },
+        Speed { inc: 6, max: 4096, algo: 0, },
+        Speed { inc: 10, max: 2048, algo: 0, },
+        Speed { inc: 12, max: 4096, algo: 0, },
+        Speed { inc: 16, max: 8192, algo: 0, },
+        Speed { inc: 24, max: 16384, algo: 0, },
+        Speed { inc: 32, max: 16384, algo: 0,},
+        Speed { inc: 48, max: 16384, algo: 0,},
+        Speed { inc: 64, max: 16384, algo: 0,},
+        Speed { inc: 96, max: 16384, algo: 0,},
+        Speed { inc: 128, max: 16384, algo: 0,},
+        Speed { inc: 192, max: 16384, algo: 0,},
+        Speed { inc: 256, max: 16384, algo: 0,},
+        Speed { inc: 320, max: 16384, algo: 0,},
+        Speed { inc: 384, max: 16384, algo: 0,},
+        Speed { inc: 512, max: 16384, algo: 0,},
+        Speed { inc: 768, max: 16384, algo: 0,},
+        Speed { inc: 1024, max: 16384, algo: 0,},
+        
+        //Speed {  inc: 1, max: 512, algo: 1,},
+        Speed { inc: 60, max: 16384, algo: 1, },
+        Speed { inc: 100, max: 16384, algo: 1, },
+        Speed { inc: 140, max: 16384, algo: 1, },
+        Speed { inc: 160, max: 16384, algo: 1, },
+        Speed { inc: 180, max: 16384, algo: 1, },
+        Speed { inc: 195, max: 16384, algo: 1, },
+        Speed { inc: 210, max: 16384, algo: 1, },
+        Speed { inc: 230, max: 16384, algo: 1, },
+        Speed { inc: 260, max: 16384, algo: 1, },
+        Speed { inc: 280, max: 16384, algo: 1, },
+        Speed { inc: 300, max: 16384, algo: 1, },
+        Speed { inc: 315, max: 16384, algo: 1, },
+        Speed { inc: 473, max: 16384, algo: 1, },
+        Speed { inc: 560, max: 16384, algo: 1, },
+        Speed { inc: 600, max: 16384, algo: 1, },
+        Speed { inc: 640, max: 16384, algo: 1, },
+        Speed { inc: 680, max: 16384, algo: 1, },
+        Speed { inc: 710, max: 16384, algo: 1, },
+        Speed { inc: 850, max: 16384, algo: 1, },
+        Speed { inc: 1065, max: 16384, algo: 1, },
+        Speed { inc: 1200, max: 16384, algo: 1, },
+        Speed { inc: 1600, max: 16384, algo: 1, },
     ];
     let speed_choice = match speed {
         Some(_) => &specified_speed[..],
@@ -422,7 +506,7 @@ fn main() {
             break;
             //speed = Some(argument.parse::<Speed>().unwrap());
         }
-        speed = Some(Speed{inc:first, max:second});
+        speed = Some(Speed{inc:first, max:second, algo:0 });
     }
     let cost = eval_stream(&mut buffered_in, speed, use_preselected, true).unwrap();
     println!("{} bytes; {} bits", ((cost + 0.99) as u64) as f64 / 8.0, (cost + 0.99) as u64);
