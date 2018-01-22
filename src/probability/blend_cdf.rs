@@ -188,11 +188,11 @@ impl CDF16 for BlendCDF16 {
         let _mix_rate = match speed {
                 Speed::GEOLOGIC => 32,
                 Speed::GLACIAL => 64,
-                Speed::MUD => 160,
-                Speed::SLOW => 512,
-                Speed::MED => 192,
-                Speed::FAST => 256,
-                Speed::PLANE => 384,
+                Speed::MUD => 128,
+                Speed::SLOW => 192,
+                Speed::MED => 256,
+                Speed::FAST => 384,
+                Speed::PLANE => 512,
                 Speed::ROCKET => 1100,
         };
         let to_blend = to_blend_lut(symbol);
