@@ -721,7 +721,6 @@ impl<AllocU8: Allocator<u8>,
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                         },
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.command_count += 1;
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
                             let last_8 = self.cross_command_state.recoder.last_8_literals();
