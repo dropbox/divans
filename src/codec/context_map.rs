@@ -24,12 +24,23 @@ pub enum PredictionModeState {
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
     ContextMapSpeedLow(u32, u8),
-    ContextMapSpeedHigh(u32),
+    ContextMapSpeedHigh(u32, u8),
     FullyDecoded,
 }
 
 
+fn next_mul_512(a: usize) -> usize {
+    a + (512 - (a & 511))
+}
 
+fn all_same(data: &[u8], goal: u8) -> bool {
+    for i in data.iter() {
+        if *i != goal {
+            return false;
+        }
+    }
+    true
+}
 
 impl PredictionModeState {
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -52,7 +63,7 @@ impl PredictionModeState {
                                                output_offset: &mut usize) -> BrotliResult {
         let mut speed_index_offset = 0;
         let mut speed_index_mask = 0;
-        
+        let max_speed_index = 2048;
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -187,7 +198,7 @@ impl PredictionModeState {
                                *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::ContextMapSpeedHigh(0);
+                               *self = PredictionModeState::ContextMapSpeedHigh(0, 0);
                            }
                        }
                    } else if mnemonic_nibble == 15 {
@@ -246,7 +257,7 @@ impl PredictionModeState {
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
-               PredictionModeState::ContextMapSpeedHigh(index) => {
+               PredictionModeState::ContextMapSpeedHigh(index, last_byte) => {
                    if index == 0 {
                        if superstate.bk.combine_literal_predictions {
                            speed_index_offset = 1024;
@@ -260,7 +271,12 @@ impl PredictionModeState {
                    let mut msn_nib = if index as usize >= speeds.len() {
                        0xf
                    } else {
-                       (speeds[index as usize] >> 3) & 0xf
+                       let input_index = (index as usize + speed_index_offset) & speed_index_mask;
+                       if (input_index & 511) != 0 && all_same(&speeds[input_index as usize..next_mul_512(input_index as usize)], last_byte) {
+                           0xf
+                       } else{
+                           (speeds[input_index] >> 3) & 0xf
+                       }
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedHigh,
@@ -268,16 +284,28 @@ impl PredictionModeState {
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
-                       nibble_prob.blend(msn_nib, Speed::PLANE);
+                       nibble_prob.blend(msn_nib, Speed::ROCKET);
                    }
-                   *self = PredictionModeState::ContextMapSpeedLow(index, msn_nib)
+                   if msn_nib == 0xf && (index & 511) != 0 { // all the same
+                       for i in index as usize..next_mul_512(index as usize) {
+                           superstate.bk.obs_literal_speed(in_cmd, i as u32, last_byte);
+                       }
+                       let destination = next_mul_512(index as usize) as u32;
+                       if destination < max_speed_index {
+                           *self = PredictionModeState::ContextMapSpeedHigh(destination, last_byte);
+                       } else {
+                           *self = PredictionModeState::FullyDecoded;
+                       }
+                   } else {
+                       *self = PredictionModeState::ContextMapSpeedLow(index, msn_nib)
+                   }
                }
                 PredictionModeState::ContextMapSpeedLow(index, msn_nib) => {
                    let speeds = in_cmd.context_speeds.slice();
                    let mut lsn_nib = if index as usize >= speeds.len() {
                        0x7
                    } else {
-                       speeds[index as usize] & 0x7
+                       speeds[(index as usize + speed_index_offset) & speed_index_mask] & 0x7
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedLow,
@@ -285,18 +313,14 @@ impl PredictionModeState {
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
-                       nibble_prob.blend(msn_nib, Speed::PLANE);
+                       nibble_prob.blend(msn_nib, Speed::ROCKET);
                    }
-                   if msn_nib == 0x15 && lsn_nib == 0x7 {
-                       // early exit: end of the line
+                   let last_byte = (msn_nib << 3) | lsn_nib;
+                   superstate.bk.obs_literal_speed(in_cmd, index, last_byte);
+                   if index == max_speed_index {
                        *self = PredictionModeState::FullyDecoded;
                    } else {
-                       superstate.bk.obs_literal_speed(in_cmd, index, (msn_nib << 3) | lsn_nib);
-                   }
-                   if index == 1024 * 2 {
-                       *self = PredictionModeState::FullyDecoded;
-                   } else {
-                       *self = PredictionModeState::ContextMapSpeedHigh(index + 1);
+                       *self = PredictionModeState::ContextMapSpeedHigh(index + 1, last_byte);
                    }
                },
                PredictionModeState::FullyDecoded => {
