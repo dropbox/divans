@@ -128,7 +128,9 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     assert_eq!(rt_buffer.data, in_buffer.data);
     let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
     if !(actual_ratio <= ratio) {
-        println!("Failed: actual buffer length {} dv_buffer size: {}", in_buffer.data.len(), dv_buffer.data.len());
+        println!("Failed: actual buffer length {} dv_buffer size: {} ({} not as good as {})",
+                 in_buffer.data.len(), dv_buffer.data.len(),
+                 actual_ratio, ratio);
     }
     assert!(actual_ratio <= ratio);
 }

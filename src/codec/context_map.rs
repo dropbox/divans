@@ -23,8 +23,12 @@ pub enum PredictionModeState {
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
+    ContextMapSpeedLow(u32, u8),
+    ContextMapSpeedHigh(u32),
     FullyDecoded,
 }
+
+
 
 
 impl PredictionModeState {
@@ -46,7 +50,9 @@ impl PredictionModeState {
                                                input_offset: &mut usize,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> BrotliResult {
-
+        let mut speed_index_offset = 0;
+        let mut speed_index_mask = 0;
+        
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -181,7 +187,7 @@ impl PredictionModeState {
                                *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::FullyDecoded;
+                               *self = PredictionModeState::ContextMapSpeedHigh(0);
                            }
                        }
                    } else if mnemonic_nibble == 15 {
@@ -239,6 +245,59 @@ impl PredictionModeState {
                        return BrotliResult::ResultFailure;
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
+               },
+               PredictionModeState::ContextMapSpeedHigh(index) => {
+                   if index == 0 {
+                       if superstate.bk.combine_literal_predictions {
+                           speed_index_offset = 1024;
+                           speed_index_mask = 0xffff;
+                       } else {
+                           speed_index_offset = 1024;
+                           speed_index_mask = 0x7ff; // so we wrap around and pick up vanilla stride instead of the combination
+                       }
+                   }
+                   let speeds = in_cmd.context_speeds.slice();
+                   let mut msn_nib = if index as usize >= speeds.len() {
+                       0xf
+                   } else {
+                       (speeds[index as usize] >> 3) & 0xf
+                   };
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedHigh,
+                                                                                 ((index as usize) >> 9, index as usize & 1,)); // FIXME: maybe need to use prev nibble
+                       // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
+                       // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
+                       superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
+                       nibble_prob.blend(msn_nib, Speed::PLANE);
+                   }
+                   *self = PredictionModeState::ContextMapSpeedLow(index, msn_nib)
+               }
+                PredictionModeState::ContextMapSpeedLow(index, msn_nib) => {
+                   let speeds = in_cmd.context_speeds.slice();
+                   let mut lsn_nib = if index as usize >= speeds.len() {
+                       0x7
+                   } else {
+                       speeds[index as usize] & 0x7
+                   };
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedLow,
+                                                                                 ((index as usize) >> 9, index as usize & 1, msn_nib as usize));
+                       // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
+                       // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
+                       superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
+                       nibble_prob.blend(msn_nib, Speed::PLANE);
+                   }
+                   if msn_nib == 0x15 && lsn_nib == 0x7 {
+                       // early exit: end of the line
+                       *self = PredictionModeState::FullyDecoded;
+                   } else {
+                       superstate.bk.obs_literal_speed(in_cmd, index, (msn_nib << 3) | lsn_nib);
+                   }
+                   if index == 1024 * 2 {
+                       *self = PredictionModeState::FullyDecoded;
+                   } else {
+                       *self = PredictionModeState::ContextMapSpeedHigh(index + 1);
+                   }
                },
                PredictionModeState::FullyDecoded => {
                    return BrotliResult::ResultSuccess;

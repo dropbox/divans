@@ -12,6 +12,7 @@ use ::interface::{
     Command,
     CopyCommand,
     DictCommand,
+    PredictionModeContextMap,
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
@@ -421,6 +422,15 @@ impl<Cdf16:CDF16,
         }
         15
     }
+    pub fn obs_literal_speed<SliceType:SliceWrapper<u8>>(
+        &mut self,
+        converter: &PredictionModeContextMap<SliceType>,
+        index: u32,
+        speed_f8: u8) {
+        
+    }
+        
+        
     #[inline(always)]
     pub fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
         /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
