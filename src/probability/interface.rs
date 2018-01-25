@@ -248,28 +248,26 @@ impl CDF2 {
         }
     }
 }
-#[derive(Clone, Copy)]
-#[repr(u32)]
-pub enum Speed {
-    GEOLOGIC =0x4000_0001,
-    GLACIAL =0x0a00_0004,
-    MUD =   0x2000_0010,
-    SLOW =  0x3000_0020,
-    MED =   0x4000_0030,
-    FAST =  0x4000_0060,
-    PLANE = 0x4000_0080,
-    ROCKET =0x4000_0180,
-}
-
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Speed(pub i16,pub i16);
 impl Speed {
+    pub const GEOLOGIC: Speed = Speed(0x0001, 0x4000);
+    pub const GLACIAL: Speed = Speed(0x0004, 0x0a00);
+    pub const MUD: Speed =   Speed(0x0010, 0x2000);
+    pub const SLOW: Speed =  Speed(0x0020, 0x3000);
+    pub const MED: Speed =   Speed(0x0030, 0x4000);
+    pub const FAST: Speed =  Speed(0x0060, 0x4000);
+    pub const PLANE: Speed = Speed(0x0080, 0x4000);
+    pub const ROCKET: Speed =Speed(0x0180, 0x4000);
     #[inline(always)]
     pub fn lim(&self) -> i16 {
-        debug_assert!(((*self as u32) >> 16) <= 0x4000); // otherwise some sse hax fail
-        ((*self as u32) >> 16) as i16
+        let ret = self.1;
+        debug_assert!(ret <= 0x4000); // otherwise some sse hax fail
+        ret
     }
     #[inline(always)]
     pub fn inc(&self) -> i16 {
-        *self as i16
+        self.0
     }
 }
 impl core::str::FromStr for Speed {

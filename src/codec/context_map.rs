@@ -131,7 +131,7 @@ impl PredictionModeState {
                        Speed::FAST => FAST_CODE,
                        Speed::PLANE => PLANE_CODE,
                        Speed::ROCKET => ROCKET_CODE,
-
+                       Speed(_inc, _lim) => return BrotliResult::ResultFailure,
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
