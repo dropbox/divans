@@ -493,6 +493,13 @@ fn main() {
     if use_preselected {
         print!("arg count == 1 Using preselected list\n");
     }
+    let mut is_hex = true;
+    for argument in env::args() {
+        if let Some(_) = argument.find("decimal") {
+            is_hex = false;
+        }
+        break
+    }
     if env::args_os().len() > 2 {
         let mut first:Prob = 0;
         let mut second:Prob = 0;
@@ -508,6 +515,6 @@ fn main() {
         }
         speed = Some(Speed{inc:first, max:second, algo:0 });
     }
-    let cost = eval_stream(&mut buffered_in, speed, use_preselected, true).unwrap();
+    let cost = eval_stream(&mut buffered_in, speed, use_preselected, is_hex).unwrap();
     println!("{} bytes; {} bits", ((cost + 0.99) as u64) as f64 / 8.0, (cost + 0.99) as u64);
 }

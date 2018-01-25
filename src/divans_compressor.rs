@@ -142,6 +142,7 @@ fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>],
            Command::PredictionMode(ref mut pm) => {
                pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
                pm.distance_context_map = pm.distance_context_map.thaw(ring_buffer);
+               pm.context_speeds = pm.context_speeds.thaw(ring_buffer); // FIXME: these may need to be actual (~singleton) memory allocations
            },
            Command::Dict(_) |
            Command::Copy(_) |
@@ -224,7 +225,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                     Command::PredictionMode(PredictionModeContextMap::<slice_util::SliceReference<'static, u8>> {
                         literal_prediction_mode: pm.literal_prediction_mode,
                         literal_context_map: pm.literal_context_map.freeze_dry(),
-                        distance_context_map: pm.literal_context_map.freeze_dry(),
+                        distance_context_map: pm.distance_context_map.freeze_dry(),
+                        context_speeds: pm.context_speeds.freeze_dry(), // FIXME: we may need to actually alloc memory for these
                     })
                 },
                 Command::Copy(ref c) => {

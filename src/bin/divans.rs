@@ -183,7 +183,27 @@ fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<Featu
     Ok(FeatureFlagSliceType::<ItemVec<u8>>(ItemVec(probs)))
 }
 
-
+fn parse_speed(command_vec :&Vec<&str>, index: usize,
+               output:&mut [u8], mut o_index: usize) -> Result<(), io::Error> {
+    for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
+        match distance_context_map_val.parse::<i64>() {
+            Ok(el) => {
+                if el <= 255 && el >= 0 {
+                    output[o_index] = el as u8;
+                    o_index += 1;
+                } else {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      distance_context_map_val.to_string() +
+                                              " speed val must be f8 (represented from 0-255 with 3 bits mantissa)"));
+                }
+            },
+            Err(_) => {
+                break;
+            },
+        }
+    }
+    Ok(())
+}
 
 
 fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
@@ -212,6 +232,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
             literal_prediction_mode: pmode,
             literal_context_map: ItemVec::<u8>::default(),
             distance_context_map: ItemVec::<u8>::default(),
+            context_speeds: ItemVec::<u8>::default()
         };
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
@@ -248,6 +269,39 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                     },
                 }
             }
+        }
+        if command_vec.iter().enumerate().find(|r| *r.1 == "cmspeedinc").is_some() ||
+            command_vec.iter().enumerate().find(|r| *r.1 == "cmspeedmax").is_some() || 
+            command_vec.iter().enumerate().find(|r| *r.1 == "stspeedinc").is_some() ||
+            command_vec.iter().enumerate().find(|r| *r.1 == "stspeedmax").is_some() ||
+            command_vec.iter().enumerate().find(|r| *r.1 == "mxspeedinc").is_some() ||
+            command_vec.iter().enumerate().find(|r| *r.1 == "mxspeedmax").is_some() {
+                let l = ret.context_speeds_standard_len();
+                ret.context_speeds.0.resize(l, 0);
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "cmspeedinc") {
+            let offset = ret.context_map_speed_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "cmspeedmax") {
+            let offset = ret.context_map_speed_max_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "stspeedinc") {
+            let offset = ret.stride_context_speed_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "stspeedmax") {
+            let offset = ret.stride_context_speed_max_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "mxspeedinc") {
+            let offset = ret.combined_stride_context_speed_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
+        }
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "mxspeedmax") {
+            let offset = ret.combined_stride_context_speed_max_offset();
+            try!(parse_speed(&command_vec, index, &mut ret.context_speeds.0[..], offset));
         }
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {

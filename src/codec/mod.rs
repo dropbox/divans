@@ -536,6 +536,7 @@ impl<AllocU8: Allocator<u8>,
                         literal_prediction_mode: LiteralPredictionModeNibble::default(),
                         literal_context_map:ISl::default(),
                         distance_context_map:ISl::default(),
+                        context_speeds:ISl::default(),
                     };
                     let src_pred_mode = match *input_cmd {
                         Command::PredictionMode(ref pm) => pm,
