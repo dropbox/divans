@@ -34,6 +34,12 @@ fn next_mul_512(a: usize) -> usize {
 }
 
 fn all_same(data: &[u8], goal: u8) -> bool {
+    if data.len() == 0 {
+        return true;
+    }
+    if data[data.len() - 1] != goal {
+        return false;
+    }
     for i in data.iter() {
         if *i != goal {
             return false;
@@ -278,7 +284,10 @@ impl PredictionModeState {
                        0xf
                    } else {
                        let input_index = (index as usize + speed_index_offset) & speed_index_mask;
-                       if all_same(&speeds[input_index as usize..next_mul_512(input_index as usize)], last_byte) {
+                       if (index >= 1024 &&
+                           superstate.bk.materialized_context_map &&
+                           !superstate.bk.combine_literal_predictions
+                       ) || all_same(&speeds[input_index as usize..next_mul_512(input_index as usize)], last_byte) {
                            0xf
                        } else{
                            (speeds[input_index] >> 3) & 0xf
