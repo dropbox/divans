@@ -15,6 +15,7 @@ use ::interface::{
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
+    PredictionModeContextMap,
     LITERAL_PREDICTION_MODE_SIGN,
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
@@ -419,22 +420,26 @@ impl<Cdf16:CDF16,
         }
         15
     }
-    pub fn obs_literal_speed(&mut self, index: u32, mut speed_u16: u16) {
+    pub fn obs_literal_speed<SliceType:SliceWrapper<u8> >(&mut self, index: u32,
+                                                   in_cmd: &PredictionModeContextMap<SliceType>,
+                                                   speed_u8: u8) {
         let is_stride = (index >> 10) as usize & 1;
         let is_max = (index >> 9) & 1;
         let is_lower = index as usize & 1;
         let context_prior = (index >> 1) as usize & 0xff;
         let mut_speed = &mut self.context_speed[is_stride][context_prior][is_lower];
         if is_max != 0 {
-            if speed_u16 == 0 {
-                speed_u16 = self.literal_adaptation.lim() as u16;
+            if speed_u8 == 0xff {
+                mut_speed.set_lim(self.literal_adaptation.lim());
+            } else {
+                mut_speed.set_lim(in_cmd.f8_to_u16(speed_u8) as i16);
             }
-            mut_speed.set_lim(speed_u16 as i16);
         } else {
-            if speed_u16 == 0 {
-                speed_u16 = self.literal_adaptation.inc() as u16; 
+            if speed_u8 == 0xff {
+                mut_speed.set_inc(self.literal_adaptation.inc());
+            } else {
+                mut_speed.set_inc(in_cmd.f8_to_u16(speed_u8) as i16);
             }
-            mut_speed.set_inc(speed_u16 as i16);
         }
     }
         

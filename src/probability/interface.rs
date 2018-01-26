@@ -248,7 +248,7 @@ impl CDF2 {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Speed(i16,i16);
 impl Speed {
     pub const GEOLOGIC: Speed = Speed(0x0001, 0x4000);

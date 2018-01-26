@@ -210,7 +210,7 @@ impl PredictionModeState {
                                *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::ContextMapSpeedHigh(0, 0);
+                               *self = PredictionModeState::ContextMapSpeedHigh(0, 0xff);
                            }
                        }
                    } else if mnemonic_nibble == 15 {
@@ -303,7 +303,7 @@ impl PredictionModeState {
                    }
                    if msn_nib == 0xf { // all the same
                        for i in index as usize..next_mul_512(index as usize) {
-                           superstate.bk.obs_literal_speed(i as u32, in_cmd.f8_to_u16(last_byte));
+                           superstate.bk.obs_literal_speed(i as u32, in_cmd, last_byte);
                        }
                        let destination = next_mul_512(index as usize) as u32;
                        if destination < max_speed_index {
@@ -331,14 +331,24 @@ impl PredictionModeState {
                        nibble_prob.blend(msn_nib, Speed::ROCKET);
                    }
                    let last_byte = (msn_nib << 3) | lsn_nib;
-                   superstate.bk.obs_literal_speed(index, in_cmd.f8_to_u16(last_byte));
+                   superstate.bk.obs_literal_speed(index, in_cmd, last_byte);
                    if index == max_speed_index {
                        *self = PredictionModeState::FullyDecoded;
                    } else {
                        *self = PredictionModeState::ContextMapSpeedHigh(index + 1, last_byte);
                    }
                },
-               PredictionModeState::FullyDecoded => {
+                PredictionModeState::FullyDecoded => {
+                    /*
+                    for stride in 0..2 {
+                        for prior in 0..256 {
+                            for high in 0..2 {
+                                println!("({}, {}, {}: {:?}",
+                                         stride,prior,high,
+                                         superstate.bk.context_speed[stride][prior][high]);
+                            }
+                        }
+                    }*/
                    return BrotliResult::ResultSuccess;
                }
             }
