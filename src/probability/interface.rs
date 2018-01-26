@@ -249,7 +249,7 @@ impl CDF2 {
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Speed(pub i16,pub i16);
+pub struct Speed(i16,i16);
 impl Speed {
     pub const GEOLOGIC: Speed = Speed(0x0001, 0x4000);
     pub const GLACIAL: Speed = Speed(0x0004, 0x0a00);
@@ -268,6 +268,15 @@ impl Speed {
     #[inline(always)]
     pub fn inc(&self) -> i16 {
         self.0
+    }
+    #[inline(always)]
+    pub fn set_lim(&mut self, lim: i16) {
+        debug_assert!(lim <= 0x4000); // otherwise some sse hax fail
+        self.1 = lim;
+    }
+    #[inline(always)]
+    pub fn set_inc(&mut self, inc: i16) {
+        self.0 = inc;
     }
 }
 impl core::str::FromStr for Speed {

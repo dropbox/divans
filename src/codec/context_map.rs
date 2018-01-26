@@ -131,7 +131,7 @@ impl PredictionModeState {
                        Speed::FAST => FAST_CODE,
                        Speed::PLANE => PLANE_CODE,
                        Speed::ROCKET => ROCKET_CODE,
-                       Speed(_inc, _lim) => return BrotliResult::ResultFailure,
+                       _ => return BrotliResult::ResultFailure,
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
@@ -288,7 +288,7 @@ impl PredictionModeState {
                    }
                    if msn_nib == 0xf && (index & 511) != 0 { // all the same
                        for i in index as usize..next_mul_512(index as usize) {
-                           superstate.bk.obs_literal_speed(in_cmd, i as u32, last_byte);
+                           superstate.bk.obs_literal_speed(i as u32, in_cmd.f8_to_u16(last_byte));
                        }
                        let destination = next_mul_512(index as usize) as u32;
                        if destination < max_speed_index {
@@ -316,7 +316,7 @@ impl PredictionModeState {
                        nibble_prob.blend(msn_nib, Speed::ROCKET);
                    }
                    let last_byte = (msn_nib << 3) | lsn_nib;
-                   superstate.bk.obs_literal_speed(in_cmd, index, last_byte);
+                   superstate.bk.obs_literal_speed(index, in_cmd.f8_to_u16(last_byte));
                    if index == max_speed_index {
                        *self = PredictionModeState::FullyDecoded;
                    } else {

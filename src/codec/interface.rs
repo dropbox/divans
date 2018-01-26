@@ -420,12 +420,17 @@ impl<Cdf16:CDF16,
         }
         15
     }
-    pub fn obs_literal_speed<SliceType:SliceWrapper<u8>>(
-        &mut self,
-        converter: &PredictionModeContextMap<SliceType>,
-        index: u32,
-        speed_f8: u8) {
-        
+    pub fn obs_literal_speed(&mut self, index: u32, speed_u16: u16) {
+        let is_stride = (index >> 10) as usize & 1;
+        let is_max = (index >> 9) & 1;
+        let is_lower = index as usize & 1;
+        let context_prior = (index >> 1) as usize & 0xff;
+        let mut_speed = &mut self.context_speed[is_stride][context_prior][is_lower];
+        if is_max != 0 {
+            mut_speed.set_lim(speed_u16 as i16);
+        } else {
+            mut_speed.set_inc(speed_u16 as i16);
+        }
     }
         
         

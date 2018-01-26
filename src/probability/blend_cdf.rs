@@ -194,7 +194,7 @@ impl CDF16 for BlendCDF16 {
                 Speed::FAST => 384,
                 Speed::PLANE => 512,
                 Speed::ROCKET => 1100,
-                Speed(a, b) => a,
+                _ => speed.inc(), // should we warn here?
         };
         let to_blend = to_blend_lut(symbol);
         let mr = self.mix_rate;
