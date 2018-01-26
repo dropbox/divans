@@ -80,6 +80,12 @@ impl PredictionModeState {
                     _, context_map_type, _) => PredictionModeState::ContextMapSecondNibble(0,
                                                                                                       context_map_type,
                                                                                                       0),
+                PredictionModeState::ContextMapSpeedLow(
+                    index, _) => PredictionModeState::ContextMapSpeedLow((index >> 9) & 1,
+                                                                         index as u8 & 1),
+                PredictionModeState::ContextMapSpeedHigh(
+                    index, _) => PredictionModeState::ContextMapSpeedHigh((index >> 9) & 1,
+                                                                         index as u8 & 1),
                 a => a,
             });
 
@@ -272,7 +278,7 @@ impl PredictionModeState {
                        0xf
                    } else {
                        let input_index = (index as usize + speed_index_offset) & speed_index_mask;
-                       if (input_index & 511) != 0 && all_same(&speeds[input_index as usize..next_mul_512(input_index as usize)], last_byte) {
+                       if all_same(&speeds[input_index as usize..next_mul_512(input_index as usize)], last_byte) {
                            0xf
                        } else{
                            (speeds[input_index] >> 3) & 0xf
@@ -286,7 +292,7 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                        nibble_prob.blend(msn_nib, Speed::ROCKET);
                    }
-                   if msn_nib == 0xf && (index & 511) != 0 { // all the same
+                   if msn_nib == 0xf { // all the same
                        for i in index as usize..next_mul_512(index as usize) {
                            superstate.bk.obs_literal_speed(i as u32, in_cmd.f8_to_u16(last_byte));
                        }
