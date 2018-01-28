@@ -422,25 +422,30 @@ impl<Cdf16:CDF16,
         }
         15
     }
-    pub fn obs_literal_speed<SliceType:SliceWrapper<u8> >(&mut self, index: u32,
-                                                   in_cmd: &PredictionModeContextMap<SliceType>,
-                                                   speed_u8: u8) {
-        self.last_seen_speeds[0] = self.last_seen_speeds[1];
+    pub fn get_observed_literal_speed(&mut self, index: u32) -> (&mut Speed, bool) {
         let is_stride = (index >> 10) as usize & 1;
         let is_max = (index >> 9) & 1;
         let is_lower = index as usize & 1;
         let context_prior = (index >> 1) as usize & 0xff;
-        let mut_speed = &mut self.context_speed[is_stride][context_prior][is_lower];
+        (&mut self.context_speed[is_stride][context_prior][is_lower], is_max != 0)
+    }
+    pub fn obs_literal_speed<SliceType:SliceWrapper<u8> >(&mut self, index: u32,
+                                                   in_cmd: &PredictionModeContextMap<SliceType>,
+                                                   speed_u8: u8) {
+        self.last_seen_speeds[0] = self.last_seen_speeds[1];
         self.last_seen_speeds[1] = speed_u8;
-        if is_max != 0 {
+        let adap_max = self.literal_adaptation.lim();
+        let adap_inc = self.literal_adaptation.inc();
+        let (mut_speed, is_max) = self.get_observed_literal_speed(index);
+        if is_max {
             if speed_u8 == 0xff {
-                mut_speed.set_lim(self.literal_adaptation.lim());
+                mut_speed.set_lim(adap_max);
             } else {
                 mut_speed.set_lim(in_cmd.f8_to_u16(speed_u8) as i16);
             }
         } else {
             if speed_u8 == 0xff {
-                mut_speed.set_inc(self.literal_adaptation.inc());
+                mut_speed.set_inc(adap_inc);
             } else {
                 mut_speed.set_inc(in_cmd.f8_to_u16(speed_u8) as i16);
             }

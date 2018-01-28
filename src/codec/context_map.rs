@@ -298,8 +298,22 @@ impl PredictionModeState {
                        }
                    };
                    {
+                       let inc_prior : usize;
+                       {
+                           let (s, im) = superstate.bk.get_observed_literal_speed(index);
+                           if im {
+                               match s.inc() {
+                                   0 => inc_prior = 1,
+                                   1 => inc_prior = 2,
+                                   a => inc_prior = (a >= 16) as usize + 3, 
+                               }
+                           } else {
+                               inc_prior = 0;
+                           }
+                       }
+                       let billing = BillingDesignation::PredModeCtxMap(PredictionModeState::ContextMapSpeedHigh(inc_prior as u32 * 2 + (index as u32& 1)));
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedHigh,
-                                                                                 ((index as usize) >> 9, index as usize & 1,)); // FIXME: maybe need to use prev nibble
+                                                                                 (inc_prior, index as usize & 1,)); // FIXME: maybe need to use prev nibble
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
@@ -328,7 +342,7 @@ impl PredictionModeState {
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedLow,
-                                                                                 ((index as usize) >> 9, index as usize & 1, msn_nib as usize));
+                                                                                 (((index as usize) >> 9) & 1, index as usize & 1, (msn_nib > 1) as usize + (msn_nib > 2) as usize * 2));
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
