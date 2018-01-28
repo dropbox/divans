@@ -260,6 +260,12 @@ impl Speed {
     pub const PLANE: Speed = Speed(0x0080, 0x4000);
     pub const ROCKET: Speed =Speed(0x0180, 0x4000);
     #[inline(always)]
+    pub fn new(inc:i16, max: i16) -> Speed {
+        debug_assert!(inc <= 0x4000); // otherwise some sse hax fail
+        debug_assert!(max <= 0x4000); // otherwise some sse hax fail
+        Speed(inc, max)
+    }
+    #[inline(always)]
     pub fn lim(&self) -> i16 {
         let ret = self.1;
         debug_assert!(ret <= 0x4000); // otherwise some sse hax fail

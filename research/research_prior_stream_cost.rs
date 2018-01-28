@@ -351,6 +351,22 @@ fn eval_stream<Reader:std::io::BufRead>(
     let preselected_speeds = [
         Speed { inc: 0, max: 32, algo: 0, },
         Speed { inc: 1, max: 32, algo: 0, },
+        Speed { inc: 1, max: 128, algo: 0, },
+        Speed { inc: 1, max: 16384, algo: 0, },
+        Speed { inc: 2, max: 1024, algo: 0, },
+        Speed { inc: 4, max: 1024, algo: 0, },
+        Speed { inc: 8, max: 8192, algo: 0, },
+        Speed { inc: 16, max: 48, algo: 0,},
+        Speed { inc: 32, max: 4096, algo: 0,},
+        Speed { inc: 64, max: 16384, algo: 0,},
+        Speed { inc: 128, max: 256, algo: 0, },
+        Speed { inc: 128, max: 16384, algo: 0,},
+        Speed { inc: 512, max: 16384, algo: 0,},
+        Speed { inc: 1024, max: 16384, algo: 0,},
+        Speed { inc: 1664, max: 16384, algo: 0,},
+        /*
+        Speed { inc: 0, max: 32, algo: 0, },
+        Speed { inc: 1, max: 32, algo: 0, },
         Speed { inc: 1, max: 64, algo: 0, },
         Speed { inc: 1, max: 96, algo: 0, },
         Speed { inc: 1, max: 128, algo: 0, },
@@ -413,6 +429,7 @@ fn eval_stream<Reader:std::io::BufRead>(
         Speed { inc: 1065, max: 16384, algo: 1, },
         Speed { inc: 1200, max: 16384, algo: 1, },
         Speed { inc: 1600, max: 16384, algo: 1, },
+*/
     ];
     let speed_choice = match speed {
         Some(_) => &specified_speed[..],

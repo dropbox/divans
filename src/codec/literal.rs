@@ -184,12 +184,12 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
         if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            let ctx = if CTraits::COMBINE_LITERAL_PREDICTIONS {
+            /*let ctx = if CTraits::COMBINE_LITERAL_PREDICTIONS {
                 byte_context.actual_context
             } else {
                 byte_context.stride_byte
-            };
-            nibble_prob.blend(cur_nibble, superstate.bk.context_speed[1][ctx as usize][high_nibble as usize]);
+            };*/
+            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation/*context_speed[1][ctx as usize][high_nibble as usize]*/);
         }
         if CTraits::MATERIALIZED_PREDICTION_MODE {
             cm_prob.blend(cur_nibble, superstate.bk.context_speed[0][byte_context.actual_context as usize][high_nibble as usize]);

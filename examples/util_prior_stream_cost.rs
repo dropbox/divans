@@ -4,6 +4,7 @@ use std::env;
 use std::collections::HashMap;
 use divans::CDF16;
 use divans::BaseCDF;
+use divans::Speed;
 use std::vec;
 fn determine_cost(cdf: &divans::DefaultCDF16,
                   nibble: u8) -> f64 {
@@ -71,8 +72,23 @@ fn eval_stream<Reader:std::io::BufRead>(
         Some(s) => [s],
         None => [divans::Speed::MUD],
     };
-    let trial_speeds = [divans::Speed::GEOLOGIC, divans::Speed::GLACIAL, divans::Speed::MUD, divans::Speed::SLOW,
-                        divans::Speed::MED, divans::Speed::FAST, divans::Speed::PLANE, divans::Speed::ROCKET];
+    let trial_speeds = [
+        Speed::new(0, 32),
+        Speed::new(1, 32),
+        Speed::new(1, 128),
+        Speed::new(1, 16384),
+        Speed::new(2, 1024),
+        Speed::new(4, 1024),
+        Speed::new(8, 8192),
+        Speed::new(16, 48),
+        Speed::new(32, 4096),
+        Speed::new(64, 16384),
+        Speed::new(128, 256),
+        Speed::new(128, 16384),
+        Speed::new(512, 16384),
+        Speed::new(1024, 16384),
+        Speed::new(1664, 16384),
+    ];
     let speed_choice = match speed {
         Some(_) => &specified_speed[..],
         None => &trial_speeds[..],
@@ -82,8 +98,21 @@ fn eval_stream<Reader:std::io::BufRead>(
         let mut best_cost_low: Option<f64> = None;
         for cur_speed in speed_choice.iter() {
             let mut cur_cost_high: f64 = 0.0;
-            let mut cur_cost_low: f64 = 0.0;
             let mut cdf0 = divans::DefaultCDF16::default();
+            for val in sub_stream.iter() {
+                let val_nibbles = (val >> 4, val & 0xf);
+                {
+                    cur_cost_high += determine_cost(&cdf0, val_nibbles.0);
+                    cdf0.blend(val_nibbles.0, *cur_speed);
+                }
+            }
+            best_cost_high = match best_cost_high.clone() {
+                None => Some(cur_cost_high),
+                Some(bc) => Some(if bc > cur_cost_high {cur_cost_high} else {bc}),
+            };
+        }
+        for cur_speed in speed_choice.iter() {
+            let mut cur_cost_low: f64 = 0.0;
             let mut cdf1a = [
                 divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
                 divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),divans::DefaultCDF16::default(), divans::DefaultCDF16::default(),
@@ -93,19 +122,11 @@ fn eval_stream<Reader:std::io::BufRead>(
             for val in sub_stream.iter() {
                 let val_nibbles = (val >> 4, val & 0xf);
                 {
-                    cur_cost_high += determine_cost(&cdf0, val_nibbles.0);
-                    cdf0.blend(val_nibbles.0, *cur_speed);
-                }
-                {
                     let cdf1 = &mut cdf1a[val_nibbles.0 as usize];
                     cur_cost_low += determine_cost(cdf1, val_nibbles.1);
                     cdf1.blend(val_nibbles.1, *cur_speed);
                 }
             }
-            best_cost_high = match best_cost_high.clone() {
-                None => Some(cur_cost_high),
-                Some(bc) => Some(if bc > cur_cost_high {cur_cost_high} else {bc}),
-            };
             best_cost_low = match best_cost_low.clone() {
                 None => Some(cur_cost_low),
                 Some(bc) => Some(if bc > cur_cost_low {cur_cost_low} else {bc}),

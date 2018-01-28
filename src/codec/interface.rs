@@ -145,7 +145,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub combine_literal_predictions: bool,
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
-    pub last_seen_speeds: [u8;2],
     pub decode_byte_count: u32,
     pub desired_force_stride: StrideSelection,
     pub desired_literal_adaptation: Speed,
@@ -309,7 +308,6 @@ impl<Cdf16:CDF16,
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
             btype_max_seen:[0;3],
-            last_seen_speeds:[0,0],
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
@@ -431,24 +429,19 @@ impl<Cdf16:CDF16,
     }
     pub fn obs_literal_speed<SliceType:SliceWrapper<u8> >(&mut self, index: u32,
                                                    in_cmd: &PredictionModeContextMap<SliceType>,
-                                                   speed_u8: u8) {
-        self.last_seen_speeds[0] = self.last_seen_speeds[1];
-        self.last_seen_speeds[1] = speed_u8;
+                                                   speed_u8: (u8, u8)) {
         let adap_max = self.literal_adaptation.lim();
         let adap_inc = self.literal_adaptation.inc();
         let (mut_speed, is_max) = self.get_observed_literal_speed(index);
-        if is_max {
-            if speed_u8 == 0xff {
-                mut_speed.set_lim(adap_max);
-            } else {
-                mut_speed.set_lim(in_cmd.f8_to_u16(speed_u8) as i16);
-            }
+        if speed_u8.1 == 0xff {
+            mut_speed.set_lim(adap_max);
         } else {
-            if speed_u8 == 0xff {
-                mut_speed.set_inc(adap_inc);
-            } else {
-                mut_speed.set_inc(in_cmd.f8_to_u16(speed_u8) as i16);
-            }
+            mut_speed.set_lim(in_cmd.f8_to_u16(speed_u8.1) as i16);
+        }
+        if speed_u8.0 == 0xff {
+            mut_speed.set_inc(adap_inc);
+        } else {
+            mut_speed.set_inc(in_cmd.f8_to_u16(speed_u8.0) as i16);
         }
     }
         
