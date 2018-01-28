@@ -145,6 +145,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub combine_literal_predictions: bool,
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
+    pub last_seen_speeds: [u8;2],
     pub decode_byte_count: u32,
     pub desired_force_stride: StrideSelection,
     pub desired_literal_adaptation: Speed,
@@ -308,6 +309,7 @@ impl<Cdf16:CDF16,
             distance_lru: [4,11,15,16],
             btype_lru:[[0,1];3],
             btype_max_seen:[0;3],
+            last_seen_speeds:[0,0],
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
@@ -423,11 +425,13 @@ impl<Cdf16:CDF16,
     pub fn obs_literal_speed<SliceType:SliceWrapper<u8> >(&mut self, index: u32,
                                                    in_cmd: &PredictionModeContextMap<SliceType>,
                                                    speed_u8: u8) {
+        self.last_seen_speeds[0] = self.last_seen_speeds[1];
         let is_stride = (index >> 10) as usize & 1;
         let is_max = (index >> 9) & 1;
         let is_lower = index as usize & 1;
         let context_prior = (index >> 1) as usize & 0xff;
         let mut_speed = &mut self.context_speed[is_stride][context_prior][is_lower];
+        self.last_seen_speeds[1] = speed_u8;
         if is_max != 0 {
             if speed_u8 == 0xff {
                 mut_speed.set_lim(self.literal_adaptation.lim());

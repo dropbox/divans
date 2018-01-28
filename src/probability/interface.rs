@@ -271,11 +271,12 @@ impl Speed {
     }
     #[inline(always)]
     pub fn set_lim(&mut self, lim: i16) {
-        debug_assert!(lim <= 0x4000); // otherwise some sse hax fail
+        assert!(lim <= 0x4000); // otherwise some sse hax fail
         self.1 = lim;
     }
     #[inline(always)]
     pub fn set_inc(&mut self, inc: i16) {
+        assert!(inc <= 0x4000);
         self.0 = inc;
     }
 }
