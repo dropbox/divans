@@ -186,14 +186,15 @@ impl CDF16 for BlendCDF16 {
     fn blend(&mut self, symbol:u8, speed: Speed) {
         self.count = self.count.wrapping_add(1);
         let _mix_rate = match speed {
-                Speed::GEOLOGIC => 32,
-                Speed::GLACIAL => 64,
-                Speed::MUD => 128,
-                Speed::SLOW => 192,
-                Speed::MED => 256,
-                Speed::FAST => 384,
-                Speed::PLANE => 512,
-                Speed::ROCKET => 1100,
+            Speed::GEOLOGIC => 32,
+            Speed::GLACIAL => 64,
+            Speed::MUD => 128,
+            Speed::SLOW => 192,
+            Speed::MED => 256,
+            Speed::FAST => 384,
+            Speed::PLANE => 512,
+            Speed::ROCKET => 1100,
+            a => a.inc(),
         };
         let to_blend = to_blend_lut(symbol);
         let mr = self.mix_rate;
