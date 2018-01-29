@@ -334,7 +334,7 @@ impl PredictionModeState {
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
                                                                              (palette_type as usize,));
                    superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
-                   print!("{} {} ({} {}) Putting {}\n", palette_index, palette_type, cur_speed.0, cur_speed.1, nibble);
+                   //print!("{} {} ({} {}) Putting {}\n", palette_index, palette_type, cur_speed.0, cur_speed.1, nibble);
                    nibble_prob.blend(nibble, Speed::SLOW);
                    if false && nibble == 0xf {
                        *self = PredictionModeState::ContextMapSpeeds(0, out_palette, 0);
