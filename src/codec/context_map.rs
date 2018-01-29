@@ -53,6 +53,7 @@ fn build_palette(data:&[u8]) -> Option<[(u8, u8);15]> {
             }
         }
     }
+    ret.sort_unstable();
     return Some(ret); //fixme
 }
 
@@ -312,37 +313,49 @@ impl PredictionModeState {
                    }
                    let palette_index = index as usize >> 2;
                    let cur_speed = speed_palette.unwrap()[palette_index];
+                   let prev_speed = if palette_index != 0 {
+                       speed_palette.unwrap()[palette_index - 1]
+                   } else {
+                       (0, 0)
+                   };
                    let palette_type = index & 3;
                    let mut nibble: u8;
-                   if cur_speed == (0, 0) {
+                   /*if cur_speed == (0, 0) {
                        nibble = 0xf
-                   } else if palette_type == 0 {
-                       nibble = cur_speed.0 >> 4;
+                   } else */if palette_type == 0 {
+                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) >> 3;
                    } else if palette_type == 1 {
-                       nibble = cur_speed.0 & 0xf;
+                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) & 0x7;
                    } else if palette_type == 2 {
-                       nibble = cur_speed.1 >> 4;
+                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) >> 3;
                    } else {
-                       nibble = cur_speed.1 & 0xf;
+                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) & 0x7;
                    }
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
                                                                              (palette_type as usize,));
                    superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
+                   print!("{} {} ({} {}) Putting {}\n", palette_index, palette_type, cur_speed.0, cur_speed.1, nibble);
                    nibble_prob.blend(nibble, Speed::SLOW);
-                   if nibble == 0xf {
+                   if false && nibble == 0xf {
                        *self = PredictionModeState::ContextMapSpeeds(0, out_palette, 0);
                    } else {
                        if palette_type == 0 {
-                           out_palette[palette_index].0 |= nibble<<4;
+                           out_palette[palette_index].0 |= nibble<<3;
                        }
                        if palette_type == 1 {
                            out_palette[palette_index].0 |= nibble;
                        }
                        if palette_type == 2 {
-                           out_palette[palette_index].1 |= nibble << 4;
+                           out_palette[palette_index].1 |= nibble << 3;
                        }
                        if palette_type == 3 {
                            out_palette[palette_index].1 |= nibble;
+                           if palette_index != 0 {
+                               let prev_palette = out_palette[palette_index - 1];
+                               let cur_palette  = out_palette[palette_index];
+                               out_palette[palette_index].0 = cur_palette.0.wrapping_add(prev_palette.0) & 0x7f;
+                               out_palette[palette_index].1 = cur_palette.1.wrapping_add(prev_palette.1) & 0x7f;
+                           }
                        }
                        if index as usize + 1 == 4 * out_palette.len(){
                            *self = PredictionModeState::ContextMapSpeeds(0, out_palette, 0);
