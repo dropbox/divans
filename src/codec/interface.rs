@@ -143,8 +143,8 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_prior_depth: u8,
     pub desired_context_mixing: u8,
     pub literal_prediction_mode: LiteralPredictionModeNibble,
-    pub literal_adaptation: Speed,
-    pub desired_literal_adaptation: Speed,
+    pub literal_adaptation: [Speed; 2],
+    pub desired_literal_adaptation: [Speed;2],
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub literal_lut0:[u8;256],
@@ -239,7 +239,7 @@ impl<Cdf16:CDF16,
            distance_context_map: AllocU8::AllocatedMemory,
            mut dynamic_context_mixing: u8,
            prior_depth: u8,
-           literal_adaptation_speed:Speed,
+           literal_adaptation_speed:[Speed;2],
            do_context_map: bool,
            force_stride: StrideSelection) -> Self {
         assert!(dynamic_context_mixing < 15); // leaves room for expansion
@@ -257,7 +257,7 @@ impl<Cdf16:CDF16,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
-            literal_adaptation: default_literal_speed(),
+            literal_adaptation: [default_literal_speed(), default_literal_speed()],
             decode_byte_count:0,
             command_count:0,
             num_literals_coded:0,
@@ -333,8 +333,11 @@ impl<Cdf16:CDF16,
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map
     }
-    pub fn obs_literal_adaptation_rate(&mut self, ladaptation_rate: Speed) {
-        self.literal_adaptation = ladaptation_rate;
+    pub fn obs_literal_adaptation_rate(&mut self, index: u32, ladaptation_rate: Speed) {
+        if index < self.literal_adaptation.len() as u32 {
+            self.literal_adaptation[index as usize
+            ] = ladaptation_rate;
+        }
     }
     pub fn obs_prior_depth(&mut self, prior_depth: u8) {
         //self.prior_depth = prior_depth;
@@ -588,7 +591,7 @@ impl <AllocU8:Allocator<u8>,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
                prior_depth:u8,
-               literal_adaptation_rate :Speed,
+               literal_adaptation_rate: [Speed;2],
                do_context_map:bool,
                force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);

@@ -22,10 +22,11 @@ pub const DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING:DivansOptionSelect = 4;
 pub const DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION:DivansOptionSelect = 5;
 pub const DIVANS_OPTION_USE_BROTLI_BITSTREAM:DivansOptionSelect = 6;
 pub const DIVANS_OPTION_USE_CONTEXT_MAP:DivansOptionSelect = 7;
-pub const DIVANS_OPTION_LITERAL_ADAPTATION:DivansOptionSelect = 8;
+pub const DIVANS_OPTION_LITERAL_ADAPTATION_CM:DivansOptionSelect = 8;
 pub const DIVANS_OPTION_FORCE_STRIDE_VALUE:DivansOptionSelect = 9;
 pub const DIVANS_OPTION_STRIDE_DETECTION_QUALITY:DivansOptionSelect = 10;
 pub const DIVANS_OPTION_PRIOR_DEPTH:DivansOptionSelect = 11;
+pub const DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE:DivansOptionSelect = 12;
 
 
 #[repr(C)]

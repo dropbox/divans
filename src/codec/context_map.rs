@@ -13,13 +13,14 @@ use ::interface::{
     PredictionModeContextMap,
 };
 use ::priors::PriorCollection;
-use ::probability::{Speed, CDF2, CDF16};
+use ::probability::{Speed, CDF2, CDF16, SpeedPalette};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PredictionModeState {
     Begin,
     DynamicContextMixing,
     PriorDepth,
-    LiteralAdaptationRate,
+    ContextMapSpeedPalette(u32, [(u8,u8);15]),
+    LiteralAdaptationRate(u32, SpeedPalette),
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
@@ -27,6 +28,29 @@ pub enum PredictionModeState {
 }
 
 
+//returns if a is closer than b
+fn closer(candidate: i16, best: i16, item: i16) -> bool {
+    let mut cand_dist = i32::from(candidate) - i32::from(item);
+    let mut best_dist = i32::from(best) - i32::from(item);
+    if best_dist < 0 {
+        best_dist = -best_dist;
+    }
+    if cand_dist < 0 {
+        cand_dist = -cand_dist;
+    }
+    best_dist > cand_dist
+}
+fn find_best_match(data: Speed, palette: &SpeedPalette) -> usize {
+    let mut best_match = palette[0];
+    let mut best_index = 0;
+    for (index, item) in palette.iter().enumerate() {
+        if closer(item.inc(), best_match.inc(), data.inc()) || (item.inc() == best_match.inc() && closer(item.lim(), best_match.lim(), data.lim())) {
+            best_match = *item;
+            best_index = index;
+        }
+    }
+    best_index
+}
 impl PredictionModeState {
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
@@ -62,7 +86,9 @@ impl PredictionModeState {
                 PredictionModeState::ContextMapSecondNibble(
                     _, context_map_type, _) => PredictionModeState::ContextMapSecondNibble(0,
                                                                                                       context_map_type,
-                                                                                                      0),
+                                                                                           0),
+                PredictionModeState::ContextMapSpeedPalette(_,_) => PredictionModeState::FullyDecoded,
+                PredictionModeState::LiteralAdaptationRate(_,_) => PredictionModeState::FullyDecoded, // the palette clutters the output
                 a => a,
             });
 
@@ -102,45 +128,82 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::FAST);
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
-                   *self = PredictionModeState::LiteralAdaptationRate;
+                   *self = PredictionModeState::ContextMapSpeedPalette(0, [(0,0);15]);
                },
-               PredictionModeState::LiteralAdaptationRate => {
-                   let mut beg_nib = match superstate.bk.desired_literal_adaptation.clone() {
-                       Speed::GEOLOGIC => GEOLOGIC_CODE,
-                       Speed::GLACIAL => GLACIAL_CODE,
-                       Speed::MUD => MUD_CODE,
-                       Speed::SLOW => SLOW_CODE,
-                       Speed::MED => MED_CODE,
-                       Speed::FAST => FAST_CODE,
-                       Speed::PLANE => PLANE_CODE,
-                       Speed::ROCKET => ROCKET_CODE,
-                       _ => return BrotliResult::ResultFailure,
+               PredictionModeState::ContextMapSpeedPalette(index, mut out_palette) => {
+                   let speed_palette = Speed::ENCODER_DEFAULT_PALETTE;
+                   let palette_index = index as usize >> 2;
+                   let cur_speed = speed_palette[palette_index].to_f8_tuple();
+                   let prev_speed = if palette_index != 0 {
+                       speed_palette[palette_index - 1].to_f8_tuple()
+                   } else {
+                       (0, 0)
+                   };
+                   let palette_type = index & 3;
+                   let mut nibble: u8;
+                   if palette_type == 0 {
+                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) >> 3;
+                   } else if palette_type == 1 {
+                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) & 0x7;
+                   } else if palette_type == 2 {
+                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) >> 3;
+                   } else {
+                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) & 0x7;
+                   }
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
+                                                                             (palette_type as usize,));
+                   superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
+                   nibble_prob.blend(nibble, Speed::FAST);
+                   if palette_type == 0 {
+                       out_palette[palette_index].0 |= nibble<<3;
+                   }
+                   if palette_type == 1 {
+                       out_palette[palette_index].0 |= nibble;
+                   }
+                   if palette_type == 2 {
+                       out_palette[palette_index].1 |= nibble << 3;
+                   }
+                   if palette_type == 3 {
+                       out_palette[palette_index].1 |= nibble;
+                       if palette_index != 0 {
+                           let prev_palette = out_palette[palette_index - 1];
+                           let cur_palette  = out_palette[palette_index];
+                           out_palette[palette_index].0 = cur_palette.0.wrapping_add(prev_palette.0) & 0x7f;
+                           out_palette[palette_index].1 = cur_palette.1.wrapping_add(prev_palette.1) & 0x7f;
+                       }
+                   }
+                   if index as usize + 1 == 4 * out_palette.len(){
+                       let mut tmp: SpeedPalette = [Speed::MUD; 15];
+                       for (out_item, in_item) in tmp.iter_mut().zip(out_palette.iter()) {
+                           *out_item = Speed::from_f8_tuple(*in_item);
+                       }
+                       *self = PredictionModeState::LiteralAdaptationRate(0, tmp);
+                   } else {
+                       *self = PredictionModeState::ContextMapSpeedPalette(index + 1, out_palette);
+                   }
+               },
+
+               PredictionModeState::LiteralAdaptationRate(index, palette) => {
+                   let mut nibble = if index >= superstate.bk.desired_literal_adaptation.len() as u32 {
+                       0xf
+                   } else {
+                       find_best_match(superstate.bk.desired_literal_adaptation[index as usize].clone(),
+                                       &palette) as u8 & 0xf
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
-                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                       nibble_prob.blend(beg_nib, Speed::MED);
+                       superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
+                       nibble_prob.blend(nibble, Speed::MED);
                    }
-                   const GEOLOGIC_CODE: u8 = 0;//Speed::GEOLOGIC as u8;
-                   const GLACIAL_CODE: u8 = 1;//Speed::GLACIAL as u8;
-                   const MUD_CODE:   u8 = 2;//Speed::MUD as u8;
-                   const SLOW_CODE: u8 = 3;//Speed::SLOW as u8;
-                   const MED_CODE: u8 = 4;//Speed::MED as u8;
-                   const FAST_CODE: u8 = 5;//Speed::FAST as u8;
-                   const PLANE_CODE: u8 = 6;//Speed::PLANE as u8;
-                   const ROCKET_CODE: u8 = 7;//Speed::ROCKET as u8;
-                   superstate.bk.obs_literal_adaptation_rate(match beg_nib {
-                       GEOLOGIC_CODE => Speed::GEOLOGIC,
-                       GLACIAL_CODE => Speed::GLACIAL,
-                       MUD_CODE => Speed::MUD,
-                       SLOW_CODE => Speed::SLOW,
-                       MED_CODE => Speed::MED,
-                       FAST_CODE => Speed::FAST,
-                       PLANE_CODE => Speed::PLANE,
-                       ROCKET_CODE => Speed::ROCKET,
-                       _ => return BrotliResult::ResultFailure,
-                   });
-                   *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
+                   if nibble == 0xf {
+                       *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
+                   } else {
+                       superstate.bk.obs_literal_adaptation_rate(index, palette[nibble as usize]);
+                       if index + 1 > 65536 {
+                           return BrotliResult::ResultFailure;
+                       }
+                       *self = PredictionModeState::LiteralAdaptationRate(index + 1, palette);
+                   }
                },
                PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let mut cur_context_map = match context_map_type {

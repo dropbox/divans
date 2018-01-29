@@ -184,10 +184,10 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
         if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[0].clone());
         }
         if CTraits::MATERIALIZED_PREDICTION_MODE {
-            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation.clone());
+            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[1].clone());
         }
         cur_nibble
     }

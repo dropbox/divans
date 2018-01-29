@@ -98,8 +98,8 @@ impl CompressorState {
                     8 => StrideSelection::Stride8,
                     _ => return DIVANS_FAILURE,
                 };},
-                DIVANS_OPTION_LITERAL_ADAPTATION => {
-                    opts.literal_adaptation = Some(match value {
+                DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE => {
+                    let literal_adaptation = match value {
                         0 => Speed::GEOLOGIC,
                         1 => Speed::GLACIAL,
                         2 => Speed::MUD,
@@ -109,7 +109,30 @@ impl CompressorState {
                         6 => Speed::PLANE,
                         7 => Speed::ROCKET,
                         _ => return DIVANS_FAILURE,
-                    });
+                    };
+                    if opts.literal_adaptation.is_none() {
+                       opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]);
+                    } else {
+                        opts.literal_adaptation.unwrap()[0] = literal_adaptation;
+                    }
+                },
+                DIVANS_OPTION_LITERAL_ADAPTATION_CM => {
+                    let literal_adaptation = match value {
+                        0 => Speed::GEOLOGIC,
+                        1 => Speed::GLACIAL,
+                        2 => Speed::MUD,
+                        3 => Speed::SLOW,
+                        4 => Speed::MED,
+                        5 => Speed::FAST,
+                        6 => Speed::PLANE,
+                        7 => Speed::ROCKET,
+                        _ => return DIVANS_FAILURE,
+                    };
+                    if opts.literal_adaptation.is_none() {
+                       opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]);
+                    } else {
+                        opts.literal_adaptation.unwrap()[1] = literal_adaptation;
+                    }
                 },
                 DIVANS_OPTION_PRIOR_DEPTH => {
                     opts.prior_depth = Some(value as u8);

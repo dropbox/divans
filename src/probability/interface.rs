@@ -248,9 +248,28 @@ impl CDF2 {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Speed(i16,i16);
+pub type SpeedPalette = [Speed;15];
 impl Speed {
+    pub const ENCODER_DEFAULT_PALETTE: SpeedPalette = [
+        Speed(0, 32),
+        Speed(1, 32),
+        Speed(1, 128),
+        Speed(1, 16384),
+        Speed(2, 1024),
+        Speed(4, 1024),
+        Speed(8, 8192),
+        Speed(16, 48),
+        Speed(16, 8192),// old mud
+        Speed(32, 4096),
+        Speed(64, 16384),
+        Speed(128, 256),
+        Speed(128, 16384),
+        Speed(512, 16384),
+        //Speed(1024, 16384),
+        Speed(1664, 16384),
+        ];
     pub const GEOLOGIC: Speed = Speed(0x0001, 0x4000);
     pub const GLACIAL: Speed = Speed(0x0004, 0x0a00);
     pub const MUD: Speed =   Speed(0x0010, 0x2000);
@@ -259,6 +278,12 @@ impl Speed {
     pub const FAST: Speed =  Speed(0x0060, 0x4000);
     pub const PLANE: Speed = Speed(0x0080, 0x4000);
     pub const ROCKET: Speed =Speed(0x0180, 0x4000);
+    pub fn to_f8_tuple(&self) -> (u8, u8) {
+        (speed_to_u8(self.inc()), speed_to_u8(self.lim()))
+    }
+    pub fn from_f8_tuple(inp: (u8, u8)) -> Self {
+        Speed::new(u8_to_speed(inp.0), u8_to_speed(inp.1))
+    }
     #[inline(always)]
     pub fn new(inc:i16, max: i16) -> Speed {
         debug_assert!(inc <= 0x4000); // otherwise some sse hax fail
@@ -446,5 +471,57 @@ mod test {
 
         use super::super::common_tests;
         common_tests::assert_cdf_eq(&reference_cdf, &wrapper_cdf.cdf);
+    }
+}
+pub fn speed_to_u8(data: i16) -> u8 {
+    let length = 16 - data.leading_zeros() as u8;
+    let mantissa = if data != 0 {
+        let rem = data - (1 << (length - 1));
+        (rem << 3) >> (length - 1)
+    } else {
+        0
+    };
+    (length << 3) | mantissa as u8
+}
+
+pub fn u8_to_speed(data: u8) -> i16 {
+    if data < 8 {
+        0
+    } else {
+        let log_val = (data >> 3) - 1;
+        let rem = (i16::from(data) & 0x7) << log_val;
+        (1i16 << log_val) | (rem >> 3)
+    }
+}
+#[cfg(test)]
+mod test {
+    use super::speed_to_u8;
+    use super::u8_to_speed;
+    fn tst_u8_to_speed(data: i16) {
+        assert_eq!(u8_to_speed(speed_to_u8(data)), data);
+    }
+    #[test]
+    fn test_u8_to_speed() {
+        tst_u8_to_speed(0);
+        tst_u8_to_speed(1);
+        tst_u8_to_speed(2);
+        tst_u8_to_speed(3);
+        tst_u8_to_speed(4);
+        tst_u8_to_speed(5);
+        tst_u8_to_speed(6);
+        tst_u8_to_speed(7);
+        tst_u8_to_speed(8);
+        tst_u8_to_speed(10);
+        tst_u8_to_speed(12);
+        tst_u8_to_speed(16);
+        tst_u8_to_speed(24);
+        tst_u8_to_speed(32);
+        tst_u8_to_speed(48);
+        tst_u8_to_speed(64);
+        tst_u8_to_speed(96);
+        tst_u8_to_speed(768);
+        tst_u8_to_speed(1280);
+        tst_u8_to_speed(1536);
+        tst_u8_to_speed(1664);
     }
 }

@@ -781,7 +781,7 @@ pub struct CompressOptions {
    pub lgblock: Option<u32>,
    pub do_context_map: bool,
    pub force_stride_value: StrideSelection,
-   pub literal_adaptation_speed: Option<Speed>,
+   pub literal_adaptation_speed: Option<[Speed;2]>,
    pub prior_depth: Option<u8>,
    pub dynamic_context_mixing: Option<u8>,
    pub stride_detection_quality: Option<u8>,
@@ -858,7 +858,7 @@ fn compress_ir<Reader:std::io::BufRead,
     w:&mut Writer,
     dynamic_context_mixing: Option<u8>,
     prior_depth: Option<u8>,
-    literal_adaptation_speed: Option<Speed>,
+    literal_adaptation_speed: Option<[Speed;2]>,
     do_context_map: bool,
     force_stride_value:StrideSelection) -> io::Result<()> {
     let window_size : i32;
@@ -1104,7 +1104,7 @@ fn main() {
     let mut use_context_map = false;
     let mut use_brotli = true;
     let mut force_stride_value = StrideSelection::PriorDisabled;
-    let mut literal_adaptation: Option<Speed> = None;
+    let mut literal_adaptation: Option<[Speed;2]> = None;
     let mut window_size: Option<i32> = None;
     let mut lgwin: Option<u32> = None;
     let mut quality: Option<u16> = None;
@@ -1277,16 +1277,38 @@ fn main() {
                     continue
                 }
                 if argument.starts_with("-speed=") {
-                    literal_adaptation = Some(argument.trim_matches(
+                    let spd = argument.trim_matches(
                         '-').trim_matches(
                         's').trim_matches(
                         'p').trim_matches(
                         'e').trim_matches(
                         'e').trim_matches(
                         'd').trim_matches(
-                        '=').parse::<Speed>().unwrap());
+                        '=').parse::<Speed>().unwrap();
+                    if literal_adaptation.is_none() {
+                        literal_adaptation = Some([spd, spd]);
+                    } else {
+                        literal_adaptation.unwrap()[0] = spd;
+                    }
                     continue
-                        
+                }
+                if argument.starts_with("-cmspeed=") {
+                    let spd = argument.trim_matches(
+                        '-').trim_matches(
+                        'c').trim_matches(
+                        'm').trim_matches(
+                        's').trim_matches(
+                        'p').trim_matches(
+                        'e').trim_matches(
+                        'e').trim_matches(
+                        'd').trim_matches(
+                        '=').parse::<Speed>().unwrap();
+                    if literal_adaptation.is_none() {
+                        literal_adaptation = Some([spd, spd]);
+                    } else {
+                        literal_adaptation.unwrap()[1] = spd;
+                    }
+                    continue
                 }
                 if argument == "-h" || argument == "-help" || argument == "--help" {
                     println_stderr!("Compression: divans {{-c [raw_input_file] | -i [ir_file]}} [output_file]");

@@ -28,7 +28,7 @@ pub mod frequentist_cdf;
 pub mod simd_frequentist_cdf;
 pub mod opt_frequentist_cdf;
 
-pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, Prob, LOG2_SCALE, BLEND_FIXED_POINT_PRECISION, ProbRange};
+pub use self::interface::{BaseCDF, CDF16, CDF2, Speed, SpeedPalette, Prob, LOG2_SCALE, BLEND_FIXED_POINT_PRECISION, ProbRange};
 #[cfg(feature="debug_entropy")]
 pub use self::interface::DebugWrapperCDF16;
 pub use self::blend_cdf::{BlendCDF16};
