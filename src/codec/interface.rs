@@ -433,12 +433,12 @@ impl<Cdf16:CDF16,
         let adap_max = self.literal_adaptation.lim();
         let adap_inc = self.literal_adaptation.inc();
         let (mut_speed, is_max) = self.get_observed_literal_speed(index);
-        if speed_u8.1 == 0xff {
+        if speed_u8.1 >= 0x7f  {
             mut_speed.set_lim(adap_max);
         } else {
             mut_speed.set_lim(in_cmd.f8_to_u16(speed_u8.1) as i16);
         }
-        if speed_u8.0 == 0xff {
+        if speed_u8.0 >= 0x7f {
             mut_speed.set_inc(adap_inc);
         } else {
             mut_speed.set_inc(in_cmd.f8_to_u16(speed_u8.0) as i16);
