@@ -110,10 +110,11 @@ impl CompressorState {
                         7 => Speed::ROCKET,
                         _ => return DIVANS_FAILURE,
                     };
-                    if opts.literal_adaptation.is_none() {
-                       opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]);
-                    } else {
-                        opts.literal_adaptation.unwrap()[0] = literal_adaptation;
+                    match opts.literal_adaptation {
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[0] = literal_adaptation;
+                        },
                     }
                 },
                 DIVANS_OPTION_LITERAL_ADAPTATION_CM => {
@@ -128,10 +129,11 @@ impl CompressorState {
                         7 => Speed::ROCKET,
                         _ => return DIVANS_FAILURE,
                     };
-                    if opts.literal_adaptation.is_none() {
-                       opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]);
-                    } else {
-                        opts.literal_adaptation.unwrap()[1] = literal_adaptation;
+                    match opts.literal_adaptation {
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[1] = literal_adaptation;
+                        },
                     }
                 },
                 DIVANS_OPTION_PRIOR_DEPTH => {

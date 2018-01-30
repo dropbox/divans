@@ -1285,10 +1285,11 @@ fn main() {
                         'e').trim_matches(
                         'd').trim_matches(
                         '=').parse::<Speed>().unwrap();
-                    if literal_adaptation.is_none() {
-                        literal_adaptation = Some([spd, spd]);
-                    } else {
-                        literal_adaptation.unwrap()[0] = spd;
+                    match literal_adaptation {
+                        None => literal_adaptation = Some([spd, spd]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[0] = spd;
+                        },
                     }
                     continue
                 }
@@ -1303,10 +1304,11 @@ fn main() {
                         'e').trim_matches(
                         'd').trim_matches(
                         '=').parse::<Speed>().unwrap();
-                    if literal_adaptation.is_none() {
-                        literal_adaptation = Some([spd, spd]);
-                    } else {
-                        literal_adaptation.unwrap()[1] = spd;
+                    match literal_adaptation {
+                        None => literal_adaptation = Some([spd, spd]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[1] = spd;
+                        },
                     }
                     continue
                 }

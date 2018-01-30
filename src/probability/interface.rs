@@ -312,7 +312,7 @@ impl Speed {
     }
 }
 impl core::str::FromStr for Speed {
-    type Err = ();
+    type Err = core::num::ParseIntError;
     fn from_str(inp:&str) -> Result<Speed, Self::Err> {
         match inp {
             "GEOLOGIC" => Ok(Speed::GEOLOGIC),
@@ -323,7 +323,35 @@ impl core::str::FromStr for Speed {
             "FAST" => Ok(Speed::FAST),
             "PLANE" => Ok(Speed::PLANE),
             "ROCKET" => Ok(Speed::ROCKET),
-            _ => Err(()),
+            _ => {
+               let mut split_location = 0;
+               for (index, item) in inp.chars().enumerate() {
+                  if item == ',' {
+                     split_location = index;
+                     break
+                  }
+               }
+               let first_num_str = inp.split_at(split_location).0;
+               let second_num_str = inp.split_at(split_location + 1).1;
+               let conv_inc = u16::from_str(first_num_str);
+               let conv_lim = u16::from_str(second_num_str);
+               match conv_inc {
+                  Err(e) => return Err(e),
+                  Ok(inc) => match conv_lim {
+                     Err(e) => return Err(e),
+                     Ok(lim) => {
+                         if lim <= 16384 && inc < 16384 {
+                         return Ok(Speed::new(inc as i16, lim as i16));
+                         } else {
+                             match "65537".parse::<u16>() {
+                                Err(e) => return Err(e),
+                                Ok(f) => panic!(f),
+                             }
+                         }
+                     },
+                  },
+               }
+            },
         }
     }
 }
