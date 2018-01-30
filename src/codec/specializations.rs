@@ -5,7 +5,6 @@ pub use super::interface::CrossCommandBookKeeping;
 pub trait CodecTraits {
     const MATERIALIZED_PREDICTION_MODE: bool;
     const COMBINE_LITERAL_PREDICTIONS: bool;
-    const SHOULD_MIX: bool;
     const HAVE_STRIDE: bool;
 }
 macro_rules! define_codec_trait {
@@ -15,30 +14,25 @@ macro_rules! define_codec_trait {
         impl CodecTraits for $name {
             const MATERIALIZED_PREDICTION_MODE: bool = $cm;
             const COMBINE_LITERAL_PREDICTIONS: bool = $combine;
-            const SHOULD_MIX: bool = $mix;
             const HAVE_STRIDE: bool = $have_stride;
         }
         pub static $global: $name = $name{};
     }
 }
 define_codec_trait!(MixingTrait, MIXING_TRAIT, context_map: true, combine: true, mix: true, have_stride: false);
-define_codec_trait!(AveragingTrait, AVERAGING_TRAIT, context_map: true, combine: true, mix: false, have_stride: false);
 define_codec_trait!(ContextMapTrait, CONTEXT_MAP_TRAIT, context_map: true, combine: false, mix: false, have_stride: false);
 define_codec_trait!(StrideTrait, STRIDE_TRAIT, context_map: false, combine: false, mix: false, have_stride: false);
 
 define_codec_trait!(StridedMixingTrait, MIXING_TRAIT_STRIDED, context_map: true, combine: true, mix: true, have_stride: true);
-define_codec_trait!(StridedAveragingTrait, AVERAGING_TRAIT_STRIDED, context_map: true, combine: true, mix: false, have_stride: true);
 define_codec_trait!(StridedStrideTrait, STRIDE_TRAIT_STRIDED, context_map: false, combine: false, mix: false, have_stride: true);
 
 
 
 #[derive(Clone,Copy)]
 pub enum CodecTraitSelector {
-    AveragingTrait(&'static AveragingTrait),
     MixingTrait(&'static MixingTrait),
     ContextMapTrait(&'static ContextMapTrait),
     StrideTrait(&'static StrideTrait),
-    StridedAveragingTrait(&'static StridedAveragingTrait),
     StridedMixingTrait(&'static StridedMixingTrait),
     StridedStrideTrait(&'static StridedStrideTrait),
 }
@@ -59,15 +53,9 @@ pub fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
     if !bk.combine_literal_predictions {
         return CodecTraitSelector::ContextMapTrait(&CONTEXT_MAP_TRAIT);
     }
-    if bk.model_weights[0].should_mix() || bk.model_weights[1].should_mix() {
-        if bk.stride > 1 {
-            return CodecTraitSelector::StridedMixingTrait(&MIXING_TRAIT_STRIDED);
-        } else {
-            return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);
-        }
-    }
     if bk.stride > 1 {
-        return CodecTraitSelector::StridedAveragingTrait(&AVERAGING_TRAIT_STRIDED);
+        return CodecTraitSelector::StridedMixingTrait(&MIXING_TRAIT_STRIDED);
+    } else {
+        return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);
     }
-    return CodecTraitSelector::AveragingTrait(&AVERAGING_TRAIT);
 }

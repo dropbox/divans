@@ -163,8 +163,8 @@ impl<AllocU8:Allocator<u8>,
         let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
             if CTraits::COMBINE_LITERAL_PREDICTIONS {
-                debug_assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(),
-                                 CTraits::SHOULD_MIX);
+                //debug_assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(),
+                //                 CTraits::SHOULD_MIX);
                 cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
             } else {
                 *cm_prob
@@ -176,7 +176,7 @@ impl<AllocU8:Allocator<u8>,
                                                                      &prob,
                                                                      BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
 
-        if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && CTraits::SHOULD_MIX {
+        if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && superstate.bk.model_weights[high_nibble as usize].should_mix() {
             let model_probs = [
                 cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
