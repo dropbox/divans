@@ -31,9 +31,6 @@ impl<ChildCDF:BaseCDF+CDF16+Sized+Default> CDF16 for VariantSpeedCDF<ChildCDF> {
         ret.cdf[0] = self.cdf[0].average(&other.cdf[0], mix_rate);
         ret
     }
-    fn variant_delta_cost(&self, variant_index: usize) -> f32 {
-        self.cost[variant_index] - self.cost[0]
-    }
 }
 
 impl<ChildCDF:BaseCDF+CDF16+Sized> BaseCDF for VariantSpeedCDF<ChildCDF> {
@@ -96,5 +93,14 @@ impl<ChildCDF:BaseCDF+CDF16+Sized> BaseCDF for VariantSpeedCDF<ChildCDF> {
     }
     fn encoding_cost(&self) -> Option<f64> {
         self.cdf[0].encoding_cost()
+    }
+    fn num_variants(&self) -> usize {
+        SPEED_PALETTE_SIZE
+    }
+    fn variant_cost(&self, variant_index: usize) -> f32 {
+        self.cost[variant_index + 1]
+    }
+    fn base_variant_cost(&self) -> f32 {
+        self.cost[0]
     }
 }

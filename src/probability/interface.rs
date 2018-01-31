@@ -165,6 +165,15 @@ pub trait BaseCDF {
     fn true_entropy(&self) -> Option<f64> { None }
     fn rolling_entropy(&self) -> Option<f64> { None }
     fn encoding_cost(&self) -> Option<f64> { None }
+    fn num_variants(&self) -> usize {
+        0
+    }
+    fn variant_cost(&self, variant_index: usize) -> f32 {
+        0.0
+    }
+    fn base_variant_cost(&self) -> f32 {
+        0.0
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -360,9 +369,6 @@ impl core::str::FromStr for Speed {
 pub trait CDF16: Sized + Default + Copy + BaseCDF {
     fn blend(&mut self, symbol: u8, dyn:Speed);
     fn average(&self, other: &Self, mix_rate: i32) ->Self;
-    fn variant_delta_cost(&self, variant_index: usize) -> f32 {
-        0.0
-    }
 }
 
 pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;

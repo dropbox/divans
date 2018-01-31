@@ -630,6 +630,13 @@ impl <AllocU8:Allocator<u8>,
         }
     }
     fn free_internal(&mut self) {
+        self.bk.prediction_priors.summarize_speed_costs();
+        self.bk.btype_priors.summarize_speed_costs();
+        self.bk.cc_priors.summarize_speed_costs();
+        self.bk.copy_priors.summarize_speed_costs();
+        self.bk.dict_priors.summarize_speed_costs();
+        self.bk.lit_priors.summarize_speed_costs();
+        self.bk.lit_cm_priors.summarize_speed_costs();
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());

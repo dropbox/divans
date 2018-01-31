@@ -27,14 +27,14 @@
 extern crate compiler_builtins;
 
 #[cfg(not(test))]
-#[cfg(feature="billing")]
+#[cfg(any(feature="findspeed", feature="billing"))]
 #[macro_use]
 extern crate std;
 
 #[cfg(not(feature="no-stdlib"))]
 #[cfg(not(feature="safe"))]
 #[cfg(not(test))]
-#[cfg(not(feature="billing"))]
+#[cfg(not(any(feature="billing", feature="findspeed")))]
 #[macro_use]
 extern crate std;
 

@@ -8,7 +8,7 @@ use ::priors::summarize_prior_billing;
 pub const NUM_BLOCK_TYPES:usize = 256;
 pub const NUM_STRIDES:usize = 8;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
-use probability::BaseCDF;
+use probability::{BaseCDF};
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
                      (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));

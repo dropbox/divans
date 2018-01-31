@@ -15,7 +15,7 @@
 #![allow(unused)]
 #![macro_escape]
 use core;
-use super::probability::{BaseCDF, CDF2, CDF16};
+use super::probability::{BaseCDF, CDF2, CDF16, Speed};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 
 pub trait PriorMultiIndex {
@@ -90,7 +90,6 @@ macro_rules! define_prior_struct {
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> PriorCollection<T, AllocT, $billing_type> for $name<T, AllocT> {
             const NUM_ALL_PRIORS : usize = sum_product_cdr!($($args),*) as usize;
             const NUM_BILLING_TYPES : usize = count_expr!($($args),*) as usize;
-
             fn name() -> Option<&'static str> {
                 Some(stringify!($name))
             }
@@ -137,20 +136,51 @@ macro_rules! define_prior_struct {
             }
             #[cfg(feature="findspeed")]
             fn summarize_speed_costs(&self) {
-                
+                use ::std::io::Write;
+                let mut total_savings: f32 = 0.0;
+                for billing_type_index in 0..Self::NUM_BILLING_TYPES {
+                    let billing = Self::index_to_billing_type(billing_type_index as usize);
+                    let count = Self::num_prior(&billing);
+                    let lim = if count < self.priors.slice().len() { count } else { self.priors.slice().len()};
+                    let mut orig_cost: f32 = 0.0;
+                    let mut costs: [f32;::probability::SPEED_PALETTE_SIZE] = [0.0; ::probability::SPEED_PALETTE_SIZE];
+                    for index in 0..lim {
+                        let cdf = self.get_with_raw_index(billing.clone(), index);
+                        orig_cost += cdf.base_variant_cost();
+                        for speed in 0..::probability::SPEED_PALETTE_SIZE {
+                            costs[speed] += cdf.variant_cost(speed);
+                        }
+                    }
+                    let mut best_speed = ::probability::Speed::ENCODER_DEFAULT_PALETTE[0];
+                    let mut best_cost = costs[0];
+                    for speed in 1..::probability::SPEED_PALETTE_SIZE {
+                        if costs[speed] < best_cost {
+                            best_speed = ::probability::Speed::ENCODER_DEFAULT_PALETTE[speed];
+                            best_cost = costs[speed];
+                        }
+                    }
+
+                    if lim != 0 {
+                        writeln!(&mut ::std::io::stderr(), "{}::{:?} Going to sum items Best Speed {:?} Cost {} Savings {}",
+                                 Self::name().unwrap_or("UNKNOWN"),
+                                 billing,
+                                 best_speed,
+                                 best_cost / 8.0,
+                                 (orig_cost - best_cost) / 8.0).unwrap();
+                    }
+                    total_savings += orig_cost - best_cost;
+                }
+                if total_savings != 0.0 {
+                    writeln!(&mut ::std::io::stderr(), "{} TOTAL: {} bytes",
+                             Self::name().unwrap_or("UNKNOWN"),
+                             total_savings / 8.0).unwrap();
+                }
             }
         }
         #[cfg(all(feature="billing",feature="debug_entropy"))]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
-                self.summarize_speed_costs();
-            }
-        }
-        #[cfg(not(all(feature="billing",feature="debug_entropy")))]
-        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
-            fn drop(&mut self) {
-                self.summarize_speed_costs();
             }
         }
     };

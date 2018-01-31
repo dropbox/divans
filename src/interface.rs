@@ -35,9 +35,12 @@ pub type DefaultInternalCDF16 = probability::SIMDFrequentistCDF16;
 pub type DefaultInternalCDF16 = probability::OptFrequentistCDF16;
 
 #[cfg(feature="debug_entropy")]
+#[cfg(not(feature="findspeed"))]
 pub type DefaultCDF16 = probability::DebugWrapperCDF16<DefaultInternalCDF16>;
-#[cfg(not(feature="debug_entropy"))]
+#[cfg(not(any(feature="debug_entropy", feature="findspeed")))]
 pub type DefaultCDF16 = DefaultInternalCDF16;
+#[cfg(feature="findspeed")]
+pub type DefaultCDF16 = probability::VariantSpeedCDF<DefaultInternalCDF16>;
 
 pub const HEADER_LENGTH: usize = 16;
 pub const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
