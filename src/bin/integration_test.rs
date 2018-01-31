@@ -113,7 +113,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         &mut dv_buffer,
                         super::CompressOptions{
                             dynamic_context_mixing: Some(2),
-                            literal_adaptation_speed: Some([Speed::MED, Speed::GLACIAL]),
+                            literal_adaptation_speed: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
                             do_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(1),
@@ -159,7 +159,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(0), Some([Speed::GLACIAL,Speed::MUD]), true, StrideSelection::UseBrotliRec).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(0), Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]), true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
@@ -206,7 +206,7 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1),  Some(2), Some([Speed::MUD, Speed::ROCKET]), true, StrideSelection::UseBrotliRec).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1),  Some(2), Some([Speed::MUD, Speed::ROCKET, Speed::FAST, Speed::GLACIAL]), true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -224,7 +224,7 @@ fn test_e2e_64xp() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    //let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), None, Some([Speed::FAST, Speed::SLOW]), true, StrideSelection::UseBrotliRec) {
+   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), None, Some([Speed::FAST, Speed::SLOW, Speed::FAST, Speed::FAST]), true, StrideSelection::UseBrotliRec) {
       Ok(_) => assert_eq!(EXTERNAL_PROB_FEATURE, true),
       Err(_) => assert_eq!(EXTERNAL_PROB_FEATURE, false),
    };

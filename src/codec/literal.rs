@@ -174,7 +174,7 @@ impl<AllocU8:Allocator<u8>,
         };
         let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
                                                                      &prob,
-                                                                     BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(high_nibble as u32)));
+                                                                     BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
 
         if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && superstate.bk.model_weights[high_nibble as usize].should_mix() {
             let model_probs = [
@@ -184,10 +184,10 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
         if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[0].clone());
+            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[high_nibble as usize].clone());
         }
         if CTraits::MATERIALIZED_PREDICTION_MODE {
-            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[1].clone());
+            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
         }
         cur_nibble
     }

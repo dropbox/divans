@@ -219,7 +219,7 @@ impl<AllocU8: Allocator<u8>,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
                prior_depth: Option<u8>,
-               literal_adaptation_rate: Option<[Speed;2]>,
+               literal_adaptation_rate: Option<[Speed;4]>,
                do_context_map: bool,
                force_stride: interface::StrideSelection) -> Self {
         let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
@@ -237,7 +237,7 @@ impl<AllocU8: Allocator<u8>,
                                                                      dynamic_context_mixing,
                                                                      prior_depth.unwrap_or(0),
                                                                      literal_adaptation_rate.unwrap_or(
-                                                                         [self::interface::default_literal_speed(), self::interface::default_literal_speed()]),
+                                                                         [self::interface::default_literal_speed();4]),
                                                                      do_context_map,
                                                                      force_stride,
             ),

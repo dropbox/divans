@@ -268,7 +268,7 @@ fn bench_with_ir<Run: Runner,
                        &mut dv_buffer,
                        Some(mixing_mode),
                        None,
-                       Some([Speed::MUD,Speed::MUD]),
+                       Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]),
                        ts.use_context_map(),
                        ts.stride_selection()).unwrap();
     {

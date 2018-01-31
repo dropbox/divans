@@ -98,41 +98,51 @@ impl CompressorState {
                     8 => StrideSelection::Stride8,
                     _ => return DIVANS_FAILURE,
                 };},
-                DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE => {
-                    let literal_adaptation = match value {
-                        0 => Speed::GEOLOGIC,
-                        1 => Speed::GLACIAL,
-                        2 => Speed::MUD,
-                        3 => Speed::SLOW,
-                        4 => Speed::MED,
-                        5 => Speed::FAST,
-                        6 => Speed::PLANE,
-                        7 => Speed::ROCKET,
-                        _ => return DIVANS_FAILURE,
-                    };
+                DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_HIGH => {
+                    if value as usize >= Speed::ENCODER_DEFAULT_PALETTE.len() {
+                        return DIVANS_FAILURE;
+                    }
+                    let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
                     match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]),
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[1] = literal_adaptation;
+                        },
+                    }
+                },
+                DIVANS_OPTION_LITERAL_ADAPTATION_CM_HIGH => {
+                    if value as usize >= Speed::ENCODER_DEFAULT_PALETTE.len() {
+                        return DIVANS_FAILURE;
+                    }
+                    let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
+                    match opts.literal_adaptation {
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[3] = literal_adaptation;
+                        },
+                    }
+                },
+                DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW => {
+                    if value as usize >= Speed::ENCODER_DEFAULT_PALETTE.len() {
+                        return DIVANS_FAILURE;
+                    }
+                    let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
+                    match opts.literal_adaptation {
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
                            (*adapt)[0] = literal_adaptation;
                         },
                     }
                 },
-                DIVANS_OPTION_LITERAL_ADAPTATION_CM => {
-                    let literal_adaptation = match value {
-                        0 => Speed::GEOLOGIC,
-                        1 => Speed::GLACIAL,
-                        2 => Speed::MUD,
-                        3 => Speed::SLOW,
-                        4 => Speed::MED,
-                        5 => Speed::FAST,
-                        6 => Speed::PLANE,
-                        7 => Speed::ROCKET,
-                        _ => return DIVANS_FAILURE,
-                    };
+                DIVANS_OPTION_LITERAL_ADAPTATION_CM_LOW => {
+                    if value as usize >= Speed::ENCODER_DEFAULT_PALETTE.len() {
+                        return DIVANS_FAILURE;
+                    }
+                    let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
                     match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation]),
+                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
-                           (*adapt)[1] = literal_adaptation;
+                           (*adapt)[2] = literal_adaptation;
                         },
                     }
                 },

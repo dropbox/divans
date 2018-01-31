@@ -781,7 +781,7 @@ pub struct CompressOptions {
    pub lgblock: Option<u32>,
    pub do_context_map: bool,
    pub force_stride_value: StrideSelection,
-   pub literal_adaptation_speed: Option<[Speed;2]>,
+   pub literal_adaptation_speed: Option<[Speed;4]>,
    pub prior_depth: Option<u8>,
    pub dynamic_context_mixing: Option<u8>,
    pub stride_detection_quality: Option<u8>,
@@ -858,7 +858,7 @@ fn compress_ir<Reader:std::io::BufRead,
     w:&mut Writer,
     dynamic_context_mixing: Option<u8>,
     prior_depth: Option<u8>,
-    literal_adaptation_speed: Option<[Speed;2]>,
+    literal_adaptation_speed: Option<[Speed;4]>,
     do_context_map: bool,
     force_stride_value:StrideSelection) -> io::Result<()> {
     let window_size : i32;
@@ -1104,7 +1104,7 @@ fn main() {
     let mut use_context_map = false;
     let mut use_brotli = true;
     let mut force_stride_value = StrideSelection::PriorDisabled;
-    let mut literal_adaptation: Option<[Speed;2]> = None;
+    let mut literal_adaptation: Option<[Speed;4]> = None;
     let mut window_size: Option<i32> = None;
     let mut lgwin: Option<u32> = None;
     let mut quality: Option<u16> = None;
@@ -1112,6 +1112,7 @@ fn main() {
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
     let mut force_prior_depth: Option<u8> = None;
+    let mut set_low = false;
     let mut doubledash = false;
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
@@ -1286,11 +1287,38 @@ fn main() {
                         'd').trim_matches(
                         '=').parse::<Speed>().unwrap();
                     match literal_adaptation {
-                        None => literal_adaptation = Some([spd, spd]),
+                        None => literal_adaptation = Some([spd, spd, spd, spd]),
                         Some(ref mut adapt) => {
-                           (*adapt)[0] = spd;
+                            (*adapt)[1] = spd;
+                            if !set_low {
+                                (*adapt)[0] = spd;
+                            }
                         },
                     }
+                    continue
+                }
+                if argument.starts_with("-speedlow=") {
+                    let spd = argument.trim_matches(
+                        '-').trim_matches(
+                        's').trim_matches(
+                        'p').trim_matches(
+                        'e').trim_matches(
+                        'e').trim_matches(
+                        'd').trim_matches(
+                        'l').trim_matches(
+                        'o').trim_matches(
+                        'w').trim_matches(
+                        '=').parse::<Speed>().unwrap();
+                    match literal_adaptation {
+                        None => literal_adaptation = Some([spd, spd, spd, spd]),
+                        Some(ref mut adapt) => {
+                           (*adapt)[0] = spd;
+                            if !set_low {
+                                (*adapt)[2] = spd;
+                            }
+                        },
+                    }
+                    set_low = true;
                     continue
                 }
                 if argument.starts_with("-cmspeed=") {
@@ -1305,11 +1333,40 @@ fn main() {
                         'd').trim_matches(
                         '=').parse::<Speed>().unwrap();
                     match literal_adaptation {
-                        None => literal_adaptation = Some([spd, spd]),
+                        None => literal_adaptation = Some([spd, spd, spd, spd]),
                         Some(ref mut adapt) => {
-                           (*adapt)[1] = spd;
+                          (*adapt)[3] = spd;
+                           if !set_low {
+                               (*adapt)[2] = spd;                                
+                           }
                         },
                     }
+                    continue
+                }
+                if argument.starts_with("-cmspeedlow=") {
+                    let spd = argument.trim_matches(
+                        '-').trim_matches(
+                        'c').trim_matches(
+                        'm').trim_matches(
+                        's').trim_matches(
+                        'p').trim_matches(
+                        'e').trim_matches(
+                        'e').trim_matches(
+                        'd').trim_matches(
+                        'l').trim_matches(
+                        'o').trim_matches(
+                        'w').trim_matches(
+                        '=').parse::<Speed>().unwrap();
+                    match literal_adaptation {
+                        None => literal_adaptation = Some([spd, spd, spd, spd]),
+                        Some(ref mut adapt) => {
+                            (*adapt)[2] = spd;
+                            if !set_low {
+                                (*adapt)[0] = spd;                                
+                            }
+                        },
+                    }
+                    set_low = true;
                     continue
                 }
                 if argument == "-h" || argument == "-help" || argument == "--help" {

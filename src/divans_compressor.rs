@@ -84,7 +84,7 @@ impl<AllocU8:Allocator<u8>,
      fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
             dynamic_context_mixing_rate:u8,
             prior_depth: Option<u8>,
-            literal_adaptation_rate: Option<[probability::Speed;2]>,
+            literal_adaptation_rate: Option<[probability::Speed;4]>,
             do_context_map: bool,
             force_stride: StrideSelection,
            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
