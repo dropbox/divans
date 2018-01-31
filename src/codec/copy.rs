@@ -159,7 +159,7 @@ impl CopyState {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
                             CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize, ((superstate.bk.last_llen < 8) as usize)));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                        nibble_prob.blend(beg_nib, Speed::MUD);
+                        nibble_prob.blend(beg_nib, Speed::SLOW);
                     }
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     if beg_nib == 15 {
@@ -198,7 +198,7 @@ impl CopyState {
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                    nibble_prob.blend(beg_nib, Speed::PLANE);
+                    nibble_prob.blend(beg_nib, Speed::SLOW);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else {

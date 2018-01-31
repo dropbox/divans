@@ -283,7 +283,7 @@ impl Speed {
     pub const GEOLOGIC: Speed = Speed(0x0001, 0x4000);
     pub const GLACIAL: Speed = Speed(0x0004, 0x0a00);
     pub const MUD: Speed =   Speed(0x0010, 0x2000);
-    pub const SLOW: Speed =  Speed(0x0020, 0x3000);
+    pub const SLOW: Speed =  Speed(0x0020, 0x1000);
     pub const MED: Speed =   Speed(0x0030, 0x4000);
     pub const FAST: Speed =  Speed(0x0060, 0x4000);
     pub const PLANE: Speed = Speed(0x0080, 0x4000);
@@ -355,7 +355,7 @@ impl core::str::FromStr for Speed {
                          } else {
                              match "65537".parse::<u16>() {
                                 Err(e) => return Err(e),
-                                Ok(f) => panic!(f),
+                                Ok(f) => unreachable!(),
                              }
                          }
                      },
