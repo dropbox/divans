@@ -70,6 +70,7 @@ pub trait PriorCollection<T: BaseCDF + Default, AllocT: Allocator<T>, B: Clone> 
     fn get<I: PriorMultiIndex>(&mut self, billing: B, index: I) -> &mut T;
     fn get_with_raw_index(&self, billing: B, index: usize) -> &T;
     fn get_with_raw_index_mut(&mut self, billing: B, index: usize) -> &mut T;
+    fn summarize_speed_costs(&self); // may want to return a struct rather than just printing out
 }
 
 macro_rules! define_prior_struct {
@@ -131,11 +132,25 @@ macro_rules! define_prior_struct {
             fn index_to_billing_type(index: usize) -> $billing_type {
                 Self::BILLING_TYPES[index].clone()
             }
+            #[cfg(not(feature="findspeed"))]
+            fn summarize_speed_costs(&self) {
+            }
+            #[cfg(feature="findspeed")]
+            fn summarize_speed_costs(&self) {
+                
+            }
         }
         #[cfg(all(feature="billing",feature="debug_entropy"))]
         impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
             fn drop(&mut self) {
                 summarize_prior_billing::<T, AllocT, $billing_type, $name<T, AllocT>>(&self);
+                self.summarize_speed_costs();
+            }
+        }
+        #[cfg(not(all(feature="billing",feature="debug_entropy")))]
+        impl<T: BaseCDF + Default, AllocT: Allocator<T>> Drop for $name<T, AllocT> {
+            fn drop(&mut self) {
+                self.summarize_speed_costs();
             }
         }
     };

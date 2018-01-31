@@ -250,7 +250,8 @@ impl CDF2 {
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Speed(i16,i16);
-pub type SpeedPalette = [Speed;15];
+pub const SPEED_PALETTE_SIZE: usize = 15;
+pub type SpeedPalette = [Speed;SPEED_PALETTE_SIZE];
 impl Speed {
     pub const ENCODER_DEFAULT_PALETTE: SpeedPalette = [
         Speed(0, 32),
@@ -359,6 +360,9 @@ impl core::str::FromStr for Speed {
 pub trait CDF16: Sized + Default + Copy + BaseCDF {
     fn blend(&mut self, symbol: u8, dyn:Speed);
     fn average(&self, other: &Self, mix_rate: i32) ->Self;
+    fn variant_delta_cost(&self, variant_index: usize) -> f32 {
+        0.0
+    }
 }
 
 pub const BLEND_FIXED_POINT_PRECISION : i8 = 15;

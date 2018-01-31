@@ -33,6 +33,7 @@ vergen = "0.1"
 [features]
 safe=[]
 default= []#["simd"]
+findspeed = []
 avx2=[]
 billing = []
 blend = []

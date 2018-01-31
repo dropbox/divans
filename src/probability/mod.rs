@@ -24,6 +24,7 @@ pub mod interface;
 pub mod external_cdf;
 pub mod blend_cdf;
 pub mod frequentist_cdf;
+mod variant_speed_cdf;
 #[cfg(feature="simd")]
 pub mod simd_frequentist_cdf;
 pub mod opt_frequentist_cdf;
@@ -37,3 +38,4 @@ pub use self::external_cdf::ExternalProbCDF16;
 #[cfg(feature="simd")]
 pub use self::simd_frequentist_cdf::SIMDFrequentistCDF16;
 pub use self::opt_frequentist_cdf::OptFrequentistCDF16;
+pub use self::variant_speed_cdf::VariantSpeedCDF;
