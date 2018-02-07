@@ -221,17 +221,15 @@ pub trait DivansCompressorFactory<
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
      type ConstructedCompressor: Compressor;
      type AdditionalArgs;
-    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
-           dynamic_context_mixing: u8,
-           prior_depth: Option<u8>,
-           literal_adaptation_rate: Option<[probability::Speed;4]>,
-           do_context_map: bool,
-           force_stride: StrideSelection,
+    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+           opts: DivansCompressorBasicOptions,
+           dict: &[u8],
+           dict_invalid: &[u8],
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BrotliCompressionSetting {
     UseInternalCommandSelection = 0,
     UseBrotliCommandSelection = 1,
@@ -242,17 +240,21 @@ impl Default for BrotliCompressionSetting {
         BrotliCompressionSetting::UseBrotliCommandSelection
     }
 }
-
-#[derive(Default, Clone, Copy)]
-pub struct DivansCompressorOptions{
-    pub literal_adaptation: Option<[probability::Speed;4]>,
+#[derive(Default, Clone, Copy, Debug)]
+pub struct DivansCompressorBasicOptions {
     pub window_size: Option<i32>,
+    pub literal_adaptation: Option<[probability::Speed;4]>,
     pub lgblock: Option<u32>,
-    pub quality: Option<u16>,
+    pub force_stride_value: StrideSelection,
+    pub use_context_map: bool,
+    pub prior_depth: Option<u8>,
     pub dynamic_context_mixing: Option<u8>,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct DivansCompressorOptions{
+    pub basic: DivansCompressorBasicOptions,
+    pub quality: Option<u16>,
     pub stride_detection_quality: Option<u8>,
     pub use_brotli: BrotliCompressionSetting,
-    pub use_context_map: bool,
-    pub force_stride_value: StrideSelection,
-    pub prior_depth: Option<u8>,
 }

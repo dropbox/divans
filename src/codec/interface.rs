@@ -38,7 +38,7 @@ pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum StrideSelection {
     PriorDisabled = 0u8,
@@ -589,12 +589,28 @@ impl <AllocU8:Allocator<u8>,
                coder: ArithmeticCoder,
                spc: Specialization,
                ring_buffer_size: usize,
+               custom_decode_dictionary: AllocU8::AllocatedMemory,
                dynamic_context_mixing: u8,
                prior_depth:u8,
                literal_adaptation_rate: [Speed;4],
                do_context_map:bool,
                force_stride: StrideSelection) -> Self {
-        let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
+        let dictionary_length = custom_decode_dictionary.slice().len();
+        let ring_buffer_len = 1 << ring_buffer_size;
+        let ring_buffer = if custom_decode_dictionary.slice().len() == ring_buffer_len {
+            custom_decode_dictionary
+        }else {
+            let mut new_ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
+            if custom_decode_dictionary.slice().len() > ring_buffer_len {
+                let offt = custom_decode_dictionary.slice().len() - ring_buffer_len;
+                new_ring_buffer.slice_mut().clone_from_slice(custom_decode_dictionary.slice().split_at(offt).1);
+            } else {
+                let offt = ring_buffer_len - custom_decode_dictionary.slice().len();
+                new_ring_buffer.slice_mut().split_at_mut(offt).1.clone_from_slice(custom_decode_dictionary.slice());
+            }
+            m8.free_cell(custom_decode_dictionary);
+            new_ring_buffer
+        };
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
@@ -613,7 +629,8 @@ impl <AllocU8:Allocator<u8>,
             coder: coder,
             specialization: spc,
             recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
-                ring_buffer),
+                ring_buffer,
+                dictionary_length),
             m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
             mcdf2:mcdf2,
             mcdf16:mcdf16,

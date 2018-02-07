@@ -13,12 +13,12 @@
 //   limitations under the License.
 
 use core::marker::PhantomData;
-use core::cmp::min;
-use super::probability::{CDF2,CDF16, Speed};
+use core::cmp::{min, max};
+use super::probability::{CDF2,CDF16};
 use super::brotli;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
-
+pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, DivansCompressorBasicOptions};
+use divans_decompressor::alloc_dict;
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_buffer::ResizableByteBuffer;
@@ -406,19 +406,26 @@ impl<AllocU8:Allocator<u8>,
                              Quality,
                              LgWin,
                              StrideDetectionQuality);
-        fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
-               dynamic_context_mixing: u8,
-               prior_depth: Option<u8>,
-               literal_adaptation_rate: Option<[Speed;4]>,
-               do_context_map: bool,
-               force_stride: StrideSelection,
+        fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+               opts: DivansCompressorBasicOptions,
+               mut dict: &[u8],
+               mut dict_invalid: &[u8],
                additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
-        if window_size < 10 {
-            window_size = 10;
+        if dict_invalid.len() != 0 {
+            let offset = min(dict_invalid.len(), 8);
+            let mut invalidate_everything = false;
+            for item in dict_invalid[(dict_invalid.len() - offset)..].iter() {
+                if *item != 0 {
+                    invalidate_everything = true;
+                }
+            }
+            if invalidate_everything {
+                dict = &[];
+                dict_invalid = &[]; // we need some padding at the end of the dictionary
+            }
         }
-        if window_size > 24 {
-            window_size = 24;
-        }
+        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
+        let dict_ring_buffer = alloc_dict(&mut m8, Some(1 << window_size), dict);
         let enc = Self::DefaultEncoder::new(&mut m8);
          let mut ret = Self::ConstructedCompressor {
              mf64: additional_args.4,
@@ -443,12 +450,13 @@ impl<AllocU8:Allocator<u8>,
                 mcdf16,
                 enc,
                 EncoderSpecialization::new(),
-                window_size,
-                dynamic_context_mixing,
-                prior_depth,
-                literal_adaptation_rate,
-                do_context_map,
-                force_stride,
+                window_size as usize,
+                dict_ring_buffer,
+                opts.dynamic_context_mixing.unwrap_or(2),
+                opts.prior_depth,
+                opts.literal_adaptation,
+                opts.use_context_map,
+                opts.force_stride_value,
             ),
             header_progress: 0,
             window_size: window_size as u8,
@@ -468,6 +476,14 @@ impl<AllocU8:Allocator<u8>,
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
                                                        u32::from(additional_args.14.unwrap_or(0)));
+        let divans_result =  brotli::enc::encode::BrotliEncoderSetCustomDictionary(&mut ret.brotli_encoder,
+                                                              dict.len(),
+                                                              dict,
+                                                              dict_invalid);
+        match divans_result {
+            Ok(()) => {}, // FIXME
+            Err(()) => {},
+        }
         ret
     }
 }

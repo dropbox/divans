@@ -8,7 +8,7 @@ use ::codec;
 
 use ::BrotliResult;
 use ::ArithmeticEncoderOrDecoder;
-use ::alloc::{Allocator};
+use ::alloc::{Allocator,  SliceWrapperMut};
 
 pub struct HeaderParser<AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<probability::CDF2>,
@@ -18,6 +18,7 @@ pub struct HeaderParser<AllocU8:Allocator<u8>,
     m8: Option<AllocU8>,
     mcdf2: Option<AllocCDF2>,
     mcdf16: Option<AllocCDF16>,
+    custom_dict: AllocU8::AllocatedMemory,
 }
 impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
@@ -52,13 +53,47 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
            usize),
 }
 
+pub fn alloc_dict<AllocU8:Allocator<u8>>(m8: &mut AllocU8,
+                                     ring_buffer_hint: Option<usize>,
+                                     custom_dict: &[u8]) -> AllocU8::AllocatedMemory{
+    if custom_dict.len() == 0 {
+        return AllocU8::AllocatedMemory::default();
+    }
+    let mut len = custom_dict.len();
+    if custom_dict.len() > (1 << 24) {
+        len = 1 << 24;
+    }
+    len -= 1;
+    len |= len >> 1; // round up to power of two
+    len |= len >> 2;
+    len |= len >> 3;
+    len |= len >> 8;
+    len |= len >> 16;
+    len += 1;
+    if let Some(rbh) = ring_buffer_hint {
+        len = rbh;
+    }
+    let mut ret = m8.alloc_cell(len);
+    if custom_dict.len() > len {
+        ret.slice_mut().clone_from_slice(&custom_dict.split_at(custom_dict.len() - len).1);
+    } else {
+        ret.slice_mut().split_at_mut(len - custom_dict.len()).1.clone_from_slice(&custom_dict[(custom_dict.len() - len)..]);
+    }
+    ret
+}
+
 pub trait DivansDecompressorFactory<
      AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
-    fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
-        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16)})
+    fn new(mut m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16, dict: &[u8]) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
+        let custom_dict = alloc_dict(&mut m8, None, dict);
+        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH],
+                                                read_offset:0,
+                                                m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16),
+                                                custom_dict: custom_dict,
+        })
     }
 }
 
@@ -78,6 +113,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
         let mcdf16:AllocCDF16;
+        let custom_dict: AllocU8::AllocatedMemory;
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
@@ -98,6 +134,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         match *self {
             DivansDecompressor::Header(ref mut header) => {
+                custom_dict = core::mem::replace(&mut header.custom_dict, AllocU8::AllocatedMemory::default());
                 mcdf16 = match core::mem::replace(&mut header.mcdf16, None) {
                     None => return BrotliResult::ResultFailure,
                     Some(m) => m,
@@ -105,6 +142,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             },
             _ => return BrotliResult::ResultFailure,
         }
+        
         //update this if you change the SelectedArithmeticDecoder macro
         let decoder = DefaultDecoder::new(&mut m8);
         core::mem::replace(self,
@@ -120,6 +158,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                                      decoder,
                                                                      DecoderSpecialization::new(),
                                                                      window_size,
+                                                                     custom_dict,
                                                                      0,
                                                                      None,
                                                                      None,

@@ -63,14 +63,22 @@ impl Default for CompressorState {
     }
 }
 impl CompressorState {
+    pub fn set_dict_after_options(&mut self, dict:&[u8], dict_invalid:&[u8], allocators: &CAllocator) -> super::interface::DivansResult {
+        if let CompressorState::OptionStage(opts) = *self {
+            self.start(allocators, opts, dict, dict_invalid);
+        } else {
+            return DIVANS_FAILURE;
+        }
+        DIVANS_SUCCESS
+    }
     pub fn set_option(&mut self, selector: super::interface::DivansOptionSelect, value: u32) -> super::interface::DivansResult {
         if let CompressorState::OptionStage(ref mut opts) = *self {
             match selector {
                 DIVANS_OPTION_QUALITY => {opts.quality = Some(value as u16);},
-                DIVANS_OPTION_WINDOW_SIZE => {opts.window_size = Some(value as i32);},
-                DIVANS_OPTION_LGBLOCK => {opts.lgblock = Some(value);},
+                DIVANS_OPTION_WINDOW_SIZE => {opts.basic.window_size = Some(value as i32);},
+                DIVANS_OPTION_LGBLOCK => {opts.basic.lgblock = Some(value);},
                 DIVANS_OPTION_STRIDE_DETECTION_QUALITY => {opts.stride_detection_quality = Some(value as u8);},
-                DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING => {opts.dynamic_context_mixing = Some(value as u8);},
+                DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING => {opts.basic.dynamic_context_mixing = Some(value as u8);},
                 DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION => {opts.use_brotli = match value {
                     0 => BrotliCompressionSetting::UseInternalCommandSelection,
                     1 => BrotliCompressionSetting::UseBrotliCommandSelection,
@@ -81,12 +89,12 @@ impl CompressorState {
                     1 => BrotliCompressionSetting::UseBrotliBitstream,
                     _ => return DIVANS_FAILURE,
                 };},
-                DIVANS_OPTION_USE_CONTEXT_MAP => {opts.use_context_map = match value {
+                DIVANS_OPTION_USE_CONTEXT_MAP => {opts.basic.use_context_map = match value {
                     1 => true,
                     0 => false,
                     _ => return DIVANS_FAILURE,
                 };},
-                DIVANS_OPTION_FORCE_STRIDE_VALUE => {opts.force_stride_value = match value {
+                DIVANS_OPTION_FORCE_STRIDE_VALUE => {opts.basic.force_stride_value = match value {
                     0 => StrideSelection::PriorDisabled,
                     1 => StrideSelection::Stride1,
                     2 => StrideSelection::Stride2,
@@ -103,8 +111,8 @@ impl CompressorState {
                         return DIVANS_FAILURE;
                     }
                     let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
-                    match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                    match opts.basic.literal_adaptation {
+                        None => opts.basic.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
                            (*adapt)[1] = literal_adaptation;
                         },
@@ -115,8 +123,8 @@ impl CompressorState {
                         return DIVANS_FAILURE;
                     }
                     let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
-                    match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                    match opts.basic.literal_adaptation {
+                        None => opts.basic.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
                            (*adapt)[3] = literal_adaptation;
                         },
@@ -127,8 +135,8 @@ impl CompressorState {
                         return DIVANS_FAILURE;
                     }
                     let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
-                    match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                    match opts.basic.literal_adaptation {
+                        None => opts.basic.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
                            (*adapt)[0] = literal_adaptation;
                         },
@@ -139,15 +147,15 @@ impl CompressorState {
                         return DIVANS_FAILURE;
                     }
                     let literal_adaptation = Speed::ENCODER_DEFAULT_PALETTE[value as usize];
-                    match opts.literal_adaptation {
-                        None => opts.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
+                    match opts.basic.literal_adaptation {
+                        None => opts.basic.literal_adaptation = Some([literal_adaptation, literal_adaptation, literal_adaptation, literal_adaptation]),
                         Some(ref mut adapt) => {
                            (*adapt)[2] = literal_adaptation;
                         },
                     }
                 },
                 DIVANS_OPTION_PRIOR_DEPTH => {
-                    opts.prior_depth = Some(value as u8);
+                    opts.basic.prior_depth = Some(value as u8);
                 },
                 _ => return DIVANS_FAILURE,
             }
@@ -155,7 +163,8 @@ impl CompressorState {
         }
         DIVANS_FAILURE
     }
-    fn start(&mut self, allocators: &CAllocator, opts:DivansCompressorOptions) {
+    fn start(&mut self, allocators: &CAllocator, opts:DivansCompressorOptions,
+             dict: &[u8], dict_invalid: &[u8]) {
         match opts.use_brotli {
             BrotliCompressionSetting::UseInternalCommandSelection => {
                 core::mem::replace(self,
@@ -165,12 +174,9 @@ impl CompressorState {
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict,
+                                           dict_invalid,
                                            ())));
             },
             _ => {
@@ -181,12 +187,9 @@ impl CompressorState {
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict,
+                                           dict_invalid,
                                            (
                                                SubclassableAllocator::<u8>::new(allocators.clone()),
                                                SubclassableAllocator::<u16>::new(allocators.clone()),
@@ -201,7 +204,7 @@ impl CompressorState {
                                                SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
                                                opts.quality,
-                                               opts.lgblock,
+                                               opts.basic.lgblock,
                                                opts.stride_detection_quality,
                                            ))));
             
@@ -216,7 +219,7 @@ impl CompressorState {
               output_offset: &mut usize,
               allocators: &CAllocator) -> DivansResult {
         if let CompressorState::OptionStage(opts) = *self {
-            self.start(allocators, opts);
+            self.start(allocators, opts, &[], &[]);
         }
         let res = match *self {
             CompressorState::OptionStage(_) => unreachable!(),
@@ -239,7 +242,7 @@ impl CompressorState {
              output_offset: &mut usize,
              allocators: &CAllocator) -> DivansResult {
         if let CompressorState::OptionStage(opts) = *self {
-            self.start(allocators, opts);
+            self.start(allocators, opts, &[], &[]);
         }
         let res = match *self {
             CompressorState::OptionStage(_) => unreachable!(),

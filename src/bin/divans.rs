@@ -37,6 +37,7 @@ use std::env;
 
 use core::convert::From;
 use std::vec::Vec;
+use divans::{DivansCompressorOptions, DivansCompressorBasicOptions};
 use divans::BlockSwitch;
 use divans::FeatureFlagSliceType;
 use divans::CopyCommand;
@@ -775,23 +776,14 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                          ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
 
-pub struct CompressOptions {
-   pub quality: Option<u16>,
-   pub window_size: Option<i32>,
-   pub lgblock: Option<u32>,
-   pub do_context_map: bool,
-   pub force_stride_value: StrideSelection,
-   pub literal_adaptation_speed: Option<[Speed;4]>,
-   pub prior_depth: Option<u8>,
-   pub dynamic_context_mixing: Option<u8>,
-   pub stride_detection_quality: Option<u8>,
-}
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
                                        w:&mut Writer,
-                                       opts: CompressOptions,
+                                       opts: DivansCompressorOptions,
                                        buffer_size: usize,
-                                       use_brotli: bool) -> io::Result<()> {
+                                       use_brotli: bool,
+                                       dict: &[u8],
+                                       dict_invalid:&[u8]) -> io::Result<()> {
     let window_size = opts.window_size.unwrap_or(21);
     let mut m8 = ItemVecAllocator::<u8>::default();
     let ibuffer = m8.alloc_cell(buffer_size);
@@ -803,11 +795,9 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             window_size as usize,
-            opts.dynamic_context_mixing.unwrap_or(0),
-            opts.prior_depth,
-            opts.literal_adaptation_speed,
-            opts.do_context_map,
-            opts.force_stride_value,
+            opts.basic,
+            dict,
+            dict_invalid,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
              ItemVecAllocator::<i32>::default(),
@@ -840,10 +830,9 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            window_size as usize,
-            opts.dynamic_context_mixing.unwrap_or(0),
-            opts.prior_depth,
-            opts.literal_adaptation_speed, opts.do_context_map, opts.force_stride_value, (),
+            opts.basic,
+            dict, dict_invalid,
+            (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -856,11 +845,8 @@ fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     r:&mut Reader,
     w:&mut Writer,
-    dynamic_context_mixing: Option<u8>,
-    prior_depth: Option<u8>,
-    literal_adaptation_speed: Option<[Speed;4]>,
-    do_context_map: bool,
-    force_stride_value:StrideSelection) -> io::Result<()> {
+    opts: DivansCompressorBasicOptions,
+    dict: &[u8]) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -906,15 +892,17 @@ fn zero_slice(sl: &mut [u8]) -> usize {
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (r:&mut Reader,
                                       w:&mut Writer,
-                                      buffer_size: usize) -> io::Result<()> {
+                                      buffer_size: usize,
+                                      custom_dict: &[u8]) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
     let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,
                                          ItemVecAllocator<divans::CDF2>,
                                          ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
-                                                                ItemVecAllocator::<divans::CDF2>::default(),
-    ItemVecAllocator::<divans::DefaultCDF16>::default());
+                                                                                      ItemVecAllocator::<divans::CDF2>::default(),
+                                                                                      ItemVecAllocator::<divans::DefaultCDF16>::default(),
+                                                                                      custom_dict);
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;

@@ -33,11 +33,11 @@ const REPEAT_BUFFER_MAX_SIZE: u32 = 64;
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Default for DivansRecodeState<RingBuffer> {
    fn default() -> Self {
-      DivansRecodeState::<RingBuffer>::new(RingBuffer::default())
+      DivansRecodeState::<RingBuffer>::new(RingBuffer::default(), 0)
    }
 }
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingBuffer> {
-    pub fn new(rb:RingBuffer) -> Self {
+    pub fn new(rb:RingBuffer, _dict_size: usize) -> Self {
         DivansRecodeState {
             ring_buffer: rb,
             ring_buffer_decode_index: 0,

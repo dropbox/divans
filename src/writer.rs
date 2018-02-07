@@ -127,7 +127,11 @@ impl<W:Write> Write for DivansBrotliHybridCompressorWriter<W> {
     }
 }
 impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
-    pub fn new(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize) -> Self {
+    pub fn new(writer: W, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(writer, opts, buffer_size, &[], &[])
+    }
+    pub fn new_with_custom_dict(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
+                                dict: &[u8], dict_invalid:&[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -143,12 +147,9 @@ impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
                                            HeapAlloc::<u32>::new(0),
                                            HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict,
+                                           dict_invalid,
                                            (
                                                HeapAlloc::<u8>::new(0),
                                                HeapAlloc::<u16>::new(0),
@@ -163,7 +164,7 @@ impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
                                                HeapAlloc::<brotli::enc::histogram::ContextType>::new(brotli::enc::histogram::ContextType::default()),
                                                HeapAlloc::<brotli::enc::entropy_encode::HuffmanTree>::new(brotli::enc::entropy_encode::HuffmanTree::default()),
                                                opts.quality,
-                                               opts.lgblock,
+                                               opts.basic.lgblock,
                                                opts.stride_detection_quality,
                                            )),
                           buffer,
@@ -193,7 +194,11 @@ impl<W:Write> Write for DivansExperimentalCompressorWriter<W> {
     }
 }
 impl<W:Write> DivansExperimentalCompressorWriter<W> {
-    pub fn new(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize) -> Self {
+    pub fn new(writer: W, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(writer, opts, buffer_size, &[], &[])
+    }
+    pub fn new_with_custom_dict(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
+                                dict: &[u8], dict_invalid:&[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -209,12 +214,8 @@ impl<W:Write> DivansExperimentalCompressorWriter<W> {
                                            HeapAlloc::<u32>::new(0),
                                            HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict, dict_invalid,
                                            ()),
                           buffer,
                           true,
@@ -256,7 +257,10 @@ impl<W:Write> Write for DivansDecompressorWriter<W> {
     }
 }
 impl<W:Write> DivansDecompressorWriter<W> {
-    pub fn new(writer: W, mut buffer_size: usize) -> Self {
+    pub fn new(writer: W, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(writer, buffer_size, &[])
+    }
+    pub fn new_with_custom_dict(writer: W, mut buffer_size: usize, dict: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -271,6 +275,7 @@ impl<W:Write> DivansDecompressorWriter<W> {
                               m8,
                               HeapAlloc::<::CDF2>::new(::CDF2::default()),
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              dict,
                           ),
                           buffer,
                           false,

@@ -50,7 +50,22 @@ pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocat
 }
 
 
-
+pub unsafe extern fn divans_set_dict_after_options(state_ptr: *mut DivansCompressorState,
+                                                   dict: *const u8,
+                                                   dict_size: usize,
+                                                   dict_invalid: *const u8,
+                                                   dict_invalid_size: usize) -> DivansResult {
+    
+    match state_ptr.as_mut() {
+        None => DIVANS_FAILURE,
+        Some(state_ref) => {
+            state_ref.compressor.set_dict_after_options(
+                slice::from_raw_parts(dict, dict_size),
+                slice::from_raw_parts(dict_invalid, dict_invalid_size),
+                &state_ref.custom_allocator)
+        }
+    }
+}
 
 #[no_mangle]
 pub unsafe extern fn divans_set_option(state_ptr: *mut DivansCompressorState,
@@ -137,12 +152,19 @@ pub unsafe extern fn divans_free_compressor(state_ptr: *mut DivansCompressorStat
 #[no_mangle]
 pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
     unsafe {
+        divans_new_decompressor_with_custom_dict(core::ptr::null_mut(), 0)
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_new_decompressor_with_custom_dict(dict:*const u8, dict_size: usize) -> *mut DivansDecompressorState {
         divans_new_decompressor_with_custom_alloc(CAllocator{
             alloc_func:None,
             free_func:None,
             opaque: core::ptr::null_mut(),
-        })
-    }
+        },
+        dict,
+        dict_size)
 }
 
 
@@ -158,13 +180,17 @@ fn divans_new_decompressor_without_custom_alloc(to_box: DivansDecompressorState)
 
 
 #[no_mangle]
-pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator) -> *mut DivansDecompressorState{
+pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator,
+                                                               dict_ptr: *const u8,
+                                                               dict_size: usize) -> *mut DivansDecompressorState{
+    let dict = slice::from_raw_parts(dict_ptr, dict_size);
     let to_box = DivansDecompressorState{
         custom_allocator:allocators.clone(),
         decompressor:decompressor::DecompressorFactory::new(
             SubclassableAllocator::<u8>::new(allocators.clone()),
             SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
             SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
+            dict,
         ),
     };
     if let Some(alloc_fn) = allocators.alloc_func {

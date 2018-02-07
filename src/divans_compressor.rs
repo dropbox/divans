@@ -14,12 +14,13 @@
 
 // this compressor generates its own IR through the raw_to_cmd command assembler
 // then it generates a valid divans bitstream using the ANS encoder
-
+use core::cmp::{min,max};
 use core::marker::PhantomData;
 use super::probability;
 use super::brotli;
 use super::raw_to_cmd;
 use super::slice_util;
+use super::divans_decompressor::alloc_dict;
 use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{
@@ -38,6 +39,7 @@ pub use super::interface::{
     PredictionModeContextMap,
     FeatureFlagSliceType,
     free_cmd,
+    DivansCompressorBasicOptions,
     };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
@@ -81,19 +83,27 @@ impl<AllocU8:Allocator<u8>,
      type DefaultEncoder = DefaultEncoderType!();
      type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>;
      type AdditionalArgs = ();
-     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
-            dynamic_context_mixing_rate:u8,
-            prior_depth: Option<u8>,
-            literal_adaptation_rate: Option<[probability::Speed;4]>,
-            do_context_map: bool,
-            force_stride: StrideSelection,
-           _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-        if window_size < 10 {
-            window_size = 10;
+     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+            opts: DivansCompressorBasicOptions,
+            mut dict: &[u8],
+            mut dict_invalid: &[u8],
+            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+        if dict_invalid.len() != 0 {
+            let offset = min(dict_invalid.len(), 8);
+            let mut invalidate_everything = false;
+            for item in dict_invalid[(dict_invalid.len() - offset)..].iter() {
+                if *item != 0 {
+                    invalidate_everything = true;
+                }
+            }
+            if invalidate_everything {
+                dict = &[];
+                dict_invalid = &[]; // we need some padding at the end of the dictionary
+                let _unused = dict_invalid;
+            }
         }
-        if window_size > 24 {
-            window_size = 24;
-        }
+        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
+        let dict_ring_buffer = alloc_dict(&mut m8, Some(1 << window_size), dict);
         let ring_buffer = m8.alloc_cell(1<<window_size);
         let enc = Self::DefaultEncoder::new(&mut m8);
         let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
@@ -105,14 +115,15 @@ impl<AllocU8:Allocator<u8>,
                 mcdf16,
                 enc,
                 EncoderSpecialization::new(),
-                window_size,
-                dynamic_context_mixing_rate,
-                prior_depth,
-                literal_adaptation_rate,
-                do_context_map,
-                force_stride,
+                window_size as usize,
+                dict_ring_buffer,
+                opts.dynamic_context_mixing.unwrap_or(2),
+                opts.prior_depth,
+                opts.literal_adaptation,
+                opts.use_context_map,
+                opts.force_stride_value,
             ),
-              freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
+            freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
             freeze_dried_cmd_start:0,
             freeze_dried_cmd_end:0,
             cmd_assembler:assembler,

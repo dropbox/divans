@@ -114,6 +114,7 @@ pub use probability::BaseCDF;
 
 pub use interface::BrotliCompressionSetting;
 pub use interface::DivansCompressorOptions;
+pub use interface::DivansCompressorBasicOptions;
 
 pub use divans_decompressor::{DivansDecompressor,
                               DivansDecompressorFactory,

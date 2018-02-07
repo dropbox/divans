@@ -155,7 +155,11 @@ impl<R:Read> Read for DivansBrotliHybridCompressorReader<R> {
     }
 }
 impl<R:Read> DivansBrotliHybridCompressorReader<R> {
-    pub fn new(reader: R, opts: interface::DivansCompressorOptions, mut buffer_size: usize) -> Self {
+    pub fn new(reader: R, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(reader, opts,  buffer_size, &[], &[])
+    }
+    pub fn new_with_custom_dict(reader: R, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
+                                dict: &[u8], dict_invalid: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -171,12 +175,9 @@ impl<R:Read> DivansBrotliHybridCompressorReader<R> {
                                            HeapAlloc::<u32>::new(0),
                                            HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict,
+                                           dict_invalid,
                                            (
                                                HeapAlloc::<u8>::new(0),
                                                HeapAlloc::<u16>::new(0),
@@ -191,7 +192,7 @@ impl<R:Read> DivansBrotliHybridCompressorReader<R> {
                                                HeapAlloc::<brotli::enc::histogram::ContextType>::new(brotli::enc::histogram::ContextType::default()),
                                                HeapAlloc::<brotli::enc::entropy_encode::HuffmanTree>::new(brotli::enc::entropy_encode::HuffmanTree::default()),
                                                opts.quality,
-                                               opts.lgblock,
+                                               opts.basic.lgblock,
                                                opts.stride_detection_quality,
                                            )),
                           buffer,
@@ -218,7 +219,14 @@ impl<R:Read> Read for DivansExperimentalCompressorReader<R> {
     }
 }
 impl<R:Read> DivansExperimentalCompressorReader<R> {
-    pub fn new(reader: R, opts: interface::DivansCompressorOptions, mut buffer_size: usize) -> Self {
+    pub fn new(reader: R, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(reader, opts, buffer_size, &[], &[])
+    }
+    pub fn new_with_custom_dict(reader: R,
+                                opts: interface::DivansCompressorOptions,
+                                mut buffer_size: usize,
+                                dict: &[u8],
+                                dict_invalid: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -234,12 +242,9 @@ impl<R:Read> DivansExperimentalCompressorReader<R> {
                                            HeapAlloc::<u32>::new(0),
                                            HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts.basic,
+                                           dict,
+                                           dict_invalid,
                                            ()),
                           buffer,
                           true,
@@ -278,7 +283,10 @@ impl<R:Read> Read for DivansDecompressorReader<R> {
     }
 }
 impl<R:Read> DivansDecompressorReader<R> {
-    pub fn new(reader: R, mut buffer_size: usize) -> Self {
+    pub fn new(reader: R, buffer_size: usize) -> Self {
+        Self::new_with_custom_dict(reader, buffer_size,&[])
+    }
+    pub fn new_with_custom_dict(reader: R, mut buffer_size: usize, dict: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -293,6 +301,7 @@ impl<R:Read> DivansDecompressorReader<R> {
                               m8,
                               HeapAlloc::<::CDF2>::new(::CDF2::default()),
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              dict,
                           ),
                           buffer,
                           false,
