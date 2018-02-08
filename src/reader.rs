@@ -440,15 +440,17 @@ mod test {
     fn test_hybrid_reader_compressor_on_alice_small_buffer() {
         hy_reader_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
-                           literal_adaptation:None,
-                           window_size:Some(16),
-                           lgblock:Some(16),
+                           basic:interface::DivansCompressorBasicOptions{
+                               literal_adaptation:None,
+                               window_size:Some(16),
+                               lgblock:Some(16),
+                               prior_depth:Some(1),
+                               dynamic_context_mixing:None,
+                               use_context_map:true,
+                               force_stride_value: interface::StrideSelection::default(),
+                           },
                            quality:Some(11),
-                           prior_depth:Some(1),
-                           dynamic_context_mixing:None,
                            use_brotli:interface::BrotliCompressionSetting::default(),
-                           use_context_map:true,
-                           force_stride_value: interface::StrideSelection::default(),
                            stride_detection_quality: Some(2),
                        },
                        1);
@@ -456,16 +458,18 @@ mod test {
     #[test]
     fn test_hybrid_reader_compressor_on_alice_full() {
         hy_reader_tst(include_bytes!("../testdata/alice29"),
-                       interface::DivansCompressorOptions{
-                           literal_adaptation:None,
-                           window_size:Some(22),
-                           lgblock:None,
-                           quality:None,
-                           prior_depth:Some(2),
-                           dynamic_context_mixing:Some(2),
+                      interface::DivansCompressorOptions{
+                          basic:interface::DivansCompressorBasicOptions{
+                              literal_adaptation:None,
+                              window_size:Some(22),
+                              lgblock:None,
+                              prior_depth:Some(2),
+                              use_context_map:true,
+                              force_stride_value: interface::StrideSelection::Stride1,
+                              dynamic_context_mixing:Some(2),
+                           },
                            use_brotli:interface::BrotliCompressionSetting::default(),
-                           use_context_map:true,
-                           force_stride_value: interface::StrideSelection::Stride1,
+                           quality:None,
                            stride_detection_quality: None,
                        },
                        4095);
@@ -473,17 +477,19 @@ mod test {
     #[test]
     fn test_hybrid_reader_compressor_on_unicode_full() {
         hy_reader_tst(include_bytes!("../testdata/random_then_unicode"),
-                       interface::DivansCompressorOptions{
-                           literal_adaptation:None,
-                           window_size:Some(22),
-                           lgblock:None,
-                           quality:Some(8),
-                           prior_depth:None,
-                           dynamic_context_mixing:Some(2),
-                           use_brotli:interface::BrotliCompressionSetting::default(),
-                           use_context_map:true,
-                           force_stride_value: interface::StrideSelection::Stride1,
-                           stride_detection_quality: None,
+                      interface::DivansCompressorOptions{
+                          basic:interface::DivansCompressorBasicOptions{
+                              literal_adaptation:None,
+                              window_size:Some(22),
+                              lgblock:None,
+                              prior_depth:None,
+                              dynamic_context_mixing:Some(2),
+                              use_context_map:true,
+                              force_stride_value: interface::StrideSelection::Stride1,
+                          },
+                          quality:Some(8),
+                          use_brotli:interface::BrotliCompressionSetting::default(),
+                          stride_detection_quality: None,
                        },
                        4095);
     }
@@ -491,15 +497,17 @@ mod test {
     fn test_experimental_reader_compressor_on_alice_full() {
         experimental_reader_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
-                           literal_adaptation:None,
-                           window_size:Some(22),
-                           lgblock:None,
-                           prior_depth:Some(0),
+                           basic:interface::DivansCompressorBasicOptions{
+                               literal_adaptation:None,
+                               window_size:Some(22),
+                               lgblock:None,
+                               prior_depth:Some(0),
+                               dynamic_context_mixing:Some(2),
+                               use_context_map:true,
+                               force_stride_value: interface::StrideSelection::UseBrotliRec,
+                           },
                            quality:None,
-                           dynamic_context_mixing:Some(2),
                            use_brotli:interface::BrotliCompressionSetting::default(),
-                           use_context_map:true,
-                           force_stride_value: interface::StrideSelection::UseBrotliRec,
                            stride_detection_quality: Some(1),
                        },
                        3);

@@ -33,7 +33,7 @@ mod util;
 
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use std::env;
-
+use std::io::Read;
 
 use core::convert::From;
 use std::vec::Vec;
@@ -842,7 +842,7 @@ fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     r:&mut Reader,
     w:&mut Writer,
-    opts: DivansCompressorBasicOptions,
+    mut opts: DivansCompressorBasicOptions,
     dict: &[u8],
     dict_invalid: &[u8]) -> io::Result<()> {
     let window_size : i32;
@@ -862,6 +862,8 @@ fn compress_ir<Reader:std::io::BufRead,
             }
         }
     }
+    opts.window_size = Some(window_size);
+    opts.lgblock = Some(window_size as u32);
     let state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
                                   ItemVecAllocator<divans::CDF2>,
                                   ItemVecAllocator<divans::DefaultCDF16>>::new(
@@ -1102,6 +1104,22 @@ fn main() {
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
             if !doubledash {
+                if argument.starts_with("-dict=") {
+                    let mut input = match File::open(&Path::new(&argument[6..])) {
+                        Err(why) => panic!("couldn't open {:}\n{:}", &argument[6..], why),
+                        Ok(file) => file,
+                    };
+                    input.read_to_end(&mut dict).unwrap();
+                    continue;
+                }
+                if argument.starts_with("-dictmask=") {
+                    let mut input = match File::open(&Path::new(&argument[10..])) {
+                        Err(why) => panic!("couldn't open {:}\n{:}", &argument[10..], why),
+                        Ok(file) => file,
+                    };
+                    input.read_to_end(&mut dict_invalid).unwrap();
+                    continue;
+                }
                 if argument == "-d" {
                     continue;
                 }

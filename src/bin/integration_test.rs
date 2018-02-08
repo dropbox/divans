@@ -105,7 +105,7 @@ fn test_asyoulik() {
 
 
 fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, data: &[u8],
-             ratio: f64) {
+             ratio: f64, dict: &[u8], dict_invalid: &[u8]) {
     let mut in_buffer = UnlimitedBuffer::new(data);
     let mut dv_buffer = UnlimitedBuffer::new(&[]);
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
@@ -113,21 +113,25 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         &mut dv_buffer,
                         divans::DivansCompressorOptions{
                             basic: divans::DivansCompressorBasicOptions {
-                            dynamic_context_mixing: Some(2),
-                            literal_adaptation_speed: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
-                            do_context_map: use_serialized_priors,
-                            force_stride_value: StrideSelection::UseBrotliRec, // force stride
-                            prior_depth:Some(1),
-                            window_size:Some(16i32), // window size
-                            lgblock:Some(18u32), //lgblock
+                                dynamic_context_mixing: Some(2),
+                                literal_adaptation: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
+                                use_context_map: use_serialized_priors,
+                                force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                                prior_depth:Some(1),
+                                window_size:Some(16i32), // window size
+                                lgblock:Some(18u32), //lgblock
                             },
                             quality:Some(10u16), // quality
                             stride_detection_quality: None,
-                            use_brotli:if use_brotli {BrotliCompressionSetting::UseBrotliCommandSelection} else {BrotliCompressionSetting::UseInternalCommandSelection},
+                            use_brotli:if use_brotli {
+                                super::BrotliCompressionSetting::UseBrotliCommandSelection
+                            } else {
+                                super::BrotliCompressionSetting::UseInternalCommandSelection
+                            },
                         },
                         buffer_size,
-                        dict, dict_invalid).unwrap();
-    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+                        &dict[..], &dict_invalid[..]).unwrap();
+    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, dict).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
     if !(actual_ratio <= ratio) {
@@ -147,13 +151,13 @@ fn test_e2e_ones_tinybuf() {
                  237u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
                  247u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
                  ];
-    e2e_no_ir(1, false, false, &data[..], 0.99);
+    e2e_no_ir(1, false, false, &data[..], 0.99, &[], &[]);
 }
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_slice = include_bytes!("../../testdata/alice29");
    let raw_text_buffer = UnlimitedBuffer::new(&raw_text_slice[..]);
-   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
-   e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
+   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44, &[], &[]);
+   e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34, &[], &[]);
    let ir_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir"))
    } else {
@@ -162,8 +166,18 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(0), Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]), true, StrideSelection::UseBrotliRec).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+    super::compress_ir(&mut buf_ir, &mut dv_buffer,
+                       divans::DivansCompressorBasicOptions {
+                                dynamic_context_mixing: Some(1),
+                                literal_adaptation: Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]),
+                                use_context_map: true,
+                                force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                                prior_depth:Some(0),
+                                window_size:None,
+                                lgblock:None,
+                       },
+                       &[], &[]).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &[]).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -194,8 +208,17 @@ fn test_e2e_32xx() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, None, None, None, true, StrideSelection::UseBrotliRec).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+    super::compress_ir(&mut buf_ir, &mut dv_buffer,
+                       divans::DivansCompressorBasicOptions {
+                                dynamic_context_mixing: None,
+                                literal_adaptation: None,
+                                use_context_map: true,
+                                force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                                prior_depth:None,
+                                window_size:None,
+                                lgblock:None,
+                       }, &[], &[]).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, &[]).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
@@ -209,8 +232,17 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1),  Some(2), Some([Speed::MUD, Speed::ROCKET, Speed::FAST, Speed::GLACIAL]), true, StrideSelection::UseBrotliRec).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+    super::compress_ir(&mut buf_ir, &mut dv_buffer,
+                       divans::DivansCompressorBasicOptions {
+                           dynamic_context_mixing: Some(1),
+                           literal_adaptation: Some([Speed::MUD, Speed::ROCKET, Speed::FAST, Speed::GLACIAL]),
+                           use_context_map: true,
+                           force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                           prior_depth:Some(2),
+                           window_size:None,
+                           lgblock:None,
+                       }, &[], &[]).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, &[]).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
@@ -227,14 +259,19 @@ fn test_e2e_64xp() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    //let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), None, Some([Speed::FAST, Speed::SLOW, Speed::FAST, Speed::FAST]), true, StrideSelection::UseBrotliRec) {
+    match super::compress_ir(&mut buf_ir, &mut dv_buffer,
+                             divans::DivansCompressorBasicOptions {
+                                 dynamic_context_mixing: None,
+                                 literal_adaptation: Some([Speed::FAST, Speed::SLOW, Speed::FAST, Speed::FAST]),
+                                 use_context_map: true,
+                                 force_stride_value: StrideSelection::UseBrotliRec, // force stride
+                                 prior_depth:Some(1),
+                                 window_size:None,
+                                 lgblock:None,
+                       }, &[], &[]) {
       Ok(_) => assert_eq!(EXTERNAL_PROB_FEATURE, true),
       Err(_) => assert_eq!(EXTERNAL_PROB_FEATURE, false),
-   };
-   //super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
-   //let a =  rt_buffer.data;
-   //let b = raw_text_buffer.data;
-   //assert_eq!(a, b);
+    };
 }
 
 

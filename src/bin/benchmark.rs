@@ -266,16 +266,20 @@ fn bench_with_ir<Run: Runner,
     };
     super::compress_ir(&mut buf_ir,
                        &mut dv_buffer,
-                       Some(mixing_mode),
-                       None,
-                       Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]),
-                       ts.use_context_map(),
-                       ts.stride_selection()).unwrap();
+                       divans::DivansCompressorBasicOptions{
+                           window_size:None,
+                           lgblock: None,
+                           dynamic_context_mixing:Some(mixing_mode),
+                           prior_depth:None,
+                           literal_adaptation:Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]),
+                           use_context_map:ts.use_context_map(),
+                           force_stride_value:ts.stride_selection()},
+                       &[], &[]).unwrap();
     {
         let mut decompress_lambda = || {
             dv_buffer.reset_read();
             rt_buffer.reset();
-            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &[]).unwrap();
             let actual_ratio =  dv_buffer.written().len() as f64 / input_buffer.slice().len() as f64;
             if !(actual_ratio <= ratio) {
                 println!("Failed: actual buffer length {} dv_buffer size: {}", input_buffer.slice().len(), dv_buffer.written().len());
@@ -336,12 +340,16 @@ fn bench_no_ir<Run: Runner,
                 ItemVecAllocator::<u32>::default(),
                 ItemVecAllocator::<divans::CDF2>::default(),
                 ItemVecAllocator::<divans::DefaultCDF16>::default(),
-                22, // window_size 
-                ts.adaptive_context_mixing() as u8 * 2,
-                ts.prior_depth(), // prior depth
-                None, // speed
-                ts.use_context_map(),
-                ts.stride_selection(),
+                divans::DivansCompressorBasicOptions{
+                    window_size:Some(22), // window_size
+                    lgblock: Some(22),
+                    dynamic_context_mixing:Some(ts.adaptive_context_mixing() as u8 * 2),
+                    prior_depth:ts.prior_depth(), // prior depth
+                    literal_adaptation: None, // speed
+                    use_context_map:ts.use_context_map(),
+                    force_stride_value:ts.stride_selection(),
+                },
+                &[], &[],
                 (),
             );
 
@@ -371,7 +379,7 @@ fn bench_no_ir<Run: Runner,
         } else {
             dv_buffer.reset_read();
             rt_buffer.reset();
-            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &[]).unwrap();
             assert_eq!(rt_buffer.written(), input_buffer.slice());
             let actual_ratio =  dv_buffer.written().len() as f64 / input_buffer.slice().len() as f64;
             if !(actual_ratio <= ratio) {
