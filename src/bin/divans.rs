@@ -37,7 +37,7 @@ use std::env;
 
 use core::convert::From;
 use std::vec::Vec;
-use divans::{DivansCompressorOptions, DivansCompressorBasicOptions};
+use divans::{DivansCompressorOptions, DivansCompressorBasicOptions, BrotliCompressionSetting};
 use divans::BlockSwitch;
 use divans::FeatureFlagSliceType;
 use divans::CopyCommand;
@@ -781,20 +781,17 @@ fn compress_raw<Reader:std::io::Read,
                                        w:&mut Writer,
                                        opts: DivansCompressorOptions,
                                        buffer_size: usize,
-                                       use_brotli: bool,
                                        dict: &[u8],
                                        dict_invalid:&[u8]) -> io::Result<()> {
-    let window_size = opts.window_size.unwrap_or(21);
     let mut m8 = ItemVecAllocator::<u8>::default();
     let ibuffer = m8.alloc_cell(buffer_size);
     let obuffer = m8.alloc_cell(buffer_size);
-    if use_brotli {
+    if let BrotliCompressionSetting::UseBrotliCommandSelection = opts.use_brotli {
         let state =BrotliFactory::new(
             m8,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            window_size as usize,
             opts.basic,
             dict,
             dict_invalid,
@@ -811,7 +808,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
              opts.quality,
-             opts.lgblock,
+             opts.basic.lgblock,
              opts.stride_detection_quality,
             ), 
         );
@@ -846,7 +843,8 @@ fn compress_ir<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer,
     opts: DivansCompressorBasicOptions,
-    dict: &[u8]) -> io::Result<()> {
+    dict: &[u8],
+    dict_invalid: &[u8]) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -871,12 +869,9 @@ fn compress_ir<Reader:std::io::BufRead,
         ItemVecAllocator::<u32>::default(),
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
-        window_size as usize,
-        dynamic_context_mixing.unwrap_or(0),
-        prior_depth,
-        literal_adaptation_speed,
-        do_context_map,
-        force_stride_value,
+        opts,
+        dict,
+        dict_invalid,
         (),
     );
     compress_inner(state, r, w)
@@ -1088,6 +1083,8 @@ fn main() {
     let mut raw_compress = false;
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
+    let mut dict = Vec::<u8>::new();
+    let mut dict_invalid = Vec::<u8>::new();
     let mut num_benchmarks = 1;
     let mut use_context_map = false;
     let mut use_brotli = true;
@@ -1390,7 +1387,16 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress && !raw_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation.clone(), use_context_map, force_stride_value) {
+                        match compress_ir(&mut buffered_input, &mut output, DivansCompressorBasicOptions{
+                           window_size:window_size,
+                           lgblock: lgwin,
+                           dynamic_context_mixing:dynamic_context_mixing.clone(),
+                           prior_depth:force_prior_depth,
+                           literal_adaptation:literal_adaptation.clone(),
+                           use_context_map:use_context_map,
+                           force_stride_value:force_stride_value},
+                           &dict[..],
+                           &dict_invalid[..]) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1398,18 +1404,22 @@ fn main() {
                     } else if do_compress {
                         match compress_raw(&mut input,
                                            &mut output,
-                                           CompressOptions{
+                                           DivansCompressorOptions{
+                                               basic: DivansCompressorBasicOptions{
                                                dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                               literal_adaptation_speed: literal_adaptation.clone(),
-                                               do_context_map: use_context_map,
+                                               literal_adaptation: literal_adaptation.clone(),
+                                               use_context_map: use_context_map,
                                                prior_depth: force_prior_depth,
                                                force_stride_value: force_stride_value,
-                                               quality: quality,
                                                window_size: window_size,
                                                lgblock: lgwin,
+                                               },
+                                               quality: quality,
                                                stride_detection_quality: stride_detection_quality,
+                                               use_brotli: if use_brotli {BrotliCompressionSetting::UseBrotliCommandSelection} else {BrotliCompressionSetting::UseInternalCommandSelection},
                                            },
-                                           buffer_size, use_brotli) {
+                                           buffer_size,
+                                           &dict[..], &dict_invalid[..]) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1419,7 +1429,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, buffer_size) {
+                        match decompress(&mut input, &mut output, buffer_size, &dict[..]) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1434,26 +1444,41 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress && !raw_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
+                    match compress_ir (&mut buffered_input, &mut io::stdout(),
+                                       DivansCompressorBasicOptions {
+                                           dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                           literal_adaptation: literal_adaptation.clone(),
+                                           use_context_map: use_context_map,
+                                           prior_depth: force_prior_depth,
+                                           force_stride_value: force_stride_value,
+                                           window_size: window_size,
+                                           lgblock: lgwin,
+                                           },
+                        &dict[..], &dict_invalid[..]) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
                     match compress_raw(&mut input,
                                        &mut io::stdout(),
-                                       CompressOptions{
+                                       DivansCompressorOptions{
+                                           basic:DivansCompressorBasicOptions {
                                            dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                           literal_adaptation_speed: literal_adaptation.clone(),
-                                           do_context_map: use_context_map,
+                                           literal_adaptation: literal_adaptation.clone(),
+                                           use_context_map: use_context_map,
                                            prior_depth: force_prior_depth,
                                            force_stride_value: force_stride_value,
-                                           quality: quality,
                                            window_size: window_size,
                                            lgblock: lgwin,
+                                           },
+                                           quality: quality,
                                            stride_detection_quality: stride_detection_quality,
+                                           use_brotli: if use_brotli {BrotliCompressionSetting::UseBrotliCommandSelection} else {BrotliCompressionSetting::UseInternalCommandSelection},
                                        },
                                        buffer_size,
-                                       use_brotli) {
+                                       &dict[..],
+                                       &dict_invalid[..],
+                                       ) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1462,7 +1487,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), buffer_size) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size, &dict[..]) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1473,26 +1498,41 @@ fn main() {
             if do_compress && !raw_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
+                match compress_ir(&mut stdin, &mut io::stdout(), DivansCompressorBasicOptions {
+                                           dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                           literal_adaptation: literal_adaptation.clone(),
+                                           use_context_map: use_context_map,
+                                           prior_depth: force_prior_depth,
+                                           force_stride_value: force_stride_value,
+                                           window_size: window_size,
+                                           lgblock: lgwin,
+                                           },
+                                           &dict[..],
+                                           &dict_invalid[..]) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
                 match compress_raw(&mut std::io::stdin(),
                                    &mut io::stdout(),
-                                   CompressOptions{
-                                       dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                       literal_adaptation_speed: literal_adaptation.clone(),
-                                       do_context_map: use_context_map,
-                                       force_stride_value: force_stride_value,
-                                       prior_depth: force_prior_depth,
-                                       quality: quality,
-                                       window_size: window_size,
-                                       lgblock: lgwin,
-                                       stride_detection_quality: stride_detection_quality,
-                                   },
-                                   buffer_size,
-                                   use_brotli) {
+                                       DivansCompressorOptions{
+                                           basic:DivansCompressorBasicOptions {
+                                           dynamic_context_mixing: dynamic_context_mixing.clone(),
+                                           literal_adaptation: literal_adaptation.clone(),
+                                           use_context_map: use_context_map,
+                                           prior_depth: force_prior_depth,
+                                           force_stride_value: force_stride_value,
+                                           window_size: window_size,
+                                           lgblock: lgwin,
+                                           },
+                                           quality: quality,
+                                           stride_detection_quality: stride_detection_quality,
+                                           use_brotli: if use_brotli {BrotliCompressionSetting::UseBrotliCommandSelection} else {BrotliCompressionSetting::UseInternalCommandSelection},
+                                       },
+                                       buffer_size,
+                                       &dict[..],
+                                       &dict_invalid[..],
+                                   ) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1502,7 +1542,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, &dict[..]) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1510,7 +1550,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, &dict[..]) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }

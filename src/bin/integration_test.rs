@@ -15,7 +15,7 @@
 #![cfg(test)]
 extern crate core;
 use std::io;
-
+use divans;
 use std::io::BufReader;
 use core::cmp;
 use divans::{Speed, StrideSelection};
@@ -111,19 +111,22 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
     super::compress_raw(&mut in_buffer,
                         &mut dv_buffer,
-                        super::CompressOptions{
+                        divans::DivansCompressorOptions{
+                            basic: divans::DivansCompressorBasicOptions {
                             dynamic_context_mixing: Some(2),
                             literal_adaptation_speed: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
                             do_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(1),
-                            quality:Some(10u16), // quality
                             window_size:Some(16i32), // window size
                             lgblock:Some(18u32), //lgblock
+                            },
+                            quality:Some(10u16), // quality
                             stride_detection_quality: None,
+                            use_brotli:if use_brotli {BrotliCompressionSetting::UseBrotliCommandSelection} else {BrotliCompressionSetting::UseInternalCommandSelection},
                         },
                         buffer_size,
-                        use_brotli).unwrap();
+                        dict, dict_invalid).unwrap();
     super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
