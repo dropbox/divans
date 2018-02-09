@@ -77,7 +77,7 @@ pub fn alloc_dict<AllocU8:Allocator<u8>>(m8: &mut AllocU8,
     if custom_dict.len() > len {
         ret.slice_mut().clone_from_slice(&custom_dict.split_at(custom_dict.len() - len).1);
     } else {
-        ret.slice_mut().split_at_mut(len - custom_dict.len()).1.clone_from_slice(&custom_dict[(custom_dict.len() - len)..]);
+        ret.slice_mut().split_at_mut(len - custom_dict.len()).1.clone_from_slice(custom_dict);
     }
     ret
 }
