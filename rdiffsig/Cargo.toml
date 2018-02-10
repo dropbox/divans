@@ -1,0 +1,31 @@
+[package]
+name = "rdiffsig"
+version = "0.0.1"
+authors = [
+    "Daniel Reiter Horn <danielrh@dropbox.com>",
+]
+license = "BSD-3-Clause/MIT or Apache"
+documentation = "tbd"
+keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
+readme = "README.md"
+
+
+[lib]
+crate-type=["cdylib", "rlib", "staticlib"]
+
+[[bin]]
+doc = false
+name = "rdiffsig"
+
+[profile.release]
+lto=true
+
+[build-dependencies]
+vergen = "0.1"
+
+[dependencies]
+md4 = "0.7"
+"alloc-no-stdlib" = "~1.2"
+
+[features]
+benchmark = []
