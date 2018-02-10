@@ -196,8 +196,9 @@ pub struct CustomDictionary<AllocU8:Allocator<u8>> {
     data:AllocU8::AllocatedMemory,
     invalid:AllocU8::AllocatedMemory,
     ring_buffer:AllocU8::AllocatedMemory,
+    ring_buffer_offset: u32,
     rolling_crc32:u32,
-    offset:usize,
+    file_offset:usize,
 }
 
 impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
@@ -215,8 +216,46 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             data: d,
             invalid: invalid,
             ring_buffer: ring_buffer,
-            offset: 0,
+            file_offset: 0,
+            ring_buffer_offset: 0,
             rolling_crc32: 0,
+        }
+    }
+    pub fn speculative_add<SigBuffer:CryptoSigTrait,
+                   AllocSig: Allocator<Sig<SigBuffer>>>(&mut self,
+                   sig_offset: usize,
+                   sig_file: &SigFile<SigBuffer,
+                                      AllocSig>) {
+         let mut md4_hasher = md4::Md4::default();
+         let ring_buffer_pair = self.ring_buffer.slice().split_at(self.ring_buffer_offset as usize);
+         md4_hasher.input(ring_buffer_pair.1);
+         md4_hasher.input(ring_buffer_pair.0);
+         let md4_sum = &md4_hasher.result()[..SigBuffer::SIZE];
+         if sig_file.signatures.slice()[sig_offset].crypto_sig.slice() == md4_sum {
+             let dict_target = sig_offset * sig_file.block_size() as usize;
+         }
+
+    }
+    pub fn process<SigBuffer:CryptoSigTrait,
+                   AllocSig: Allocator<Sig<SigBuffer>>>(&mut self,
+                   mut input: &[u8],
+                   hint: &SigHint,
+                   sig_file: &SigFile<SigBuffer,
+                                      AllocSig>) {
+        if self.file_offset < self.ring_buffer.slice().len() {
+            let to_copy = core::cmp::min(self.ring_buffer.slice().len() - self.file_offset, input.len());
+            let input_split = input.split_at(to_copy);
+            self.ring_buffer.slice_mut().split_at_mut(self.file_offset).1.split_at_mut(to_copy).0.clone_from_slice(input_split.0);
+            self.file_offset += to_copy;
+            input = input_split.1;
+            if self.file_offset == self.ring_buffer.slice().len() {
+               self.rolling_crc32 = rollsum_update(0, self.ring_buffer.slice());
+               if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
+                  self.speculative_add(*dict_offset, sig_file);
+               }
+            } else {
+               return
+            }
         }
     }
     pub fn free(&mut self, m8: &mut AllocU8) {
