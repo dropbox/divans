@@ -2,7 +2,7 @@ extern crate core;
 extern crate md4;
 extern crate alloc_no_stdlib as alloc;
 use md4::Digest;
-
+use core::cmp::min;
 use alloc::{SliceWrapper, SliceWrapperMut, Allocator};
 use std::collections::HashMap;
 mod fixed_buffer;
@@ -56,17 +56,38 @@ fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offse
     assert!(buffer.len() >= 4 + SigBuffer::SIZE);
     full_serialize(item, &mut buffer[..]);
     let buffer_offset = *input_offset % (4 + SigBuffer::SIZE);
-    let to_copy = core::cmp::min(4 + SigBuffer::SIZE - buffer_offset, output.len() - *output_offset);
+    let to_copy = min(4 + SigBuffer::SIZE - buffer_offset, output.len() - *output_offset);
     output.split_at_mut(*output_offset).1.split_at_mut(to_copy).0.clone_from_slice(buffer.split_at(buffer_offset).1.split_at(to_copy).0);
     *input_offset += to_copy;
     *output_offset += to_copy;
     to_copy == buffer.len()
 }
 
-const ROLLSUM_CHAR_OFFSET: u32 = 31;
+const CRC_MAGIC_16: u16 = 31;
+const CRC_MAGIC: u32 = CRC_MAGIC_16 as u32;
 
+fn crc_rollout(sum: u32, size: u32, old_byte_u8: u8) -> u32 {
+    let size_16 = size as u16;
+    let old_byte = u16::from(old_byte_u8);
+    let mut s1 = (sum & 0xffff) as u16;
+    let mut s2 = (sum >> 16) as u16;
+    s1 = s1.wrapping_sub(old_byte.wrapping_add(CRC_MAGIC_16));
+    s2 = s2.wrapping_sub(size_16.wrapping_mul(old_byte.wrapping_add(CRC_MAGIC_16)) as u16);
+    u32::from(s1) | (u32::from(s2) << 16)
+}
 
-fn rollsum_update(sum: u32, buf: &[u8]) -> u32{
+fn crc_rotate(sum: u32, size: u32, old_byte_u8: u8, new_byte_u8: u8) -> u32 {
+    let size_16 = size as u16;
+    let old_byte = u16::from(old_byte_u8);
+    let new_byte = u16::from(new_byte_u8);
+    let mut s1 = (sum & 0xffff) as u16;
+    let mut s2 = (sum >> 16) as u16;
+    s1 = s1.wrapping_add(new_byte.wrapping_sub(old_byte));
+    s2 = s2.wrapping_add(s1.wrapping_sub(size_16.wrapping_mul(old_byte.wrapping_add(CRC_MAGIC_16))));
+    u32::from(s1) | (u32::from(s2) << 16)
+}
+
+fn crc_update(sum: u32, buf: &[u8]) -> u32{
     let mut s1 = (sum & 0xffff) as u16;
     let mut s2 = (sum >> 16) as u16;
     for item in buf {
@@ -74,8 +95,8 @@ fn rollsum_update(sum: u32, buf: &[u8]) -> u32{
         s2 = s2.wrapping_add(s1);
     }
     let len = buf.len() as u32;
-    s1 = s1.wrapping_add((len.wrapping_mul(ROLLSUM_CHAR_OFFSET)) as u16);
-    s2 = s2.wrapping_add((((len.wrapping_mul(len.wrapping_add(1))) / 2).wrapping_mul(ROLLSUM_CHAR_OFFSET)) as u16);
+    s1 = s1.wrapping_add((len.wrapping_mul(CRC_MAGIC)) as u16);
+    s2 = s2.wrapping_add((((len.wrapping_mul(len.wrapping_add(1))) / 2).wrapping_mul(CRC_MAGIC)) as u16);
     u32::from(s1) | (u32::from(s2) << 16)
 }
 
@@ -84,11 +105,11 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
         let num_signatures = (buf.len() + block_size as usize - 1) / block_size as usize;
         let mut sig = m_sig.alloc_cell(num_signatures);
         for (index, item) in sig.slice_mut().iter_mut().enumerate() {
-            let slice = &buf[index * block_size as usize .. core::cmp::min((index + 1) * block_size as usize, buf.len())];
+            let slice = &buf[index * block_size as usize .. min((index + 1) * block_size as usize, buf.len())];
             let mut md4_hasher = md4::Md4::default();
             md4_hasher.input(slice);
             item.crypto_sig.slice_mut().clone_from_slice(&md4_hasher.result()[..SigBuffer::SIZE]);
-            item.crc32 = rollsum_update(item.crc32, slice);
+            item.crc32 = crc_update(item.crc32, slice);
         }
         SigFile::<SigBuffer, AllocSig> {
             block_size: block_size,
@@ -112,7 +133,7 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
             }
             header_buffer[4..8].clone_from_slice(&u32_to_le(self.block_size));
             header_buffer[8..12].clone_from_slice(&u32_to_le(SigBuffer::SIZE as u32));
-            let to_copy = core::cmp::min(HEADER_SIZE - *input_offset, output.len() - *output_offset);
+            let to_copy = min(HEADER_SIZE - *input_offset, output.len() - *output_offset);
             output.split_at_mut(*output_offset).1.split_at_mut(to_copy).0.clone_from_slice(
                 header_buffer.split_at(*input_offset).1.split_at(to_copy).0);
             *input_offset += to_copy;
@@ -123,9 +144,8 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
         }
         let stride = SigBuffer::SIZE + 4;
         let start_index = (*input_offset - HEADER_SIZE) / stride;
-        let stop_index = core::cmp::min(
-            self.signatures.slice().len(),
-            (*input_offset - HEADER_SIZE) / stride + (output.len() - *output_offset + stride - 1) / stride);
+        let stop_index = min(self.signatures.slice().len(),
+                             (*input_offset - HEADER_SIZE) / stride + (output.len() - *output_offset + stride - 1) / stride);
         if start_index < stop_index {
             debug_assert!(*output_offset != output.len());  // otherwise we wouldn't have gotten here
             partial_serialize(self.signatures.slice()[start_index], input_offset, output, output_offset);
@@ -198,7 +218,7 @@ pub struct CustomDictionary<AllocU8:Allocator<u8>> {
     ring_buffer:AllocU8::AllocatedMemory,
     ring_buffer_offset: u32,
     rolling_crc32:u32,
-    file_offset:usize,
+    rolling_count:u32,
 }
 
 impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
@@ -216,45 +236,128 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             data: d,
             invalid: invalid,
             ring_buffer: ring_buffer,
-            file_offset: 0,
+            rolling_count: 0,
             ring_buffer_offset: 0,
             rolling_crc32: 0,
         }
+    }
+    pub fn speculative_add_helper<SigBuffer:CryptoSigTrait,
+                   AllocSig: Allocator<Sig<SigBuffer>>>(sig_offset: usize,
+                                                        sig_file: &SigFile<SigBuffer,
+                                                                           AllocSig>,
+                                                        length: u32,
+                                                        ring_buffer: &[u8],
+                                                        ring_buffer_offset: usize,
+                                                        dict: &mut[u8],
+                                                        invalid: &mut [u8]) -> bool {
+         let mut md4_hasher = md4::Md4::default();
+         let ring_buffer_pair = ring_buffer.split_at(ring_buffer_offset as usize);
+         let first_ring_copy_len = min(length as usize, ring_buffer_pair.1.len());
+         md4_hasher.input(&ring_buffer_pair.1[..first_ring_copy_len]);
+         let second_ring_copy_len = min(length as usize - first_ring_copy_len, ring_buffer_pair.0.len());
+         md4_hasher.input(&ring_buffer_pair.0[..second_ring_copy_len]);
+         let md4_sum = &md4_hasher.result()[..SigBuffer::SIZE];
+         if sig_file.signatures.slice()[sig_offset].crypto_sig.slice() == md4_sum {
+             let dict_target = sig_offset * sig_file.block_size() as usize;
+             dict.split_at_mut(dict_target).1.split_at_mut(
+                 first_ring_copy_len).0.clone_from_slice(&ring_buffer_pair.1[..first_ring_copy_len]);
+             dict.split_at_mut(dict_target + first_ring_copy_len).1.split_at_mut(
+                 second_ring_copy_len).0.clone_from_slice(&ring_buffer_pair.0[..second_ring_copy_len]);
+             for item in invalid.split_at_mut(dict_target).1.split_at_mut(
+                 first_ring_copy_len + second_ring_copy_len).1.iter_mut() {
+                 *item = 0;
+             }
+             true
+         } else {
+             false
+         }
     }
     pub fn speculative_add<SigBuffer:CryptoSigTrait,
                    AllocSig: Allocator<Sig<SigBuffer>>>(&mut self,
                    sig_offset: usize,
                    sig_file: &SigFile<SigBuffer,
-                                      AllocSig>) {
-         let mut md4_hasher = md4::Md4::default();
-         let ring_buffer_pair = self.ring_buffer.slice().split_at(self.ring_buffer_offset as usize);
-         md4_hasher.input(ring_buffer_pair.1);
-         md4_hasher.input(ring_buffer_pair.0);
-         let md4_sum = &md4_hasher.result()[..SigBuffer::SIZE];
-         if sig_file.signatures.slice()[sig_offset].crypto_sig.slice() == md4_sum {
-             let dict_target = sig_offset * sig_file.block_size() as usize;
-         }
-
+                                      AllocSig>,
+                   length: u32) -> bool {
+        Self::speculative_add_helper(sig_offset, sig_file, length,
+                                     self.ring_buffer.slice(), self.ring_buffer_offset as usize,
+                                     self.data.slice_mut(), self.invalid.slice_mut())
     }
-    pub fn process<SigBuffer:CryptoSigTrait,
+    pub fn write<SigBuffer:CryptoSigTrait,
                    AllocSig: Allocator<Sig<SigBuffer>>>(&mut self,
                    mut input: &[u8],
                    hint: &SigHint,
                    sig_file: &SigFile<SigBuffer,
                                       AllocSig>) {
-        if self.file_offset < self.ring_buffer.slice().len() {
-            let to_copy = core::cmp::min(self.ring_buffer.slice().len() - self.file_offset, input.len());
-            let input_split = input.split_at(to_copy);
-            self.ring_buffer.slice_mut().split_at_mut(self.file_offset).1.split_at_mut(to_copy).0.clone_from_slice(input_split.0);
-            self.file_offset += to_copy;
-            input = input_split.1;
-            if self.file_offset == self.ring_buffer.slice().len() {
-               self.rolling_crc32 = rollsum_update(0, self.ring_buffer.slice());
-               if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
-                  self.speculative_add(*dict_offset, sig_file);
-               }
-            } else {
-               return
+        while input.len() != 0 {
+            while (self.rolling_count as usize) < self.ring_buffer.slice().len() {
+                let to_copy = min(self.ring_buffer.slice().len() - self.rolling_count as usize, input.len());
+                let input_split = input.split_at(to_copy);
+                self.ring_buffer.slice_mut().split_at_mut(self.rolling_count as usize).1.split_at_mut(to_copy).0.clone_from_slice(input_split.0);
+                self.rolling_count += to_copy as u32;
+                input = input_split.1;
+                if self.rolling_count as usize == self.ring_buffer.slice().len() {
+                    self.rolling_crc32 = crc_update(0, self.ring_buffer.slice());
+                    if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
+                        let rc = self.rolling_count;
+                        if self.speculative_add(*dict_offset, sig_file, rc) {
+                            self.rolling_count = 0; //match!
+                            continue; // we assume that there are no nontrivial overlapping sections, so we start over
+                        }
+                    }
+                } else {
+                    return
+                }
+            }
+            assert_eq!(self.rolling_count, sig_file.block_size());
+            for (index,item) in input.iter().enumerate() { // ring buffer is fully populated here
+                {
+                    let ring_buffer_mfd_byte = &mut self.ring_buffer.slice_mut()[self.ring_buffer_offset as usize];
+                    self.rolling_crc32 = crc_rotate(self.rolling_crc32, sig_file.block_size(), *ring_buffer_mfd_byte, *item);                
+                    *ring_buffer_mfd_byte = *item;
+                }
+                let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
+                let rc = self.rolling_count;
+                if dict_offset.is_some() && self.speculative_add(*dict_offset.unwrap(), sig_file, rc) {
+                    self.rolling_count = 0; //match!
+                    self.ring_buffer_offset = 0;
+                    input = &input[index..];
+                    break; // we assume that there are no nontrivial overlapping sections, so we start over with the fast loop
+                } else {
+                    self.ring_buffer_offset += 1;
+                    if self.ring_buffer_offset == sig_file.block_size() {
+                        self.ring_buffer_offset = 0;
+                    }
+                }
+            }
+        }
+    }
+    pub fn flush<SigBuffer:CryptoSigTrait,
+                   AllocSig: Allocator<Sig<SigBuffer>>>(&mut self,
+                   hint: &SigHint,
+                   sig_file: &SigFile<SigBuffer,
+                                      AllocSig>) {
+
+        {
+            let ring_buffer_pair = self.ring_buffer.slice().split_at(self.ring_buffer_offset as usize);
+            let ring_buffer_seg = min(self.rolling_count as usize, ring_buffer_pair.1.len());
+            let slices_to_iter = [ring_buffer_pair.1.split_at(ring_buffer_seg).0,
+                                  ring_buffer_pair.0.split_at(min(self.rolling_count as usize - ring_buffer_seg,
+                                                                  ring_buffer_pair.0.len())).0];
+            for slice in slices_to_iter.iter() {
+                for (roll_mod, item) in slice.iter().enumerate() {
+                    crc_rollout(self.rolling_crc32, self.rolling_count - roll_mod as u32, *item);
+                    let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
+                    if dict_offset.is_some() &&
+                        // call helper to avoid angering the borrow checker
+                        Self::speculative_add_helper(*dict_offset.unwrap(), sig_file, self.rolling_count - roll_mod as u32,
+                                                     self.ring_buffer.slice(), self.ring_buffer_offset as usize,
+                                                     self.data.slice_mut(), self.invalid.slice_mut()) {
+                        self.rolling_count = 0;
+                        self.ring_buffer_offset = 0;
+                        return;
+                    }
+                }
+                self.rolling_count -= slice.len() as u32;
             }
         }
     }
