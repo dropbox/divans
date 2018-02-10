@@ -54,7 +54,7 @@ fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offse
     assert!(buffer.len() >= 4 + SigBuffer::SIZE);
     full_serialize(item, &mut buffer[..]);
     let buffer_offset = *input_offset % (4 + SigBuffer::SIZE);
-    let to_copy = core::cmp::min(buffer.len() - buffer_offset, output.len() - *output_offset);
+    let to_copy = core::cmp::min(4 + SigBuffer::SIZE - buffer_offset, output.len() - *output_offset);
     output.split_at_mut(*output_offset).1.split_at_mut(to_copy).0.clone_from_slice(buffer.split_at(buffer_offset).1.split_at(to_copy).0);
     *input_offset += to_copy;
     *output_offset += to_copy;
@@ -81,12 +81,15 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
             *input_offset += to_copy;
             *output_offset += to_copy;
         }
+        if *output_offset == output.len() {
+            return false;
+        }
         let stride = SigBuffer::SIZE + 4;
         let start_index = (*input_offset - HEADER_SIZE) / stride;
         let stop_index = core::cmp::min(
             self.signatures.slice().len(),
             (*input_offset - HEADER_SIZE) / stride + (output.len() - *output_offset + stride - 1) / stride);
-        if start_index != stop_index {
+        if start_index < stop_index {
             debug_assert!(*output_offset != output.len());  // otherwise we wouldn't have gotten here
             partial_serialize(self.signatures.slice()[start_index], input_offset, output, output_offset);
         }
@@ -98,11 +101,11 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
                 *input_offset += delta;
             }
         }
-        if start_index + 1 != stop_index {
+        if start_index + 1 < stop_index {
             debug_assert!(*output_offset != output.len());  // otherwise we wouldn't have gotten here
             partial_serialize(self.signatures.slice()[stop_index - 1], input_offset, output, output_offset)
         } else {
-            false
+            start_index == stop_index
         }
     }
     pub fn deserialize(m_sig:&mut AllocSig, on_disk_format: &[u8]) -> core::result::Result<Self, usize> {
@@ -114,15 +117,18 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
         if !(is_md4 || is_blake5) {
             return Err(0);
         }
-        let desired_buffer_size = le_to_u32(&on_disk_format[8..HEADER_SIZE]);
-        if desired_buffer_size != SigBuffer::SIZE as u32 {
-            return Err(desired_buffer_size as usize);
+        let desired_crypto_hash_size = le_to_u32(&on_disk_format[8..HEADER_SIZE]);
+        if desired_crypto_hash_size != SigBuffer::SIZE as u32 {
+            return Err(desired_crypto_hash_size as usize);
         }
-        let stride = 4 + core::mem::size_of::<Sig<SigBuffer>>();
+        let stride = 4 + desired_crypto_hash_size as usize;
+        if (on_disk_format.len() - HEADER_SIZE) % stride != 0 {
+            return Err(on_disk_format.len() - HEADER_SIZE)
+        }
         let mut sigs = m_sig.alloc_cell((on_disk_format.len() - HEADER_SIZE) / stride);
         for (index, item) in sigs.slice_mut().iter_mut().enumerate() {
             let record_start = on_disk_format.split_at(index * stride + HEADER_SIZE).1;
-            item.crypto_sig.slice_mut().clone_from_slice(&on_disk_format[4..(4 + SigBuffer::SIZE)]);
+            item.crypto_sig.slice_mut().clone_from_slice(&record_start[4..(4 + desired_crypto_hash_size as usize)]);
             item.crc32 = le_to_u32(record_start);
         }
         Ok(SigFile::<SigBuffer,AllocSig> {
