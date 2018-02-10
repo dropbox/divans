@@ -96,6 +96,12 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
             blake5: false,
         }
     }
+    pub fn signatures(&self) -> &[Sig<SigBuffer>] {
+        self.signatures.slice()
+    }
+    pub fn block_size(&self) -> u32 {
+        self.block_size
+    }
     pub fn serialize(&self, input_offset: &mut usize, output: &mut [u8], output_offset: &mut usize) -> bool {
         while *input_offset < 12 && *output_offset < output.len() {
             let mut header_buffer = [0u8;12];
@@ -186,3 +192,36 @@ pub struct SigHint {
     crc32_to_sig_index: HashMap<u32, usize>,
 }
 
+pub struct CustomDictionary<AllocU8:Allocator<u8>> {
+    data:AllocU8::AllocatedMemory,
+    invalid:AllocU8::AllocatedMemory,
+    ring_buffer:AllocU8::AllocatedMemory,
+    rolling_crc32:u32,
+    offset:usize,
+}
+
+impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
+    pub fn new<SigBuffer:CryptoSigTrait,
+               AllocSig: Allocator<Sig<SigBuffer>>>(m8: &mut AllocU8,
+                                                    sig_file: &SigFile<SigBuffer,
+                                                                       AllocSig>) -> Self{
+        let d = m8.alloc_cell(sig_file.block_size() as usize * sig_file.signatures().len());
+        let mut invalid = m8.alloc_cell(d.slice().len());
+        for i in invalid.slice_mut().iter_mut() {
+            *i = 0xff;
+        }
+        let ring_buffer = m8.alloc_cell(sig_file.block_size() as usize);
+        CustomDictionary::<AllocU8> {
+            data: d,
+            invalid: invalid,
+            ring_buffer: ring_buffer,
+            offset: 0,
+            rolling_crc32: 0,
+        }
+    }
+    pub fn free(&mut self, m8: &mut AllocU8) {
+        m8.free_cell(core::mem::replace(&mut self.data, AllocU8::AllocatedMemory::default()));
+        m8.free_cell(core::mem::replace(&mut self.invalid, AllocU8::AllocatedMemory::default()));
+        m8.free_cell(core::mem::replace(&mut self.ring_buffer, AllocU8::AllocatedMemory::default()));
+    }
+}
