@@ -7,12 +7,13 @@ use rdiffsig::{
 };
 
 fn main() {
-    let mut sig_file = Vec::<u8>::new();
-    std::io::stdin().read_to_end(&mut sig_file).unwrap();
+    let mut base_file = Vec::<u8>::new();
+    std::io::stdin().read_to_end(&mut base_file).unwrap();
     let mut m_fixed = alloc::HeapAlloc::<rdiffsig::Sig<FixedBuffer8>>::new(rdiffsig::Sig::<FixedBuffer8>::default());
-    let sig = SigFile::<FixedBuffer8, alloc::HeapAlloc<rdiffsig::Sig<FixedBuffer8>>>::deserialize(&mut m_fixed, &sig_file[..]).unwrap();
+    let sig = SigFile::<FixedBuffer8, alloc::HeapAlloc<rdiffsig::Sig<FixedBuffer8>>>::new(&mut m_fixed, 2048, &base_file[..]);
+    //let _deserialized_sig = SigFile::<FixedBuffer8, alloc::HeapAlloc<rdiffsig::Sig<FixedBuffer8>>>::deserialize(&mut m_fixed, &sig_file[..]).unwrap();
     let hint = sig.create_sig_hint();
-    let mut buf = [0u8; 4096s];
+    let mut buf = [0u8; 4096];
     let mut input_offset = 0usize;
     loop {
         let mut output_offset = 0usize;

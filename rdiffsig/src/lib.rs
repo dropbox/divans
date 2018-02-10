@@ -1,6 +1,8 @@
 extern crate core;
 extern crate md4;
 extern crate alloc_no_stdlib as alloc;
+use md4::Digest;
+
 use alloc::{SliceWrapper, SliceWrapperMut, Allocator};
 use std::collections::HashMap;
 mod fixed_buffer;
@@ -43,7 +45,7 @@ fn u32_to_le(val: u32) -> [u8;4] {
      (val & 0xff) as u8]
 }
 fn full_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, output: &mut [u8]) -> usize {
-    let mut first_split = output.split_at_mut(4);
+    let first_split = output.split_at_mut(4);
     first_split.0.clone_from_slice(&u32_to_le(item.crc32)[..]);
     first_split.1.split_at_mut(SigBuffer::SIZE).0.clone_from_slice(item.crypto_sig.slice());
     4 + SigBuffer::SIZE
@@ -61,9 +63,38 @@ fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offse
     to_copy == buffer.len()
 }
 
+const ROLLSUM_CHAR_OFFSET: u32 = 31;
+
+
+fn rollsum_update(sum: u32, buf: &[u8]) -> u32{
+    let mut s1 = (sum & 0xffff) as u16;
+    let mut s2 = (sum >> 16) as u16;
+    for item in buf {
+        s1 = s1.wrapping_add(u16::from(*item));
+        s2 = s2.wrapping_add(s1);
+    }
+    let len = buf.len() as u32;
+    s1 = s1.wrapping_add((len.wrapping_mul(ROLLSUM_CHAR_OFFSET)) as u16);
+    s2 = s2.wrapping_add((((len.wrapping_mul(len.wrapping_add(1))) / 2).wrapping_mul(ROLLSUM_CHAR_OFFSET)) as u16);
+    u32::from(s1) | (u32::from(s2) << 16)
+}
+
 impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<SigBuffer,AllocSig> {
-    pub fn new(m_sig:&mut AllocSig, buf: &[u8]) -> Self {
-        unimplemented!();
+    pub fn new(m_sig:&mut AllocSig, block_size: u32, buf: &[u8]) -> Self {
+        let num_signatures = (buf.len() + block_size as usize - 1) / block_size as usize;
+        let mut sig = m_sig.alloc_cell(num_signatures);
+        for (index, item) in sig.slice_mut().iter_mut().enumerate() {
+            let slice = &buf[index * block_size as usize .. core::cmp::min((index + 1) * block_size as usize, buf.len())];
+            let mut md4_hasher = md4::Md4::default();
+            md4_hasher.input(slice);
+            item.crypto_sig.slice_mut().clone_from_slice(&md4_hasher.result()[..SigBuffer::SIZE]);
+            item.crc32 = rollsum_update(item.crc32, slice);
+        }
+        SigFile::<SigBuffer, AllocSig> {
+            block_size: block_size,
+            signatures: sig,
+            blake5: false,
+        }
     }
     pub fn serialize(&self, input_offset: &mut usize, output: &mut [u8], output_offset: &mut usize) -> bool {
         while *input_offset < 12 && *output_offset < output.len() {
@@ -144,7 +175,6 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
         let mut hint = SigHint {
             crc32_to_sig_index: HashMap::<u32, usize>::with_capacity(self.signatures.slice().len()),
         };
-        let mut file_offset = 0usize;
         for (index, item) in self.signatures.slice().iter().enumerate() {
             hint.crc32_to_sig_index.insert(item.crc32, index);
         }
