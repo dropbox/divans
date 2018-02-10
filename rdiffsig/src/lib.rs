@@ -20,7 +20,7 @@ pub use fixed_buffer::{
 };
 const MD4_MAGIC: [u8;4] = [0x72, 0x73, 0x01, 0x36];
 const BLAKE5_MAGIC: [u8;4] = [0x72, 0x73, 0x01, 0x37];
-const HEADER_SIZE: usize = 12;    
+const HEADER_SIZE: usize = 12;
 #[derive(Default, Copy, Clone)]
 pub struct Sig<SigBuffer:CryptoSigTrait> {
     crc32: u32,
@@ -51,7 +51,7 @@ fn full_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, output: &mut [
 
 fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offset : &mut usize, output: &mut [u8], output_offset: &mut usize) -> bool {
     let mut buffer = [0u8; 36];
-    assert!(buffer.len() <= 4 + SigBuffer::SIZE);
+    assert!(buffer.len() >= 4 + SigBuffer::SIZE);
     full_serialize(item, &mut buffer[..]);
     let buffer_offset = *input_offset % (4 + SigBuffer::SIZE);
     let to_copy = core::cmp::min(buffer.len() - buffer_offset, output.len() - *output_offset);
@@ -75,13 +75,17 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
             }
             header_buffer[4..8].clone_from_slice(&u32_to_le(self.block_size));
             header_buffer[8..12].clone_from_slice(&u32_to_le(SigBuffer::SIZE as u32));
-            let to_copy = core::cmp::min(12 - *input_offset, output.len() - *output_offset);
+            let to_copy = core::cmp::min(HEADER_SIZE - *input_offset, output.len() - *output_offset);
             output.split_at_mut(*output_offset).1.split_at_mut(to_copy).0.clone_from_slice(
                 header_buffer.split_at(*input_offset).1.split_at(to_copy).0);
+            *input_offset += to_copy;
+            *output_offset += to_copy;
         }
         let stride = SigBuffer::SIZE + 4;
         let start_index = (*input_offset - HEADER_SIZE) / stride;
-        let stop_index = (*input_offset - HEADER_SIZE) / stride + (output.len() - *output_offset + stride - 1) / stride;
+        let stop_index = core::cmp::min(
+            self.signatures.slice().len(),
+            (*input_offset - HEADER_SIZE) / stride + (output.len() - *output_offset + stride - 1) / stride);
         if start_index != stop_index {
             debug_assert!(*output_offset != output.len());  // otherwise we wouldn't have gotten here
             partial_serialize(self.signatures.slice()[start_index], input_offset, output, output_offset);

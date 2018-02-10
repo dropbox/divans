@@ -17,7 +17,7 @@ fn main() {
     loop {
         let mut output_offset = 0usize;
         let done = sig.serialize(&mut input_offset, &mut buf, &mut output_offset);
-        std::io::stdout().write_all(&buf[..output_offset]);
+        std::io::stdout().write_all(buf.split_at(output_offset).0);
         if done {
             break;
         }
