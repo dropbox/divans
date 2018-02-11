@@ -341,6 +341,10 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 let rc = self.rolling_count;
                 //print!("Dhecking offset {:?} {:x} off:0x{:x}\n", self.rolling_count, self.rolling_crc32, self.file_offset);
                 self.file_offset += 1;
+                self.ring_buffer_offset += 1;
+                if self.ring_buffer_offset == sig_file.block_size() {
+                    self.ring_buffer_offset = 0;
+                }
                 if dict_offset.is_some() && self.speculative_add(*dict_offset.unwrap(), sig_file, rc) {
                     //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                     self.rolling_count = 0; //match!
@@ -348,11 +352,6 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                     input = &input[index..];
                     early_exit = true;
                     break; // we assume that there are no nontrivial overlapping sections, so we start over with the fast loop
-                } else {
-                    self.ring_buffer_offset += 1;
-                    if self.ring_buffer_offset == sig_file.block_size() {
-                        self.ring_buffer_offset = 0;
-                    }
                 }
             }
             if !early_exit {
