@@ -170,8 +170,14 @@ fn main() {
         if argument == "-signature3" || argument == "-sig3" {
             return create_sig::<FixedBuffer3>(block_size.unwrap_or(default_bs));
         }
-        if argument == "-sig" || argument == "-signature" {
+        if argument == "-signature8" || argument == "-sig8" {
+            return create_sig::<FixedBuffer8>(block_size.unwrap_or(default_bs));
+        }
+        if argument == "-sig" || argument == "-signature" || argument == "-sig4" || argument == "-signature4" {
             return create_sig::<FixedBuffer4>(block_size.unwrap_or(default_bs));
+        }
+        if argument == "-sig1" || argument == "-signature1" {
+            return create_sig::<FixedBuffer1>(block_size.unwrap_or(default_bs));
         }
         if argument.starts_with("-dict=") {
             found_dict_file = true;
