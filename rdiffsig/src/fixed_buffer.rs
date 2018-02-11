@@ -25,6 +25,7 @@ macro_rules! define_fixed_buffer {
     };
 }
 
+define_fixed_buffer!(FixedBuffer1, 1);
 define_fixed_buffer!(FixedBuffer2, 2);
 define_fixed_buffer!(FixedBuffer3, 3);
 define_fixed_buffer!(FixedBuffer4, 4);

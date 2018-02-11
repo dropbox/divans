@@ -8,6 +8,7 @@ use std::collections::HashMap;
 mod fixed_buffer;
 pub use fixed_buffer::{
     CryptoSigTrait,
+    FixedBuffer1,
     FixedBuffer2,
     FixedBuffer3,
     FixedBuffer4,
@@ -27,6 +28,40 @@ const HEADER_SIZE: usize = 12;
 pub struct Sig<SigBuffer:CryptoSigTrait> {
     crc32: u32,
     crypto_sig: SigBuffer,
+}
+
+
+#[derive(Copy,Clone)]
+pub struct SigFileStat {
+    file_size: usize,
+    block_size: u32,
+    #[allow(dead_code)]
+    crypto_hash_size: u32,
+    #[allow(dead_code)]
+    blake5: bool,
+}
+
+impl SigFileStat {
+    pub fn new(on_disk_format: &[u8]) -> Result<Self, ()> {
+        let is_md4 = &MD4_MAGIC[..] == &on_disk_format[..4];
+        let is_blake5 = &BLAKE5_MAGIC[..] == &on_disk_format[..4];
+        if is_md4 == false && is_blake5 == false {
+            return Err(());
+        }
+        let crypto_hash_size = le_to_u32(&on_disk_format[8..HEADER_SIZE]);
+        let stride = 4 + crypto_hash_size as usize;
+        let data_len = on_disk_format.len() - HEADER_SIZE;
+        if data_len % stride != 0 {
+            return Err(());
+        }
+        let block_size = le_to_u32(&on_disk_format[4..8]);
+        Ok(SigFileStat {
+            block_size: block_size,
+            file_size: block_size as usize * (data_len / stride),
+            crypto_hash_size: crypto_hash_size,
+            blake5: is_blake5,
+        })
+    }
 }
 
 pub struct SigFile<SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> {
@@ -194,6 +229,14 @@ impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<Sig
             blake5: is_blake5,
         })
     }
+    pub fn stat(&self) -> SigFileStat {
+        SigFileStat {
+            block_size: self.block_size(),
+            file_size: self.block_size() as usize * self.signatures.slice().len(),
+            crypto_hash_size: SigBuffer::SIZE as u32,
+            blake5: self.blake5,
+        }
+    }
     pub fn free(&mut self, m_sig: &mut AllocSig) {
         m_sig.free_cell(core::mem::replace(&mut self.signatures, AllocSig::AllocatedMemory::default()))
     }
@@ -220,18 +263,16 @@ pub struct CustomDictionary<AllocU8:Allocator<u8>> {
     rolling_crc32:u32,
     rolling_count:u32,
 }
-
+const MIN_DICT_VALID: usize = 8;
 impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
-    pub fn new<SigBuffer:CryptoSigTrait,
-               AllocSig: Allocator<Sig<SigBuffer>>>(m8: &mut AllocU8,
-                                                    sig_file: &SigFile<SigBuffer,
-                                                                       AllocSig>) -> Self{
-        let d = m8.alloc_cell(sig_file.block_size() as usize * sig_file.signatures().len());
+    pub fn new(m8: &mut AllocU8,
+               sig_file: SigFileStat) -> Self{
+        let d = m8.alloc_cell(sig_file.file_size + MIN_DICT_VALID);
         let mut invalid = m8.alloc_cell(d.slice().len());
-        for i in invalid.slice_mut().iter_mut() {
-            *i = 0xff;
+        for i in invalid.slice_mut()[..sig_file.file_size].iter_mut() {
+            *i = 0x78; // last 8 zeros are considered 'valid'
         }
-        let ring_buffer = m8.alloc_cell(sig_file.block_size() as usize);
+        let ring_buffer = m8.alloc_cell(sig_file.block_size as usize);
         CustomDictionary::<AllocU8> {
             data: d,
             invalid: invalid,
@@ -240,6 +281,12 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             ring_buffer_offset: 0,
             rolling_crc32: 0,
         }
+    }
+    pub fn dict(&self) -> &[u8]{
+        self.data.slice()
+    }
+    pub fn dict_mask(&self) -> &[u8]{
+        self.invalid.slice()
     }
     pub fn speculative_add_helper<SigBuffer:CryptoSigTrait,
                    AllocSig: Allocator<Sig<SigBuffer>>>(sig_offset: usize,
@@ -264,7 +311,7 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
              dict.split_at_mut(dict_target + first_ring_copy_len).1.split_at_mut(
                  second_ring_copy_len).0.clone_from_slice(&ring_buffer_pair.0[..second_ring_copy_len]);
              for item in invalid.split_at_mut(dict_target).1.split_at_mut(
-                 first_ring_copy_len + second_ring_copy_len).1.iter_mut() {
+                 first_ring_copy_len + second_ring_copy_len).0.iter_mut() {
                  *item = 0;
              }
              true
@@ -309,6 +356,7 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 }
             }
             assert_eq!(self.rolling_count, sig_file.block_size());
+            let mut early_exit = false;
             for (index,item) in input.iter().enumerate() { // ring buffer is fully populated here
                 {
                     let ring_buffer_mfd_byte = &mut self.ring_buffer.slice_mut()[self.ring_buffer_offset as usize];
@@ -321,6 +369,7 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                     self.rolling_count = 0; //match!
                     self.ring_buffer_offset = 0;
                     input = &input[index..];
+                    early_exit = true;
                     break; // we assume that there are no nontrivial overlapping sections, so we start over with the fast loop
                 } else {
                     self.ring_buffer_offset += 1;
@@ -328,6 +377,9 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                         self.ring_buffer_offset = 0;
                     }
                 }
+            }
+            if !early_exit {
+                break;
             }
         }
     }
