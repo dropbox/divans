@@ -93,7 +93,7 @@ fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offse
     let mut buffer = [0u8; 36];
     assert!(buffer.len() >= 4 + SigBuffer::SIZE);
     full_serialize(item, &mut buffer[..]);
-    let buffer_offset = *input_offset % (4 + SigBuffer::SIZE);
+    let buffer_offset = (*input_offset - HEADER_SIZE) % (4 + SigBuffer::SIZE);
     let to_copy = min(4 + SigBuffer::SIZE - buffer_offset, output.len() - *output_offset);
     output.split_at_mut(*output_offset).1.split_at_mut(to_copy).0.clone_from_slice(buffer.split_at(buffer_offset).1.split_at(to_copy).0);
     *input_offset += to_copy;

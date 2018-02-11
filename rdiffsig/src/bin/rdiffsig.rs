@@ -25,12 +25,12 @@ use rdiffsig::{
     CryptoSigTrait,
 };
 
-fn create_sig() {
+fn create_sig<T:CryptoSigTrait>(block_size: u32) {
     let mut base_file = Vec::<u8>::new();
     std::io::stdin().read_to_end(&mut base_file).unwrap();
-    let mut m_fixed = alloc::HeapAlloc::<rdiffsig::Sig<FixedBuffer8>>::new(rdiffsig::Sig::<FixedBuffer8>::default());
-    let sig = SigFile::<FixedBuffer8, alloc::HeapAlloc<rdiffsig::Sig<FixedBuffer8>>>::new(&mut m_fixed, 2048, &base_file[..]);
-    //let _deserialized_sig = SigFile::<FixedBuffer8, alloc::HeapAlloc<rdiffsig::Sig<FixedBuffer8>>>::deserialize(&mut m_fixed, &sig_file[..]).unwrap();
+    let mut m_fixed = alloc::HeapAlloc::<rdiffsig::Sig<T>>::new(rdiffsig::Sig::<T>::default());
+    let sig = SigFile::<T, alloc::HeapAlloc<rdiffsig::Sig<T>>>::new(&mut m_fixed, block_size, &base_file[..]);
+    //let _deserialized_sig = SigFile::<T, alloc::HeapAlloc<rdiffsig::Sig<T>>>::deserialize(&mut m_fixed, &sig_file[..]).unwrap();
     //let hint = sig.create_sig_hint();
     let mut buf = [0u8; 4096];
     let mut input_offset = 0usize;
@@ -150,9 +150,28 @@ fn main() {
     let mut input_file: Option<File> = None;
     let mut found_dict_file = false;
     let mut found_dict_mask_file = false;
+    let default_bs: u32 = 512;
+    let mut block_size: Option<u32> = None;
     for argument in env::args().skip(1) {
-        if argument == "-signature" {
-            return create_sig();
+        if argument.starts_with("-blocksize=") {
+            block_size = Some(argument[11..].parse::<u32>().unwrap());
+        }
+    }
+    for argument in env::args().skip(1) {
+        if argument.starts_with("-blocksize=") {
+            continue;
+        }
+        if argument == "-legacysignature" || argument == "-legacysig" {
+            return create_sig::<FixedBuffer8>(block_size.unwrap_or(2048));
+        }
+        if argument == "-signature2" || argument == "-sig2" {
+            return create_sig::<FixedBuffer2>(block_size.unwrap_or(default_bs));
+        }
+        if argument == "-signature3" || argument == "-sig3" {
+            return create_sig::<FixedBuffer3>(block_size.unwrap_or(default_bs));
+        }
+        if argument == "-sig" || argument == "-signature" {
+            return create_sig::<FixedBuffer4>(block_size.unwrap_or(default_bs));
         }
         if argument.starts_with("-dict=") {
             found_dict_file = true;
