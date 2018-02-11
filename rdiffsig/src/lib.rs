@@ -344,7 +344,9 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 input = input_split.1;
                 if self.rolling_count as usize == self.ring_buffer.slice().len() {
                     self.rolling_crc32 = crc_update(0, self.ring_buffer.slice());
+                    //print!("Checking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
                     if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
+                        //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                         let rc = self.rolling_count;
                         if self.speculative_add(*dict_offset, sig_file, rc) {
                             self.rolling_count = 0; //match!
@@ -365,7 +367,9 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 }
                 let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
                 let rc = self.rolling_count;
+                //print!("Dhecking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
                 if dict_offset.is_some() && self.speculative_add(*dict_offset.unwrap(), sig_file, rc) {
+                    //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                     self.rolling_count = 0; //match!
                     self.ring_buffer_offset = 0;
                     input = &input[index..];
@@ -388,7 +392,17 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                    hint: &SigHint,
                    sig_file: &SigFile<SigBuffer,
                                       AllocSig>) {
-
+        if self.rolling_count as usize != self.ring_buffer.slice().len() { // we havent' computed a crc32 yet: do that now
+            let rc = self.rolling_count as usize;
+            self.rolling_crc32 = crc_update(0, &self.ring_buffer.slice()[..rc]);
+            //print!("Fhecking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
+            if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
+                //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
+                if self.speculative_add(*dict_offset, sig_file, rc as u32) {
+                    return
+                }
+            }
+        }
         {
             let ring_buffer_pair = self.ring_buffer.slice().split_at(self.ring_buffer_offset as usize);
             let ring_buffer_seg = min(self.rolling_count as usize, ring_buffer_pair.1.len());
@@ -398,7 +412,9 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             for slice in slices_to_iter.iter() {
                 for (roll_mod, item) in slice.iter().enumerate() {
                     crc_rollout(self.rolling_crc32, self.rolling_count - roll_mod as u32, *item);
+                    //print!("Ehecking offset {:?} {:x}\n", self.rolling_count - roll_mod as u32 , self.rolling_crc32);
                     let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
+                    //print!("Ehecking offset {:?} {:?} {:x}\n", self.rolling_count - roll_mod as u32, dict_offset, self.rolling_crc32);
                     if dict_offset.is_some() &&
                         // call helper to avoid angering the borrow checker
                         Self::speculative_add_helper(*dict_offset.unwrap(), sig_file, self.rolling_count - roll_mod as u32,
