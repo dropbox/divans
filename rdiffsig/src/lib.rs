@@ -1,6 +1,9 @@
 extern crate core;
 extern crate md4;
 extern crate alloc_no_stdlib as alloc;
+mod crc32;
+use crc32::{crc_rollout, crc_rotate, crc_update};
+
 use md4::Digest;
 use core::cmp::min;
 use alloc::{SliceWrapper, SliceWrapperMut, Allocator};
@@ -98,42 +101,6 @@ fn partial_serialize<SigBuffer:CryptoSigTrait>(item: Sig<SigBuffer>, input_offse
     to_copy == buffer.len()
 }
 
-const CRC_MAGIC_16: u16 = 31;
-const CRC_MAGIC: u32 = CRC_MAGIC_16 as u32;
-
-fn crc_rollout(sum: u32, size: u32, old_byte_u8: u8) -> u32 {
-    let size_16 = size as u16;
-    let old_byte = u16::from(old_byte_u8);
-    let mut s1 = (sum & 0xffff) as u16;
-    let mut s2 = (sum >> 16) as u16;
-    s1 = s1.wrapping_sub(old_byte.wrapping_add(CRC_MAGIC_16));
-    s2 = s2.wrapping_sub(size_16.wrapping_mul(old_byte.wrapping_add(CRC_MAGIC_16)) as u16);
-    u32::from(s1) | (u32::from(s2) << 16)
-}
-
-fn crc_rotate(sum: u32, size: u32, old_byte_u8: u8, new_byte_u8: u8) -> u32 {
-    let size_16 = size as u16;
-    let old_byte = u16::from(old_byte_u8);
-    let new_byte = u16::from(new_byte_u8);
-    let mut s1 = (sum & 0xffff) as u16;
-    let mut s2 = (sum >> 16) as u16;
-    s1 = s1.wrapping_add(new_byte.wrapping_sub(old_byte));
-    s2 = s2.wrapping_add(s1.wrapping_sub(size_16.wrapping_mul(old_byte.wrapping_add(CRC_MAGIC_16))));
-    u32::from(s1) | (u32::from(s2) << 16)
-}
-
-fn crc_update(sum: u32, buf: &[u8]) -> u32{
-    let mut s1 = (sum & 0xffff) as u16;
-    let mut s2 = (sum >> 16) as u16;
-    for item in buf {
-        s1 = s1.wrapping_add(u16::from(*item));
-        s2 = s2.wrapping_add(s1);
-    }
-    let len = buf.len() as u32;
-    s1 = s1.wrapping_add((len.wrapping_mul(CRC_MAGIC)) as u16);
-    s2 = s2.wrapping_add((((len.wrapping_mul(len.wrapping_add(1))) / 2).wrapping_mul(CRC_MAGIC)) as u16);
-    u32::from(s1) | (u32::from(s2) << 16)
-}
 
 impl <SigBuffer:CryptoSigTrait, AllocSig: Allocator<Sig<SigBuffer>>> SigFile<SigBuffer,AllocSig> {
     pub fn new(m_sig:&mut AllocSig, block_size: u32, buf: &[u8]) -> Self {
@@ -262,6 +229,7 @@ pub struct CustomDictionary<AllocU8:Allocator<u8>> {
     ring_buffer_offset: u32,
     rolling_crc32:u32,
     rolling_count:u32,
+    file_offset: usize,
 }
 const MIN_DICT_VALID: usize = 8;
 impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
@@ -280,6 +248,7 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             rolling_count: 0,
             ring_buffer_offset: 0,
             rolling_crc32: 0,
+            file_offset: 0,
         }
     }
     pub fn dict(&self) -> &[u8]{
@@ -344,14 +313,17 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 input = input_split.1;
                 if self.rolling_count as usize == self.ring_buffer.slice().len() {
                     self.rolling_crc32 = crc_update(0, self.ring_buffer.slice());
-                    //print!("Checking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
+                    //print!("Checking offset {:?} {:x} off:0x{:x}\n", self.rolling_count, self.rolling_crc32, self.file_offset);
                     if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
+                        self.file_offset += self.rolling_count as usize;
                         //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                         let rc = self.rolling_count;
                         if self.speculative_add(*dict_offset, sig_file, rc) {
                             self.rolling_count = 0; //match!
                             continue; // we assume that there are no nontrivial overlapping sections, so we start over
                         }
+                    }else {
+                        self.file_offset += 1;
                     }
                 } else {
                     return
@@ -367,7 +339,8 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
                 }
                 let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
                 let rc = self.rolling_count;
-                //print!("Dhecking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
+                //print!("Dhecking offset {:?} {:x} off:0x{:x}\n", self.rolling_count, self.rolling_crc32, self.file_offset);
+                self.file_offset += 1;
                 if dict_offset.is_some() && self.speculative_add(*dict_offset.unwrap(), sig_file, rc) {
                     //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                     self.rolling_count = 0; //match!
@@ -395,7 +368,8 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
         if self.rolling_count as usize != self.ring_buffer.slice().len() { // we havent' computed a crc32 yet: do that now
             let rc = self.rolling_count as usize;
             self.rolling_crc32 = crc_update(0, &self.ring_buffer.slice()[..rc]);
-            //print!("Fhecking offset {:?} {:x}\n", self.rolling_count, self.rolling_crc32);
+            //print!("Fhecking offset {:?} {:x} off:0x{:x}\n", self.rolling_count, self.rolling_crc32, self.file_offset);
+            self.file_offset += self.rolling_count as usize;
             if let Some(dict_offset) = hint.crc32_to_sig_index.get(&self.rolling_crc32) {
                 //print!("Found offset {:?} {:?} {:x}\n", self.rolling_count, dict_offset, self.rolling_crc32);
                 if self.speculative_add(*dict_offset, sig_file, rc as u32) {
@@ -412,9 +386,10 @@ impl<AllocU8:Allocator<u8>> CustomDictionary<AllocU8> {
             for slice in slices_to_iter.iter() {
                 for (roll_mod, item) in slice.iter().enumerate() {
                     crc_rollout(self.rolling_crc32, self.rolling_count - roll_mod as u32, *item);
-                    //print!("Ehecking offset {:?} {:x}\n", self.rolling_count - roll_mod as u32 , self.rolling_crc32);
+                    //print!("Ehecking offset {:?} {:x} off:0x{:x}\n", self.rolling_count - roll_mod as u32 , self.rolling_crc32, self.file_offset);
+                    self.file_offset += 1;
                     let dict_offset = hint.crc32_to_sig_index.get(&self.rolling_crc32);
-                    //print!("Ehecking offset {:?} {:?} {:x}\n", self.rolling_count - roll_mod as u32, dict_offset, self.rolling_crc32);
+                    //print!("VERIFYINGoffset {:?} {:?} {:x}\n", self.rolling_count - roll_mod as u32, dict_offset, self.rolling_crc32);
                     if dict_offset.is_some() &&
                         // call helper to avoid angering the borrow checker
                         Self::speculative_add_helper(*dict_offset.unwrap(), sig_file, self.rolling_count - roll_mod as u32,
