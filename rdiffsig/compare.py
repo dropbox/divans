@@ -108,12 +108,41 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes, add_blocks=ONE_BL
                     divans_delta_rt, _stderr = divans_proc.communicate(divans_delta_out)
                     divans_delta_out = validate_permissive(divans_delta_rt == rdiff_delta,
                                                            divans_delta_out, zlib_delta, 'divans_delta', name)
+
+                    # try brotli as if it were a download and we both had full old block
+                    brotli_proc = subprocess.Popen([BROTLI_BIN, '-c',
+                                                    '-dict=' + old_file_fd.name],
+                                                   stdout=PIPE,
+                                                   stdin=PIPE)
+                    brotli_dl_out, _stderr = brotli_proc.communicate(new_file)
+                    brotli_dl_out = validate_permissive(not brotli_proc.wait(), brotli_dl_out, brotli_delta_out, 'brotli_dl', name)
+                    brotli_proc = subprocess.Popen([BROTLI_BIN, '-dict='+old_file_fd.name],
+                                                   stdout=PIPE, stdin=PIPE)
+                    brotli_rt, _stderr = brotli_proc.communicate(brotli_dl_out)
+                    brotli_dl_out = validate_permissive(brotli_rt == new_file, brotli_dl_out, brotli_delta_out, 'brotli_dl', name)
+
+
+
+                    divans_proc = subprocess.Popen([DIVANS_BIN, '-c',
+                                                    '-dict=' + old_file_fd.name],
+                                                   stdout=PIPE,
+                                                   stdin=PIPE)
+                    divans_dl_out, _stderr = divans_proc.communicate(new_file)
+                    divans_dl_out = validate_permissive(not divans_proc.wait(), divans_dl_out, divans_delta_out, 'divans_dl', name)
+                    divans_proc = subprocess.Popen([DIVANS_BIN, '-dict='+old_file_fd.name],
+                                                   stdout=PIPE, stdin=PIPE)
+                    divans_rt, _stderr = divans_proc.communicate(divans_dl_out)
+                    divans_dl_out = validate_permissive(divans_rt == new_file, divans_dl_out, divans_delta_out, 'divans_dl', name)
+
+
+
                     addendum = 8
                     if len(old_file) % block_size != 0:
                         addendum += block_size - (len(old_file) % block_size)
                     # pad the old file to be dictionary-like and have multiple
                     old_file_fd.write(chr(0) * addendum)
                     old_file_fd.flush()
+
                     divans_proc = subprocess.Popen([DIVANS_BIN] + DIVANS_ARGS + [
                         '-dict=' + dict_file.name,
                         '-dictmask=' + mask_file.name], stdout=PIPE, stdin=PIPE)
@@ -134,6 +163,7 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes, add_blocks=ONE_BL
                                                    stdout=PIPE, stdin=PIPE)
                     brotli_rt, _stderr = brotli_proc.communicate(brotli_dict_out)
                     brotli_dict_out = validate_permissive(brotli_rt == new_file, brotli_dict_out, brotli_delta_out, 'brotli_dict', name)
+
 
                     zlib9_raw_out = zlib.compress(new_file, 9)
                     zlib_raw_out = zlib.compress(new_file)
@@ -156,6 +186,8 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes, add_blocks=ONE_BL
                         'delta_brotli': len(brotli_delta_out),
                         'delta_zlib': len(zlib_delta),
                         'delta_zlib9': len(zlib9_delta),
+                        'dl_brotli': len(brotli_dl_out),
+                        'dl_divans': len(divans_dl_out),
                         'raw_brotli': len(brotli_raw_out),
                         'raw_zlib': len(zlib_raw_out),
                         'raw_zlib9': len(zlib9_raw_out),
