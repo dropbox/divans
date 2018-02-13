@@ -37,6 +37,61 @@ SINGLE_BLOCK='sig'
 MULTI_BLOCK='mul'
 PERMISSIVE = True
 num_bad = 0
+
+def replace_c_with_i(arg):
+    if arg == '-c':
+        return '-i'
+    return arg
+
+def warmup_compressor(old_file, new_file, sig_file):
+    PIPE = subprocess.PIPE
+    brotli_proc = subprocess.Popen([BROTLI_BIN, '-i'] + BROTLI_ARGS,
+                                   stdout=PIPE,
+                                   stderr=PIPE,
+                                   stdin=PIPE)
+    old_and_new = old_file + new_file
+    _unused, ir = brotli_proc.communicate(old_and_new)
+    if brotli_proc.wait():
+        return None
+    divans_proc = subprocess.Popen([DIVANS_BIN] + [replace_c_with_i(arg) for arg in DIVANS_ARGS],
+                                   stdout=PIPE,
+                                   stdin=PIPE)
+    full_dv, _unused = divans_proc.communicate(ir)
+    divans_proc = subprocess.Popen([DIVANS_BIN],
+                                   stdout=PIPE, stdin=PIPE)
+    divans_rt, _stderr = divans_proc.communicate(full_dv)
+    if divans_rt != old_and_new:
+        return None
+    divans_proc = subprocess.Popen([DIVANS_BIN] + DIVANS_ARGS,
+                                   stdout=PIPE,
+                                   stdin=PIPE)
+    old_dv, _unused = divans_proc.communicate(old_file)
+    divans_proc = subprocess.Popen([DIVANS_BIN],
+                                   stdout=PIPE, stdin=PIPE)
+    divans_rt, _stderr = divans_proc.communicate(old_dv)
+    if divans_rt != old_file:
+        return None
+    window_size = ir.find('\n')
+    header_start = ir.find('\n', window_size + 1)
+    if not ir[window_size + 1:header_start].startswith('pred'):
+        return None
+
+    just_header_ir = ir[:header_start + 1] + 'insert 1 00\n'
+    divans_proc = subprocess.Popen([DIVANS_BIN] + [replace_c_with_i(arg) for arg in DIVANS_ARGS],
+                                   stdout=PIPE,
+                                   stdin=PIPE)
+    header_dv, _unused = divans_proc.communicate(just_header_ir)
+    if len(old_dv) > len(full_dv):
+        return None
+    partial = full_dv[len(old_dv):]
+    return ''.join([
+        header_dv,
+        partial,
+        sig_file])
+
+
+
+
 def validate_permissive(condition, good, fallback, kind, name, datafiles):
     global num_bad
     if not PERMISSIVE:
@@ -196,8 +251,30 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes,
                                                         name,
                                                         (new_file, old_file))
 
+                    divans_dl_primer_out = warmup_compressor(old_file, new_file, '')
+                    divans_dl_primer_out = validate_permissive(divans_dl_primer_out,
+                                                               divans_dl_primer_out,
+                                                               divans_dl_out,
+                                                               'divans_dl_primer',
+                                                               name,
+                                                               (new_file, old_file))
 
-
+                    divans_primer_out = warmup_compressor(dict_file.read(), new_file, sig_file)
+                    divans_primer_out = validate_permissive(divans_primer_out,
+                                                            divans_primer_out,
+                                                            divans_delta_out,
+                                                            'divans_primer',
+                                                            name,
+                                                            (new_file, old_file))
+                    divans_proc = subprocess.Popen([DIVANS_BIN, '-dict='+old_file_fd.name],
+                                                   stdout=PIPE, stdin=PIPE)
+                    divans_rt, _stderr = divans_proc.communicate(divans_dl_out)
+                    divans_dl_out = validate_permissive(divans_rt == new_file,
+                                                        divans_dl_out,
+                                                        divans_delta_out,
+                                                        'divans_dl',
+                                                        name,
+                                                        (new_file, old_file))
                     addendum = 8
                     if len(old_file) % block_size != 0:
                         addendum += block_size - (len(old_file) % block_size)
@@ -275,6 +352,8 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes,
                         'delta_zlib9': len(zlib9_delta),
                         'dl_brotli': len(brotli_dl_out),
                         'dl_divans': len(divans_dl_out),
+                        'dl_primed': len(divans_dl_primer_out),
+                        'dict_primed': len(divans_primer_out),
                         'raw_brotli': len(brotli_raw_out),
                         'raw_zlib': len(zlib_raw_out),
                         'raw_zlib9': len(zlib9_raw_out),
