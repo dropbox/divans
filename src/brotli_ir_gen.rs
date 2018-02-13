@@ -451,7 +451,7 @@ impl<AllocU8:Allocator<u8>,
             brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
                                                            brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
                                                            u32::from(additional_args.14.unwrap_or(0)));
-            let dict_size = min(window_size as usize - 16, dict.slice().len());
+            let dict_size = min((1usize << window_size) - 16, dict.slice().len());
             let invalid_dict_size = min(dict_size, dict_invalid.len());    
             let divans_result =  brotli::enc::encode::BrotliEncoderSetCustomDictionary(&mut brotli_encoder,
                                                                                        dict_size,
