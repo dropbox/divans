@@ -16,7 +16,7 @@ def print_results():
             print ','.join([key for key in sorted(val.keys())])
             printed_header = True
         print ','.join([str(val[key]) for key in sorted(val.keys())])
-
+        sys.stdout.flush()
 
 def find_binary(fallback, loc):
     try:
@@ -27,10 +27,10 @@ def find_binary(fallback, loc):
 
 BROTLI_BIN=find_binary('/srv/compression-benchmark/bin/dict-brotli', './brotli')
 BROTLI_DEC=find_binary(BROTLI_BIN, './brotli-decompressor')
-DIVANS_BIN=find_binary('/srv/compression-benchmark/bin/dict-divans', './divans')
+DIVANS_BIN=find_binary('/srv/compression-benchmark/bin/dict-divans', './dict-divans')
 RDIFF_BIN=find_binary('/srv/compression-benchmark/bin/rdiff', './rdiff')
 RDIFFSIG_BIN=find_binary('/srv/compression-benchmark/bin/rdiffsig', './rdiffsig')
-DIVANS_ARGS=['-c','-cm', '-s', '-mixing=2', '-speed=2,2048', '-lgwin=24', '-window=24']
+DIVANS_ARGS=['-c','-cm', '-s', '-mixing=2', '-lgwin=24', '-window=24']
 BROTLI_ARGS=['-c','-l24', '-w24']
 ONE_BLOCK='one'
 SINGLE_BLOCK='sig'
@@ -278,14 +278,15 @@ def compare_algo(old_file, new_file, block_size, crypto_bytes,
                         'raw_brotli': len(brotli_raw_out),
                         'raw_zlib': len(zlib_raw_out),
                         'raw_zlib9': len(zlib9_raw_out),
+                        'xid': name,
                         'xt': ext,
                         }
                     global output_queue
                     output_queue.put(results)
 
 def compare_algorithms(old_file, new_file, add_blocks=ONE_BLOCK, ext='.unk', name=None):
-    for block_size in (256, 512, 768, 1024, 1576, 2048, 4096):
-        compare_algo(old_file, new_file, block_size, 1, add_blocks, ext, name)
+    for block_size in (128, 256, 512, 1024, 2048):
+        compare_algo(old_file, new_file, block_size, 4, add_blocks, ext, name)
 
 def main(old_file_name, new_file_name):
     t = threading.Thread(target=print_results)
