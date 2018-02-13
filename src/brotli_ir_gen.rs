@@ -14,11 +14,11 @@
 
 use core::marker::PhantomData;
 use core::cmp::{min, max};
+use core;
 use super::probability::{CDF2,CDF16};
 use super::brotli;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, DivansCompressorBasicOptions};
-use divans_decompressor::alloc_dict;
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_buffer::ResizableByteBuffer;
@@ -408,26 +408,63 @@ impl<AllocU8:Allocator<u8>,
                              StrideDetectionQuality);
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
                opts: DivansCompressorBasicOptions,
-               mut dict: &[u8],
+               mut dict: AllocU8::AllocatedMemory,
                mut dict_invalid: &[u8],
                additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
+        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
         if dict_invalid.len() != 0 {
-            let offset = min(dict_invalid.len(), 8);
+            let invalid_len = min(dict.slice().len(), min(dict_invalid.len(), (1 << window_size) - 16));
+            let offset = min(invalid_len, 8);
             let mut invalidate_everything = false;
-            for item in dict_invalid[(dict_invalid.len() - offset)..].iter() {
+            if dict_invalid.len() != dict.slice().len() {
+                invalidate_everything = true;
+            }
+            for item in dict_invalid[(invalid_len - offset)..invalid_len].iter() {
                 if *item != 0 {
                     invalidate_everything = true;
                 }
             }
             if invalidate_everything {
-                dict = &[];
+                m8.free_cell(core::mem::replace(&mut dict, AllocU8::AllocatedMemory::default()));
                 dict_invalid = &[]; // we need some padding at the end of the dictionary
+                let _unused = dict_invalid;
             }
         }
-        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
-        let dict_ring_buffer = alloc_dict(&mut m8, Some(1 << window_size), dict);
+        let mut brotli_encoder = brotli::enc::encode::BrotliEncoderCreateInstance(additional_args.0,
+                                                                                  additional_args.1,
+                                                                                  additional_args.2,
+                                                                                  m32,
+                                                                                  additional_args.3);
+        {
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+                                                           window_size as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGBLOCK,
+                                                           additional_args.13.unwrap_or(18));
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+                                                           u32::from(additional_args.12.unwrap_or(10)));
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
+                                                           1);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
+                                                           u32::from(additional_args.14.unwrap_or(0)));
+            let dict_size = min(window_size as usize - 16, dict.slice().len());
+            let invalid_dict_size = min(dict_size, dict_invalid.len());    
+            let divans_result =  brotli::enc::encode::BrotliEncoderSetCustomDictionary(&mut brotli_encoder,
+                                                                                       dict_size,
+                                                                                       dict.slice().split_at(dict_size).0,
+                                                                                       dict_invalid.split_at(invalid_dict_size).0);
+
+            match divans_result {
+                Ok(()) => {}, // FIXME
+                Err(()) => {},
+            }
+        }
         let enc = Self::DefaultEncoder::new(&mut m8);
-         let mut ret = Self::ConstructedCompressor {
+        Self::ConstructedCompressor {
              mf64: additional_args.4,
              mfv: additional_args.5,
              mhl: additional_args.6,
@@ -439,11 +476,7 @@ impl<AllocU8:Allocator<u8>,
              brotli_data: ResizableByteBuffer::<u8, AllocU8>::new(),
              divans_data: ResizableByteBuffer::<u8, AllocU8>::new(),
              encoded_byte_offset:0, 
-             brotli_encoder: brotli::enc::encode::BrotliEncoderCreateInstance(additional_args.0,
-                                                                              additional_args.1,
-                                                                              additional_args.2,
-                                                                              m32,
-                                                                              additional_args.3),
+             brotli_encoder: brotli_encoder,
             codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
@@ -451,7 +484,7 @@ impl<AllocU8:Allocator<u8>,
                 enc,
                 EncoderSpecialization::new(),
                 window_size as usize,
-                dict_ring_buffer,
+                dict,
                 opts.dynamic_context_mixing.unwrap_or(2),
                 opts.prior_depth,
                 opts.literal_adaptation,
@@ -460,30 +493,6 @@ impl<AllocU8:Allocator<u8>,
             ),
             header_progress: 0,
             window_size: window_size as u8,
-        };
-        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
-                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
-                                                       window_size as u32);
-        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
-                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGBLOCK,
-                                                       additional_args.13.unwrap_or(18));
-        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
-                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
-                                                       u32::from(additional_args.12.unwrap_or(10)));
-        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
-                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
-                                                       1);
-        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
-                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
-                                                       u32::from(additional_args.14.unwrap_or(0)));
-        let divans_result =  brotli::enc::encode::BrotliEncoderSetCustomDictionary(&mut ret.brotli_encoder,
-                                                              dict.len(),
-                                                              dict,
-                                                              dict_invalid);
-        match divans_result {
-            Ok(()) => {}, // FIXME
-            Err(()) => {},
         }
-        ret
     }
 }

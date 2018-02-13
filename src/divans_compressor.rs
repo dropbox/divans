@@ -16,11 +16,11 @@
 // then it generates a valid divans bitstream using the ANS encoder
 use core::cmp::{min,max};
 use core::marker::PhantomData;
+use core;
 use super::probability;
 use super::brotli;
 use super::raw_to_cmd;
 use super::slice_util;
-use super::divans_decompressor::alloc_dict;
 use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{
@@ -85,25 +85,28 @@ impl<AllocU8:Allocator<u8>,
      type AdditionalArgs = ();
      fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
             opts: DivansCompressorBasicOptions,
-            mut dict: &[u8],
+            mut dict: AllocU8::AllocatedMemory,
             mut dict_invalid: &[u8],
             _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
         if dict_invalid.len() != 0 {
-            let offset = min(dict_invalid.len(), 8);
+            let invalid_len = min(dict.slice().len(), min(dict_invalid.len(), (1 << window_size) - 16));
+            let offset = min(invalid_len, 8);
             let mut invalidate_everything = false;
-            for item in dict_invalid[(dict_invalid.len() - offset)..].iter() {
+            if dict_invalid.len() != dict.slice().len() {
+                invalidate_everything = true;
+            }
+            for item in dict_invalid[(invalid_len - offset)..invalid_len].iter() {
                 if *item != 0 {
                     invalidate_everything = true;
                 }
             }
             if invalidate_everything {
-                dict = &[];
+                m8.free_cell(core::mem::replace(&mut dict, AllocU8::AllocatedMemory::default()));
                 dict_invalid = &[]; // we need some padding at the end of the dictionary
                 let _unused = dict_invalid;
             }
         }
-        let window_size = min(max(opts.window_size.unwrap_or(22), 10), 24);
-        let dict_ring_buffer = alloc_dict(&mut m8, Some(1 << window_size), dict);
         let ring_buffer = m8.alloc_cell(1<<window_size);
         let enc = Self::DefaultEncoder::new(&mut m8);
         let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
@@ -116,7 +119,7 @@ impl<AllocU8:Allocator<u8>,
                 enc,
                 EncoderSpecialization::new(),
                 window_size as usize,
-                dict_ring_buffer,
+                dict,
                 opts.dynamic_context_mixing.unwrap_or(2),
                 opts.prior_depth,
                 opts.literal_adaptation,

@@ -5,6 +5,7 @@ use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelec
 use ::probability::Speed;
 use super::alloc_util::SubclassableAllocator;
 use super::interface::*;
+use alloc::{Allocator, SliceWrapperMut};
 type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator<u8>,
                                                          SubclassableAllocator<u16>,
                                                          SubclassableAllocator<u32>,
@@ -164,13 +165,21 @@ impl CompressorState {
         DIVANS_FAILURE
     }
     fn start(&mut self, allocators: &CAllocator, opts:DivansCompressorOptions,
-             dict: &[u8], dict_invalid: &[u8]) {
+             dict_slice: &[u8], dict_invalid: &[u8]) {
+        let mut m8 = SubclassableAllocator::<u8>::new(allocators.clone());
+        let mut dict = if dict_slice.len() == 0 {
+            <SubclassableAllocator<u8> as Allocator<u8>>::AllocatedMemory::default()
+        } else {
+            m8.alloc_cell(dict_slice.len())
+        };
+        dict.slice_mut().clone_from_slice(dict_slice);
+
         match opts.use_brotli {
             BrotliCompressionSetting::UseInternalCommandSelection => {
                 core::mem::replace(self,
                                    CompressorState::InternalCompressor(
                                        InternalCompressorFactory::new(
-                                           SubclassableAllocator::<u8>::new(allocators.clone()),
+                                           m8,
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
@@ -183,7 +192,7 @@ impl CompressorState {
                 core::mem::replace(self,
                                    CompressorState::BrotliCompressor(
                                        BrotliFactory::new(
-                                           SubclassableAllocator::<u8>::new(allocators.clone()),
+                                           m8,
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),

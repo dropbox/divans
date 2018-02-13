@@ -349,7 +349,7 @@ fn bench_no_ir<Run: Runner,
                     use_context_map:ts.use_context_map(),
                     force_stride_value:ts.stride_selection(),
                 },
-                &[], &[],
+                ItemVec::<u8>::default(), &[],
                 (),
             );
 

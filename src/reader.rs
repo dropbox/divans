@@ -1,6 +1,7 @@
 #![cfg(not(feature="no-stdlib"))]
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use alloc::HeapAlloc;
+
 use std::io;
 use std::io::{Read};
 use super::BrotliResult;
@@ -156,10 +157,10 @@ impl<R:Read> Read for DivansBrotliHybridCompressorReader<R> {
 }
 impl<R:Read> DivansBrotliHybridCompressorReader<R> {
     pub fn new(reader: R, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(reader, opts,  buffer_size, &[], &[])
+        Self::new_with_custom_dict(reader, opts,  buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default(), &[])
     }
     pub fn new_with_custom_dict(reader: R, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
-                                dict: &[u8], dict_invalid: &[u8]) -> Self {
+                                dict: <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory, dict_invalid: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -220,12 +221,12 @@ impl<R:Read> Read for DivansExperimentalCompressorReader<R> {
 }
 impl<R:Read> DivansExperimentalCompressorReader<R> {
     pub fn new(reader: R, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(reader, opts, buffer_size, &[], &[])
+        Self::new_with_custom_dict(reader, opts, buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default(), &[])
     }
     pub fn new_with_custom_dict(reader: R,
                                 opts: interface::DivansCompressorOptions,
                                 mut buffer_size: usize,
-                                dict: &[u8],
+                                dict: <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory,
                                 dict_invalid: &[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
@@ -284,9 +285,9 @@ impl<R:Read> Read for DivansDecompressorReader<R> {
 }
 impl<R:Read> DivansDecompressorReader<R> {
     pub fn new(reader: R, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(reader, buffer_size,&[])
+        Self::new_with_custom_dict(reader, buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default())
     }
-    pub fn new_with_custom_dict(reader: R, mut buffer_size: usize, dict: &[u8]) -> Self {
+    pub fn new_with_custom_dict(reader: R, mut buffer_size: usize, dict: <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }

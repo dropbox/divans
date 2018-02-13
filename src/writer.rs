@@ -128,10 +128,10 @@ impl<W:Write> Write for DivansBrotliHybridCompressorWriter<W> {
 }
 impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
     pub fn new(writer: W, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(writer, opts, buffer_size, &[], &[])
+        Self::new_with_custom_dict(writer, opts, buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default(), &[])
     }
     pub fn new_with_custom_dict(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
-                                dict: &[u8], dict_invalid:&[u8]) -> Self {
+                                dict: <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory, dict_invalid:&[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -195,10 +195,10 @@ impl<W:Write> Write for DivansExperimentalCompressorWriter<W> {
 }
 impl<W:Write> DivansExperimentalCompressorWriter<W> {
     pub fn new(writer: W, opts: interface::DivansCompressorOptions, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(writer, opts, buffer_size, &[], &[])
+        Self::new_with_custom_dict(writer, opts, buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default(), &[])
     }
     pub fn new_with_custom_dict(writer: W, opts: interface::DivansCompressorOptions, mut buffer_size: usize,
-                                dict: &[u8], dict_invalid:&[u8]) -> Self {
+                                dict: <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory, dict_invalid:&[u8]) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -258,9 +258,9 @@ impl<W:Write> Write for DivansDecompressorWriter<W> {
 }
 impl<W:Write> DivansDecompressorWriter<W> {
     pub fn new(writer: W, buffer_size: usize) -> Self {
-        Self::new_with_custom_dict(writer, buffer_size, &[])
+        Self::new_with_custom_dict(writer, buffer_size, <HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory::default())
     }
-    pub fn new_with_custom_dict(writer: W, mut buffer_size: usize, dict: &[u8]) -> Self {
+    pub fn new_with_custom_dict(writer: W, mut buffer_size: usize, dict:<HeapAlloc<u8> as Allocator<u8>>::AllocatedMemory) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }

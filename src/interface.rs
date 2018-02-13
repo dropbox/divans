@@ -223,7 +223,7 @@ pub trait DivansCompressorFactory<
      type AdditionalArgs;
     fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
            opts: DivansCompressorBasicOptions,
-           dict: &[u8],
+           dict: AllocU8::AllocatedMemory,
            dict_invalid: &[u8],
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }

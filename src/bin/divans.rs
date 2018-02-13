@@ -775,7 +775,14 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::cluster::HistogramPair>,
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                          ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
-
+fn item_vec_from_slice(data: &[u8]) -> ItemVec<u8> {
+    if data.len() == 0 {
+        return ItemVec::<u8>::default();
+    }
+    let mut ret = ItemVecAllocator::<u8>::default().alloc_cell(data.len());
+    ret.slice_mut().clone_from_slice(data);
+    ret
+}
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
                                        w:&mut Writer,
@@ -793,7 +800,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             opts.basic,
-            dict,
+            item_vec_from_slice(dict),
             dict_invalid,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
@@ -828,7 +835,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
             opts.basic,
-            dict, dict_invalid,
+            item_vec_from_slice(dict), dict_invalid,
             (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -872,7 +879,7 @@ fn compress_ir<Reader:std::io::BufRead,
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         opts,
-        dict,
+        item_vec_from_slice(dict),
         dict_invalid,
         (),
     );
@@ -899,7 +906,7 @@ fn decompress<Reader:std::io::Read,
                                          ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
                                                                                       ItemVecAllocator::<divans::CDF2>::default(),
                                                                                       ItemVecAllocator::<divans::DefaultCDF16>::default(),
-                                                                                      custom_dict);
+                                                                                      item_vec_from_slice(custom_dict));
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;

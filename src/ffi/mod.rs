@@ -2,6 +2,7 @@
 
 #[no_mangle]
 use core;
+use alloc::{Allocator, SliceWrapperMut};
 use core::slice;
 use brotli::BrotliResult;
 use super::DivansDecompressorFactory;
@@ -183,11 +184,19 @@ fn divans_new_decompressor_without_custom_alloc(to_box: DivansDecompressorState)
 pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator,
                                                                dict_ptr: *const u8,
                                                                dict_size: usize) -> *mut DivansDecompressorState{
-    let dict = slice::from_raw_parts(dict_ptr, dict_size);
+    let dict_raw = slice::from_raw_parts(dict_ptr, dict_size);
+    let mut m8 = SubclassableAllocator::<u8>::new(allocators.clone());
+    let mut dict = if dict_size == 0 {
+        <SubclassableAllocator<u8> as Allocator<u8>>::AllocatedMemory::default()
+    } else {
+        m8.alloc_cell(dict_size)
+    };
+    dict.slice_mut().clone_from_slice(dict_raw);
+                    
     let to_box = DivansDecompressorState{
         custom_allocator:allocators.clone(),
         decompressor:decompressor::DecompressorFactory::new(
-            SubclassableAllocator::<u8>::new(allocators.clone()),
+            m8,
             SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
             SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
             dict,
