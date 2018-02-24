@@ -37,7 +37,7 @@ impl<T:Sized+Default+Clone, AllocT: Allocator<T>> ResizableByteBuffer<T, AllocT>
             self.data = allocator.alloc_cell(66_000); // some slack room to deal with worst case compression sizes
         } else if self.size + min_size > self.data.slice().len() {
             let mut cell = allocator.alloc_cell(self.size * 2);
-            cell.slice_mut().split_at_mut(self.size).0.clone_from_slice(self.data.slice());
+            cell.slice_mut().split_at_mut(self.size).0.clone_from_slice(self.data.slice().split_at(self.size).0);
             allocator.free_cell(core::mem::replace(&mut self.data, cell));
         }
     }
