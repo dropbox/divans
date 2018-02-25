@@ -154,11 +154,13 @@ impl<SelectedCDF:CDF16,
             let divans_codec_ref = &mut self.codec;
             let header_progress_ref = &mut self.header_progress;
             let window_size = self.window_size;
-            let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| Self::divans_encode_commands(a,
-                                                                                                                 header_progress_ref,
-                                                                                                                 divans_data_ref,
-                                                                                                                 divans_codec_ref,
-                                                                                                                 window_size);
+            let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| if a.len() != 0 {
+                Self::divans_encode_commands(a,
+                                             header_progress_ref,
+                                             divans_data_ref,
+                                             divans_codec_ref,
+                                             window_size);
+            };
             {
                 let mut available_in = input.len() - *input_offset;
                 if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
