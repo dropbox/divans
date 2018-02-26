@@ -317,7 +317,7 @@ fn bench_no_ir<Run: Runner,
             literal_context_map: cm,
             distance_context_map: dm,
         }),
-        Command::BlockSwitchLiteral(LiteralBlockSwitch::new(1, 2)),
+        Command::BlockSwitchLiteral(LiteralBlockSwitch::new(1, 2, (1u32 << 24))),
         Command::Literal(LiteralCommand{
             data:cmd_data_buffer,
             prob:FeatureFlagSliceType::<ItemVec<u8>>::default(),
@@ -429,7 +429,7 @@ fn test_raw_ir_literal_stream() {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3321851,
+                  3322749,
                   );
 }
 
@@ -445,7 +445,7 @@ fn bench_ir_decode_context_mixing_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3321851,
+                  3322749,
                   );
 }
 
@@ -461,7 +461,7 @@ fn bench_ir_decode_context_pure_average_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3321851,
+                  3322749,
                   );
 }
 
@@ -477,7 +477,7 @@ fn bench_ir_decode_model_adapt_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3321851,
+                  3322749,
                   );
 }
 
@@ -493,7 +493,7 @@ fn bench_ir_decode_simple_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3321851,
+                  3322749,
                   );
 }
 

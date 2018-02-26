@@ -98,11 +98,15 @@ pub enum BlockTypePriorType {
     FirstNibble,
     SecondNibble,
     StrideNibble,
+    CountExp,
+    CountMantissa,
 }
 define_prior_struct!(BlockTypePriors, BlockTypePriorType,
                      (BlockTypePriorType::Mnemonic, 3), // 3 for each of ltype, ctype, dtype switches.
                      (BlockTypePriorType::FirstNibble, 3),
                      (BlockTypePriorType::SecondNibble, 3),
+                     (BlockTypePriorType::CountExp, 3),
+                     (BlockTypePriorType::CountMantissa, 3, 3 * 16),
                      (BlockTypePriorType::StrideNibble, 1));
 
 #[derive(PartialEq, Debug, Clone)]

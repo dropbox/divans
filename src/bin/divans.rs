@@ -251,7 +251,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         }
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
-        if command_vec.len() != 2 && (command_vec.len() != 3 || cmd != "ltype") {
+        if command_vec.len() != 3 && (command_vec.len() != 4 || cmd != "ltype") {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       "*type needs 1 argument"));
         }
@@ -262,14 +262,21 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                                           msg.description()));
             }
         };
+        let distance = match command_vec[2].parse::<u32>() {
+            Ok(el) => el,
+            Err(msg) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                          msg.description()));
+            }
+        };
         return Ok(Some(match cmd.chars().next().unwrap() {
-            'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type)),
-            'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type)),
+            'c' => Command::BlockSwitchCommand(BlockSwitch::new(block_type, distance)),
+            'd' => Command::BlockSwitchDistance(BlockSwitch::new(block_type, distance)),
             'l' => Command::BlockSwitchLiteral(LiteralBlockSwitch::new(block_type,
-                  if command_vec.len() < 2 {
+                  if command_vec.len() < 3 {
                      0
                   } else {
-                     match command_vec[2].parse::<u32>() {
+                     match command_vec[3].parse::<u32>() {
                          Ok(stride) => {
                              if stride > 8 {
                                  return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -283,8 +290,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                                                        msg.description()));
                          }
                      }
-                  }
-            )),
+                  }, distance)),
             _ => panic!("Logic error: already checked for valid command"),
         }));
     } else if cmd == "copy" {
@@ -583,7 +589,7 @@ fn compress_inner<Reader:std::io::BufRead,
                                                            Command::<ItemVec<u8>>::nop()];
 
     let mut i_read_index = 0usize;
-    let mut last_literal_switch = LiteralBlockSwitch::new(0, 0);
+    let mut last_literal_switch = LiteralBlockSwitch::new(0, 0, 1);
     let mut m8 = ItemVecAllocator::<u8>::default();
     loop {
         buffer.clear();

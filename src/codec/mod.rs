@@ -552,7 +552,9 @@ impl<AllocU8: Allocator<u8>,
                         BrotliResult::ResultSuccess => {
                             let old_stride = self.cross_command_state.bk.stride;
                             self.cross_command_state.bk.obs_btypel(match *block_type_state {
-                                block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
+                                block_type::LiteralBlockTypeState::FullyDecoded(bswitch, stride) => LiteralBlockSwitch::new(bswitch.block_type(),
+                                                                                                                            stride,
+                                                                                                                            bswitch.count()),
                                 _ => panic!("illegal output state"),
                             });
                             if (old_stride <= 1) != (self.cross_command_state.bk.stride <= 1) {
