@@ -6,6 +6,8 @@ use super::interface::{
     CrossCommandState,
     Fail,
     round_up_mod_4,
+    BLOCK_TYPE_DISTANCE_SWITCH,
+    BLOCK_TYPE_COMMAND_SWITCH,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -38,6 +40,22 @@ pub struct CopyState {
 
 
 impl CopyState {
+    fn transition_to_done<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  Cdf16,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>) {
+        superstate.bk.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].dec(1);
+        superstate.bk.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].dec(1);
+        self.state = CopySubstate::FullyDecoded;        
+    }
     #[inline(always)]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
@@ -168,7 +186,7 @@ impl CopyState {
                         self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
-                        self.state = CopySubstate::FullyDecoded;
+                        self.transition_to_done(superstate);
                     }
                 },
                 CopySubstate::DistanceLengthMnemonicTwo => {
@@ -188,24 +206,26 @@ impl CopyState {
                                                                                              self.cc.num_bytes);
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
-                        self.state = CopySubstate::FullyDecoded;
+                        self.transition_to_done(superstate);
                     }
                 },
                 CopySubstate::DistanceLengthFirst => {
                     let mut beg_nib = core::cmp::min(15, dlen - 1);
                     let index = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8 - self.cc.num_bytes.leading_zeros()) as usize >> 2;
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
-                    let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                    nibble_prob.blend(beg_nib, Speed::SLOW);
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
+                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                        nibble_prob.blend(beg_nib, Speed::SLOW);
+                    }
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthGreater15Less25;
                     } else {
                         superstate.bk.last_dlen = beg_nib + 1;
                         if beg_nib == 0 {
                             self.cc.distance = 1;
-                            self.state = CopySubstate::FullyDecoded;
+                            self.transition_to_done(superstate);
                         } else {
                             self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(beg_nib), 1 << beg_nib);
                         }
@@ -229,16 +249,18 @@ impl CopyState {
                     let mut last_nib = last_nib_as_u32 as u8;
                     let index = if len_decoded == 0 { ((superstate.bk.last_dlen % 4) + 1) as usize } else { 0usize };
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
-                    let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
-                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
-                    let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
-                    nibble_prob.blend(last_nib, if index > 1 {Speed::FAST} else {Speed::GLACIAL});
-
+                    let next_decoded_so_far;
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
+                        superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                        next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
+                        nibble_prob.blend(last_nib, if index > 1 {Speed::FAST} else {Speed::GLACIAL});
+                    }
                     if next_len_remaining == 0 {
                         //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
                         self.cc.distance = next_decoded_so_far;
-                        self.state = CopySubstate::FullyDecoded;
+                        self.transition_to_done(superstate);
                     } else {
                         self.state  = CopySubstate::DistanceMantissaNibbles(
                             len_decoded + 4,

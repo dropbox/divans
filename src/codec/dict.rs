@@ -9,6 +9,8 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     round_up_mod_4,
+    BLOCK_TYPE_DISTANCE_SWITCH,
+    BLOCK_TYPE_COMMAND_SWITCH,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -39,6 +41,23 @@ const DICT_BITS:[u8;25] = [
 
 
 impl DictState {
+    fn transition_to_done<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocU8:Allocator<u8>,
+                        AllocCDF2:Allocator<CDF2>,
+                          AllocCDF16:Allocator<Cdf16>>(&mut self,
+                                                       superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                          Specialization,
+                                                                                          Cdf16,
+                                                                                          AllocU8,
+                                                                                          AllocCDF2,
+                                                                                          AllocCDF16>,
+    ) {
+        self.state = DictSubstate::FullyDecoded;
+        superstate.bk.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].dec(1);
+        superstate.bk.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].dec(1);
+    }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
@@ -132,20 +151,22 @@ impl DictState {
                 }
                 DictSubstate::TransformLow => {
                     let mut low_nib = in_cmd.transform & 0xf;
-                    let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
-                                                                        (1, self.dc.transform as usize >> 4));
-                    superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
-                    nibble_prob.blend(low_nib, Speed::FAST);
-                    self.dc.transform |= low_nib;
-                    let dict = &kBrotliDictionary;
-                    let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
-                    let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
-                    let final_len = TransformDictionaryWord(&mut transformed_word[..],
-                                                            &word[..],
-                                                            i32::from(self.dc.word_size),
-                                                            i32::from(self.dc.transform));
-                    self.dc.final_size = final_len as u8;// WHA
-                    self.state = DictSubstate::FullyDecoded;
+                    {
+                        let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
+                                                                            (1, self.dc.transform as usize >> 4));
+                        superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
+                        nibble_prob.blend(low_nib, Speed::FAST);
+                        self.dc.transform |= low_nib;
+                        let dict = &kBrotliDictionary;
+                        let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
+                        let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
+                        let final_len = TransformDictionaryWord(&mut transformed_word[..],
+                                                                &word[..],
+                                                                i32::from(self.dc.word_size),
+                                                                i32::from(self.dc.transform));
+                        self.dc.final_size = final_len as u8;// WHA
+                    }
+                    self.transition_to_done(superstate);
                     return BrotliResult::ResultSuccess;
                 }
                 DictSubstate::FullyDecoded => {

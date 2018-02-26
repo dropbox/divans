@@ -388,7 +388,7 @@ mod test {
                 writer:decompress,
                 output: &mut ub,
             };
-            let mut compress = ::DivansBrotliHybridCompressorWriter::new(tee, opts, buffer_size);
+            let mut compress = ::DivansExperimentalCompressorWriter::new(tee, opts, buffer_size);
             let mut offset: usize = 0;
             while offset < data.len() {
                 match compress.write(&data[offset..core::cmp::min(offset + buffer_size, data.len())]) {

@@ -429,7 +429,7 @@ fn test_raw_ir_literal_stream() {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3322749,
+                  3322751,
                   );
 }
 
@@ -445,7 +445,7 @@ fn bench_ir_decode_context_mixing_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3322749,
+                  3322751,
                   );
 }
 
@@ -461,7 +461,7 @@ fn bench_ir_decode_context_pure_average_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3322749,
+                  3322751,
                   );
 }
 
@@ -477,7 +477,7 @@ fn bench_ir_decode_model_adapt_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3322749,
+                  3322751,
                   );
 }
 
@@ -493,7 +493,7 @@ fn bench_ir_decode_simple_1024k(b: &mut Bencher) {
                   &raw_file[..],
                   1048682,
                   &ir[..],
-                  3322749,
+                  3322751,
                   );
 }
 

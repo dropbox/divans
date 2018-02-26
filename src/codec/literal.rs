@@ -11,6 +11,7 @@ use super::interface::{
     ByteContext,
     round_up_mod_4,
     CrossCommandBookKeeping,
+    BLOCK_TYPE_LITERAL_SWITCH,
 };
 use super::specializations::CodecTraits;
 use ::interface::{
@@ -404,6 +405,7 @@ impl<AllocU8:Allocator<u8>,
                     superstate.bk.push_literal_byte(cur_byte);
                     if byte_index + 1 == self.lc.data.slice().len() {
                         self.state = LiteralSubstate::FullyDecoded;
+                        superstate.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].dec(self.lc.data.slice().len() as u32);
                         return BrotliResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 2);

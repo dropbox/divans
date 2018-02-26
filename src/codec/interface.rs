@@ -304,7 +304,7 @@ impl<Cdf16:CDF16,
                 priors: btype_prior
             },
             distance_lru: [4,11,15,16],
-            btype_lru:[[BlockSwitch::new(0,1),BlockSwitch::new(1,1)];3],
+            btype_lru:[[BlockSwitch::new(0,0),BlockSwitch::new(1,0)];3],
             btype_max_seen:[0;3],
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,

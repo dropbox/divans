@@ -142,7 +142,11 @@ pub fn distance_code_from_input(val: u32) -> (u8, u32) {
     if val < 16 + 256 + 4096 + 65536 + 65536 * 16{
         return (4, val - 16 - 256 - 4096 - 65536);
     }
-    return (5, val - 16 - 256 - 4096 - 65536 - 65536 * 16);
+    let max = 16 + 256 + 4096 + 65536 + 65536 * 16 + 65536 * 256 - 1;
+    if val <= max {
+        return (5, val - 16 - 256 - 4096 - 65536 - 65536 * 16);
+    }
+    (5, max)
 }
 pub fn distance_code_num_to_decode(val: u8) -> u8 {
     match val {

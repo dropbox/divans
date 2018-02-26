@@ -25,7 +25,7 @@ use super::interface::{
     BlockSwitch,
     LiteralBlockSwitch,
     NewWithAllocator,
-    Nop
+    Nop,
 };
 pub mod weights;
 pub mod specializations;
@@ -41,6 +41,9 @@ pub use self::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     CrossCommandBookKeeping,
+    BLOCK_TYPE_COMMAND_SWITCH,
+    BLOCK_TYPE_DISTANCE_SWITCH,
+    BLOCK_TYPE_LITERAL_SWITCH,
 };
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -510,6 +513,15 @@ impl<AllocU8: Allocator<u8>,
                     }
                     let command_state = get_command_state_from_nibble(command_type_code, is_end);
                     match command_state {
+                        EncodeOrDecodeState::BlockSwitchLiteral(_) => {
+                            //assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count(), 0);
+                        },
+                        EncodeOrDecodeState::BlockSwitchDistance(_) => {
+                            assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].count(), 0);
+                        },
+                        EncodeOrDecodeState::BlockSwitchCommand(_) => {
+                            assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].count(), 0);
+                        },
                         EncodeOrDecodeState::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
                         EncodeOrDecodeState::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
                         EncodeOrDecodeState::Literal(_) => { self.cross_command_state.bk.obs_literal_state(); },
@@ -533,7 +545,12 @@ impl<AllocU8: Allocator<u8>,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::UpdateCodecTrait),
+                         BrotliResult::ResultSuccess => {
+                             self.cross_command_state.bk.obs_btypel(LiteralBlockSwitch::new(0, 0, 0));
+                             self.cross_command_state.bk.obs_btyped(BlockSwitch::new(0, 0));
+                             self.cross_command_state.bk.obs_btypec(BlockSwitch::new(0, 0));
+                             new_state = Some(EncodeOrDecodeState::UpdateCodecTrait)
+                         },
                          // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
