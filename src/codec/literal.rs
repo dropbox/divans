@@ -199,6 +199,21 @@ impl<AllocU8:Allocator<u8>,
             LiteralSubstate::LiteralNibbleIndexWithECDF(index)
         }
     }
+    fn transition_to_done<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                        Specialization:EncoderOrDecoderSpecialization,
+                        Cdf16:CDF16,
+                        AllocCDF2:Allocator<CDF2>,
+                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                                               superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                  Specialization,
+                                                                                  Cdf16,
+                                                                                  AllocU8,
+                                                                                  AllocCDF2,
+                                                                                  AllocCDF16>) {
+        superstate.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].dec(self.lc.data.slice().len() as u32);
+        self.state = LiteralSubstate::FullyDecoded;
+    }
+
     pub fn encode_or_decode<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             Cdf16:CDF16,
@@ -339,7 +354,7 @@ impl<AllocU8:Allocator<u8>,
                         }
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
-                        self.state = LiteralSubstate::FullyDecoded;
+                        self.transition_to_done(superstate);
                         return BrotliResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndexWithECDF(nibble_index + 1);
@@ -367,7 +382,7 @@ impl<AllocU8:Allocator<u8>,
                         superstate.bk.push_literal_byte(*cur_byte);
                     }
                     if byte_index + 1 == self.lc.data.slice().len() {
-                        self.state = LiteralSubstate::FullyDecoded;
+                        self.transition_to_done(superstate);
                         return BrotliResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 1);
@@ -404,8 +419,7 @@ impl<AllocU8:Allocator<u8>,
                     self.lc.data.slice_mut()[byte_index] = cur_byte;
                     superstate.bk.push_literal_byte(cur_byte);
                     if byte_index + 1 == self.lc.data.slice().len() {
-                        self.state = LiteralSubstate::FullyDecoded;
-                        superstate.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].dec(self.lc.data.slice().len() as u32);
+                        self.transition_to_done(superstate);
                         return BrotliResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 2);
