@@ -274,7 +274,7 @@ impl<Cdf16:CDF16,
             last_clen: 1,
             materialized_context_map: false,
             combine_literal_predictions: false,
-            last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
+            last_4_states: 0,//3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             last_8_literals: 0,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
@@ -478,20 +478,20 @@ impl<Cdf16:CDF16,
     }
     pub fn get_command_type_prob(&mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
-        let (last_states_prior, cmd_prior) = if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
+        let (last_states_prior, cmd_prior) = if self.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].count() == 0 {
             (0, 3)
-        } else if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
+        } else if self.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].count() == 0 {
             (0, 2)
         } else if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
             (0, 1)
         } else if (self.last_4_states >> 6) == 0 { // last was *type
             (0, 0)
         } else {
-            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS), self.get_command_block_type() << 2)
+            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS), self.get_command_block_type()<<2)
         };
         self.cc_priors.get(CrossCommandBilling::FullSelection,
-                           (last_states_prior,
-                           cmd_prior as usize))
+                           (cmd_prior as usize, last_states_prior,
+                           ))
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
