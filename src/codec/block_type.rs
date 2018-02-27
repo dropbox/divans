@@ -98,11 +98,16 @@ impl BlockTypeState {
                     *self = BlockTypeState::CountExp((second_nibble << 4) | first_nibble);
                 }
                 BlockTypeState::CountExp(typ) => {
-                    let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::CountExp,
+                    if !super::interface::SERIALIZE_BTYPE_DISTANCE {
+                        *self = BlockTypeState::FullyDecoded(BlockSwitch::new(typ, 1<<24));
+                        return BrotliResult::ResultSuccess;
+                    } else {
+                        let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::CountExp,
                                                                          (block_type_switch_index,));
-                    superstate.coder.get_or_put_nibble(&mut count_exp_code, nibble_prob, billing);
-                    nibble_prob.blend(count_exp_code, Speed::SLOW);
-                    *self = BlockTypeState::CountMantissa(typ, count_exp_code, distance_code_num_to_decode(count_exp_code), 0);
+                        superstate.coder.get_or_put_nibble(&mut count_exp_code, nibble_prob, billing);
+                        nibble_prob.blend(count_exp_code, Speed::SLOW);
+                        *self = BlockTypeState::CountMantissa(typ, count_exp_code, distance_code_num_to_decode(count_exp_code), 0);
+                    }
                 }
                 BlockTypeState::CountMantissa(typ, count_exp, num_to_decode, total) => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::CountMantissa,

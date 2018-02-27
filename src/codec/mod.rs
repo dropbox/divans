@@ -514,13 +514,19 @@ impl<AllocU8: Allocator<u8>,
                     let command_state = get_command_state_from_nibble(command_type_code, is_end);
                     match command_state {
                         EncodeOrDecodeState::BlockSwitchLiteral(_) => {
-                            debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count(), 0);
+                            if interface::SERIALIZE_BTYPE_DISTANCE {
+                                debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count(), 0);
+                            }
                         },
                         EncodeOrDecodeState::BlockSwitchDistance(_) => {
-                            debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].count(), 0);
+                            if interface::SERIALIZE_BTYPE_DISTANCE {
+                                debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_DISTANCE_SWITCH][0].count(), 0);
+                            }
                         },
                         EncodeOrDecodeState::BlockSwitchCommand(_) => {
-                            debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].count(), 0);
+                            if interface::SERIALIZE_BTYPE_DISTANCE {
+                                debug_assert_eq!(self.cross_command_state.bk.btype_lru[BLOCK_TYPE_COMMAND_SWITCH][0].count(), 0);
+                            }
                         },
                         EncodeOrDecodeState::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
                         EncodeOrDecodeState::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
