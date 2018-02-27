@@ -478,9 +478,20 @@ impl<Cdf16:CDF16,
     }
     pub fn get_command_type_prob(&mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
+        let (last_states_prior, cmd_prior) = if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
+            (0, 3)
+        } else if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
+            (0, 2)
+        } else if self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0].count() == 0 {
+            (0, 1)
+        } else if (self.last_4_states >> 6) == 0 { // last was *type
+            (0, 0)
+        } else {
+            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS), self.get_command_block_type() << 2)
+        };
         self.cc_priors.get(CrossCommandBilling::FullSelection,
-                           ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
-                           ((self.last_8_literals>>0x3e) as usize &0xf)))
+                           (last_states_prior,
+                           cmd_prior as usize))
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
