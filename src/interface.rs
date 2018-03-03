@@ -221,12 +221,8 @@ pub trait DivansCompressorFactory<
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
      type ConstructedCompressor: Compressor;
      type AdditionalArgs;
-    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16, window_size: usize,
-           dynamic_context_mixing: u8,
-           prior_depth: Option<u8>,
-           literal_adaptation_rate: Option<[probability::Speed;4]>,
-           do_context_map: bool,
-           force_stride: StrideSelection,
+    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+           opts: DivansCompressorOptions,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }
 
@@ -255,4 +251,5 @@ pub struct DivansCompressorOptions{
     pub use_context_map: bool,
     pub force_stride_value: StrideSelection,
     pub prior_depth: Option<u8>,
+    pub brotli_literal_byte_score: Option<u32>,
 }

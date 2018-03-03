@@ -465,7 +465,7 @@ fn recode_inner<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
-    let mut obuffer = [0u8;65_536];
+    let mut obuffer = vec![0u8; 65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
@@ -564,7 +564,7 @@ fn compress_inner<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
-    let mut obuffer = [0u8;65_536];
+    let mut obuffer = vec![0u8; 65_536];
     let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
                                                            Command::<ItemVec<u8>>::nop(),
@@ -775,24 +775,12 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                          ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
 
-pub struct CompressOptions {
-   pub quality: Option<u16>,
-   pub window_size: Option<i32>,
-   pub lgblock: Option<u32>,
-   pub do_context_map: bool,
-   pub force_stride_value: StrideSelection,
-   pub literal_adaptation_speed: Option<[Speed;4]>,
-   pub prior_depth: Option<u8>,
-   pub dynamic_context_mixing: Option<u8>,
-   pub stride_detection_quality: Option<u8>,
-}
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
                                        w:&mut Writer,
-                                       opts: CompressOptions,
+                                       opts: divans::DivansCompressorOptions,
                                        buffer_size: usize,
                                        use_brotli: bool) -> io::Result<()> {
-    let window_size = opts.window_size.unwrap_or(21);
     let mut m8 = ItemVecAllocator::<u8>::default();
     let ibuffer = m8.alloc_cell(buffer_size);
     let obuffer = m8.alloc_cell(buffer_size);
@@ -802,12 +790,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            window_size as usize,
-            opts.dynamic_context_mixing.unwrap_or(0),
-            opts.prior_depth,
-            opts.literal_adaptation_speed,
-            opts.do_context_map,
-            opts.force_stride_value,
+            opts,
             (ItemVecAllocator::<u8>::default(),
              ItemVecAllocator::<u16>::default(),
              ItemVecAllocator::<i32>::default(),
@@ -820,9 +803,6 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
-             opts.quality,
-             opts.lgblock,
-             opts.stride_detection_quality,
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -840,10 +820,7 @@ fn compress_raw<Reader:std::io::Read,
             ItemVecAllocator::<u32>::default(),
             ItemVecAllocator::<divans::CDF2>::default(),
             ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            window_size as usize,
-            opts.dynamic_context_mixing.unwrap_or(0),
-            opts.prior_depth,
-            opts.literal_adaptation_speed, opts.do_context_map, opts.force_stride_value, (),
+            opts, (),
         );
         let mut free_closure = |state_to_free:<Factory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
         compress_raw_inner(r, w,
@@ -856,11 +833,8 @@ fn compress_ir<Reader:std::io::BufRead,
             Writer:std::io::Write>(
     r:&mut Reader,
     w:&mut Writer,
-    dynamic_context_mixing: Option<u8>,
-    prior_depth: Option<u8>,
-    literal_adaptation_speed: Option<[Speed;4]>,
-    do_context_map: bool,
-    force_stride_value:StrideSelection) -> io::Result<()> {
+    mut opts: divans::DivansCompressorOptions,
+) -> io::Result<()> {
     let window_size : i32;
     let mut buffer = String::new();
     loop {
@@ -878,6 +852,7 @@ fn compress_ir<Reader:std::io::BufRead,
             }
         }
     }
+    opts.window_size = Some(window_size);
     let state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
                                   ItemVecAllocator<divans::CDF2>,
                                   ItemVecAllocator<divans::DefaultCDF16>>::new(
@@ -885,12 +860,7 @@ fn compress_ir<Reader:std::io::BufRead,
         ItemVecAllocator::<u32>::default(),
         ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
-        window_size as usize,
-        dynamic_context_mixing.unwrap_or(0),
-        prior_depth,
-        literal_adaptation_speed,
-        do_context_map,
-        force_stride_value,
+        opts,
         (),
     );
     compress_inner(state, r, w)
@@ -1113,6 +1083,7 @@ fn main() {
     let mut buffer_size:usize = 65_536;
     let mut force_prior_depth: Option<u8> = None;
     let mut set_low = false;
+    let mut brotli_literal_byte_score: Option<u32> = None;
     let mut doubledash = false;
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
@@ -1122,6 +1093,21 @@ fn main() {
                 }
                 if argument == "--" {
                     doubledash = true;
+                    continue;
+                }
+                if argument.starts_with("-bytescore") {
+                    brotli_literal_byte_score = Some(argument.trim_matches(
+                        '-').trim_matches(
+                        'b').trim_matches(
+                        'y').trim_matches(
+                        't').trim_matches(
+                        'e').trim_matches(
+                        's').trim_matches(
+                        'c').trim_matches(
+                        'o').trim_matches(
+                        'r').trim_matches(
+                        'e').trim_matches(
+                        '=').parse::<u32>().unwrap());
                     continue;
                 }
                 if argument.starts_with("-bs") {
@@ -1389,6 +1375,24 @@ fn main() {
             }
             panic!("Unknown Argument {:}", argument);
         }
+        let brotli_setting = if use_brotli  {
+            divans::BrotliCompressionSetting::UseBrotliCommandSelection
+        } else {
+            divans::BrotliCompressionSetting::UseInternalCommandSelection
+        };
+        let opts = divans::DivansCompressorOptions{
+            brotli_literal_byte_score: brotli_literal_byte_score,
+            use_brotli: brotli_setting,
+            dynamic_context_mixing: dynamic_context_mixing.clone(),
+            literal_adaptation: literal_adaptation.clone(),
+            use_context_map: use_context_map,
+            prior_depth: force_prior_depth,
+            force_stride_value: force_stride_value,
+            quality: quality,
+            window_size: window_size,
+            lgblock: lgwin,
+            stride_detection_quality: stride_detection_quality,
+        };
         if filenames[0] != "" {
             let mut input = match File::open(&Path::new(&filenames[0])) {
                 Err(why) => panic!("couldn't open {:}\n{:}", filenames[0], why),
@@ -1402,7 +1406,7 @@ fn main() {
                 for i in 0..num_benchmarks {
                     if do_compress && !raw_compress {
                         let mut buffered_input = BufReader::new(input);
-                        match compress_ir(&mut buffered_input, &mut output, dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation.clone(), use_context_map, force_stride_value) {
+                        match compress_ir(&mut buffered_input, &mut output, opts) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1410,17 +1414,7 @@ fn main() {
                     } else if do_compress {
                         match compress_raw(&mut input,
                                            &mut output,
-                                           CompressOptions{
-                                               dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                               literal_adaptation_speed: literal_adaptation.clone(),
-                                               do_context_map: use_context_map,
-                                               prior_depth: force_prior_depth,
-                                               force_stride_value: force_stride_value,
-                                               quality: quality,
-                                               window_size: window_size,
-                                               lgblock: lgwin,
-                                               stride_detection_quality: stride_detection_quality,
-                                           },
+                                           opts,
                                            buffer_size, use_brotli) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
@@ -1446,24 +1440,14 @@ fn main() {
                 assert_eq!(num_benchmarks, 1);
                 if do_compress && !raw_compress {
                     let mut buffered_input = BufReader::new(input);
-                    match compress_ir (&mut buffered_input, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
+                    match compress_ir (&mut buffered_input, &mut io::stdout(), opts) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
                 } else if do_compress {
                     match compress_raw(&mut input,
                                        &mut io::stdout(),
-                                       CompressOptions{
-                                           dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                           literal_adaptation_speed: literal_adaptation.clone(),
-                                           do_context_map: use_context_map,
-                                           prior_depth: force_prior_depth,
-                                           force_stride_value: force_stride_value,
-                                           quality: quality,
-                                           window_size: window_size,
-                                           lgblock: lgwin,
-                                           stride_detection_quality: stride_detection_quality,
-                                       },
+                                       opts,
                                        buffer_size,
                                        use_brotli) {
                         Ok(_) => {}
@@ -1485,24 +1469,14 @@ fn main() {
             if do_compress && !raw_compress {
                 let stdin = std::io::stdin();
                 let mut stdin = stdin.lock();
-                match compress_ir(&mut stdin, &mut io::stdout(), dynamic_context_mixing.clone(), force_prior_depth, literal_adaptation, use_context_map, force_stride_value) {
+                match compress_ir(&mut stdin, &mut io::stdout(), opts) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
             } else if do_compress {
                 match compress_raw(&mut std::io::stdin(),
                                    &mut io::stdout(),
-                                   CompressOptions{
-                                       dynamic_context_mixing: dynamic_context_mixing.clone(),
-                                       literal_adaptation_speed: literal_adaptation.clone(),
-                                       do_context_map: use_context_map,
-                                       force_stride_value: force_stride_value,
-                                       prior_depth: force_prior_depth,
-                                       quality: quality,
-                                       window_size: window_size,
-                                       lgblock: lgwin,
-                                       stride_detection_quality: stride_detection_quality,
-                                   },
+                                   opts,
                                    buffer_size,
                                    use_brotli) {
                     Ok(_) => return,

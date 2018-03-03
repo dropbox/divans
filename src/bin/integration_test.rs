@@ -18,7 +18,7 @@ use std::io;
 
 use std::io::BufReader;
 use core::cmp;
-use divans::{Speed, StrideSelection};
+use divans::{Speed, StrideSelection, DivansCompressorOptions, BrotliCompressionSetting};
 pub struct UnlimitedBuffer {
   pub data: Vec<u8>,
   pub read_offset: usize,
@@ -111,10 +111,12 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
     super::compress_raw(&mut in_buffer,
                         &mut dv_buffer,
-                        super::CompressOptions{
+                        DivansCompressorOptions{
+                            brotli_literal_byte_score: None,
+                            use_brotli:BrotliCompressionSetting::UseBrotliCommandSelection,
                             dynamic_context_mixing: Some(2),
-                            literal_adaptation_speed: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
-                            do_context_map: use_serialized_priors,
+                            literal_adaptation: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
+                            use_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(1),
                             quality:Some(10u16), // quality
@@ -159,7 +161,10 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), Some(0), Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]), true, StrideSelection::UseBrotliRec).unwrap();
+   let mut opts = DivansCompressorOptions::default();
+   opts.literal_adaptation = Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]);
+
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();//Some(1), Some(0), Some(, true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
@@ -191,7 +196,10 @@ fn test_e2e_32xx() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, None, None, None, true, StrideSelection::UseBrotliRec).unwrap();
+   let mut opts = DivansCompressorOptions::default();
+   opts.literal_adaptation = None;
+
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -206,7 +214,11 @@ fn test_e2e_262145_at() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1),  Some(2), Some([Speed::MUD, Speed::ROCKET, Speed::FAST, Speed::GLACIAL]), true, StrideSelection::UseBrotliRec).unwrap();
+   let mut opts = DivansCompressorOptions::default();
+   opts.literal_adaptation = Some([Speed::MUD, Speed::ROCKET, Speed::FAST, Speed::GLACIAL]);
+   opts.use_context_map = true;
+   opts.dynamic_context_mixing = Some(2);
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -224,7 +236,11 @@ fn test_e2e_64xp() {
    let mut dv_buffer = UnlimitedBuffer::new(&[]);
    let mut buf_ir = BufReader::new(ir_buffer);
    //let mut rt_buffer = UnlimitedBuffer::new(&[]);
-   match super::compress_ir(&mut buf_ir, &mut dv_buffer, Some(1), None, Some([Speed::FAST, Speed::SLOW, Speed::FAST, Speed::FAST]), true, StrideSelection::UseBrotliRec) {
+   let mut opts = DivansCompressorOptions::default();
+   opts.literal_adaptation = Some([Speed::FAST, Speed::SLOW, Speed::FAST, Speed::FAST]);
+   opts.use_context_map = true;
+   opts.dynamic_context_mixing = Some(1);
+   match super::compress_ir(&mut buf_ir, &mut dv_buffer, opts) {
       Ok(_) => assert_eq!(EXTERNAL_PROB_FEATURE, true),
       Err(_) => assert_eq!(EXTERNAL_PROB_FEATURE, false),
    };

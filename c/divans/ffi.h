@@ -26,6 +26,7 @@ typedef uint8_t DivansOptionSelect;
 #define DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW 12
 #define DIVANS_OPTION_LITERAL_ADAPTATION_CM_LOW 13
 #define DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW 14
+#define DIVANS_OPTION_BROTLI_LITERAL_BYTE_SCORE 15
 
 /// a struct specifying custom allocators for divans to use instead of the builtin rust allocators.
 /// if all 3 values are set to NULL, the Rust allocators are used instead.

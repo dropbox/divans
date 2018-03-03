@@ -14,7 +14,7 @@
 
 // this compressor generates its own IR through the raw_to_cmd command assembler
 // then it generates a valid divans bitstream using the ANS encoder
-
+use core;
 use core::marker::PhantomData;
 use super::probability;
 use super::brotli;
@@ -81,19 +81,10 @@ impl<AllocU8:Allocator<u8>,
      type DefaultEncoder = DefaultEncoderType!();
      type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>;
      type AdditionalArgs = ();
-     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,mut window_size: usize,
-            dynamic_context_mixing_rate:u8,
-            prior_depth: Option<u8>,
-            literal_adaptation_rate: Option<[probability::Speed;4]>,
-            do_context_map: bool,
-            force_stride: StrideSelection,
+     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+                opts: super::interface::DivansCompressorOptions,
            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-        if window_size < 10 {
-            window_size = 10;
-        }
-        if window_size > 24 {
-            window_size = 24;
-        }
+        let window_size = core::cmp::min(24, core::cmp::max(10, opts.window_size.unwrap_or(22)));
         let ring_buffer = m8.alloc_cell(1<<window_size);
         let enc = Self::DefaultEncoder::new(&mut m8);
         let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
@@ -105,12 +96,12 @@ impl<AllocU8:Allocator<u8>,
                 mcdf16,
                 enc,
                 EncoderSpecialization::new(),
-                window_size,
-                dynamic_context_mixing_rate,
-                prior_depth,
-                literal_adaptation_rate,
-                do_context_map,
-                force_stride,
+                window_size as usize,
+                opts.dynamic_context_mixing.unwrap_or(0),
+                opts.prior_depth,
+                opts.literal_adaptation,
+                opts.use_context_map,
+                opts.force_stride_value,
             ),
               freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
             freeze_dried_cmd_start:0,

@@ -81,6 +81,7 @@ impl CompressorState {
                     1 => BrotliCompressionSetting::UseBrotliBitstream,
                     _ => return DIVANS_FAILURE,
                 };},
+                DIVANS_OPTION_BROTLI_LITERAL_BYTE_SCORE => opts.brotli_literal_byte_score = Some(value),
                 DIVANS_OPTION_USE_CONTEXT_MAP => {opts.use_context_map = match value {
                     1 => true,
                     0 => false,
@@ -165,12 +166,7 @@ impl CompressorState {
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts,
                                            ())));
             },
             _ => {
@@ -181,12 +177,7 @@ impl CompressorState {
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
-                                           opts.window_size.unwrap_or(21) as usize,
-                                           opts.dynamic_context_mixing.unwrap_or(0),
-                                           opts.prior_depth,
-                                           opts.literal_adaptation,
-                                           opts.use_context_map,
-                                           opts.force_stride_value,
+                                           opts,
                                            (
                                                SubclassableAllocator::<u8>::new(allocators.clone()),
                                                SubclassableAllocator::<u16>::new(allocators.clone()),
@@ -200,9 +191,6 @@ impl CompressorState {
                                                SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
-                                               opts.quality,
-                                               opts.lgblock,
-                                               opts.stride_detection_quality,
                                            ))));
             
             }

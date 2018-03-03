@@ -264,13 +264,14 @@ fn bench_with_ir<Run: Runner,
             }
         }
     };
+    let mut opts = divans::DivansCompressorOptions::default();
+    opts.dynamic_context_mixing = Some(mixing_mode);
+    opts.use_context_map = ts.use_context_map();
+    opts.force_stride_value = ts.stride_selection();
+    opts.literal_adaptation = Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]);
     super::compress_ir(&mut buf_ir,
                        &mut dv_buffer,
-                       Some(mixing_mode),
-                       None,
-                       Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]),
-                       ts.use_context_map(),
-                       ts.stride_selection()).unwrap();
+                       opts).unwrap();
     {
         let mut decompress_lambda = || {
             dv_buffer.reset_read();
@@ -326,6 +327,14 @@ fn bench_no_ir<Run: Runner,
     ];
     let mut dv_buffer = LimitedBuffer::new(dv_backing_buffer.slice_mut());//UnlimitedBuffer::new(&[]);//LimitedBuffer::new(dv_backing_buffer.slice_mut());
     let mut rt_buffer = LimitedBuffer::new(rt_backing_buffer.slice_mut());//UnlimitedBuffer::new(&[]);//LimitedBuffer::new(rt_backing_buffer.slice_mut());
+    let mut opts = divans::DivansCompressorOptions::default();
+    opts.dynamic_context_mixing = Some(ts.adaptive_context_mixing() as u8 * 2);
+    opts.prior_depth = ts.prior_depth();
+    opts.use_context_map = ts.use_context_map();
+    opts.force_stride_value = ts.stride_selection();
+    opts.literal_adaptation = None;//Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]);
+    opts.window_size = Some(22);
+
     let mut compress_or_decompress_lambda = |compress:bool| {
         if compress {
             dv_buffer.reset();
@@ -336,12 +345,7 @@ fn bench_no_ir<Run: Runner,
                 ItemVecAllocator::<u32>::default(),
                 ItemVecAllocator::<divans::CDF2>::default(),
                 ItemVecAllocator::<divans::DefaultCDF16>::default(),
-                22, // window_size 
-                ts.adaptive_context_mixing() as u8 * 2,
-                ts.prior_depth(), // prior depth
-                None, // speed
-                ts.use_context_map(),
-                ts.stride_selection(),
+                opts,
                 (),
             );
 
