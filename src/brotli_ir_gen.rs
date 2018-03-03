@@ -456,6 +456,11 @@ impl<AllocU8:Allocator<u8>,
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
                                                        u32::from(opt.stride_detection_quality.unwrap_or(0)));
+        if let Some(literal_byte_score) = opt.brotli_literal_byte_score {
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LITERAL_BYTE_SCORE,
+                                                           literal_byte_score);
+        }
         ret
     }
 }
