@@ -70,10 +70,8 @@ impl PredictionModeState {
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> BrotliResult {
         let mut desired_speeds = superstate.bk.desired_literal_adaptation;
-                               eprintln!("preLITERAL ADAPT {:?}", desired_speeds);
         if in_cmd.has_context_speeds() {
             let cm = in_cmd.context_map_speed_f8();
-            eprintln!("CM: {:?}", cm);
             if cm[0].0 != 0 || cm[0].1 != 0 {
                 desired_speeds[2] = Speed::from_f8_tuple(cm[0]);
             }
@@ -86,7 +84,6 @@ impl PredictionModeState {
             } else {
                 stride = in_cmd.stride_context_speed_f8();
             }
-                        eprintln!("SD: {:?}", stride);
             if stride[0].0 != 0 || stride[0].1 != 0 {
                 desired_speeds[0] = Speed::from_f8_tuple(stride[0]);
             }
@@ -94,7 +91,6 @@ impl PredictionModeState {
                 desired_speeds[1] = Speed::from_f8_tuple(stride[1]);
             }
         }
-                               eprintln!("postLITERAL ADAPT {:?}", desired_speeds);
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -189,7 +185,6 @@ impl PredictionModeState {
                            *out_item = Speed::from_f8_tuple(*in_item);
                        }
                        superstate.bk.literal_adaptation = tmp;
-                       eprintln!("LITERAL ADAPT {:?}", tmp);
                        *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                    } else {
                        *self = PredictionModeState::AdaptationSpeed(index + 1, out_adapt_speed);

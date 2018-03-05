@@ -307,8 +307,11 @@ fn bench_no_ir<Run: Runner,
     for (index, item) in cm.slice_mut().iter_mut().enumerate() {
         *item = (index & 63) as u8;
     }
+    let offset = PredictionModeContextMap::<ItemVec<u8>>::size_of_combined_array(0);
     for (index, item) in dm.slice_mut().iter_mut().enumerate() {
-        *item = (index & 63) as u8;
+        if index >= offset {
+            *item = ((index - offset) & 63) as u8;
+        }
     }
     init_shuffle_384(input_buffer.slice_mut());
     cmd_data_buffer.slice_mut().clone_from_slice(input_buffer.slice());
