@@ -209,9 +209,8 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                                          "invalid prediction mode; not {utf8,sign,lsb6,msb6}")),
         };
         let mut ret = PredictionModeContextMap::<ItemVec<u8> > {
-            literal_prediction_mode: pmode,
             literal_context_map: ItemVec::<u8>::default(),
-            distance_context_map: ItemVec::<u8>::default(),
+            predmode_speed_and_distance_context_map: ItemVec::<u8>::default(),
         };
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
@@ -231,12 +230,14 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 }
             }
         }
+        ret.predmode_speed_and_distance_context_map.0.resize(PredictionModeContextMap::<ItemVec<u8> >::size_of_combined_array(0), 0u8);
+        ret.set_literal_prediction_mode(pmode);
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "dcontextmap") {
             for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
                 match distance_context_map_val.parse::<i64>() {
                     Ok(el) => {
                         if el <= 255 && el >= 0 {
-                            ret.distance_context_map.0.push(el as u8);
+                            ret.predmode_speed_and_distance_context_map.0.push(el as u8);
                         } else {
                             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                                       distance_context_map_val.to_string() +

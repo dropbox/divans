@@ -303,7 +303,7 @@ fn bench_no_ir<Run: Runner,
     let mut dv_backing_buffer = m8.alloc_cell(input_buffer.slice().len() + 16);
     let mut rt_backing_buffer = m8.alloc_cell(input_buffer.slice().len() + 16);
     let mut cm = m8.alloc_cell(256);
-    let mut dm = m8.alloc_cell(256);
+    let mut dm = m8.alloc_cell(PredictionModeContextMap::<ItemVec<u8>>::size_of_combined_array(256));
     for (index, item) in cm.slice_mut().iter_mut().enumerate() {
         *item = (index & 63) as u8;
     }
@@ -312,12 +312,13 @@ fn bench_no_ir<Run: Runner,
     }
     init_shuffle_384(input_buffer.slice_mut());
     cmd_data_buffer.slice_mut().clone_from_slice(input_buffer.slice());
-    let ibuffer:[Command<ItemVec<u8>>;3] = [
-        Command::PredictionMode(PredictionModeContextMap{
-            literal_prediction_mode: ts.prediction_mode(),
+    let mut pred_mode = PredictionModeContextMap{
             literal_context_map: cm,
-            distance_context_map: dm,
-        }),
+            predmode_speed_and_distance_context_map: dm,
+    };
+    pred_mode.set_literal_prediction_mode(ts.prediction_mode());    
+    let ibuffer:[Command<ItemVec<u8>>;3] = [
+        Command::PredictionMode(pred_mode),
         Command::BlockSwitchLiteral(LiteralBlockSwitch::new(1, 2)),
         Command::Literal(LiteralCommand{
             data:cmd_data_buffer,

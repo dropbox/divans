@@ -48,7 +48,6 @@ use super::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
-    LiteralPredictionModeNibble,
     PredictionModeContextMap,
 };
 
@@ -519,9 +518,8 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::PredictionMode(ref mut prediction_mode_state) => {
                     let default_prediction_mode_context_map = PredictionModeContextMap::<ISl> {
-                        literal_prediction_mode: LiteralPredictionModeNibble::default(),
                         literal_context_map:ISl::default(),
-                        distance_context_map:ISl::default(),
+                        predmode_speed_and_distance_context_map:ISl::default(),
                     };
                     let src_pred_mode = match *input_cmd {
                         Command::PredictionMode(ref pm) => pm,

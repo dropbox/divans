@@ -19,8 +19,7 @@ pub enum PredictionModeState {
     Begin,
     DynamicContextMixing,
     PriorDepth,
-    ContextMapSpeedPalette(u32, [(u8,u8);15]),
-    LiteralAdaptationRate(u32, SpeedPalette),
+    AdaptationSpeed(u32, [(u8,u8);4]),
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
     ContextMapSecondNibble(u32, ContextMapType, u8),
@@ -70,7 +69,32 @@ impl PredictionModeState {
                                                input_offset: &mut usize,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> BrotliResult {
-
+        let mut desired_speeds = superstate.bk.desired_literal_adaptation;
+                               eprintln!("preLITERAL ADAPT {:?}", desired_speeds);
+        if in_cmd.has_context_speeds() {
+            let cm = in_cmd.context_map_speed_f8();
+            eprintln!("CM: {:?}", cm);
+            if cm[0].0 != 0 || cm[0].1 != 0 {
+                desired_speeds[2] = Speed::from_f8_tuple(cm[0]);
+            }
+            if cm[1].0 != 0 || cm[1].1 != 0 {
+                desired_speeds[3] = Speed::from_f8_tuple(cm[1]);
+            }
+            let stride;
+            if superstate.bk.desired_context_mixing != 0 {
+                stride = in_cmd.combined_stride_context_speed_f8();
+            } else {
+                stride = in_cmd.stride_context_speed_f8();
+            }
+                        eprintln!("SD: {:?}", stride);
+            if stride[0].0 != 0 || stride[0].1 != 0 {
+                desired_speeds[0] = Speed::from_f8_tuple(stride[0]);
+            }
+            if stride[1].0 != 0 || stride[1].1 != 0 {
+                desired_speeds[1] = Speed::from_f8_tuple(stride[1]);
+            }
+        }
+                               eprintln!("postLITERAL ADAPT {:?}", desired_speeds);
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
@@ -82,20 +106,19 @@ impl PredictionModeState {
                                                                                     context_map_type),
                 PredictionModeState::ContextMapFirstNibble(
                     _, context_map_type) => PredictionModeState::ContextMapFirstNibble(0,
-                                                                                                  context_map_type),
+                                                                                       context_map_type),
                 PredictionModeState::ContextMapSecondNibble(
                     _, context_map_type, _) => PredictionModeState::ContextMapSecondNibble(0,
-                                                                                                      context_map_type,
+                                                                                           context_map_type,
                                                                                            0),
-                PredictionModeState::ContextMapSpeedPalette(_,_) => PredictionModeState::FullyDecoded,
-                PredictionModeState::LiteralAdaptationRate(_,_) => PredictionModeState::FullyDecoded, // the palette clutters the output
+                PredictionModeState::AdaptationSpeed(_,_) => PredictionModeState::FullyDecoded,
                 a => a,
             });
 
             match *self {
                PredictionModeState::Begin => {
                    superstate.bk.reset_context_map_lru();
-                   let mut beg_nib = in_cmd.literal_prediction_mode.prediction_mode();
+                   let mut beg_nib = in_cmd.literal_prediction_mode().prediction_mode();
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
@@ -128,87 +151,54 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::FAST);
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
-                   *self = PredictionModeState::ContextMapSpeedPalette(0, [(0,0);15]);
+                   *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
                },
-               PredictionModeState::ContextMapSpeedPalette(index, mut out_palette) => {
-                   let speed_palette = Speed::ENCODER_DEFAULT_PALETTE;
-                   let palette_index = index as usize >> 2;
-                   let cur_speed = speed_palette[palette_index].to_f8_tuple();
-                   let prev_speed = if palette_index != 0 {
-                       speed_palette[palette_index - 1].to_f8_tuple()
-                   } else {
-                       (0, 0)
-                   };
+               PredictionModeState::AdaptationSpeed(index, mut out_adapt_speed) => {
+                   let speed_index = index as usize >> 2;
+                   let cur_speed = desired_speeds[speed_index].to_f8_tuple();
                    let palette_type = index & 3;
                    let mut nibble: u8;
                    if palette_type == 0 {
-                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) >> 3;
+                       nibble = (cur_speed.0&0x7f) >> 3;
                    } else if palette_type == 1 {
-                       nibble = (cur_speed.0.wrapping_sub(prev_speed.0)&0x7f) & 0x7;
+                       nibble = (cur_speed.0&0x7f) & 0x7;
                    } else if palette_type == 2 {
-                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) >> 3;
+                       nibble = (cur_speed.1&0x7f) >> 3;
                    } else {
-                       nibble = (cur_speed.1.wrapping_sub(prev_speed.1)&0x7f) & 0x7;
+                       nibble = (cur_speed.1&0x7f) & 0x7;
                    }
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
                                                                              (palette_type as usize,));
                    superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
                    nibble_prob.blend(nibble, Speed::FAST);
                    if palette_type == 0 {
-                       out_palette[palette_index].0 |= nibble<<3;
+                       out_adapt_speed[speed_index].0 |= nibble<<3;
                    }
                    if palette_type == 1 {
-                       out_palette[palette_index].0 |= nibble;
+                       out_adapt_speed[speed_index].0 |= nibble;
                    }
                    if palette_type == 2 {
-                       out_palette[palette_index].1 |= nibble << 3;
+                       out_adapt_speed[speed_index].1 |= nibble << 3;
                    }
                    if palette_type == 3 {
-                       out_palette[palette_index].1 |= nibble;
-                       if palette_index != 0 {
-                           let prev_palette = out_palette[palette_index - 1];
-                           let cur_palette  = out_palette[palette_index];
-                           out_palette[palette_index].0 = cur_palette.0.wrapping_add(prev_palette.0) & 0x7f;
-                           out_palette[palette_index].1 = cur_palette.1.wrapping_add(prev_palette.1) & 0x7f;
-                       }
+                       out_adapt_speed[speed_index].1 |= nibble;
                    }
-                   if index as usize + 1 == 4 * out_palette.len(){
-                       let mut tmp: SpeedPalette = [Speed::MUD; 15];
-                       for (out_item, in_item) in tmp.iter_mut().zip(out_palette.iter()) {
+                   if index as usize + 1 == 4 * out_adapt_speed.len(){
+                       let mut tmp = [Speed::MUD; 4];
+                       for (out_item, in_item) in tmp.iter_mut().zip(out_adapt_speed.iter()) {
                            *out_item = Speed::from_f8_tuple(*in_item);
                        }
-                       *self = PredictionModeState::LiteralAdaptationRate(0, tmp);
-                   } else {
-                       *self = PredictionModeState::ContextMapSpeedPalette(index + 1, out_palette);
-                   }
-               },
-
-               PredictionModeState::LiteralAdaptationRate(index, palette) => {
-                   let mut nibble = if index >= superstate.bk.desired_literal_adaptation.len() as u32 {
-                       0xf
-                   } else {
-                       find_best_match(superstate.bk.desired_literal_adaptation[index as usize].clone(),
-                                       &palette) as u8 & 0xf
-                   };
-                   {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::LiteralSpeed, (0,));
-                       superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
-                       nibble_prob.blend(nibble, Speed::MED);
-                   }
-                   if nibble == 0xf {
+                       superstate.bk.literal_adaptation = tmp;
+                       eprintln!("LITERAL ADAPT {:?}", tmp);
                        *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
                    } else {
-                       superstate.bk.obs_literal_adaptation_rate(index, palette[nibble as usize]);
-                       if index + 1 > 65536 {
-                           return BrotliResult::ResultFailure;
-                       }
-                       *self = PredictionModeState::LiteralAdaptationRate(index + 1, palette);
+                       *self = PredictionModeState::AdaptationSpeed(index + 1, out_adapt_speed);
                    }
                },
                PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
                    let mut cur_context_map = match context_map_type {
                            ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                           ContextMapType::Distance => in_cmd.distance_context_map.slice(),
+                           ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
                    };
                    if !superstate.bk.desired_do_context_map {
                        cur_context_map = &cur_context_map[..0];
@@ -263,7 +253,7 @@ impl PredictionModeState {
                PredictionModeState::ContextMapFirstNibble(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
+                       ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
                    };
                    let mut msn_nib = if index as usize >= cur_context_map.len() {
                        // encode nothing
@@ -280,7 +270,7 @@ impl PredictionModeState {
                PredictionModeState::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
-                       ContextMapType::Distance => in_cmd.distance_context_map.slice(),
+                       ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
                    };
                    let mut lsn_nib = if index as usize >= cur_context_map.len() {
                        // encode nothing

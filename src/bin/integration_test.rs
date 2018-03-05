@@ -118,7 +118,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             literal_adaptation: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
                             use_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
-                            prior_depth:Some(1),
+                            prior_depth:Some(0),
                             quality:Some(10u16), // quality
                             window_size:Some(16i32), // window size
                             lgblock:Some(18u32), //lgblock
