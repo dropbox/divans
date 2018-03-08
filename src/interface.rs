@@ -247,6 +247,7 @@ pub struct DivansCompressorOptions{
     pub quality: Option<u16>,
     pub dynamic_context_mixing: Option<u8>,
     pub stride_detection_quality: Option<u8>,
+    pub speed_detection_quality: Option<u8>,
     pub use_brotli: BrotliCompressionSetting,
     pub use_context_map: bool,
     pub force_stride_value: StrideSelection,

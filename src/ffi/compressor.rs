@@ -70,6 +70,7 @@ impl CompressorState {
                 DIVANS_OPTION_WINDOW_SIZE => {opts.window_size = Some(value as i32);},
                 DIVANS_OPTION_LGBLOCK => {opts.lgblock = Some(value);},
                 DIVANS_OPTION_STRIDE_DETECTION_QUALITY => {opts.stride_detection_quality = Some(value as u8);},
+                DIVANS_OPTION_SPEED_DETECTION_QUALITY => {opts.speed_detection_quality = Some(value as u8);},
                 DIVANS_OPTION_DYNAMIC_CONTEXT_MIXING => {opts.dynamic_context_mixing = Some(value as u8);},
                 DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION => {opts.use_brotli = match value {
                     0 => BrotliCompressionSetting::UseInternalCommandSelection,

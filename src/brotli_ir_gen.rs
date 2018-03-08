@@ -454,6 +454,9 @@ impl<AllocU8:Allocator<u8>,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
                                                        1);
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_CDF_ADAPTATION_DETECTION,
+                                                       u32::from(opt.speed_detection_quality.unwrap_or(0)));
+        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_STRIDE_DETECTION_QUALITY,
                                                        u32::from(opt.stride_detection_quality.unwrap_or(0)));
         if let Some(literal_byte_score) = opt.brotli_literal_byte_score {

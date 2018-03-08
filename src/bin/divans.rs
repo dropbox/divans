@@ -1080,6 +1080,7 @@ fn main() {
     let mut lgwin: Option<u32> = None;
     let mut quality: Option<u16> = None;
     let mut stride_detection_quality: Option<u8> = None;
+    let mut speed_detection_quality: Option<u8> = None;
     let mut dynamic_context_mixing: Option<u8> = None;
     let mut buffer_size:usize = 65_536;
     let mut force_prior_depth: Option<u8> = None;
@@ -1264,6 +1265,10 @@ fn main() {
                         '=').parse::<i32>().unwrap() as u8);
                     continue
                 }
+                if argument == "-findspeed" {
+                    speed_detection_quality = Some(1);
+                    continue;
+                }
                 if argument.starts_with("-speed=") {
                     let spd = argument.trim_matches(
                         '-').trim_matches(
@@ -1393,6 +1398,7 @@ fn main() {
             window_size: window_size,
             lgblock: lgwin,
             stride_detection_quality: stride_detection_quality,
+            speed_detection_quality: speed_detection_quality,
         };
         if filenames[0] != "" {
             let mut input = match File::open(&Path::new(&filenames[0])) {
