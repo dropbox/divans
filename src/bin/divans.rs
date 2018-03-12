@@ -250,6 +250,42 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 }
             }
         }
+        let mut cm_stride_mix_speed = [[(0u16,0u16);2];3];
+        let keys = [["cmspeedinc", "cmspeedmax"],
+                    ["stspeedinc", "stspeedmax"],
+                    ["mxspeedinc", "mxspeedmax"]];
+        for (which_type, keypair) in keys.iter().enumerate() {
+            for (incmx, key) in keypair.iter().enumerate() {
+                if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == *key) {
+                    for (index, speed_inc_val) in command_vec.split_at(index + 1).1.iter().enumerate() {
+                        if index >= 2 {
+                            break;
+                        }
+                        match speed_inc_val.parse::<u16>() {
+                            Ok(el) => {
+                                if el <= 16384 {
+                                    if incmx == 0 {
+                                        cm_stride_mix_speed[which_type][index].0 = el;
+                                    } else {
+                                        cm_stride_mix_speed[which_type][index].1 = el;
+                                    }
+                                } else {
+                                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                              speed_inc_val.to_string() +
+                                                              " speed inc val must be u16 <= 16384"));
+                                }
+                            },
+                            Err(_) => {
+                                break;
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        ret.set_context_map_speed(cm_stride_mix_speed[0]);
+        ret.set_stride_context_speed(cm_stride_mix_speed[1]);
+        ret.set_combined_stride_context_speed(cm_stride_mix_speed[2]);
         return Ok(Some(Command::PredictionMode(ret)));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 && (command_vec.len() != 3 || cmd != "ltype") {
