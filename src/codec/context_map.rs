@@ -69,7 +69,7 @@ impl PredictionModeState {
                                                input_offset: &mut usize,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> BrotliResult {
-        let mut desired_speeds = superstate.bk.desired_literal_adaptation;
+        let mut desired_speeds = [super::interface::default_literal_speed();4];
         if in_cmd.has_context_speeds() {
             let cm = in_cmd.context_map_speed_f8();
             if cm[0].0 != 0 || cm[0].1 != 0 {
@@ -90,6 +90,9 @@ impl PredictionModeState {
             if stride[1].0 != 0 || stride[1].1 != 0 {
                 desired_speeds[1] = Speed::from_f8_tuple(stride[1]);
             }
+        }
+        if let Some(adapt) = superstate.bk.desired_literal_adaptation {
+            desired_speeds = adapt;
         }
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
