@@ -9,7 +9,8 @@ walk_dir = sys.argv[1]
 divans = sys.argv[2]
 other = sys.argv[3]
 speeds = ["0,32", "1,32", "1,128", "1,16384", "2,1024", "4,1024", "8,8192", "16,48", "16,8192", "32,4096", "64,16384", "128,256", "128,16384", "512,16384", "1664,16384"]
-gopts = [['-cm', '-speed=' + speeds[0]],#0
+gopts = [[], [],[]]
+gopts[0] = [['-cm', '-speed=' + speeds[0]],#0
          ['-cm', '-speed=' + speeds[1]],
          ['-cm', '-speed=' + speeds[2]],
          ['-cm', '-speed=' + speeds[3]],
@@ -58,11 +59,113 @@ gopts = [['-cm', '-speed=' + speeds[0]],#0
          ['-s','-brotlistride', '-speed=MUD'],
          ['-s', '-cm','-mixing=2', '-brotlistride'],
 ]
+gopts[1] = [
+         ['-s','-stride=1', '-speed=16,8192'],
+         ['-s','-brotlistride', '-speed=16,8192'],
+         ['-cm', '-speed=16,8192'],
+         ['-cm', '-speed=1,16384'],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[14]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[14]],
 
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[14]],
+
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[14]],
+
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[14]],
+
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[14]],
+
+    ]
 lock = threading.Lock()
 brotli_divans_hybrid = 0
+opt_brotli_divans_hybrid = 0
 brotli_total = 0
-divans_total = 0
+optimistic_divans_total = 0
+pessimistic_divans_total = 0
 def start_thread(path, exe, uncompressed, ir, out_array, gopts, index, opt_args):
     def start_routine():
         compressor = subprocess.Popen([exe, '-i'] + gopts[index] + opt_args, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
@@ -108,7 +211,9 @@ def process_file(path, data, weight=1):
     global lock
     global brotli_total
     global brotli_divans_hybrid
-    global divans_total
+    global opt_brotli_divans_hybrid
+    global optimistic_divans_total
+    global pessimistic_divans_total
     ir_variant_arg = ['-bytescore=540','-bytescore=240','-bytescore=340','-bytescore=380','-bytescore=440']
     with tempfile.NamedTemporaryFile(delete=True) as tf:
         tf.write(data)
@@ -145,43 +250,63 @@ def process_file(path, data, weight=1):
     if exit_code != 0:
         print ir_variants[4]
     assert exit_code == 0
-    output_files = []
-    usage = []
+    first_output_files = []
+    second_output_files = []
+    usage =[[],[]]
     ir_variant_index = 0
     for ir in ir_variants:
-        tmp_output_files = [''] * len(gopts)
+        first_gopts = gopts[0]
+        tmp_output_files = [''] * len(first_gopts)
         threads = []
         for index in range(15):
-            threads.append(start_thread(path, divans, data, ir, tmp_output_files, gopts, index, []))
+            threads.append(start_thread(path, divans, data, ir, tmp_output_files, first_gopts, index, []))
         for t in threads:
             t.join()
-            best_opt_arg = gopts[0][-1].replace('-speed','-cmspeed')
+            best_opt_arg = first_gopts[0][-1].replace('-speed','-cmspeed')
             best_opt_size = len(tmp_output_files[0])
         for i in range(1,15):
             if len(tmp_output_files[i]) < best_opt_size:
                 best_opt_size = len(tmp_output_files[i])
-                best_opt_arg = gopts[i][-1].replace('-speed','-cmspeed')
+                best_opt_arg = first_gopts[i][-1].replace('-speed','-cmspeed')
         for index in range(15, len(tmp_output_files)):
-            threads.append(start_thread(path, divans, data, ir, tmp_output_files, gopts, index, [best_opt_arg]))
+            threads.append(start_thread(path, divans, data, ir, tmp_output_files, first_gopts, index, [best_opt_arg]))
         for t in threads:
             t.join()
-        for index in range(len(gopts)):
+        for index in range(len(first_gopts)):
             best_add_arg = []
             if index >= 15:
                 best_add_arg = [best_opt_arg]
-            usage.append(gopts[index] + best_add_arg + [ir_variant_arg[ir_variant_index]])
-        output_files += tmp_output_files
+            usage[0].append(first_gopts[index] + best_add_arg + [ir_variant_arg[ir_variant_index]])
+        first_output_files += tmp_output_files
+        second_gopts = gopts[1]
+        tmp_output_files = [''] * len(second_gopts)
+        for index in range(len(tmp_output_files)):
+            threads.append(start_thread(path, divans, data, ir, tmp_output_files, second_gopts, index, [best_opt_arg]))
+        for t in threads:
+            t.join()
+        for index in range(len(second_gopts)):
+            usage[1].append(second_gopts[index] + [ir_variant_arg[ir_variant_index]])
+
         ir_variant_index += 1
-    final_len = min(min(len(op) for op in output_files), len(data) + 24)
-    for index in range(len(output_files)):
-        if len(output_files[index]) == final_len:
+        second_output_files = tmp_output_files
+    optimistic_final_len = min(min(len(op) for op in first_output_files), len(data) + 24)
+    pessimistic_final_len = min(min(len(op) for op in second_output_files), len(data) + 24)
+    for index in range(len(first_output_files)):
+        if len(first_output_files[index]) == optimistic_final_len:
+            break
+    for index in range(len(second_output_files)):
+        if len(second_output_files[index]) == pessimistic_final_len:
             break
     with lock:
-        divans_total += int(final_len * weight)
+        optimistic_divans_total += int(optimistic_final_len * weight)
+        pessimistic_divans_total += int(pessimistic_final_len * weight)
         brotli_total += int(len(compressed) * weight)
-        brotli_divans_hybrid += int(min(len(compressed), final_len) * weight)
-        print final_len, 'vs', len(compressed), (usage[index] if index < len(usage) else 'uncompressed'),[len(i) for i in output_files], path
-        print divans_total * 100 /float(brotli_total), '% hybrid: ', brotli_divans_hybrid*100/float(brotli_total),'%'
+        brotli_divans_hybrid += int(min(len(compressed), pessimistic_final_len) * weight)
+        opt_brotli_divans_hybrid += int(min(len(compressed), optimistic_final_len) * weight)
+        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, 'vs', len(compressed), (usage[1][index] if index < len(usage[1]) else 'uncompressed')
+        print 'opts:', [len(i) for i in first_output_files], path
+        print 'args:', [len(i) for i in second_output_files], path
+        print pessimistic_divans_total * 100 /float(brotli_total), '% opt: ', optimistic_divans_total*100/float(brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(brotli_total),'% opt hybrid', opt_brotli_divans_hybrid *100/float(brotli_total),'%'
         sys.stdout.flush()
 
 if __name__ == "__main__":
