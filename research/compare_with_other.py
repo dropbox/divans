@@ -4,10 +4,15 @@ import subprocess
 import threading
 import tempfile
 import random
-
-walk_dir = sys.argv[1]
-divans = sys.argv[2]
-other = sys.argv[3]
+import traceback
+walk_dir = "/"
+divans = "/bin/false"
+other = "/bin/false"
+if __name__ == '__main__':
+    walk_dir = sys.argv[1]
+    divans = sys.argv[2]
+    other = sys.argv[3]
+    
 speeds = ["0,32", "1,32", "1,128", "1,16384", "2,1024", "4,1024", "8,8192", "16,48", "16,8192", "32,4096", "64,16384", "128,256", "128,16384", "512,16384", "1664,16384"]
 gopts = [[], [],[]]
 gopts[0] = [['-cm', '-speed=' + speeds[0]],#0
@@ -182,20 +187,25 @@ opt_brotli_divans_hybrid = 0
 brotli_total = 0
 optimistic_divans_total = 0
 pessimistic_divans_total = 0
+baseline_total = 0
 def start_thread(path, exe, uncompressed, ir, out_array, gopts, index, opt_args):
     def start_routine():
-        compressor = subprocess.Popen([exe, '-i'] + gopts[index] + opt_args, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-        compressed, _x = compressor.communicate(ir)
-        cexit_code = compressor.wait()
-        uncompressor = subprocess.Popen([exe],  stdout=subprocess.PIPE, stdin=subprocess.PIPE)
-        odat, _y = uncompressor.communicate(compressed)
-        exitcode = uncompressor.wait()
-        if odat != uncompressed or exitcode != 0 or cexit_code != 0:
-            with lock:
-                print 'error:',path, len(odat),'!=',len(uncompressed), exitcode, cexit_code,  ' '.join([exe, '-i'] + gopts[index])
+        try:
+            compressor = subprocess.Popen([exe, '-i'] + gopts[index] + opt_args, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+            compressed, _x = compressor.communicate(ir)
+            cexit_code = compressor.wait()
+            uncompressor = subprocess.Popen([exe],  stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+            odat, _y = uncompressor.communicate(compressed)
+            exitcode = uncompressor.wait()
+            if odat != uncompressed or exitcode != 0 or cexit_code != 0:
+                with lock:
+                    print 'error:',path, len(odat),'!=',len(uncompressed), exitcode, cexit_code,  ' '.join([exe, '-i'] + gopts[index])
+                    out_array[index] = uncompressed
+            else:
+                out_array[index] = compressed
+        except Exception:
             out_array[index] = uncompressed
-        else:
-            out_array[index] = compressed
+            traceback.print_exc()
     t = threading.Thread(target=start_routine)
     t.start()
     return t
@@ -222,9 +232,9 @@ def main():
                 continue
             if len(data) < 32 * 1024:
                 continue
-            process_file(path, data, metadata.st_size/float(len(data)))
+            process_file(path, data, len(data), metadata.st_size/float(len(data)))
 printed_header = False
-def process_file(path, data, weight=1):
+def process_file(path, data, baseline_compression, weight=1):
     global lock
     global brotli_total
     global brotli_divans_hybrid
@@ -232,7 +242,7 @@ def process_file(path, data, weight=1):
     global optimistic_divans_total
     global pessimistic_divans_total
     global printed_header
-        
+    global baseline_total
     ir_variant_arg = ['-bytescore=540','-bytescore=240','-bytescore=340','-bytescore=380','-bytescore=440']
     with lock:
         if not printed_header:
@@ -288,7 +298,7 @@ def process_file(path, data, weight=1):
     ir_variant_index = 0
     for ir in ir_variants:
         first_gopts = gopts[0]
-        tmp_output_files = [''] * len(first_gopts)
+        tmp_output_files = [compressed] * len(first_gopts)
         threads = []
         for index in range(15):
             threads.append(start_thread(path, divans, data, ir, tmp_output_files, first_gopts, index, []))
@@ -335,10 +345,12 @@ def process_file(path, data, weight=1):
         brotli_total += int(len(compressed) * weight)
         brotli_divans_hybrid += int(min(len(compressed), pessimistic_final_len) * weight)
         opt_brotli_divans_hybrid += int(min(len(compressed), optimistic_final_len) * weight)
-        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, 'vs', len(compressed), (usage[1][index] if index < len(usage[1]) else 'uncompressed')
+        baseline_total += baseline_compression
+        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, 'vs', len(compressed), 'vs baseline:',baseline_compression, (usage[1][index] if index < len(usage[1]) else 'uncompressed')
+        print 'sum:', pessimistic_divans_total, 'vs', optimistic_divans_total, 'vs', brotli_total, 'vs baseline:',baseline_total
         print 'opts:', [len(i) for i in first_output_files], path
         print 'args:', [len(i) for i in second_output_files], path
-        print pessimistic_divans_total * 100 /float(brotli_total), '% opt: ', optimistic_divans_total*100/float(brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(brotli_total),'% opt hybrid', opt_brotli_divans_hybrid *100/float(brotli_total),'%'
+        print pessimistic_divans_total * 100 /float(brotli_total), '% opt: ', optimistic_divans_total*100/float(brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(brotli_total),'% opt hybrid', opt_brotli_divans_hybrid *100/float(brotli_total),'% vs baseline ', pessimistic_divans_total*100/float(baseline_total), '%'
         sys.stdout.flush()
 
 if __name__ == "__main__":
