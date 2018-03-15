@@ -111,6 +111,22 @@ gopts[1] = [
          ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[13]],
          ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[14]],
 
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[0]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[1]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[2]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[3]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[4]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[5]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[6]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[7]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[8]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[9]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[10]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[11]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[12]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[13]],
+         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[14]],
+
          ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[0]],
          ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[1]],
          ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[2]],
@@ -207,6 +223,7 @@ def main():
             if len(data) < 32 * 1024:
                 continue
             process_file(path, data, metadata.st_size/float(len(data)))
+printed_header = False
 def process_file(path, data, weight=1):
     global lock
     global brotli_total
@@ -214,7 +231,22 @@ def process_file(path, data, weight=1):
     global opt_brotli_divans_hybrid
     global optimistic_divans_total
     global pessimistic_divans_total
+    global printed_header
+        
     ir_variant_arg = ['-bytescore=540','-bytescore=240','-bytescore=340','-bytescore=380','-bytescore=440']
+    with lock:
+        if not printed_header:
+            printed_header = True
+            to_print = []
+            for var in ir_variant_arg:
+                for cmd in gopts[1]:
+                    to_print.append(cmd + [var])
+            print 'hdr:', to_print
+            to_print = []
+            for var in ir_variant_arg:
+                for cmd in gopts[0]:
+                    to_print.append(cmd + [var])
+            print 'hopt:', to_print
     with tempfile.NamedTemporaryFile(delete=True) as tf:
         tf.write(data)
         tf.flush()
