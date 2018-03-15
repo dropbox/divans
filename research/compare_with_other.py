@@ -330,7 +330,7 @@ def process_file(path, data, baseline_compression, weight=1):
             usage[1].append(second_gopts[index] + [ir_variant_arg[ir_variant_index]])
 
         ir_variant_index += 1
-        second_output_files = tmp_output_files
+        second_output_files += tmp_output_files
     optimistic_final_len = min(min(len(op) for op in first_output_files), len(data) + 24)
     pessimistic_final_len = min(min(len(op) for op in second_output_files), len(data) + 24)
     for index in range(len(first_output_files)):
