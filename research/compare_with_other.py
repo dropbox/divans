@@ -1,10 +1,11 @@
 import os
-import sys
+import random as insecure_random
 import subprocess
-import threading
+import sys
 import tempfile
-import random
+import threading
 import traceback
+
 walk_dir = "/"
 divans = "/bin/false"
 other = "/bin/false"
@@ -12,8 +13,11 @@ if __name__ == '__main__':
     walk_dir = sys.argv[1]
     divans = sys.argv[2]
     other = sys.argv[3]
-    
-speeds = ["0,32", "1,32", "1,128", "1,16384", "2,1024", "4,1024", "8,8192", "16,48", "16,8192", "32,4096", "64,16384", "128,256", "128,16384", "512,16384", "1664,16384"]
+
+speeds = ["0,32", "1,32", "1,128", "1,16384",
+          "2,1024", "4,1024", "8,8192", "16,48",
+          "16,8192", "32,4096", "64,16384", "128,256",
+          "128,16384", "512,16384", "1664,16384"]
 gopts = [[], [],[]]
 gopts[0] = [['-cm', '-speed=' + speeds[0]],#0
          ['-cm', '-speed=' + speeds[1]],
@@ -188,18 +192,32 @@ brotli_total = 0
 optimistic_divans_total = 0
 pessimistic_divans_total = 0
 baseline_total = 0
-def start_thread(path, exe, uncompressed, ir, out_array, gopts, index, opt_args):
+def start_thread(path,
+                 exe,
+                 uncompressed,
+                 ir,
+                 out_array,
+                 gopts,
+                 index,
+                 opt_args):
     def start_routine():
         try:
-            compressor = subprocess.Popen([exe, '-i'] + gopts[index] + opt_args, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+            compressor = subprocess.Popen(
+                [exe, '-i'] + gopts[index] + opt_args,
+                stdout=subprocess.PIPE,
+                stdin=subprocess.PIPE)
             compressed, _x = compressor.communicate(ir)
             cexit_code = compressor.wait()
-            uncompressor = subprocess.Popen([exe],  stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+            uncompressor = subprocess.Popen([exe],
+                                            stdout=subprocess.PIPE,
+                                            stdin=subprocess.PIPE)
             odat, _y = uncompressor.communicate(compressed)
             exitcode = uncompressor.wait()
             if odat != uncompressed or exitcode != 0 or cexit_code != 0:
                 with lock:
-                    print 'error:',path, len(odat),'!=',len(uncompressed), exitcode, cexit_code,  ' '.join([exe, '-i'] + gopts[index])
+                    print 'error:',path, len(odat),'!=',len(
+                        uncompressed), exitcode, cexit_code,  ' '.join(
+                            [exe, '-i'] + gopts[index])
                     out_array[index] = uncompressed
             else:
                 out_array[index] = compressed
@@ -222,7 +240,8 @@ def main():
             try:
                 with open(path) as fff:
                     if metadata.st_size > 4096 * 1024:
-                        fff.seek(random.randrange(0, metadata.st_size - 4096 * 1024))
+                        fff.seek(insecure_random.randrange(0,
+                                                  metadata.st_size - 4194304))
                     data = fff.read(4096 * 1024)
             except Exception:
                 continue
@@ -232,7 +251,8 @@ def main():
                 continue
             if len(data) < 32 * 1024:
                 continue
-            process_file(path, data, len(data), metadata.st_size/float(len(data)))
+            process_file(path, data, len(data),
+                         metadata.st_size/float(len(data)))
 printed_header = False
 def process_file(path, data, baseline_compression, weight=1):
     global lock
@@ -243,7 +263,11 @@ def process_file(path, data, baseline_compression, weight=1):
     global pessimistic_divans_total
     global printed_header
     global baseline_total
-    ir_variant_arg = ['-bytescore=540','-bytescore=240','-bytescore=340','-bytescore=380','-bytescore=440']
+    ir_variant_arg = ['-bytescore=540',
+                      '-bytescore=640',
+                      '-bytescore=340',
+                      '-bytescore=380',
+                      '-bytescore=440']
     with lock:
         if not printed_header:
             printed_header = True
@@ -260,23 +284,44 @@ def process_file(path, data, baseline_compression, weight=1):
     with tempfile.NamedTemporaryFile(delete=True) as tf:
         tf.write(data)
         tf.flush()
-        p340 = subprocess.Popen([other, '-c', '-i', '-basicstride', ir_variant_arg[2], tf.name], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        p380 = subprocess.Popen([other, '-c', '-i', '-basicstride', ir_variant_arg[3], tf.name], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        p440 = subprocess.Popen([other, '-c', '-i', '-basicstride', ir_variant_arg[4], tf.name], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        p240 = subprocess.Popen([other, '-c', '-i', '-basicstride', ir_variant_arg[1], tf.name], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        otherp = subprocess.Popen([other, '-c', '-i', '-basicstride', ir_variant_arg[0]], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        p340 = subprocess.Popen([other, '-c', '-i', '-basicstride',
+                                 ir_variant_arg[2], tf.name],
+                                stdout=subprocess.PIPE,
+                                stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        p380 = subprocess.Popen([other, '-c', '-i', '-basicstride',
+                                 ir_variant_arg[3], tf.name],
+                                stdout=subprocess.PIPE,
+                                stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        p440 = subprocess.Popen([other, '-c', '-i', '-basicstride',
+                                 ir_variant_arg[4], tf.name],
+                                stdout=subprocess.PIPE,
+                                stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        p640 = subprocess.Popen([other, '-c', '-i', '-basicstride',
+                                 ir_variant_arg[1], tf.name],
+                                stdout=subprocess.PIPE,
+                                stdin=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        otherp = subprocess.Popen([other, '-c', '-i', '-basicstride',
+                                   ir_variant_arg[0]],
+                                  stdout=subprocess.PIPE,
+                                  stdin=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
         ir_variants = ['','','','','']
-    
+
         compressed, ir_variants[0] = otherp.communicate(data)
-        _ok, ir_variants[1] = p240.communicate('')
+        _ok, ir_variants[1] = p640.communicate('')
         _ok, ir_variants[2] = p340.communicate('')
         _ok, ir_variants[3] = p380.communicate('')
         _ok, ir_variants[4] = p440.communicate('')
     exit_code = otherp.wait()
     if exit_code != 0:
-        print ir_variants[0]
+        print 'error',[other, '-c', '-i', '-basicstride', ir_variant_arg[0]]
+        print 'error:',ir_variants[0]
     assert exit_code == 0
-    exit_code = p240.wait()
+    exit_code = p640.wait()
     if exit_code != 0:
         print ir_variants[1]
     assert exit_code == 0
@@ -301,7 +346,14 @@ def process_file(path, data, baseline_compression, weight=1):
         tmp_output_files = [compressed] * len(first_gopts)
         threads = []
         for index in range(15):
-            threads.append(start_thread(path, divans, data, ir, tmp_output_files, first_gopts, index, []))
+            threads.append(start_thread(path,
+                                        divans,
+                                        data,
+                                        ir,
+                                        tmp_output_files,
+                                        first_gopts,
+                                        index,
+                                        []))
         for t in threads:
             t.join()
             best_opt_arg = first_gopts[0][-1].replace('-speed','-cmspeed')
@@ -311,28 +363,47 @@ def process_file(path, data, baseline_compression, weight=1):
                 best_opt_size = len(tmp_output_files[i])
                 best_opt_arg = first_gopts[i][-1].replace('-speed','-cmspeed')
         for index in range(15, len(tmp_output_files)):
-            threads.append(start_thread(path, divans, data, ir, tmp_output_files, first_gopts, index, [best_opt_arg]))
+            threads.append(start_thread(path,
+                                        divans,
+                                        data,
+                                        ir,
+                                        tmp_output_files,
+                                        first_gopts,
+                                        index,
+                                        [best_opt_arg]))
         for t in threads:
             t.join()
         for index in range(len(first_gopts)):
             best_add_arg = []
             if index >= 15:
                 best_add_arg = [best_opt_arg]
-            usage[0].append(first_gopts[index] + best_add_arg + [ir_variant_arg[ir_variant_index]])
+            usage[0].append(
+                first_gopts[index] + best_add_arg + [
+                    ir_variant_arg[ir_variant_index]])
         first_output_files += tmp_output_files
         second_gopts = gopts[1]
-        tmp_output_files = [''] * len(second_gopts)
+        tmp_output_files = [compressed] * len(second_gopts)
         for index in range(len(tmp_output_files)):
-            threads.append(start_thread(path, divans, data, ir, tmp_output_files, second_gopts, index, [best_opt_arg]))
+            threads.append(start_thread(path,
+                                        divans,
+                                        data,
+                                        ir,
+                                        tmp_output_files,
+                                        second_gopts,
+                                        index,
+                                        [best_opt_arg]))
         for t in threads:
             t.join()
         for index in range(len(second_gopts)):
-            usage[1].append(second_gopts[index] + [ir_variant_arg[ir_variant_index]])
+            usage[1].append(second_gopts[index] + [
+                ir_variant_arg[ir_variant_index]])
 
         ir_variant_index += 1
         second_output_files += tmp_output_files
-    optimistic_final_len = min(min(len(op) for op in first_output_files), len(data) + 24)
-    pessimistic_final_len = min(min(len(op) for op in second_output_files), len(data) + 24)
+    optimistic_final_len = min(min(len(op) for op in first_output_files),
+                               len(data) + 24)
+    pessimistic_final_len = min(min(len(op) for op in second_output_files),
+                                len(data) + 24)
     for index in range(len(first_output_files)):
         if len(first_output_files[index]) == optimistic_final_len:
             break
@@ -343,16 +414,28 @@ def process_file(path, data, baseline_compression, weight=1):
         optimistic_divans_total += int(optimistic_final_len * weight)
         pessimistic_divans_total += int(pessimistic_final_len * weight)
         brotli_total += int(len(compressed) * weight)
-        brotli_divans_hybrid += int(min(len(compressed), pessimistic_final_len) * weight)
-        opt_brotli_divans_hybrid += int(min(len(compressed), optimistic_final_len) * weight)
+        brotli_divans_hybrid += int(min(len(compressed),
+                                        pessimistic_final_len) * weight)
+        opt_brotli_divans_hybrid += int(min(len(compressed),
+                                            optimistic_final_len) * weight)
         baseline_total += baseline_compression
-        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, 'vs', len(compressed), 'vs baseline:',baseline_compression, (usage[1][index] if index < len(usage[1]) else 'uncompressed')
-        print 'sum:', pessimistic_divans_total, 'vs', optimistic_divans_total, 'vs', brotli_total, 'vs baseline:',baseline_total
+        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, \
+            'vs', len(compressed), 'vs baseline:',baseline_compression, (
+                usage[1][index] if index < len(usage[1]) else 'uncompressed')
+        print 'sum:', pessimistic_divans_total, 'vs', \
+            optimistic_divans_total, 'vs', brotli_total, 'vs baseline:', \
+            baseline_total
         print 'opts:', [len(i) for i in first_output_files], path
         print 'args:', [len(i) for i in second_output_files], path
-        print pessimistic_divans_total * 100 /float(brotli_total), '% opt: ', optimistic_divans_total*100/float(brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(brotli_total),'% opt hybrid', opt_brotli_divans_hybrid *100/float(brotli_total),'% vs baseline ', pessimistic_divans_total*100/float(baseline_total), '%'
+        print pessimistic_divans_total * 100 /float(
+            brotli_total), '% opt: ', optimistic_divans_total*100/float(
+                brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(
+                    brotli_total),'% opt hybrid', \
+                    opt_brotli_divans_hybrid *100/float(
+                        brotli_total),'% vs baseline ', \
+                        pessimistic_divans_total*100/float(
+                        baseline_total), '%'
         sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
-

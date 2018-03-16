@@ -1,26 +1,33 @@
 import json
 import sys
 samples = []
-command_map = {}
+hdrs = [[],[]]
 for line in sys.stdin:
+    if line.startswith('hdr:'):
+        hdrs[0] = json.loads(line[line.find(':')+1:].replace("'",'"'))
+        continue
+    if line.startswith('hopt:'):
+        hdrs[1] = json.loads(line[line.find(':')+1:].replace("'",'"'))
+        continue
+    if not line.startswith('args:'):
+        continue # ignore anything but the nonopt items
     where = line.find('[')
     if where == -1:
        continue
     where2 = line.find(']')
-    command_line = line[where:where2]
-    where = line.find('[', where + 1)
-    if where == -1:
-       continue
-    where2 = line.find(']', where + 1)
-    if where2 == -1:
-       continue
     json_src = json.loads(line[where:where2 + 1])
     best_item = min(json_src)
     for index in range(len(json_src)):
         if json_src[index] == best_item:
-            command_map[index] = command_line
             break
     samples.append(json_src)
+def ok_hdr(offset, index):
+    if '-speed=0,32' not in hdrs[offset][index]:
+        return True
+    for item in hdrs[offset][index]:
+        if '-cmspeed' in item:
+            return True
+    return False
 
 perfect_prediction = 0
 num_options = len(samples[0])
@@ -40,7 +47,7 @@ favored = [0, 0, 0, 0, 0]
 display = {}
 print cost / 1000.
 for index in range(num_options):
-    if total_count[index] < cost:
+    if total_count[index] < cost and ok_hdr(0, index):
         cost = total_count[index]
         favored[0] = index
 for favored_index in range(1,5):
@@ -55,7 +62,7 @@ for favored_index in range(1,5):
                 best_count[index] += cur
 
     for index in range(num_options):
-        if total_count[index] < cost:
+        if total_count[index] < cost and ok_hdr(0, index):
             cost = total_count[index]
             favored[favored_index] = index
     print cost / 1000.
@@ -63,4 +70,4 @@ print 'perfect', perfect_prediction / 1000.
 #print json.dumps(display,indent=2)
 print favored
 
-#print [command_map.get(favor) for favor in favored]
+print [hdrs[0][favor] for favor in favored]
