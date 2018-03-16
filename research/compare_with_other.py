@@ -5,197 +5,113 @@ import sys
 import tempfile
 import threading
 import traceback
+import zlib
 
 walk_dir = "/"
 divans = "/bin/false"
 other = "/bin/false"
+vanilla = "/bin/false"
 if __name__ == '__main__':
     walk_dir = sys.argv[1]
     divans = sys.argv[2]
     other = sys.argv[3]
+    vanilla = sys.argv[4]
 
 speeds = ["0,32", "1,32", "1,128", "1,16384",
           "2,1024", "4,1024", "8,8192", "16,48",
           "16,8192", "32,4096", "64,16384", "128,256",
           "128,16384", "512,16384", "1664,16384"]
-gopts = [[], [],[]]
-gopts[0] = [['-cm', '-speed=' + speeds[0]],#0
-         ['-cm', '-speed=' + speeds[1]],
-         ['-cm', '-speed=' + speeds[2]],
-         ['-cm', '-speed=' + speeds[3]],
-         ['-cm', '-speed=' + speeds[4]],
-         ['-cm', '-speed=' + speeds[5]],
-         ['-cm', '-speed=' + speeds[6]],
-         ['-cm', '-speed=' + speeds[7]],
-         ['-cm', '-speed=' + speeds[8]],
-         ['-cm', '-speed=' + speeds[9]],
-         ['-cm', '-speed=' + speeds[10]],
-         ['-cm', '-speed=' + speeds[11]],
-         ['-cm', '-speed=' + speeds[12]],
-         ['-cm', '-speed=' + speeds[13]],
-         ['-cm', '-speed=' + speeds[14]],#14
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[0]],#20
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[8]],#28 lazy
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-stride=1', '-speed=' + speeds[14]],#34
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[14]],
-         ['-s','-stride=1', '-speed=MUD'],
-         ['-s','-brotlistride', '-speed=MUD'],
-         ['-s', '-cm','-mixing=2', '-brotlistride'],
+
+gopts = [['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1,16384', '-bytescore=640'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,16384', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=32,4096', '-bytescore=540'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,256', '-bytescore=440'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=140'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=840'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1024,16384', '-bytescore=240'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=64,16384', '-bytescore=940'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=40'],
+
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=8,8192', '-speedlow=16,8192', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=1,16384', '-speedlow=2,16384', '-bytescore=640'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=128,16384', '-speedlow=256,16384', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=32,4096', '-speedlow=64,8192', '-bytescore=540'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=128,256', '-speedlow=512,16384', '-bytescore=440'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=8,8192', '-speedlow=16,16384', '-bytescore=140'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=2,1024', '-speedlow=4,2048', '-bytescore=840'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=1024,16384', '-speedlow=2048,16384', '-bytescore=240'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=64,16384', '-speedlow=128,16384', '-bytescore=940'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=2,1024', '-speedlow=4,4096', '-bytescore=40'],
+                  
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=8,8192', '-speedlow=4,8192', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=1,16384', '-speedlow=1,128', '-bytescore=640'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=128,16384', '-speedlow=64,16384', '-bytescore=340'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=32,4096', '-speedlow=16,2048', '-bytescore=540'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=128,256', '-speedlow=64,256', '-bytescore=440'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=8,8192', '-speedlow=4,4096', '-bytescore=140'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=2,1024', '-speedlow=1,512', '-bytescore=840'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=1024,16384', '-speedlow=512,16384', '-bytescore=240'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=64,16384', '-speedlow=32,16384', '-bytescore=940'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride',
+          '-speed=2,1024', '-speedlow=1,4096', '-bytescore=40'],
+
+         ['-s', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
+         ['-s', '-brotlistride', '-speed=1,16384', '-bytescore=640'],
+         ['-s', '-brotlistride', '-speed=128,16384', '-bytescore=340'],
+         ['-s', '-brotlistride', '-speed=32,4096', '-bytescore=540'],
+         ['-s', '-brotlistride', '-speed=128,256', '-bytescore=440'],
+         ['-s', '-brotlistride', '-speed=8,8192', '-bytescore=140'],
+         ['-s', '-brotlistride', '-speed=2,1024', '-bytescore=840'],
+         ['-s', '-brotlistride', '-speed=1024,16384', '-bytescore=240'],
+         ['-s', '-brotlistride', '-speed=64,16384', '-bytescore=940'],
+         ['-s', '-brotlistride', '-speed=2,1024', '-bytescore=40'],
+
+         ['-cm', '-findspeed', '-bytescore=340'],
+         ['-cm', '-speed=8,8192', '-bytescore=340'],
+         ['-cm', '-speed=1,16384', '-bytescore=640'],
+         ['-cm', '-speed=128,16384', '-bytescore=340'],
+         ['-cm', '-speed=32,4096', '-bytescore=540'],
+         ['-cm', '-speed=128,256', '-bytescore=440'],
+         ['-cm', '-speed=8,8192', '-bytescore=140'],
+         ['-cm', '-speed=2,1024', '-bytescore=840'],
+         ['-cm', '-speed=1024,16384', '-bytescore=240'],
+         ['-cm', '-speed=64,16384', '-bytescore=940'],
+         ['-cm', '-speed=2,1024', '-bytescore=40'],
 ]
-gopts[1] = [
-         ['-s','-stride=1', '-speed=16,8192'],
-         ['-s','-brotlistride', '-speed=16,8192'],
-         ['-cm', '-speed=16,8192'],
-         ['-cm', '-speed=1,16384'],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', '-speed=' + speeds[14]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,128", '-speed=' + speeds[14]],
 
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1,16384", '-speed=' + speeds[14]],
-
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=16,8192", '-speed=' + speeds[14]],
-
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=4,1024", '-speed=' + speeds[14]],
-
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=128,16384", '-speed=' + speeds[14]],
-
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[0]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[1]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[2]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[3]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[4]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[5]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[6]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[7]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[8]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[9]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[10]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[11]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[12]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[13]],
-         ['-s', '-cm','-mixing=2','-brotlistride', "-cmspeed=1664,16384", '-speed=' + speeds[14]],
-
-    ]
 lock = threading.Lock()
 brotli_divans_hybrid = 0
 opt_brotli_divans_hybrid = 0
 brotli_total = 0
-optimistic_divans_total = 0
-pessimistic_divans_total = 0
+brotli9_total = 0
+brotli10_total = 0
+brotli11_total = 0
+divans_total = 0
 baseline_total = 0
+
 def start_thread(path,
                  exe,
                  uncompressed,
-                 ir,
                  out_array,
                  gopts,
                  index,
@@ -203,10 +119,10 @@ def start_thread(path,
     def start_routine():
         try:
             compressor = subprocess.Popen(
-                [exe, '-i'] + gopts[index] + opt_args,
+                ['/usr/bin/nice', '-n', '15', exe, '-c'] + gopts[index] + opt_args,
                 stdout=subprocess.PIPE,
                 stdin=subprocess.PIPE)
-            compressed, _x = compressor.communicate(ir)
+            compressed, _x = compressor.communicate(uncompressed)
             cexit_code = compressor.wait()
             uncompressor = subprocess.Popen([exe],
                                             stdout=subprocess.PIPE,
@@ -217,7 +133,7 @@ def start_thread(path,
                 with lock:
                     print 'error:',path, len(odat),'!=',len(
                         uncompressed), exitcode, cexit_code,  ' '.join(
-                            [exe, '-i'] + gopts[index])
+                            [exe, '-c'] + gopts[index])
                     out_array[index] = uncompressed
             else:
                 out_array[index] = compressed
@@ -251,191 +167,103 @@ def main():
                 continue
             if len(data) < 32 * 1024:
                 continue
-            process_file(path, data, len(data),
+            process_file(path, data, len(zlib.compress(data)),
                          metadata.st_size/float(len(data)))
 printed_header = False
 def process_file(path, data, baseline_compression, weight=1):
     global lock
     global brotli_total
+    global brotli9_total
+    global brotli10_total
+    global brotli11_total
     global brotli_divans_hybrid
     global opt_brotli_divans_hybrid
-    global optimistic_divans_total
-    global pessimistic_divans_total
+    global divans_total
     global printed_header
     global baseline_total
-    ir_variant_arg = ['-bytescore=540',
-                      '-bytescore=640',
-                      '-bytescore=340',
-                      '-bytescore=380',
-                      '-bytescore=440']
     with lock:
         if not printed_header:
             printed_header = True
             to_print = []
-            for var in ir_variant_arg:
-                for cmd in gopts[1]:
-                    to_print.append(cmd + [var])
-            print 'hdr:', to_print
-            to_print = []
-            for var in ir_variant_arg:
-                for cmd in gopts[0]:
-                    to_print.append(cmd + [var])
-            print 'hopt:', to_print
+            print 'hdr:', gopts
     with tempfile.NamedTemporaryFile(delete=True) as tf:
         tf.write(data)
         tf.flush()
-        p340 = subprocess.Popen([other, '-c', '-i', '-basicstride',
-                                 ir_variant_arg[2], tf.name],
-                                stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        p380 = subprocess.Popen([other, '-c', '-i', '-basicstride',
-                                 ir_variant_arg[3], tf.name],
-                                stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        p440 = subprocess.Popen([other, '-c', '-i', '-basicstride',
-                                 ir_variant_arg[4], tf.name],
-                                stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        p640 = subprocess.Popen([other, '-c', '-i', '-basicstride',
-                                 ir_variant_arg[1], tf.name],
-                                stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        otherp = subprocess.Popen([other, '-c', '-i', '-basicstride',
-                                   ir_variant_arg[0]],
-                                  stdout=subprocess.PIPE,
-                                  stdin=subprocess.PIPE,
-                                  stderr=subprocess.PIPE)
-        ir_variants = ['','','','','']
-
-        compressed, ir_variants[0] = otherp.communicate(data)
-        _ok, ir_variants[1] = p640.communicate('')
-        _ok, ir_variants[2] = p340.communicate('')
-        _ok, ir_variants[3] = p380.communicate('')
-        _ok, ir_variants[4] = p440.communicate('')
-    exit_code = otherp.wait()
-    if exit_code != 0:
-        print 'error',[other, '-c', '-i', '-basicstride', ir_variant_arg[0]]
-        print 'error:',ir_variants[0]
-    assert exit_code == 0
-    exit_code = p640.wait()
-    if exit_code != 0:
-        print ir_variants[1]
-    assert exit_code == 0
-    exit_code = p340.wait()
-    if exit_code != 0:
-        print ir_variants[2]
-    assert exit_code == 0
-    exit_code = p380.wait()
-    if exit_code != 0:
-        print ir_variants[3]
-    assert exit_code == 0
-    exit_code = p440.wait()
-    if exit_code != 0:
-        print ir_variants[4]
-    assert exit_code == 0
-    first_output_files = []
-    second_output_files = []
-    usage =[[],[]]
-    ir_variant_index = 0
-    for ir in ir_variants:
-        first_gopts = gopts[0]
-        tmp_output_files = [compressed] * len(first_gopts)
+        b11 = subprocess.Popen([vanilla, '--best', '-c', tf.name],
+                                stdout=subprocess.PIPE)
+        b = subprocess.Popen([other, '-c', tf.name],
+                                stdout=subprocess.PIPE)
+        b9 = subprocess.Popen([vanilla, '-q', '9', '-c', tf.name],
+                              stdout=subprocess.PIPE)
+        b10 = subprocess.Popen([vanilla, '-q', '10', '-c', tf.name],
+                               stdout=subprocess.PIPE)
+        output_files = [data] * len(gopts)
         threads = []
-        for index in range(15):
+        for index in range(len(output_files)):
             threads.append(start_thread(path,
                                         divans,
                                         data,
-                                        ir,
-                                        tmp_output_files,
-                                        first_gopts,
+                                        output_files,
+                                        gopts,
                                         index,
                                         []))
         for t in threads:
             t.join()
-            best_opt_arg = first_gopts[0][-1].replace('-speed','-cmspeed')
-            best_opt_size = len(tmp_output_files[0])
-        for i in range(1,15):
-            if len(tmp_output_files[i]) < best_opt_size:
-                best_opt_size = len(tmp_output_files[i])
-                best_opt_arg = first_gopts[i][-1].replace('-speed','-cmspeed')
-        for index in range(15, len(tmp_output_files)):
-            threads.append(start_thread(path,
-                                        divans,
-                                        data,
-                                        ir,
-                                        tmp_output_files,
-                                        first_gopts,
-                                        index,
-                                        [best_opt_arg]))
-        for t in threads:
-            t.join()
-        for index in range(len(first_gopts)):
-            best_add_arg = []
-            if index >= 15:
-                best_add_arg = [best_opt_arg]
-            usage[0].append(
-                first_gopts[index] + best_add_arg + [
-                    ir_variant_arg[ir_variant_index]])
-        first_output_files += tmp_output_files
-        second_gopts = gopts[1]
-        tmp_output_files = [compressed] * len(second_gopts)
-        for index in range(len(tmp_output_files)):
-            threads.append(start_thread(path,
-                                        divans,
-                                        data,
-                                        ir,
-                                        tmp_output_files,
-                                        second_gopts,
-                                        index,
-                                        [best_opt_arg]))
-        for t in threads:
-            t.join()
-        for index in range(len(second_gopts)):
-            usage[1].append(second_gopts[index] + [
-                ir_variant_arg[ir_variant_index]])
-
-        ir_variant_index += 1
-        second_output_files += tmp_output_files
-    optimistic_final_len = min(min(len(op) for op in first_output_files),
-                               len(data) + 24)
-    pessimistic_final_len = min(min(len(op) for op in second_output_files),
-                                len(data) + 24)
-    for index in range(len(first_output_files)):
-        if len(first_output_files[index]) == optimistic_final_len:
-            break
-    for index in range(len(second_output_files)):
-        if len(second_output_files[index]) == pessimistic_final_len:
-            break
-    with lock:
-        optimistic_divans_total += int(optimistic_final_len * weight)
-        pessimistic_divans_total += int(pessimistic_final_len * weight)
-        brotli_total += int(len(compressed) * weight)
-        brotli_divans_hybrid += int(min(len(compressed),
-                                        pessimistic_final_len) * weight)
-        opt_brotli_divans_hybrid += int(min(len(compressed),
-                                            optimistic_final_len) * weight)
-        baseline_total += baseline_compression
-        print 'stats:', pessimistic_final_len, 'vs', optimistic_final_len, \
-            'vs', len(compressed), 'vs baseline:',baseline_compression, (
-                usage[1][index] if index < len(usage[1]) else 'uncompressed')
-        print 'sum:', pessimistic_divans_total, 'vs', \
-            optimistic_divans_total, 'vs', brotli_total, 'vs baseline:', \
-            baseline_total
-        print 'opts:', [len(i) for i in first_output_files], path
-        print 'args:', [len(i) for i in second_output_files], path
-        print pessimistic_divans_total * 100 /float(
-            brotli_total), '% opt: ', optimistic_divans_total*100/float(
-                brotli_total),'% hybrid:', brotli_divans_hybrid *100/float(
-                    brotli_total),'% opt hybrid', \
-                    opt_brotli_divans_hybrid *100/float(
-                        brotli_total),'% vs baseline ', \
-                        pessimistic_divans_total*100/float(
-                        baseline_total), '%'
-        sys.stdout.flush()
+        final_len = min(min(len(op) for op in output_files),
+                        len(data) + 24)
+        compressed, _ok = b.communicate()
+        compressed9, _ok = b9.communicate()
+        compressed10, _ok = b10.communicate()
+        compressed11, _ok = b11.communicate()
+        exit_code = b.wait()
+        if exit_code != 0:
+            print 'error:brotli 0'
+        assert exit_code == 0
+        exit_code = b11.wait()
+        if exit_code != 0:
+            print 'error:brotli 11'
+        exit_code = b10.wait()
+        if exit_code != 0:
+            print 'error:brotli 10'
+        exit_code = b9.wait()
+        if exit_code != 0:
+            print 'error:brotli 9'
+        assert exit_code == 0
+        with lock:
+            divans_total += int(final_len * weight)
+            brotli_total += int(len(compressed) * weight)
+            brotli9_total += int(len(compressed9) * weight)
+            brotli10_total += int(len(compressed10) * weight)
+            brotli11_total += int(len(compressed11) * weight)
+            brotli_divans_hybrid += int(min(len(compressed),
+                                            final_len) * weight)
+            baseline_total += baseline_compression * weight
+            print 'stats:', final_len, 'vs', len(
+                compressed), 'vsIX', len(
+                    compressed9), 'vsX', len(
+                        compressed10), 'vsXI', len(
+                            compressed11), 'vs baseline:',baseline_compression
+            for best_index in range(len(output_files)):
+                if len(output_files[best_index]) == final_len:
+                    break
+            print 'best:', gopts[best_index] if best_index < len(gopts) else 'uncompressed'
+            print 'sum:', divans_total, 'vs', \
+                brotli_total, 'vsIX', brotli9_total, 'vsX', \
+                brotli10_total, 'vsXI', brotli11_total, \
+                'vs baseline:', baseline_total
+            print 'args:', [len(i) for i in output_files], path
+            print divans_total * 100 /float(
+                brotli_total), '% hybrid:', brotli_divans_hybrid *100/float(
+                    brotli_total),'% vs baseline ', \
+                    divans_total*100/float(
+                        baseline_total), '% vs brotliIX ', \
+                        divans_total*100/float(
+                        brotli9_total), '% vs brotliX ', \
+                        divans_total*100/float(
+                        brotli10_total), '% vs brotliXI ', \
+                        divans_total*100/float(
+                        brotli11_total)
+            sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
