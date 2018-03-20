@@ -6,23 +6,40 @@ import tempfile
 import threading
 import traceback
 import zlib
+from collections import defaultdict
 
 walk_dir = "/"
 divans = "/bin/false"
 other = "/bin/false"
 vanilla = "/bin/false"
+zstd = "/bin/false"
 if __name__ == '__main__':
     walk_dir = sys.argv[1]
     divans = sys.argv[2]
     other = sys.argv[3]
     vanilla = sys.argv[4]
+    if len(sys.argv) > 5:
+        zstd = sys.argv[5]
+    else:
+        zstd = os.path.dirname(vanilla) + "/zstd"
 
-speeds = ["0,32", "1,32", "1,128", "1,16384",
-          "2,1024", "4,1024", "8,8192", "16,48",
-          "16,8192", "32,4096", "64,16384", "128,256",
-          "128,16384", "512,16384", "1664,16384"]
+# speeds defined named in divans
+# speeds = ["0,32", "1,32", "1,128", "1,16384",
+#          "2,1024", "4,1024", "8,8192", "16,48",
+#          "16,8192", "32,4096", "64,16384", "128,256",
+#          "128,16384", "512,16384", "1664,16384"]
 
-gopts = [['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
+gopts = [['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1,16384', '-bytescore=640'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,16384', '-bytescore=340'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=32,4096', '-bytescore=540'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,256', '-bytescore=440'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=140'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=840'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1024,16384', '-bytescore=240'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=64,16384', '-bytescore=940'],
+         ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=40'],
+         ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1,16384', '-bytescore=640'],
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,16384', '-bytescore=340'],
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=32,4096', '-bytescore=540'],
@@ -32,7 +49,6 @@ gopts = [['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescor
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1024,16384', '-bytescore=240'],
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=64,16384', '-bytescore=940'],
          ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=40'],
-
          ['-s', '-cm', '-mixing=2', '-brotlistride',
           '-speed=8,8192', '-speedlow=16,8192', '-bytescore=340'],
          ['-s', '-cm', '-mixing=2', '-brotlistride',
@@ -102,10 +118,7 @@ gopts = [['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescor
 lock = threading.Lock()
 brotli_divans_hybrid = 0
 opt_brotli_divans_hybrid = 0
-brotli_total = 0
-brotli9_total = 0
-brotli10_total = 0
-brotli11_total = 0
+brotli_total = defaultdict(lambda:0)
 divans_total = 0
 baseline_total = 0
 
@@ -143,6 +156,7 @@ def start_thread(path,
     t = threading.Thread(target=start_routine)
     t.start()
     return t
+
 def main():
     for root, subdirs, files in os.walk(walk_dir):
         for filename in files:
@@ -170,12 +184,10 @@ def main():
             process_file(path, data, len(zlib.compress(data)),
                          metadata.st_size/float(len(data)))
 printed_header = False
+
 def process_file(path, data, baseline_compression, weight=1):
     global lock
     global brotli_total
-    global brotli9_total
-    global brotli10_total
-    global brotli11_total
     global brotli_divans_hybrid
     global opt_brotli_divans_hybrid
     global divans_total
@@ -189,14 +201,19 @@ def process_file(path, data, baseline_compression, weight=1):
     with tempfile.NamedTemporaryFile(delete=True) as tf:
         tf.write(data)
         tf.flush()
-        b11 = subprocess.Popen([vanilla, '--best', '-c', tf.name],
-                                stdout=subprocess.PIPE)
-        b = subprocess.Popen([other, '-c', tf.name],
-                                stdout=subprocess.PIPE)
-        b9 = subprocess.Popen([vanilla, '-q', '9', '-c', tf.name],
-                              stdout=subprocess.PIPE)
-        b10 = subprocess.Popen([vanilla, '-q', '10', '-c', tf.name],
-                               stdout=subprocess.PIPE)
+        brotli_process = {}
+        brotli_process[95] = subprocess.Popen([other, '-c', tf.name],
+                                              stdout=subprocess.PIPE)
+        brotli_process[11] = subprocess.Popen([vanilla, '--best', '-c', tf.name],
+                                                   stdout=subprocess.PIPE)
+        for quality in [9,10]:
+            brotli_process[quality] = subprocess.Popen(
+                [vanilla, '-q', str(quality), '-c', tf.name],
+                stdout=subprocess.PIPE)
+        brotli_process['z'] = subprocess.Popen([zstd, '-q', '-19', tf.name,
+                                                '-o', '/dev/stdout'],
+                                               stderr=subprocess.PIPE,
+                                               stdout=subprocess.PIPE)
         output_files = [data] * len(gopts)
         threads = []
         for index in range(len(output_files)):
@@ -211,58 +228,52 @@ def process_file(path, data, baseline_compression, weight=1):
             t.join()
         final_len = min(min(len(op) for op in output_files),
                         len(data) + 24)
-        compressed, _ok = b.communicate()
-        compressed9, _ok = b9.communicate()
-        compressed10, _ok = b10.communicate()
-        compressed11, _ok = b11.communicate()
-        exit_code = b.wait()
-        if exit_code != 0:
-            print 'error:brotli 0'
-        assert exit_code == 0
-        exit_code = b11.wait()
-        if exit_code != 0:
-            print 'error:brotli 11'
-        exit_code = b10.wait()
-        if exit_code != 0:
-            print 'error:brotli 10'
-        exit_code = b9.wait()
-        if exit_code != 0:
-            print 'error:brotli 9'
-        assert exit_code == 0
+        compressed = {}
+        stderr = {}
+        for k, proc in brotli_process.iteritems():
+            compressed[k], stderr[k] = proc.communicate()
+        for k, proc in brotli_process.iteritems():
+            exit_code = proc.wait()
+            if exit_code != 0:
+                print 'error:brotli ' + k + ':' + stderr[k]
+            assert exit_code == 0
         with lock:
             divans_total += int(final_len * weight)
-            brotli_total += int(len(compressed) * weight)
-            brotli9_total += int(len(compressed9) * weight)
-            brotli10_total += int(len(compressed10) * weight)
-            brotli11_total += int(len(compressed11) * weight)
-            brotli_divans_hybrid += int(min(len(compressed),
+            for k, v in compressed.iteritems():
+                brotli_total[k] += int(min(len(v), baseline_compression) * weight)
+            brotli_divans_hybrid += int(min(len(compressed[95]),
                                             final_len) * weight)
             baseline_total += baseline_compression * weight
             print 'stats:', final_len, 'vs', len(
-                compressed), 'vsIX', len(
-                    compressed9), 'vsX', len(
-                        compressed10), 'vsXI', len(
-                            compressed11), 'vs baseline:',baseline_compression
+                compressed[95]), 'vsIX', len(
+                    compressed[9]), 'vsX', len(
+                        compressed[10]), 'vsXI', len(
+                            compressed[11]), 'vsZstd',len(
+                                compressed['z']), 'vsZ:',baseline_compression, \
+                                'vsU', len(data)
             for best_index in range(len(output_files)):
                 if len(output_files[best_index]) == final_len:
                     break
             print 'best:', gopts[best_index] if best_index < len(gopts) else 'uncompressed'
             print 'sum:', divans_total, 'vs', \
-                brotli_total, 'vsIX', brotli9_total, 'vsX', \
-                brotli10_total, 'vsXI', brotli11_total, \
+                brotli_total[95], 'vsIX', brotli_total[9], 'vsX', \
+                brotli_total[10], 'vsXI', brotli_total[11], \
+                'vsZ', brotli_total['z'], \
                 'vs baseline:', baseline_total
             print 'args:', [len(i) for i in output_files], path
             print divans_total * 100 /float(
-                brotli_total), '% hybrid:', brotli_divans_hybrid *100/float(
-                    brotli_total),'% vs baseline ', \
+                brotli_total[95]), '% hybrid:', brotli_divans_hybrid *100/float(
+                    brotli_total[95]),'% vsZ ', \
                     divans_total*100/float(
                         baseline_total), '% vs brotliIX ', \
                         divans_total*100/float(
-                        brotli9_total), '% vs brotliX ', \
+                            brotli_total[9]), '% vs brotliX ', \
                         divans_total*100/float(
-                        brotli10_total), '% vs brotliXI ', \
+                            brotli_total[10]), '% vs brotliXI ', \
                         divans_total*100/float(
-                        brotli11_total)
+                            brotli_total[11]), '% vs zstd ', \
+                            divans_total*100/float(
+                            brotli_total['z'])
             sys.stdout.flush()
 
 if __name__ == "__main__":
