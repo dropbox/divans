@@ -22,7 +22,17 @@ for line in sys.stdin:
         if json_src[index] == best_item:
             break
     samples.append(json_src)
+bytescore_required = ""
+if len(sys.argv) > 1:
+    bytescore_required = "-bytescore=" + sys.argv[1]
 def not_ok(index):
+    if index == 50:
+        return True
+    found_ok_byte_score = False
+    for item in hdrs[index]:
+        if bytescore_required in item or '-bytescore=340' in item:
+            found_ok_byte_score = True
+    return not found_ok_byte_score
     #if index >= 10:
     #    return True # force us to use brotli-9
     for item in hdrs[index]:
@@ -37,7 +47,6 @@ def is_blacklisted(baseline, uncompressed):
     if uncompressed - baseline < 128:
         return True
     return False
-
 for include_ignored in [False, True]:
     perfect_prediction = 0
     num_options = len(samples[0])
