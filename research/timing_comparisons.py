@@ -1,12 +1,21 @@
 import os
+import json
 import random as insecure_random
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import traceback
+
 import zlib
-from collections import defaultdict
+from collections import (defaultdict, namedtuple)
+
+
+CompressCommand = namedtuple('CompressCommand',
+                             ['name',
+                              'arglist',
+                             ])
 
 walk_dir = "/"
 divans = "/bin/false"
@@ -28,53 +37,63 @@ if __name__ == '__main__':
 #          "2,1024", "4,1024", "8,8192", "16,48",
 #          "16,8192", "32,4096", "64,16384", "128,256",
 #          "128,16384", "512,16384", "1664,16384"]
+
+brotlistride = '-w22'
+
 gopts = []
 gopts.append([
-    ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
-    ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=1,16384', '-bytescore=640'],
-    ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=140'],
-    ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=40'],
-    ['-q9', '-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=840'],
+    ['-q9', '-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-bytescore=340'],
+    ['-q9', '-s', '-cm', '-mixing=2', brotlistride, '-speed=1,16384', '-bytescore=640'],
+    ['-q9', '-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-bytescore=140'],
+    ['-q9', '-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024', '-bytescore=40'],
+    ['-q9', '-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024', '-bytescore=840'],
 ])
 gopts.append([
-    ['-s', '-brotlistride', '-speed=8,8192', '-bytescore=340'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-bytescore=340'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=1,16384', '-bytescore=640'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-bytescore=140'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024', '-bytescore=40'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024', '-bytescore=840'],
+])
+gopts.append([
+    ['-s', brotlistride, '-speed=8,8192', '-bytescore=340'],
     ['-cm', '-speed=1,16384', '-bytescore=640'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-bytescore=140'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024', '-bytescore=840'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-bytescore=140'],
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024', '-bytescore=840'],
 ])
 
 gopts.append([
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-speedlow=16,8192',
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-speedlow=16,8192',
      '-bytescore=340'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-speedlow=4,4096',
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-speedlow=4,4096',
      '-bytescore=140'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=128,16384',
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=128,16384',
      '-bytescore=340'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=8,8192', '-speedlow=4,8192',
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=8,8192', '-speedlow=4,8192',
      '-bytescore=340'],
-    ['-s', '-cm', '-mixing=2', '-brotlistride', '-speed=2,1024',
+    ['-s', '-cm', '-mixing=2', brotlistride, '-speed=2,1024',
      '-bytescore=840'],
-    ['-s', '-brotlistride', '-speed=8,8192', '-bytescore=340']
+    ['-s', brotlistride, '-speed=8,8192', '-bytescore=340']
 ])
 
 gopts.append([
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=8,8192', u'-speedlow=16,8192',
+    [u'-s', u'-cm', u'-mixing=2', brotlistride, u'-speed=8,8192', u'-speedlow=16,8192',
      u'-bytescore=340'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=2,1024',
+    [u'-s', u'-cm', u'-mixing=2', brotlistride, u'-speed=2,1024',
      u'-bytescore=840'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=128,16384', u'-speedlow=64,16384',
+    [u'-s', u'-cm', u'-mixing=2', brotlistride, u'-speed=128,16384', u'-speedlow=64,16384',
      u'-bytescore=340'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=8,8192', u'-speedlow=4,8192',
+    [u'-s', u'-cm', u'-mixing=2', brotlistride, u'-speed=8,8192', u'-speedlow=4,8192',
      u'-bytescore=340']])
 
 gopts.append([
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=8,8192', u'-speedlow=16,8192',
+    [u'-s', u'-cm', u'-mixing=2', '-brotlistride', u'-speed=8,8192', u'-speedlow=16,8192',
      u'-bytescore=340'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=1,16384',
+    [u'-s', u'-cm', u'-mixing=2', '-brotlistride', u'-speed=1,16384',
      u'-bytescore=840'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=128,16384', u'-speedlow=64,16384',
+    [u'-s', u'-cm', u'-mixing=2', '-brotlistride', u'-speed=128,16384', u'-speedlow=64,16384',
      u'-bytescore=340'],
-    [u'-s', u'-cm', u'-mixing=2', u'-brotlistride', u'-speed=8,8192', u'-speedlow=4,8192',
+    [u'-s', u'-cm', u'-mixing=2', '-brotlistride', u'-speed=8,8192', u'-speedlow=4,8192',
      u'-bytescore=340']])
 
 lock = threading.Lock()
@@ -87,34 +106,23 @@ baseline_total = 0
 def start_thread(path,
                  exe,
                  uncompressed,
+                 uncompressed_file_name,
                  out_array,
+                 time_array,
                  gopts,
                  index,
                  opt_args):
     def start_routine():
+        start =time.time()
         try:
-            compressor = subprocess.Popen(
-                ['/usr/bin/nice', '-n', '15', exe, '-c'] + gopts[index] + opt_args,
-                stdout=subprocess.PIPE,
-                stdin=subprocess.PIPE)
-            compressed, _x = compressor.communicate(uncompressed)
-            cexit_code = compressor.wait()
-            uncompressor = subprocess.Popen([exe],
-                                            stdout=subprocess.PIPE,
-                                            stdin=subprocess.PIPE)
-            odat, _y = uncompressor.communicate(compressed)
-            exitcode = uncompressor.wait()
-            if odat != uncompressed or exitcode != 0 or cexit_code != 0:
-                with lock:
-                    print 'error:',path, len(odat),'!=',len(
-                        uncompressed), exitcode, cexit_code,  ' '.join(
-                            [exe, '-c'] + gopts[index])
-                    out_array[index] = uncompressed
-            else:
-                out_array[index] = compressed
+            compressed = subprocess.check_output(
+                [exe, '-c', uncompressed_file_name] + gopts[index] + opt_args 
+                )
+            out_array[index] = compressed
         except Exception:
             out_array[index] = uncompressed
             traceback.print_exc()
+        time_array[index] = time.time() - start
     t = threading.Thread(target=start_routine)
     t.start()
     return t
@@ -155,100 +163,97 @@ def process_file(path, data, baseline_compression, weight=1):
     global divans_total
     global printed_header
     global baseline_total
-    with lock:
-        if not printed_header:
-            printed_header = True
-            to_print = []
-            print 'hdr:', gopts
     compressed = {}
     stderr = {}
     brotli_process = {}
-    brotli_process[95] = subprocess.Popen([other, '-c', '/dev/stdin'],
-                                          stdin=subprocess.PIPE,
-                                          stdout=subprocess.PIPE)
+    brotli_timing = {}
+    divans_timing = [0] * len(gopts)
+    divans_prescient_timing = [0] * len(gopts)
+    divans_dtiming = [0] * len(gopts)
+    divans_sizes = [baseline_compression] * len(gopts)
+    divans_best_index = []
     
-
-    brotli_process[11] = subprocess.Popen([vanilla, '--best', '-c', '/dev/stdin'],
-                                          stdin=subprocess.PIPE,
-                                          stdout=subprocess.PIPE)
-    brotli_process[9] = subprocess.Popen(
-        [vanilla, '-q', str(9), '-c', '/dev/stdin'],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE)
-    brotli_process[10] = subprocess.Popen(
-        [vanilla, '-q', str(10), '-c', '/dev/stdin'],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE)
-    brotli_process['z'] = subprocess.Popen([zstd, '-q', '-19', '/dev/stdin',
-                                            '-o', '/dev/stdout'],
-                                           stdin=subprocess.PIPE,
-                                           stderr=subprocess.PIPE,
-                                           stdout=subprocess.PIPE)
-    brotli_process['z'] = subprocess.Popen([zstd, '-q', '-22', '/dev/stdin',
-                                            '-o', '/dev/stdout'],
-                                           stdin=subprocess.PIPE,
-                                           stderr=subprocess.PIPE,
-                                           stdout=subprocess.PIPE)
-    
-        output_files = [data] * len(gopts)
+    for q_arg_list in (
+            CompressCommand(name=95, arglist=[other, '-c', '/dev/stdin']),
+            CompressCommand(name=11, arglist=[vanilla, '--best', '-c', '/dev/stdin']),
+            CompressCommand(name=9, arglist=[vanilla, '-q', str(9), '-c', '/dev/stdin']),
+            CompressCommand(name=10, arglist=[vanilla, '-q', str(10), '-c', '/dev/stdin']),
+            CompressCommand(name='z', arglist=[zstd, '-q', '-19', '-o', '/dev/stdout']),
+            CompressCommand(name='z22', arglist=[zstd, '-q', '-22', '-o', '/dev/stdout'])):
+        n = q_arg_list.name
+        start = time.time()
+        brotli_process[n] = subprocess.Popen(q_arg_list.arglist,
+                                                           stdin=subprocess.PIPE,
+                                                           stdout=subprocess.PIPE)
+        compressed[n], stderr[n] = brotli_process[n].communicate(data)
+        brotli_timing[n] = time.time() - start
+    raw_output_data = []
+    for (opt_index, opts) in enumerate(gopts):
+        output_files = ['']* len(opts)
+        output_times = [0]*len(opts)
         threads = []
-        for index in range(len(output_files)):
-            threads.append(start_thread(path,
-                                        divans,
-                                        data,
-                                        output_files,
-                                        gopts,
+        with tempfile.NamedTemporaryFile(dir='/dev/shm', delete=True) as temp_file:
+            temp_file.write(data)
+            temp_file.flush()
+            start = time.time()
+            for index in range(len(opts)):
+                threads.append(start_thread(path,
+                                            divans,
+                                            data,
+                                            temp_file.name,
+                                            output_files,
+                                            output_times,
+                                            opts,
                                         index,
-                                        []))
-        for t in threads:
-            t.join()
-        final_len = min(min(len(op) for op in output_files),
-                        len(data) + 24)
-        for k, proc in brotli_process.iteritems():
-    
-        for k, proc in brotli_process.iteritems():
-            exit_code = proc.wait()
-            if exit_code != 0:
-                print 'error:brotli ' + k + ':' + stderr[k]
-            assert exit_code == 0
-        with lock:
-            divans_total += int(final_len * weight)
-            for k, v in compressed.iteritems():
-                brotli_total[k] += int(min(len(v), baseline_compression) * weight)
-            brotli_divans_hybrid += int(min(len(compressed[95]),
-                                            final_len) * weight)
-            baseline_total += baseline_compression * weight
-            print 'stats:', final_len, 'vs', len(
-                compressed[95]), 'vsIX', len(
-                    compressed[9]), 'vsX', len(
-                        compressed[10]), 'vsXI', len(
-                            compressed[11]), 'vsZstd',len(
-                                compressed['z']), 'vsZ:',baseline_compression, \
-                                'vsU', len(data)
-            for best_index in range(len(output_files)):
-                if len(output_files[best_index]) == final_len:
-                    break
-            print 'best:', gopts[best_index] if best_index < len(gopts) else 'uncompressed'
-            print 'sum:', divans_total, 'vs', \
-                brotli_total[95], 'vsIX', brotli_total[9], 'vsX', \
-                brotli_total[10], 'vsXI', brotli_total[11], \
-                'vsZ', brotli_total['z'], \
-                'vs baseline:', baseline_total
-            print 'args:', [len(i) for i in output_files], path
-            print divans_total * 100 /float(
-                brotli_total[95]), '% hybrid:', brotli_divans_hybrid *100/float(
-                    brotli_total[95]),'% vsZ ', \
-                    divans_total*100/float(
-                        baseline_total), '% vs brotliIX ', \
-                        divans_total*100/float(
-                            brotli_total[9]), '% vs brotliX ', \
-                        divans_total*100/float(
-                            brotli_total[10]), '% vs brotliXI ', \
-                        divans_total*100/float(
-                            brotli_total[11]), '% vs zstd ', \
-                            divans_total*100/float(
-                            brotli_total['z'])
-            sys.stdout.flush()
+                                            []))
+            for t in threads:
+                t.join()
+        min_item = min(min(len(item) for item in output_files),
+                       baseline_compression)
+        for index in range(len(output_files)):
+            min_time = output_times[index]
+            if output_files[index] == min_item:
+                break
+        if index < len(output_files):
+            try:
+                dec_time = time.time()
+                decompressor = subprocess.Popen(
+                    [divans],
+                    stdout=subprocess.PIPE,
+                    stdin=subprocess.PIPE)
+                uncompressed, _x = decompressor.communicate(output_files[index])
+                uncexit_code = decompressor.wait()
+                if uncexit_code != 0 or uncompressed != data:
+                    output_files = ['0' * baseline_compression] * len(opts)
+                    sys.stderr.write("File " + path + "failed to roundtrip w/" + str(opts) + "\n")
+                    min_item = baseline_compression
+                else:
+                    divans_sizes[opt_index] = len(output_files[index])
+            except Exception:
+                output_files = ['0' * baseline_compression] * len(opts)
+                sys.stderr.write("Exception with " +path + ":" + str(opts) + "\n")
+                traceback.print_exc()
+                min_item = uncompressed
+        divans_timing[opt_index] = time.time() - start
+        divans_prescient_timing[opt_index] = min_time
+        divans_dtiming[opt_index] = divans_timing[opt_index] - (dec_time - start)
+        raw_output_data.append([(len(fil), ctime, divans_dtiming[opt_index]) for (
+            fil, ctime) in zip(output_files, output_times)])
+    with lock:
+        result_map = {'~path':path, '~raw':len(data), '~':raw_output_data}
+        result_map['zlib'] = (baseline_compression, 0.01, 0.01)
+        for (key, val) in brotli_timing.iteritems():
+            result_map[key] = (len(compressed[key]),val,0.01)
+        for index in range(len(gopts)):
+            result_map['divans' + str(index)] = (divans_sizes[index],
+                                                 divans_timing[index],
+                                                 divans_dtiming[index])
+            result_map['prevans' + str(index)] = (divans_sizes[index],
+                                                 divans_prescient_timing[index],
+                                                 divans_dtiming[index])
+        sys.stdout.write(json.dumps(result_map, sort_keys=True))
+        sys.stdout.write('\n')
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
