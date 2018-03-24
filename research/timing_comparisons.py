@@ -1,22 +1,22 @@
 import os
-import json
 import random as insecure_random
 import subprocess
 import sys
 import tempfile
-import time
 import threading
+import time
 import traceback
-
 import zlib
-from collections import (defaultdict, namedtuple)
 
+from collections import defaultdict, namedtuple
+
+import dropbox.json as json
 
 CompressCommand = namedtuple('CompressCommand',
                              ['name',
                               'arglist',
                              ])
-cutoff_to_probe_files = 512 * 1024
+
 walk_dir = "/"
 divans = "/bin/false"
 other = "/bin/false"
@@ -102,22 +102,6 @@ opt_brotli_divans_hybrid = 0
 brotli_total = defaultdict(lambda:0)
 divans_total = 0
 baseline_total = 0
-def get_best_size(path, data, output_files, output_times, opts):
-    threads = []
-    with tempfile.NamedTemporaryFile(dir='/dev/shm', delete=True) as temp_file:
-        temp_file.write(data)
-        temp_file.flush()
-        for index in range(len(opts)):
-            threads.append(start_thread(path,
-                                        divans,
-                                        data,
-                                        temp_file.name,
-                                        output_files,
-                                        output_times,
-                                        opts,
-                                        index))
-        for t in threads:
-            t.join()
 
 def start_thread(path,
                  exe,
@@ -126,12 +110,13 @@ def start_thread(path,
                  out_array,
                  time_array,
                  gopts,
-                 index):
+                 index,
+                 opt_args):
     def start_routine():
         start =time.time()
         try:
             compressed = subprocess.check_output(
-                [exe, '-c', uncompressed_file_name] + gopts[index]
+                [exe, '-c', uncompressed_file_name] + gopts[index] + opt_args
                 )
             out_array[index] = compressed
         except Exception:
@@ -178,7 +163,6 @@ def process_file(path, data, baseline_compression, weight=1):
     global divans_total
     global printed_header
     global baseline_total
-    uncompressed_proxy = ['\x00'] * baseline_compression
     compressed = {}
     stderr = {}
     brotli_process = {}
@@ -187,8 +171,7 @@ def process_file(path, data, baseline_compression, weight=1):
     divans_prescient_timing = [0] * len(gopts)
     divans_dtiming = [0] * len(gopts)
     divans_sizes = [baseline_compression] * len(gopts)
-    divans_best_index = []
-    
+
     for q_arg_list in (
             CompressCommand(name=95, arglist=[other, '-c', '/dev/stdin']),
             CompressCommand(name=11, arglist=[vanilla, '--best', '-c', '/dev/stdin']),
@@ -207,26 +190,23 @@ def process_file(path, data, baseline_compression, weight=1):
     for (opt_index, opts) in enumerate(gopts):
         output_files = ['']* len(opts)
         output_times = [0]*len(opts)
-        start = time.time()
-        if len(data) > cutoff_to_probe_files:
-            xoff = insecure_random.randrange(0, len(data) - len(data) // 8)
-            get_best_size(path, data[xoff:xoff + len(data) // 8], output_files, output_times, opts)
-            min_out = min([len(of) for of in output_files])
-            for index in range(len(output_files)):
-                if output_files[index] == min_out:
-                    break
-            subp = subprocess.Popen(
-                [divans, '-c'] + opts[index],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                )
-            divans_compressed, _err = subp.communicate(data)
-            for unc_index in range(len(output_files)):
-                output_files[unc_index] = uncompressed_proxy
-            output_files[index] = divans_compressed
-        else:
-            get_best_size(path, data, output_files, output_times, opts)
-            
+        threads = []
+        with tempfile.NamedTemporaryFile(dir='/dev/shm', delete=True) as temp_file:
+            temp_file.write(data)
+            temp_file.flush()
+            start = time.time()
+            for index in range(len(opts)):
+                threads.append(start_thread(path,
+                                            divans,
+                                            data,
+                                            temp_file.name,
+                                            output_files,
+                                            output_times,
+                                            opts,
+                                        index,
+                                            []))
+            for t in threads:
+                t.join()
         min_item = min(min(len(item) for item in output_files),
                        baseline_compression)
         for index in range(len(output_files)):
