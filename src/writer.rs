@@ -44,7 +44,7 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
             match op_result {
                 BrotliResult::NeedsMoreInput => assert_eq!(avail_in, 0),
                 BrotliResult::NeedsMoreOutput => continue,
-                BrotliResult::ResultSuccess => return Ok((buf.len())),
+                BrotliResult::ResultSuccess => return Ok(buf.len()),
                 BrotliResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
             }
             if avail_in == 0 {
