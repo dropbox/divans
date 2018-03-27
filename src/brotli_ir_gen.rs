@@ -199,6 +199,9 @@ impl<SelectedCDF:CDF16,
                 }
             }
         }
+        if is_end && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
+            return BrotliResult::NeedsMoreOutput;
+        }
         if is_end {
             loop { // flush divans coder
                 let ret;
