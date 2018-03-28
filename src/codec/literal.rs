@@ -137,7 +137,7 @@ impl<AllocU8:Allocator<u8>,
         debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
         let mixing_mask_index = byte_context.actual_context as usize;
-        let is_mm = (superstate.bk.mixing_mask[mixing_mask_index >> 6] >> (mixing_mask_index & 63)) as isize & 1;
+        let is_mm = (superstate.bk.mixing_mask[(mixing_mask_index >> 6) | ((!high_nibble as usize) << 2)] >> (mixing_mask_index & 63)) as isize & 1;
         let mm = -is_mm as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
@@ -147,9 +147,9 @@ impl<AllocU8:Allocator<u8>,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         ((mm & (byte_context.stride_byte as usize ^ stride_xor)) | ((!mm) & byte_context.actual_context as usize),
+                                         ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
                                           cur_byte_prior as usize,
-                                          0,
+                                          mm & 0xf,
                                           ))
         };
         

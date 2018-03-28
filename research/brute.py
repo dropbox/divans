@@ -24,8 +24,8 @@ while True:
 
 q = Queue.Queue()
 for item in found_mixing_offsets:
-    array = ['0 '] * 256;
-    for sub_offset in range(256):
+    array = ['0 '] * 512;
+    for sub_offset in range(512):
         array[sub_offset] = '0 '
         option_a = ''.join(array)
         array[sub_offset] = '1 '

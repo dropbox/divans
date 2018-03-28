@@ -168,7 +168,7 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
                        nibble_prob.blend(mixing_nib, Speed::PLANE);
                    }
-                   if index + 1 == 256 {
+                   if index + 1 == superstate.bk.mixing_mask.len() * 64 {
                        *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
                    } else {
                        match superstate.bk.obs_mixing_value(index, mixing_nib) {
