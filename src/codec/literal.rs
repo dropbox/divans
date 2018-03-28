@@ -136,15 +136,16 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocCDF16>) -> u8 {
         debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
+        let mm = -((superstate.bk.mixing_mask[(byte_context.actual_context as usize) >> 6] >> (byte_context.actual_context & 63) ) as isize & 1) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         (byte_context.stride_byte as usize,
+                                         (byte_context.stride_byte as usize & mm,
                                           byte_context.actual_context as usize ^ stride_xor,
                                           0,
                                           ))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         (byte_context.stride_byte as usize ^ stride_xor,
+                                         ((mm & (byte_context.stride_byte as usize ^ stride_xor)) | ((!mm) & byte_context.actual_context as usize),
                                           cur_byte_prior as usize,
                                           0,
                                           ))
@@ -160,7 +161,9 @@ impl<AllocU8:Allocator<u8>,
                                              cur_byte_prior as usize,
                                              byte_context.actual_context as usize))
         };
-        let prob = if CTraits::MATERIALIZED_PREDICTION_MODE {
+        let prob = if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && !superstate.bk.model_weights[high_nibble as usize].should_mix() {
+            *nibble_prob
+        } else if CTraits::MATERIALIZED_PREDICTION_MODE {
             debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
             if CTraits::COMBINE_LITERAL_PREDICTIONS {
                 //debug_assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(),

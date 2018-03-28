@@ -19,6 +19,7 @@ pub enum PredictionModeState {
     Begin,
     DynamicContextMixing,
     PriorDepth,
+    MixingValues(usize),
     AdaptationSpeed(u32, [(u8,u8);4]),
     ContextMapMnemonic(u32, ContextMapType),
     ContextMapFirstNibble(u32, ContextMapType),
@@ -111,6 +112,7 @@ impl PredictionModeState {
                                                                                            context_map_type,
                                                                                            0),
                 PredictionModeState::AdaptationSpeed(_,_) => PredictionModeState::FullyDecoded,
+                PredictionModeState::MixingValues(_) => PredictionModeState::MixingValues(0),
                 a => a,
             });
 
@@ -150,7 +152,34 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::FAST);
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
-                   *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
+                   superstate.bk.clear_mixing_values();
+                   *self = PredictionModeState::MixingValues(0);
+               }
+               PredictionModeState::MixingValues(index) => {
+                   let mut mixing_nib = if in_cmd.has_context_speeds() {
+                       in_cmd.get_mixing_values()[index]
+                   } else {
+                       0
+                   };
+                       
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(
+                           PredictionModePriorType::PriorMixingValue, (0,));
+                       superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
+                       nibble_prob.blend(mixing_nib, Speed::PLANE);
+                   }
+                   if index + 1 == 256 {
+                       *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
+                   } else {
+                       match superstate.bk.obs_mixing_value(index, mixing_nib) {
+                           BrotliResult::ResultSuccess => {
+                               *self = PredictionModeState::MixingValues(index + 1);
+                           },
+                           _ => {
+                               return BrotliResult::ResultFailure;
+                           },
+                       }
+                   }
                },
                PredictionModeState::AdaptationSpeed(index, mut out_adapt_speed) => {
                    let speed_index = index as usize >> 2;

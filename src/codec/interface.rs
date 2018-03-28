@@ -149,6 +149,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_force_stride: StrideSelection,
     pub literal_lut0:[u8;256],
     pub literal_lut1:[u8;256],
+    pub mixing_mask:[u64;4],
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -278,6 +279,7 @@ impl<Cdf16:CDF16,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
             literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
+            mixing_mask: [0;4],
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
@@ -332,6 +334,23 @@ impl<Cdf16:CDF16,
     }
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map
+    }
+    pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> BrotliResult {
+        let outer_index = index / 64;
+        if outer_index >= self.mixing_mask.len() {
+            return BrotliResult::ResultFailure;
+        }
+        if value != 0 && value != 1 {
+            return BrotliResult::ResultFailure; // only support binary mask atm
+        }
+        let inner_index = index & 63;
+        self.mixing_mask[outer_index] |= u64::from(value & 1) << inner_index;
+        BrotliResult::ResultSuccess
+    }
+    pub fn clear_mixing_values(&mut self) {
+        for item in self.mixing_mask.iter_mut()  {
+            *item = 0;
+        }
     }
     pub fn obs_literal_adaptation_rate(&mut self, index: u32, ladaptation_rate: Speed) {
         if index < self.literal_adaptation.len() as u32 {

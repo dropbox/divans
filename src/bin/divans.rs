@@ -250,6 +250,29 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 }
             }
         }
+        let mut mixing_values = [0;256];
+        if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "mixingvalues") {
+            let mut offset = 0usize;
+            for mixing_val in command_vec.split_at(index + 1).1.iter() {
+                match mixing_val.parse::<i64>() {
+                    Ok(el) => {
+                        if el <= 1 && el >= 0 {
+                            mixing_values[offset] = el as u8;
+                            offset += 1;
+                        } else {
+                            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                      mixing_val.to_string() +
+                                                      "Prior Strategy Mixing val must be 0 or 1"));
+                        }
+                    },
+                    Err(_) => {
+                        break;
+                    },
+                }
+            }
+        }
+        ret.set_mixing_values(&mixing_values);
+        
         let mut cm_stride_mix_speed = [[(0u16,0u16);2];3];
         let keys = [["cmspeedinc", "cmspeedmax"],
                     ["stspeedinc", "stspeedmax"],
