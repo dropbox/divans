@@ -340,7 +340,7 @@ impl<Cdf16:CDF16,
         if outer_index >= self.mixing_mask.len() {
             return BrotliResult::ResultFailure;
         }
-        if value != 0 && value != 1 {
+        if value > 3 {
             return BrotliResult::ResultFailure; // only support binary mask atm
         }
         let inner_index = (index & 31) * 2;

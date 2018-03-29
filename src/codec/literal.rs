@@ -142,6 +142,11 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
+        let spd = if (mm_opts & 2) != 0 {
+            Speed::new(0,32)
+        } else {
+            superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone()
+        };
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
@@ -193,7 +198,7 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
         if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone());
+            nibble_prob.blend(cur_nibble, spd);
         }
         if CTraits::MATERIALIZED_PREDICTION_MODE {
             cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
