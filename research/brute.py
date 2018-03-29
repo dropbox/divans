@@ -4,6 +4,7 @@ import subprocess
 import Queue
 ir = sys.stdin.read()
 found_mixing_offsets = []
+original_values = []
 start = 0
 def run(output_q, procedure, input):
     so, se = procedure.communicate(input)
@@ -17,15 +18,18 @@ while True:
             assert where != -1, "Must have at least one mixingvalues"
         break
     for end_index in range(where + len(key), len(ir)):
-        if ir[end_index] not in ('0', '1', ' '):
+        if ir[end_index] not in ('0', '1', '2', '3', ' '):
             break
     found_mixing_offsets.append((where + len(key), end_index))
+    original_values.append(ir[where + len(key):end_index])
     start = where + 1
 
 q = Queue.Queue()
 q_c = Queue.Queue()
-for item in found_mixing_offsets:
-    array = ['0 '] * 4352;
+best_size = None
+last_ir = ""
+for (item, oarray) in zip(found_mixing_offsets, original_values):
+    array = [x + ' ' for x in oarray.split(' ')]
     for sub_offset in range(4352):
         array[sub_offset] = '0 '
         option_a = ''.join(array)
@@ -66,15 +70,36 @@ for item in found_mixing_offsets:
         assert c_ec == 0
         a_stdout = q.get()
         c_stdout = q_c.get()
+        if best_size is not None:
+            if min(len(a_stdout), len(b_stdout)) > best_size:
+                print 'uh oh',len(a_stdout), len(b_stdout),min(len(a_stdout), len(b_stdout)),'>', best_size
+                with open('/tmp/ira','w') as f:
+                    f.write(ir_a)
+                with open('/tmp/irb','w') as f:
+                    f.write(ir_b)
+                with open('/tmp/irc','w') as f:
+                    f.write(ir_c)
+                with open('/tmp/iro','w') as f:
+                    f.write(last_ir)
+                assert min(len(a_stdout), len(b_stdout)) > best_size, "optimization should get better"
         if len(c_stdout) < len(b_stdout) and len(c_stdout) < len(a_stdout):
             array[sub_offset] = '3 '
             sys.stderr.write("index " + str(sub_offset) + "Prefer 3 for " + str(len(c_stdout)) + "\n")
+            last_ir = ir_c
+            ir = ir_c
+            best_size = len(c_stdout)
         elif len(a_stdout) < len(b_stdout):
             array[sub_offset] = '0 '
             sys.stderr.write("index " + str(sub_offset) + "Prefer 0 for " + str(len(a_stdout)) + "\n")
+            last_ir = ir_a
+            ir = ir_a
+            best_size = len(a_stdout)
         else:
             sys.stderr.write("index " + str(sub_offset) + "Prefer 1 for "+ str(len(b_stdout)) + "\n")
             array[sub_offset] = '1 '
+            last_ir = ir_b
+            ir = ir_b
+            best_size = len(b_stdout)
     ir = ir[:item[0]] + ''.join(array) + ir[item[1]:]
 
 sys.stdout.write(ir)
