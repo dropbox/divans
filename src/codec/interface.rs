@@ -149,7 +149,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_force_stride: StrideSelection,
     pub literal_lut0:[u8;256],
     pub literal_lut1:[u8;256],
-    pub mixing_mask:[u64;8 + 8 * 16],
+    pub mixing_mask:[u64;8 * 16 + 8 * 16],
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -279,7 +279,7 @@ impl<Cdf16:CDF16,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
             literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
-            mixing_mask: [0;8 + 8 * 16],
+            mixing_mask: [0;8 * 16 + 8 * 16],
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,

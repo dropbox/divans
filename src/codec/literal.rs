@@ -138,7 +138,10 @@ impl<AllocU8:Allocator<u8>,
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !high_nibble {
-            mixing_mask_index += 256 * (1 + (cur_byte_prior as usize & 0xf));
+            mixing_mask_index += 256 * (cur_byte_prior as usize & 0x3);
+            mixing_mask_index += 1024;
+        } else {
+            mixing_mask_index += 256 * ((byte_context.stride_byte as usize) >> 6);
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 

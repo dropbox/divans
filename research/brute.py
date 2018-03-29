@@ -9,7 +9,7 @@ start = 0
 def run(output_q, procedure, input):
     so, se = procedure.communicate(input)
     output_q.put(so)
-
+original_values = []
 while True:
     key = "mixingvalues "
     where = ir.find(key, start)
@@ -30,7 +30,7 @@ best_size = None
 last_ir = ""
 for (item, oarray) in zip(found_mixing_offsets, original_values):
     array = [x + ' ' for x in oarray.split(' ')]
-    for sub_offset in range(4352):
+    for sub_offset in range(2048):
         array[sub_offset] = '0 '
         option_a = ''.join(array)
         array[sub_offset] = '1 '
