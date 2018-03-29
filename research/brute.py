@@ -30,7 +30,7 @@ best_size = None
 last_ir = ""
 for (item, oarray) in zip(found_mixing_offsets, original_values):
     array = [x + ' ' for x in oarray.split(' ')]
-    for sub_offset in range(2048):
+    for sub_offset in range(0,8192):
         array[sub_offset] = '0 '
         option_a = ''.join(array)
         array[sub_offset] = '1 '

@@ -138,14 +138,14 @@ impl<AllocU8:Allocator<u8>,
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !high_nibble {
-            mixing_mask_index += 256 * (cur_byte_prior as usize & 0x3);
-            mixing_mask_index += 1024;
+            mixing_mask_index += 256 * (cur_byte_prior as usize & 0xf);
+            mixing_mask_index += 4096;
         } else {
-            mixing_mask_index += 256 * ((byte_context.stride_byte as usize) >> 6);
+            mixing_mask_index += 256 * ((byte_context.stride_byte as usize) >> 4);
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
-        let spd = if (mm_opts & 2) != 0 {
+        let spd = if false && (mm_opts & 2) != 0 {
             Speed::new(0,32)
         } else {
             superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone()
@@ -153,15 +153,15 @@ impl<AllocU8:Allocator<u8>,
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         (byte_context.stride_byte as usize & mm,
+                                         (if mm_opts == 3 { byte_context.stride_byte as usize&0xf0} else {byte_context.stride_byte as usize & mm},
                                           byte_context.actual_context as usize ^ stride_xor,
                                           0,
-                                          ))
+                                          mm_opts as usize))
         } else {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                          ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
                                           cur_byte_prior as usize,
-                                          mm & 1,
+                                          (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0},
                                           ))
         };
         
