@@ -136,9 +136,13 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocCDF16>) -> u8 {
         debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
         let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
-        let mixing_mask_index = byte_context.actual_context as usize;
-        let is_mm = (superstate.bk.mixing_mask[(mixing_mask_index >> 6) | ((!high_nibble as usize) << 2)] >> (mixing_mask_index & 63)) as isize & 1;
-        let mm = -is_mm as usize;
+        let mut mixing_mask_index = byte_context.actual_context as usize;
+        if !high_nibble {
+            mixing_mask_index += 256 * (1 + (cur_byte_prior as usize & 0xf));
+        }
+        let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
+        let is_mm = (mm_opts & 1) as usize; 
+        let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
                                          (byte_context.stride_byte as usize & mm,
@@ -189,7 +193,7 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
         if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[(((!is_mm as usize)&1) << 1) | high_nibble as usize].clone());
+            nibble_prob.blend(cur_nibble, superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone());
         }
         if CTraits::MATERIALIZED_PREDICTION_MODE {
             cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
