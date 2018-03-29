@@ -149,7 +149,7 @@ impl<AllocU8:Allocator<u8>,
             superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
                                          ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
                                           cur_byte_prior as usize,
-                                          (mm & ((byte_context.actual_context as usize &0xf) + 1)),
+                                          mm & 1,
                                           ))
         };
         
