@@ -153,8 +153,8 @@ impl<AllocU8:Allocator<u8>,
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         (byte_context.stride_byte as usize & mm,
-                                          if mm_opts != 3 {byte_context.actual_context as usize ^ stride_xor} else {0},
+                                         (if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
+                                         byte_context.actual_context as usize ^ stride_xor,
                                           mm_opts as usize,
                                           ))
         } else {
