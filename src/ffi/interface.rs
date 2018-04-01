@@ -31,6 +31,7 @@ pub const DIVANS_OPTION_LITERAL_ADAPTATION_CM_LOW:DivansOptionSelect = 13;
 pub const DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW:DivansOptionSelect = 14;
 pub const DIVANS_OPTION_BROTLI_LITERAL_BYTE_SCORE:DivansOptionSelect = 15;
 pub const DIVANS_OPTION_SPEED_DETECTION_QUALITY:DivansOptionSelect = 16;
+pub const DIVANS_OPTION_PRIOR_BITMASK_DETECTION:DivansOptionSelect = 17;
 
 
 #[repr(C)]

@@ -467,6 +467,37 @@ impl<AllocU8:Allocator<u8>,
                                                            brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LITERAL_BYTE_SCORE,
                                                            literal_byte_score);
         }
+        
+        brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_PRIOR_BITMASK_DETECTION,
+                                                       u32::from(opt.prior_bitmask_detection));
+        if let Some(speed) = opt.literal_adaptation {
+
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_CM_SPEED,
+                                                           speed[3].inc() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_CM_SPEED_MAX,
+                                                           speed[3].lim() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_CM_SPEED_LOW,
+                                                           speed[2].inc() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_CM_SPEED_LOW_MAX,
+                                                           speed[2].lim() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_SPEED,
+                                                           speed[1].inc() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_SPEED_MAX,
+                                                           speed[1].lim() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_SPEED_LOW,
+                                                           speed[0].inc() as u32);
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                           brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_SPEED_LOW_MAX,
+                                                           speed[0].lim() as u32);
+        }
         ret
     }
 }

@@ -252,5 +252,6 @@ pub struct DivansCompressorOptions{
     pub use_context_map: bool,
     pub force_stride_value: StrideSelection,
     pub prior_depth: Option<u8>,
+    pub prior_bitmask_detection: u8,
     pub brotli_literal_byte_score: Option<u32>,
 }

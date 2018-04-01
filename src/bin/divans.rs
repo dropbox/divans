@@ -1151,6 +1151,7 @@ fn main() {
     let mut set_low = false;
     let mut brotli_literal_byte_score: Option<u32> = None;
     let mut doubledash = false;
+    let mut prior_bitmask_detection = false;
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
             if !doubledash {
@@ -1317,6 +1318,14 @@ fn main() {
                     use_brotli = false;
                     continue;
                 }
+                if argument == "-findprior" {
+                    prior_bitmask_detection = true;
+                    continue;
+                }
+                if argument == "-defaultprior" {
+                    prior_bitmask_detection = false;
+                    continue;
+                }
                 if argument.starts_with("-mixing=") {
                     dynamic_context_mixing = Some(argument.trim_matches(
                         '-').trim_matches(
@@ -1463,6 +1472,7 @@ fn main() {
             lgblock: lgwin,
             stride_detection_quality: stride_detection_quality,
             speed_detection_quality: speed_detection_quality,
+            prior_bitmask_detection: if prior_bitmask_detection {1} else {0},
         };
         if filenames[0] != "" {
             let mut input = match File::open(&Path::new(&filenames[0])) {
