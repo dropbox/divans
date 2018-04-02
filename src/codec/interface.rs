@@ -178,7 +178,6 @@ pub fn default_literal_speed() -> Speed {
 #[derive(Clone,Copy,Debug)]
 pub struct ByteContext {
   pub actual_context: u8,
-  pub selected_context: u8,
   pub stride_byte: u8,
 }
 

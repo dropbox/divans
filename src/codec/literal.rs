@@ -75,7 +75,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     } else {
         selected_context
     };
-    ByteContext{actual_context:actual_context, selected_context:selected_context,stride_byte: stride_byte}
+    ByteContext{actual_context:actual_context, stride_byte: stride_byte}
 }
 
 
@@ -145,38 +145,24 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
-        let spd = if false && mm_opts == 2 {
+        let spd = if mm_opts == 2 {
             Speed::new(0, 128)
         } else {
             superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone()
         };
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
-            let mut hd_index = (if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
-                                byte_context.actual_context as usize ^ stride_xor,
-                                0,
-                                mm_opts as usize,
-            );
-            if mm_opts == 2 {
-                hd_index = (byte_context.selected_context as usize,
-                            byte_context.actual_context as usize,
-                            (byte_context.stride_byte >> 4) as usize,
-                            mm_opts as usize);
-            }
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         hd_index)
+                                         (if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
+                                         byte_context.actual_context as usize ^ stride_xor,
+                                          mm_opts as usize,
+                                          ))
         } else {
-            let mut hd_index = ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
+                                         ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
                                           cur_byte_prior as usize,
                                           (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0},
-            );
-            if mm_opts == 2 {
-                hd_index = (byte_context.actual_context as usize,
-                            byte_context.selected_context as usize,
-                            cur_byte_prior as usize);
-            }
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         hd_index)
+                                          ))
         };
         
         let cm_prob = if high_nibble {
