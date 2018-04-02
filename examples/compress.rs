@@ -17,13 +17,14 @@ fn main() {
                 window_size:Some(22), // log 2 of the window size
                 lgblock:None, // should we override how often metablocks are created in brotli
                 quality:Some(11), // the quality of brotli commands
-                dynamic_context_mixing:Some(2), // if we want to mix together the stride prediction and the context map
+                dynamic_context_mixing:Some(1), // if we want to mix together the stride prediction and the context map
                 prior_depth:None,
                 use_brotli:divans::BrotliCompressionSetting::default(), // ignored
                 use_context_map:true, // whether we should use the brotli context map in addition to the last 8 bits of each byte as a prior
                 force_stride_value: divans::StrideSelection::UseBrotliRec, // if we should use brotli to decide on the stride
                 speed_detection_quality: None,
                 stride_detection_quality: Some(1),
+                prior_bitmask_detection: 1,
             },
             4096, // internal buffer size
         );
