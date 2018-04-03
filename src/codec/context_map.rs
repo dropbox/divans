@@ -119,6 +119,7 @@ impl PredictionModeState {
             match *self {
                PredictionModeState::Begin => {
                    superstate.bk.reset_context_map_lru();
+                   superstate.bk.reset_context_map();
                    let mut beg_nib = in_cmd.literal_prediction_mode().prediction_mode();
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
@@ -140,7 +141,7 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
-                   superstate.bk.obs_dynamic_context_mixing(beg_nib);
+                   superstate.bk.obs_dynamic_context_mixing(beg_nib, &mut superstate.mcdf16);
                    *self = PredictionModeState::PriorDepth;
                },
                PredictionModeState::PriorDepth => {
@@ -153,34 +154,8 @@ impl PredictionModeState {
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
                    superstate.bk.clear_mixing_values();
-                   *self = PredictionModeState::MixingValues(0);
+                   *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
                }
-               PredictionModeState::MixingValues(index) => {
-                   let mut mixing_nib = if in_cmd.has_context_speeds() {
-                       in_cmd.get_mixing_values()[index]
-                   } else {
-                       0
-                   };
-                       
-                   {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(
-                           PredictionModePriorType::PriorMixingValue, (0,));
-                       superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
-                       nibble_prob.blend(mixing_nib, Speed::PLANE);
-                   }
-                   if index + 1 == superstate.bk.mixing_mask.len() * 32 {
-                       *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
-                   } else {
-                       match superstate.bk.obs_mixing_value(index, mixing_nib) {
-                           BrotliResult::ResultSuccess => {
-                               *self = PredictionModeState::MixingValues(index + 1);
-                           },
-                           _ => {
-                               return BrotliResult::ResultFailure;
-                           },
-                       }
-                   }
-               },
                PredictionModeState::AdaptationSpeed(index, mut out_adapt_speed) => {
                    let speed_index = index as usize >> 2;
                    let cur_speed = desired_speeds[speed_index].to_f8_tuple();
@@ -260,7 +235,7 @@ impl PredictionModeState {
                                *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::FullyDecoded;
+                               *self = PredictionModeState::MixingValues(0);
                            }
                        }
                    } else if mnemonic_nibble == 15 {
@@ -316,6 +291,37 @@ impl PredictionModeState {
                        return BrotliResult::ResultFailure;
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
+               },
+               PredictionModeState::MixingValues(index) => {
+                   let mut mixing_nib = if superstate.bk.model_weights[1].should_mix() || !superstate.bk.materialized_context_map {
+                       1
+                   } else if !superstate.bk.combine_literal_predictions {
+                       0
+                   } else if in_cmd.has_context_speeds() {
+                       in_cmd.get_mixing_values()[index]
+                   } else {
+                       0
+                   };
+                       
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(
+                           PredictionModePriorType::PriorMixingValue, (0,));
+                       superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
+                       nibble_prob.blend(mixing_nib, Speed::PLANE);
+                   }
+                   if index + 1 == superstate.bk.mixing_mask.len() * 32 {
+                       // reconsil
+                       *self = PredictionModeState::FullyDecoded;
+                   } else {
+                       match superstate.bk.obs_mixing_value(index, mixing_nib) {
+                           BrotliResult::ResultSuccess => {
+                               *self = PredictionModeState::MixingValues(index + 1);
+                           },
+                           _ => {
+                               return BrotliResult::ResultFailure;
+                           },
+                       }
+                   }
                },
                PredictionModeState::FullyDecoded => {
                    return BrotliResult::ResultSuccess;

@@ -412,6 +412,7 @@ mod test {
                            force_stride_value: interface::StrideSelection::default(),
                            speed_detection_quality: None,
                            stride_detection_quality: Some(2),
+                           prior_bitmask_detection: 1,
                        },
                        1);
     }
@@ -430,6 +431,7 @@ mod test {
                            prior_depth:Some(1),
                            force_stride_value: interface::StrideSelection::Stride1,
                            speed_detection_quality: None,
+                           prior_bitmask_detection: 0,
                            stride_detection_quality: None,
                        },
                        4095);
@@ -449,6 +451,7 @@ mod test {
                            use_context_map:true,
                            force_stride_value: interface::StrideSelection::Stride1,
                            speed_detection_quality: None,
+                           prior_bitmask_detection: 1,
                            stride_detection_quality: None,
                        },
                        4095);
@@ -464,6 +467,7 @@ mod test {
                            quality:None,
                            prior_depth:Some(2),
                            dynamic_context_mixing:Some(2),
+                           prior_bitmask_detection: 1,
                            use_brotli:interface::BrotliCompressionSetting::default(),
                            use_context_map:true,
                            force_stride_value: interface::StrideSelection::UseBrotliRec,

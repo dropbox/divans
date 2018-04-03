@@ -306,6 +306,12 @@ impl Speed {
         debug_assert!(ret <= 0x4000); // otherwise some sse hax fail
         ret
     }
+    pub fn inc_and_gets(&mut self, ander: i16) {
+        self.0 &= ander;
+    }
+    pub fn lim_or_gets(&mut self, orer: i16) {
+        self.1 |= orer;
+    }
     #[inline(always)]
     pub fn inc(&self) -> i16 {
         self.0

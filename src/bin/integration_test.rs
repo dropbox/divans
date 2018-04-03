@@ -112,9 +112,9 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
     super::compress_raw(&mut in_buffer,
                         &mut dv_buffer,
                         DivansCompressorOptions{
-                            brotli_literal_byte_score: None,
+                            brotli_literal_byte_score: Some(340),
                             use_brotli:BrotliCompressionSetting::UseBrotliCommandSelection,
-                            dynamic_context_mixing: Some(2),
+                            dynamic_context_mixing: Some(if use_brotli {1} else {0}),
                             literal_adaptation: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
                             use_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
@@ -123,6 +123,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             window_size:Some(16i32), // window size
                             lgblock:Some(18u32), //lgblock
                             speed_detection_quality: None,
+                            prior_bitmask_detection: 1,
                             stride_detection_quality: None,
                         },
                         buffer_size,
@@ -152,8 +153,8 @@ fn test_e2e_ones_tinybuf() {
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_slice = include_bytes!("../../testdata/alice29");
    let raw_text_buffer = UnlimitedBuffer::new(&raw_text_slice[..]);
-   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
    e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
+   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
    let ir_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir"))
    } else {
@@ -164,7 +165,9 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let mut rt_buffer = UnlimitedBuffer::new(&[]);
    let mut opts = DivansCompressorOptions::default();
    opts.literal_adaptation = Some([Speed::GLACIAL,Speed::MUD,Speed::GLACIAL,Speed::FAST]);
-
+   opts.prior_bitmask_detection=1;
+   opts.dynamic_context_mixing=Some(1);
+   opts.use_context_map = true;
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();//Some(1), Some(0), Some(, true, StrideSelection::UseBrotliRec).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());

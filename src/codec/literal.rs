@@ -48,7 +48,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
                                                                               AllocCDF2,
                                                                                AllocCDF16>,
                                                   _ctraits: &'static CTraits) -> ByteContext {
-    let local_stride = if CTraits::HAVE_STRIDE { bk.stride } else {1};
+    let local_stride = if CTraits::HAVE_STRIDE { core::cmp::max(1, bk.stride) } else {1};
     let base_shift = 0x40 - local_stride * 8;
     let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
@@ -68,13 +68,8 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     };
     assert_eq!(selected_context, selected_contextA);
 */
-    debug_assert_eq!(bk.materialized_prediction_mode(), CTraits::MATERIALIZED_PREDICTION_MODE);
-    let actual_context = if CTraits::MATERIALIZED_PREDICTION_MODE {
-        let cmap_index = selected_context as usize + ((bk.get_literal_block_type() as usize) << 6);
-        bk.literal_context_map.slice()[cmap_index as usize]
-    } else {
-        selected_context
-    };
+    let cmap_index = selected_context as usize + ((bk.get_literal_block_type() as usize) << 6);
+    let actual_context = bk.literal_context_map.slice()[cmap_index as usize];
     ByteContext{actual_context:actual_context, stride_byte: stride_byte}
 }
 
@@ -134,22 +129,23 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocU8,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
-        debug_assert_eq!(CTraits::MATERIALIZED_PREDICTION_MODE, superstate.bk.materialized_prediction_mode());
-        let stride_xor = if CTraits::HAVE_STRIDE {(superstate.bk.stride as usize - 1) << 4} else {0};
+        let stride_xor = if CTraits::HAVE_STRIDE {
+            (core::cmp::max(superstate.bk.stride, 1) as usize - 1) << 4
+        } else {
+            0
+        };
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !high_nibble {
-            mixing_mask_index += 256 * (cur_byte_prior as usize & 0xf);
-            mixing_mask_index += 4096;
+            mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
+            mixing_mask_index |= 4096;
         } else {
-            mixing_mask_index += 256 * ((byte_context.stride_byte as usize) >> 4);
+            mixing_mask_index |= ((byte_context.stride_byte as usize) >> 4) << 8;
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
-        let spd = if mm_opts == 2 {
-            Speed::new(0, 128)
-        } else {
-            superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone()
-        };
+        let mut spd = superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
+        spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
+        spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
             superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
@@ -164,47 +160,44 @@ impl<AllocU8:Allocator<u8>,
                                           (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0},
                                           ))
         };
-        
-        let cm_prob = if high_nibble {
-            superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                            (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
-                                             byte_context.actual_context as usize,))
-        } else {
-            superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                            (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
-                                             cur_byte_prior as usize,
-                                             byte_context.actual_context as usize))
-        };
-        let prob = if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && !superstate.bk.model_weights[high_nibble as usize].should_mix() {
-            *nibble_prob
-        } else if CTraits::MATERIALIZED_PREDICTION_MODE {
-            debug_assert_eq!(CTraits::COMBINE_LITERAL_PREDICTIONS, superstate.bk.combine_literal_predictions);
-            if CTraits::COMBINE_LITERAL_PREDICTIONS {
-                //debug_assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(),
-                //                 CTraits::SHOULD_MIX);
-                cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32)
+        let cm_prob_base;
+        let cm_prob: Option<&mut Cdf16>;
+        let prob;
+        if CTraits::MIXING_PRIORS {
+            cm_prob_base = if high_nibble {
+                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                                                 byte_context.actual_context as usize,))
             } else {
-                *cm_prob
-            }
+                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                                                 cur_byte_prior as usize,
+                                                 byte_context.actual_context as usize))
+            };
+            prob = cm_prob_base.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32);
+            cm_prob = Some(cm_prob_base)
         } else {
-            *nibble_prob
-        };
+            cm_prob = None;
+            prob = *nibble_prob;
+        }
         let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
                                                                      &prob,
                                                                      BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
 
-        if CTraits::MATERIALIZED_PREDICTION_MODE && CTraits::COMBINE_LITERAL_PREDICTIONS && superstate.bk.model_weights[high_nibble as usize].should_mix() {
+        if CTraits::MIXING_PRIORS {
+            assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(), true);
             let model_probs = [
-                cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
+                match cm_prob {
+                    Some(ref cmx) => cmx.sym_to_start_and_freq(cur_nibble).range.freq,
+                    None => panic!("invariant: cm_prob is non-none"),
+                },
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
             ];
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
         }
-        if CTraits::COMBINE_LITERAL_PREDICTIONS || !CTraits::MATERIALIZED_PREDICTION_MODE {
-            nibble_prob.blend(cur_nibble, spd);
-        }
-        if CTraits::MATERIALIZED_PREDICTION_MODE {
-            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
+        nibble_prob.blend(cur_nibble, spd);
+        if CTraits::MIXING_PRIORS {
+            cm_prob.unwrap().blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
         }
         cur_nibble
     }
