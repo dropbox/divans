@@ -54,6 +54,8 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
     codec: DivansCodec<DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
+    literal_context_map_backing: AllocU8::AllocatedMemory,
+    prediction_mode_backing: AllocU8::AllocatedMemory,
     cmd_assembler: raw_to_cmd::RawToCmdState<AllocU8::AllocatedMemory, AllocU32>,
     freeze_dried_cmd_array: [Command<slice_util::SliceReference<'static,u8>>; COMPRESSOR_CMD_BUFFER_SIZE],
     freeze_dried_cmd_start: usize,
@@ -86,6 +88,8 @@ impl<AllocU8:Allocator<u8>,
            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
         let window_size = core::cmp::min(24, core::cmp::max(10, opts.window_size.unwrap_or(22)));
         let ring_buffer = m8.alloc_cell(1<<window_size);
+        let prediction_mode_backing = m8.alloc_cell(interface::MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE);
+        let literal_context_map = m8.alloc_cell(interface::MAX_LITERAL_CONTEXT_MAP_SIZE);
         let enc = Self::DefaultEncoder::new(&mut m8);
         let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
           DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
@@ -103,7 +107,9 @@ impl<AllocU8:Allocator<u8>,
                 opts.use_context_map,
                 opts.force_stride_value,
             ),
-              freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
+            literal_context_map_backing: literal_context_map,
+            prediction_mode_backing: prediction_mode_backing,
+            freeze_dried_cmd_array:[interface::Command::<slice_util::SliceReference<'static, u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE],
             freeze_dried_cmd_start:0,
             freeze_dried_cmd_end:0,
             cmd_assembler:assembler,
@@ -196,9 +202,9 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         BrotliResult::ResultSuccess
     }
     fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
-                          freeze_dried_cmd_start: &mut usize,
-                          freeze_dried_cmd_end: &mut usize,
-                          input:&[Command<slice_util::SliceReference<'a, u8>>]) {
+                      freeze_dried_cmd_start: &mut usize,
+                      freeze_dried_cmd_end: &mut usize,
+                      input:&[Command<slice_util::SliceReference<'a, u8>>]) {
         assert!(input.len() <= freeze_dried_cmd_array.len());
         *freeze_dried_cmd_start = 0;
         *freeze_dried_cmd_end = input.len();
@@ -213,7 +219,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                 },
                 Command::PredictionMode(ref pm) => {
                     Command::PredictionMode(PredictionModeContextMap::<slice_util::SliceReference<'static, u8>> {
-                        literal_context_map: pm.literal_context_map.freeze_dry(), // FIXME: persist these values somewhere
+                        literal_context_map: pm.literal_context_map.freeze_dry(),
                         predmode_speed_and_distance_context_map: pm.predmode_speed_and_distance_context_map.freeze_dry(),
                     })
                 },
@@ -240,11 +246,15 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     }
     pub fn free_ref(&mut self) {
         self.cmd_assembler.free(&mut self.m32);
+        self.codec.get_m8().free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
+        self.codec.get_m8().free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         self.codec.free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {
-        let (m8, mcdf2, mcdf16) = self.codec.free();
+        let (mut m8, mcdf2, mcdf16) = self.codec.free();
         self.cmd_assembler.free(&mut self.m32);
+        m8.free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
+        m8.free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         (m8, self.m32, mcdf2, mcdf16)
     }
 
@@ -276,12 +286,15 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
             BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
         }
+        let literal_context_map = self.literal_context_map_backing.slice_mut();
+        let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
         loop {
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
             let command_decode_ret = self.cmd_assembler.stream(input, input_offset,
-                                                               &mut temp_bs[..], &mut temp_cmd_offset);
+                                                               &mut temp_bs[..], &mut temp_cmd_offset,
+                                                               literal_context_map, prediction_mode_backing);
             match command_decode_ret {
                 BrotliResult::NeedsMoreInput => {
                     if temp_cmd_offset == 0 {
@@ -354,10 +367,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
         }
         loop {
+            let literal_context_map_backing = self.literal_context_map_backing.slice_mut();
+            let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
             let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
                 [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
-            let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset);
+            let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset, literal_context_map_backing, prediction_mode_backing);
             match command_flush_ret {
                 BrotliResult::ResultSuccess => {
                     if temp_cmd_offset == 0 {

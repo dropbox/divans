@@ -492,6 +492,6 @@ mod test {
                            stride_detection_quality: Some(1),
                            prior_bitmask_detection: 1,
                        },
-                       3);
+                       310000);
     }
 }

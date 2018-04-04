@@ -18,13 +18,14 @@ use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
 pub use brotli::BrotliResult;
-pub use super::interface::{Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
+pub use super::interface::{PredictionModeContextMap, Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     AllocU32:Allocator<u32>>{
     pub ring_buffer: RingBuffer,
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
     hash_match: HashMatch<AllocU32>,
+    has_produced_header: bool,
 }
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>> RawToCmdState<RingBuffer, AllocU32> {
@@ -34,6 +35,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             ring_buffer_decode_index: 0,
             ring_buffer_output_index: 0,
             hash_match:HashMatch::<AllocU32>::new(m32),
+            has_produced_header: false,
         }
     }
     /*
@@ -47,10 +49,13 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         self.ring_buffer_decode_index as usize == self.ring_buffer.slice().len() || self.ring_buffer_decode_index + 1 == self.ring_buffer_output_index
     }
     pub fn stream<'a>(&'a mut self,
-                                          input:&[u8],
-                                          input_offset:&mut usize,
-                                          output: &mut [Command<SliceReference<'a, u8>>],
-                                          output_offset:&mut usize) -> BrotliResult {
+                      input:&[u8],
+                      input_offset:&mut usize,
+                      output: &mut [Command<SliceReference<'a, u8>>],
+                      output_offset:&mut usize,
+                      literal_context_map: &'a mut[u8],
+                      prediction_mode_backing:&'a mut[u8],
+    ) -> BrotliResult {
         if self.ring_buffer_decode_index >= self.ring_buffer_output_index {
             let max_copy = core::cmp::min(self.ring_buffer.slice().len() - self.ring_buffer_decode_index as usize,
                                           input.len() - *input_offset);
@@ -72,7 +77,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             self.ring_buffer_decode_index += max_copy as u32;
         }
         if *output_offset < output.len() && self.ring_buffer_full() {
-            match self.flush(output, output_offset) {
+            match self.flush(output, output_offset, literal_context_map, prediction_mode_backing) {
                 BrotliResult::NeedsMoreOutput => {
                   return BrotliResult::NeedsMoreOutput;
                 }
@@ -96,9 +101,30 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
     pub fn flush<'a>(
               &'a mut self,
               output: &mut [Command<SliceReference<'a, u8>>],
-              output_offset:&mut usize) -> BrotliResult {
+              output_offset:&mut usize,
+              literal_context_map: &'a mut[u8],
+              prediction_mode_backing:&'a mut[u8]) -> BrotliResult {
+
         if *output_offset == output.len() {
            return BrotliResult::NeedsMoreOutput;
+        }
+        if !self.has_produced_header {
+            self.has_produced_header = true;
+            for (index, item) in literal_context_map.iter_mut().enumerate() {
+                *item = index as u8 & 0x3f;
+            }
+            for (index, item) in prediction_mode_backing[super::interface::DISTANCE_CONTEXT_MAP_OFFSET..].iter_mut().enumerate() {
+                *item = index as u8 & 0x3;
+            }
+            output[*output_offset] = Command::PredictionMode(
+                PredictionModeContextMap::<SliceReference<'a, u8> >{
+                    literal_context_map: SliceReference::<u8>::new(literal_context_map, 0, literal_context_map.len()),
+                        predmode_speed_and_distance_context_map: SliceReference::<u8>::new(prediction_mode_backing, 0, prediction_mode_backing.len()),
+                    });
+            *output_offset += 1;
+            if *output_offset == output.len() {
+                return BrotliResult::NeedsMoreOutput;
+            }
         }
         if self.ring_buffer_decode_index < self.ring_buffer_output_index {
            let max_copy = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
