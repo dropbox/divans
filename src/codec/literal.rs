@@ -147,22 +147,22 @@ impl<AllocU8:Allocator<u8>,
         spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
         spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
-        let nibble_prob = if high_nibble {
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (1,
-                                          mm_opts as usize,
-                                          if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
-                                         byte_context.actual_context as usize ^ stride_xor,
-                                          ))
+        let opt_3_f0_mask = if mm_opts == 3 {0xf0} else {0xff};
+        let index_c: usize;
+        let index_d: usize;
+        if high_nibble {
+            index_c = byte_context.stride_byte as usize & mm & opt_3_f0_mask;
+            index_d = byte_context.actual_context as usize ^ stride_xor;
         } else {
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (0,
-                                          cur_byte_prior as usize & 3,
-                                          (mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
-                                          (cur_byte_prior as usize >> 2) | ((
-                                          (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0}) << 2)
-                                          ))
-        };
+            index_c = (mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize);
+            index_d = cur_byte_prior as usize | (
+                (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
+        }
+        let nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                                       (high_nibble as usize,
+                                                        mm_opts as usize,
+                                                        index_c,
+                                                        index_d));
         let cm_prob_base;
         let cm_prob: Option<&mut Cdf16>;
         let prob;
