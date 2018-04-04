@@ -12,7 +12,7 @@ use super::interface::{
     round_up_mod_4,
     CrossCommandBookKeeping,
 };
-use super::specializations::CodecTraits;
+use super::specializations::{CodecTraits};
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     BillingDesignation,

@@ -2,6 +2,7 @@ use ::probability::{CDF2, CDF16};
 use alloc::Allocator;
 pub use super::interface::CrossCommandBookKeeping;
 
+
 pub trait CodecTraits {
     const MIXING_PRIORS: bool;
     const HAVE_STRIDE: bool;
@@ -43,3 +44,21 @@ pub fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
         return CodecTraitSelector::StrideTrait(&STRIDE_TRAIT);
     }
 }
+
+pub trait NibbleHalfTrait {
+    const HIGH_NIBBLE: bool;
+}
+
+pub struct HighNibbleTrait {
+}
+impl NibbleHalfTrait for HighNibbleTrait {
+    const HIGH_NIBBLE:bool = true;
+}
+pub static HIGH_NIBBLE_TRAIT: HighNibbleTrait = HighNibbleTrait{};
+
+pub struct LowNibbleTrait {
+}
+impl NibbleHalfTrait for LowNibbleTrait {
+    const HIGH_NIBBLE:bool = false;
+}
+pub static LOW_NIBBLE_TRAIT: LowNibbleTrait = LowNibbleTrait{};
