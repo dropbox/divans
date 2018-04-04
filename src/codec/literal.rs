@@ -141,7 +141,7 @@ impl<AllocU8:Allocator<u8>,
         } else {
             mixing_mask_index |= ((byte_context.stride_byte as usize) >> 4) << 8;
         }
-        let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
+        let mm_opts = superstate.bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts & 1) as usize; 
         let mut spd = superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
         spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2

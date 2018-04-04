@@ -145,7 +145,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub literal_adaptation: [Speed; 4],
     pub literal_lut0:[u8;256],
     pub literal_lut1:[u8;256],
-    pub mixing_mask:[u64;8 * 16 + 8 * 16],
+    pub mixing_mask:[u8; 8192],
     pub desired_literal_adaptation: Option<[Speed;4]>,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
@@ -278,7 +278,7 @@ impl<Cdf16:CDF16,
             literal_prediction_mode: LiteralPredictionModeNibble::default(),
             literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
             literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
-            mixing_mask: [0;8 * 16 + 8 * 16],
+            mixing_mask: [0;8192],
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
@@ -335,15 +335,10 @@ impl<Cdf16:CDF16,
         self.materialized_context_map
     }
     pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> BrotliResult {
-        let outer_index = index / 32;
-        if outer_index >= self.mixing_mask.len() {
-            return BrotliResult::ResultFailure;
-        }
-        if value > 3 {
-            return BrotliResult::ResultFailure; // only support binary mask atm
-        }
-        let inner_index = (index & 31) * 2;
-        self.mixing_mask[outer_index] |= u64::from(value & 3) << inner_index;
+        //if index >= self.mixing_mask.len() {
+        //return BrotliResult::ResultFailure;
+        //}
+        self.mixing_mask[index] = value;
         BrotliResult::ResultSuccess
     }
     pub fn clear_mixing_values(&mut self) {

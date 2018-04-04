@@ -309,7 +309,7 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
                        nibble_prob.blend(mixing_nib, Speed::PLANE);
                    }
-                   if index + 1 == superstate.bk.mixing_mask.len() * 32 {
+                   if index + 1 == superstate.bk.mixing_mask.len() {
                        // reconsil
                        *self = PredictionModeState::FullyDecoded;
                    } else {
