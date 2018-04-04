@@ -143,7 +143,7 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
-        let mut spd = superstate.bk.literal_adaptation[0].clone();
+        let mut spd = superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
         spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
         spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
