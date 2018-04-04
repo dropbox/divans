@@ -319,7 +319,10 @@ fn bench_no_ir<Run: Runner,
             literal_context_map: cm,
             predmode_speed_and_distance_context_map: dm,
     };
-    pred_mode.set_literal_prediction_mode(ts.prediction_mode());    
+    pred_mode.set_literal_prediction_mode(ts.prediction_mode());
+    for item in pred_mode.get_mixing_values_mut().iter_mut() {
+        *item = 1;
+    }
     let ibuffer:[Command<ItemVec<u8>>;3] = [
         Command::PredictionMode(pred_mode),
         Command::BlockSwitchLiteral(LiteralBlockSwitch::new(1, 2)),

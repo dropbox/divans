@@ -154,7 +154,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_slice = include_bytes!("../../testdata/alice29");
    let raw_text_buffer = UnlimitedBuffer::new(&raw_text_slice[..]);
    e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
-   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.44);
+   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.46);
    let ir_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir"))
    } else {

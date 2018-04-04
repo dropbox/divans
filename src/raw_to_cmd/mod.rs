@@ -118,8 +118,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             }
             output[*output_offset] = Command::PredictionMode(
                 PredictionModeContextMap::<SliceReference<'a, u8> >{
-                    literal_context_map: SliceReference::<u8>::new(literal_context_map, 0, literal_context_map.len()),
-                        predmode_speed_and_distance_context_map: SliceReference::<u8>::new(prediction_mode_backing, 0, prediction_mode_backing.len()),
+                    literal_context_map: SliceReference::<u8>::new(literal_context_map, 0, 64),
+                        predmode_speed_and_distance_context_map: SliceReference::<u8>::new(prediction_mode_backing, 0, super::interface::DISTANCE_CONTEXT_MAP_OFFSET + 4),
                     });
             *output_offset += 1;
             if *output_offset == output.len() {
