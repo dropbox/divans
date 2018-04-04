@@ -143,7 +143,7 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = (superstate.bk.mixing_mask[(mixing_mask_index >> 5)] >> ((mixing_mask_index & 31) * 2)) & 3;
         let is_mm = (mm_opts & 1) as usize; 
-        let mut spd = superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
+        let mut spd = superstate.bk.literal_adaptation[0].clone();
         spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
         spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
@@ -163,11 +163,8 @@ impl<AllocU8:Allocator<u8>,
                                                         mm_opts as usize,
                                                         index_c,
                                                         index_d));
-        let cm_prob_base;
-        let cm_prob: Option<&mut Cdf16>;
-        let prob;
         if CTraits::MIXING_PRIORS {
-            cm_prob_base = if high_nibble {
+            let cm_prob = if high_nibble {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
                                                 (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
                                                  byte_context.actual_context as usize,))
@@ -177,31 +174,25 @@ impl<AllocU8:Allocator<u8>,
                                                  cur_byte_prior as usize,
                                                  byte_context.actual_context as usize))
             };
-            prob = cm_prob_base.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32);
-            cm_prob = Some(cm_prob_base)
-        } else {
-            cm_prob = None;
-            prob = *nibble_prob;
-        }
-        let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
-                                                                     &prob,
-                                                                     BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
-
-        if CTraits::MIXING_PRIORS {
+            let prob = cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32);
+            let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
+                                                                         &prob,
+                                                                         BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
             assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(), true);
             let model_probs = [
-                match cm_prob {
-                    Some(ref cmx) => cmx.sym_to_start_and_freq(cur_nibble).range.freq,
-                    None => panic!("invariant: cm_prob is non-none"),
-                },
+                cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
             ];
             superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
+            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
+        } else {
+            superstate.coder.get_or_put_nibble(&mut cur_nibble,
+                                               nibble_prob,
+                                               BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
+
+
         }
         nibble_prob.blend(cur_nibble, spd);
-        if CTraits::MIXING_PRIORS {
-            cm_prob.unwrap().blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
-        }
         cur_nibble
     }
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>) -> LiteralSubstate {
