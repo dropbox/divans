@@ -148,16 +148,19 @@ impl<AllocU8:Allocator<u8>,
         spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
         let nibble_prob = if high_nibble {
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::FirstNibble,
-                                         (if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
-                                         byte_context.actual_context as usize ^ stride_xor,
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                         (1,
                                           mm_opts as usize,
+                                          if mm_opts != 3 {byte_context.stride_byte as usize & mm} else {byte_context.stride_byte as usize & mm & 0xf0},
+                                         byte_context.actual_context as usize ^ stride_xor,
                                           ))
         } else {
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::SecondNibble,
-                                         ((mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
-                                          cur_byte_prior as usize,
-                                          (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0},
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                         (0,
+                                          cur_byte_prior as usize & 3,
+                                          (mm & byte_context.stride_byte as usize) | (!mm & byte_context.actual_context as usize),
+                                          (cur_byte_prior as usize >> 2) | ((
+                                          (mm & 1) + if mm_opts == 3  {byte_context.actual_context as usize & 0xf} else{0}) << 2)
                                           ))
         };
         let cm_prob_base;
