@@ -1268,6 +1268,11 @@ fn main() {
                     stride_detection_quality = Some(2);
                     continue;
                 }
+                if argument == "-expbrotlistride" {
+                    force_stride_value = StrideSelection::UseBrotliRec;
+                    stride_detection_quality = Some(3);
+                    continue;
+                }
                 if argument.starts_with("-stride") || argument == "-s" {
                     if argument.starts_with("-stride=") {
                         let fs = argument.trim_matches(
