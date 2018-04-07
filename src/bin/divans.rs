@@ -261,7 +261,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                                                       mixing_val.to_string() +
                                                       "Must have no more than 512 mixing values"));
                         }
-                        if el <= 3 && el >= 0 {
+                        if el <= 8 && el >= 0 {
                             mixing_values[offset] = el as u8;
                             offset += 1;
                         } else {
