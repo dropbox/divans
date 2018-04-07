@@ -21,7 +21,7 @@ for line in sys.stdin:
     except Exception:
         traceback.print_exc()
         continue
-    if row['zlib'][0] / float(row['~raw']) > .995:
+    if row['zlib'][0] / float(row['~raw']) > float(sys.argv[2])/100.:
         continue
     raw_size += row['~raw']
     mb_size = row['~raw']/1024./1024.
