@@ -5,27 +5,23 @@ pub use super::interface::CrossCommandBookKeeping;
 
 pub trait CodecTraits {
     const MIXING_PRIORS: bool;
-    const HAVE_STRIDE: bool;
 }
 macro_rules! define_codec_trait {
-    ($name: ident, $global: ident, mix: $mix: expr, have_stride: $have_stride: expr) => {
+    ($name: ident, $global: ident, mix: $mix: expr) => {
         #[derive(Default)]
         pub struct $name {}
         impl CodecTraits for $name {
             const MIXING_PRIORS: bool = $mix;
-            const HAVE_STRIDE: bool = $have_stride;
         }
         pub static $global: $name = $name{};
     }
 }
-define_codec_trait!(MixingTrait, MIXING_TRAIT, mix: true, have_stride: true);
-define_codec_trait!(DefaultTrait, DEFAULT_TRAIT, mix: false, have_stride: false);
-define_codec_trait!(StrideTrait, STRIDE_TRAIT, mix: false, have_stride: true);
+define_codec_trait!(MixingTrait, MIXING_TRAIT, mix: true);
+define_codec_trait!(DefaultTrait, DEFAULT_TRAIT, mix: false);
 
 #[derive(Clone,Copy)]
 pub enum CodecTraitSelector {
     DefaultTrait(&'static DefaultTrait),
-    StrideTrait(&'static StrideTrait),
     MixingTrait(&'static MixingTrait),
 }
 
@@ -38,11 +34,7 @@ pub fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
     if bk.model_weights[0].should_mix() || bk.model_weights[1].should_mix() {
         return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);
     }
-    if bk.stride == 1 {
-        return CodecTraitSelector::DefaultTrait(&DEFAULT_TRAIT);
-    } else {
-        return CodecTraitSelector::StrideTrait(&STRIDE_TRAIT);
-    }
+    return CodecTraitSelector::DefaultTrait(&DEFAULT_TRAIT);
 }
 
 pub trait NibbleHalfTrait {

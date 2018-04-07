@@ -116,6 +116,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             for (index, item) in prediction_mode_backing[super::interface::DISTANCE_CONTEXT_MAP_OFFSET..].iter_mut().enumerate() {
                 *item = index as u8 & 0x3;
             }
+            for item in prediction_mode_backing[super::interface::MIXING_OFFSET..super::interface::MIXING_OFFSET + super::interface::NUM_MIXING_VALUES].iter_mut() {
+                *item = 4;
+            }
             output[*output_offset] = Command::PredictionMode(
                 PredictionModeContextMap::<SliceReference<'a, u8> >{
                     literal_context_map: SliceReference::<u8>::new(literal_context_map, 0, 64),

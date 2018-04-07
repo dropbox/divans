@@ -293,8 +293,8 @@ impl PredictionModeState {
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
                PredictionModeState::MixingValues(index) => {
-                   let mut mixing_nib = if superstate.bk.model_weights[1].should_mix() || !superstate.bk.materialized_context_map {
-                       1
+                   let mut mixing_nib = if !superstate.bk.materialized_context_map {
+                       4
                    } else if !superstate.bk.combine_literal_predictions {
                        0
                    } else if in_cmd.has_context_speeds() {

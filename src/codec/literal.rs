@@ -134,11 +134,6 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocU8,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
-        let stride_xor = if CTraits::HAVE_STRIDE {
-            (core::cmp::max(superstate.bk.stride, 1) as usize - 1) << 4
-        } else {
-            0
-        };
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !high_nibble {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
@@ -158,7 +153,7 @@ impl<AllocU8:Allocator<u8>,
         let index_d: usize;
         if high_nibble {
             index_c = byte_context.stride_bytes[stride_offset] as usize & mm & opt_3_f0_mask;
-            index_d = byte_context.actual_context as usize ^ stride_xor;
+            index_d = byte_context.actual_context as usize;
         } else {
             index_c = (mm & byte_context.stride_bytes[stride_offset] as usize) | (!mm & byte_context.actual_context as usize);
             index_d = cur_byte_prior as usize | (

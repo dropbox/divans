@@ -156,7 +156,7 @@ struct TestSimple{
 impl TestSelection for TestContextMixing {
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {true}
-    fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::UseBrotliRec}
+    fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::PriorDisabled}
     fn prior_depth(&self) -> Option<u8> {
         Some(0)
     }
@@ -321,7 +321,7 @@ fn bench_no_ir<Run: Runner,
     };
     pred_mode.set_literal_prediction_mode(ts.prediction_mode());
     for item in pred_mode.get_mixing_values_mut().iter_mut() {
-        *item = 1;
+        *item = 4;
     }
     let ibuffer:[Command<ItemVec<u8>>;3] = [
         Command::PredictionMode(pred_mode),
