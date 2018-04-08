@@ -177,8 +177,9 @@ pub fn default_literal_speed() -> Speed {
 
 #[derive(Clone,Copy,Debug)]
 pub struct ByteContext {
+  pub stride_bytes: u64,
   pub actual_context: u8,
-  pub stride_bytes: [u8;5],
+  pub prev_byte: u8,
 }
 
 fn get_lut0(lpn: LiteralPredictionModeNibble) -> [u8; 256] {

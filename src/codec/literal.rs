@@ -51,11 +51,6 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     //let local_stride = if CTraits::HAVE_STRIDE { core::cmp::max(1, bk.stride) } else {1};
     //let base_shift = 0x40 - local_stride * 8;
     //let stride_byte = ((bk.last_8_literals >> base_shift) & 0xff) as u8;
-    let stride_bytes = [((bk.last_8_literals >> 0x38) & 0xff) as u8,
-                        ((bk.last_8_literals >> 0x30) & 0xff) as u8,
-                        ((bk.last_8_literals >> 0x28) & 0xff) as u8,
-                        ((bk.last_8_literals >> 0x20) & 0xff) as u8,
-                        ((bk.last_8_literals >> 0x0) & 0xff) as u8];
     let prev_byte = ((bk.last_8_literals >> 0x38) & 0xff) as u8;
     let prev_prev_byte = ((bk.last_8_literals >> 0x30) & 0xff) as u8;
     let selected_context = bk.literal_lut0[prev_byte as usize] | bk.literal_lut1[prev_prev_byte as usize];
@@ -75,7 +70,7 @@ pub fn get_prev_word_context<Cdf16:CDF16,
 */
     let cmap_index = selected_context as usize + ((bk.get_literal_block_type() as usize) << 6);
     let actual_context = bk.literal_context_map.slice()[cmap_index as usize];
-    ByteContext{actual_context:actual_context, stride_bytes: stride_bytes}
+    ByteContext{actual_context:actual_context, stride_bytes:bk.last_8_literals, prev_byte: prev_byte}
 }
 
 
@@ -139,23 +134,26 @@ impl<AllocU8:Allocator<u8>,
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
             mixing_mask_index |= 4096;
         } else {
-            mixing_mask_index |= ((byte_context.stride_bytes[0] as usize) >> 4) << 8;
+            mixing_mask_index |= ((byte_context.prev_byte as usize) >> 4) << 8;
         }
         let mm_opts = superstate.bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts != 0) as usize; 
-        let mut spd = superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
+        let mut spd = superstate.bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
         spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
         spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
         let mm = -(is_mm as isize) as usize;
         let opt_3_f0_mask = if mm_opts == 1 {0xf0} else {0xff};
-        let stride_offset = if mm_opts < 4 {0} else {mm_opts as usize - 4};
+        let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
+        //let stride_offset = (-((mm_opts >= 4) as isize) as usize) & core::cmp::min(7, mm_opts as usize ^ 4);
         let index_c: usize;
         let index_d: usize;
+        
+        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as usize & 0xff;
         if high_nibble {
-            index_c = byte_context.stride_bytes[stride_offset] as usize & mm & opt_3_f0_mask;
+            index_c = stride_selected_byte & mm & opt_3_f0_mask;
             index_d = byte_context.actual_context as usize;
         } else {
-            index_c = (mm & byte_context.stride_bytes[stride_offset] as usize) | (!mm & byte_context.actual_context as usize);
+            index_c = (mm & stride_selected_byte) | (!mm & byte_context.actual_context as usize);
             index_d = cur_byte_prior as usize | (
                 (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
         }
