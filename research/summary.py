@@ -5,14 +5,15 @@ total = {}
 num_rows = 0
 raw_size =0 
 
+cut = 0
+uncut = 0
 def summarize():
-    print "Summary for",num_rows
+    print "Summary for",num_rows,'Processed ',(uncut * 100.)/(cut + uncut),'%'
     for key in sorted(total.keys()):
         temp = [total[key][0] * 100. /total['zlib'][0],
                 total[key][3]/max(total[key][1], 1),
                 total[key][3]/max(total[key][2], 1)]
-        print str(key) + ':' + str(temp)
-
+        print str(key) + ':' + str(temp), 'savings', (total[key][0] + cut) * 100./ (cut + uncut),'%'
 for line in sys.stdin:
     if sys.argv[1] == '--cut':
         line = line[line.find(':') + 1:]
@@ -21,8 +22,10 @@ for line in sys.stdin:
     except Exception:
         traceback.print_exc()
         continue
-    if row['zlib'][0] / float(row['~raw']) > .995:
+    if row['zlib'][0] / float(row['~raw']) > float(sys.argv[2])/100.:
+        cut += row['zlib'][0]
         continue
+    uncut += row['zlib'][0]
     raw_size += row['~raw']
     mb_size = row['~raw']/1024./1024.
     num_rows += 1
