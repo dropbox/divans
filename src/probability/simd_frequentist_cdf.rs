@@ -3,7 +3,7 @@ use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION,
 use super::numeric;
 use stdsimd::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 use stdsimd;
-use stdsimd::vendor::__m256i;
+//use stdsimd::vendor::__m256i;
 
 #[derive(Clone,Copy)]
 pub struct SIMDFrequentistCDF16 {
