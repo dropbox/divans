@@ -1157,6 +1157,8 @@ fn main() {
     let mut brotli_literal_byte_score: Option<u32> = None;
     let mut doubledash = false;
     let mut prior_bitmask_detection = false;
+    let mut force_literal_context_mode:Option<LiteralPredictionModeNibble> = None;
+
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
             if !doubledash {
@@ -1182,6 +1184,23 @@ fn main() {
                         '=').parse::<u32>().unwrap());
                     continue;
                 }
+                if argument == "-utf8" {
+                    force_literal_context_mode = Some(LiteralPredictionModeNibble(brotli::enc::interface::LITERAL_PREDICTION_MODE_UTF8));
+                    continue;
+                }
+                if argument == "-msb" {
+                    force_literal_context_mode = Some(LiteralPredictionModeNibble(brotli::enc::interface::LITERAL_PREDICTION_MODE_MSB6));
+                    continue;
+                }
+                if argument == "-lsb" {
+                    force_literal_context_mode = Some(LiteralPredictionModeNibble(brotli::enc::interface::LITERAL_PREDICTION_MODE_LSB6));
+                    continue;
+                }
+                if argument.starts_with("-sign") {
+                    force_literal_context_mode = Some(LiteralPredictionModeNibble(brotli::enc::interface::LITERAL_PREDICTION_MODE_SIGN));
+                    continue;
+                }
+
                 if argument.starts_with("-bs") {
                     buffer_size = argument.trim_matches(
                         '-').trim_matches(
@@ -1493,6 +1512,7 @@ fn main() {
             stride_detection_quality: stride_detection_quality,
             speed_detection_quality: speed_detection_quality,
             prior_bitmask_detection: if prior_bitmask_detection {1} else {0},
+            force_literal_context_mode: force_literal_context_mode,
         };
         if filenames[0] != "" {
             let mut input = match File::open(&Path::new(&filenames[0])) {

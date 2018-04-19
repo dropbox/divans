@@ -116,6 +116,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             use_brotli:BrotliCompressionSetting::UseBrotliCommandSelection,
                             dynamic_context_mixing: Some(if use_brotli {1} else {0}),
                             literal_adaptation: Some([Speed::MED, Speed::MED, Speed::GLACIAL, Speed::GLACIAL]),
+                            force_literal_context_mode:None,
                             use_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(0),

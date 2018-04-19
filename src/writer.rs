@@ -405,6 +405,7 @@ mod test {
         hy_writer_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
+                           force_literal_context_mode:None,
                            brotli_literal_byte_score:None,
                            window_size:Some(16),
                            lgblock:Some(16),
@@ -426,6 +427,7 @@ mod test {
         hy_writer_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
+                           force_literal_context_mode:None,
                            brotli_literal_byte_score:None,
                            window_size:Some(22),
                            q9_5:false,
@@ -447,6 +449,7 @@ mod test {
         hy_writer_tst(include_bytes!("../testdata/random_then_unicode"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
+                           force_literal_context_mode:None,
                            brotli_literal_byte_score:None,
                            window_size:Some(22),
                            lgblock:None,
@@ -468,6 +471,7 @@ mod test {
         experimental_writer_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
+                           force_literal_context_mode:None,
                            brotli_literal_byte_score:None,
                            window_size:Some(22),
                            lgblock:None,

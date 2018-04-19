@@ -1,5 +1,6 @@
 use ::brotli;
 use ::brotli::BrotliResult;
+use ::brotli::enc::interface::LiteralPredictionModeNibble;
 use core;
 use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor};
 use ::probability::Speed;
@@ -158,6 +159,9 @@ impl CompressorState {
                 },
                 DIVANS_OPTION_Q9_5 => {
                     opts.q9_5 = value as u8 != 0;
+                },
+                DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE => {
+                    opts.force_literal_context_mode = Some(LiteralPredictionModeNibble(value as u8));
                 },
                 _ => return DIVANS_FAILURE,
             }

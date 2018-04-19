@@ -33,6 +33,7 @@ pub const DIVANS_OPTION_BROTLI_LITERAL_BYTE_SCORE:DivansOptionSelect = 15;
 pub const DIVANS_OPTION_SPEED_DETECTION_QUALITY:DivansOptionSelect = 16;
 pub const DIVANS_OPTION_PRIOR_BITMASK_DETECTION:DivansOptionSelect = 17;
 pub const DIVANS_OPTION_Q9_5:DivansOptionSelect = 18;
+pub const DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE:DivansOptionSelect = 19;
 
 
 #[repr(C)]

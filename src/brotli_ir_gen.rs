@@ -17,7 +17,12 @@ use core::cmp::{min, max};
 use super::probability::{CDF2,CDF16};
 use super::brotli;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType};
+pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
+    LITERAL_PREDICTION_MODE_SIGN,
+    LITERAL_PREDICTION_MODE_UTF8,
+    LITERAL_PREDICTION_MODE_MSB6,
+    LITERAL_PREDICTION_MODE_LSB6,
+};
 
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
@@ -25,6 +30,7 @@ use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
 use super::brotli::BrotliResult;
 use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};
+use super::brotli::enc::backward_references::BrotliEncoderMode;
 use super::divans_compressor::write_header;
 pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -469,6 +475,18 @@ impl<AllocU8:Allocator<u8>,
             header_progress: 0,
             window_size: window_size as u8,
         };
+        if let Some(prediction_mode) = opt.force_literal_context_mode {
+            brotli::enc::encode::BrotliEncoderSetParameter(
+                &mut ret.brotli_encoder,
+                brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_MODE,
+                match prediction_mode.0 {
+                    LITERAL_PREDICTION_MODE_LSB6 => BrotliEncoderMode::BROTLI_FORCE_LSB_PRIOR as u32,
+                    LITERAL_PREDICTION_MODE_MSB6 => BrotliEncoderMode::BROTLI_FORCE_MSB_PRIOR as u32,
+                    LITERAL_PREDICTION_MODE_UTF8 => BrotliEncoderMode::BROTLI_FORCE_UTF8_PRIOR as u32,
+                    LITERAL_PREDICTION_MODE_SIGN => BrotliEncoderMode::BROTLI_FORCE_SIGNED_PRIOR as u32,
+                    _ => BrotliEncoderMode::BROTLI_FORCE_SIGNED_PRIOR as u32,
+                });
+        }
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
                                                        window_size as u32);

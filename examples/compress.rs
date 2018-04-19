@@ -13,6 +13,7 @@ fn main() {
             stdout,
             divans::DivansCompressorOptions{
                 brotli_literal_byte_score:None,
+                force_literal_context_mode:None,
                 literal_adaptation:None, // should we override how fast the cdfs converge for literals?
                 window_size:Some(22), // log 2 of the window size
                 lgblock:None, // should we override how often metablocks are created in brotli

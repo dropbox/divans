@@ -246,6 +246,7 @@ pub struct DivansCompressorOptions{
     pub lgblock: Option<u32>,
     pub quality: Option<u16>,
     pub q9_5: bool,
+    pub force_literal_context_mode: Option<LiteralPredictionModeNibble>,
     pub dynamic_context_mixing: Option<u8>,
     pub stride_detection_quality: Option<u8>,
     pub speed_detection_quality: Option<u8>,
