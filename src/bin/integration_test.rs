@@ -120,6 +120,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(0),
                             quality:Some(10u16), // quality
+                            q9_5:true,
                             window_size:Some(16i32), // window size
                             lgblock:Some(18u32), //lgblock
                             speed_detection_quality: None,

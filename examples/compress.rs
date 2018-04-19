@@ -17,6 +17,7 @@ fn main() {
                 window_size:Some(22), // log 2 of the window size
                 lgblock:None, // should we override how often metablocks are created in brotli
                 quality:Some(11), // the quality of brotli commands
+                q9_5:false,
                 dynamic_context_mixing:Some(1), // if we want to mix together the stride prediction and the context map
                 prior_depth:None,
                 use_brotli:divans::BrotliCompressionSetting::default(), // ignored

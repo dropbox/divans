@@ -9,6 +9,7 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<u16>,
                                                          SubclassableAllocator<u32>,
                                                          SubclassableAllocator<i32>,
+                                                         SubclassableAllocator<u64>,
                                                          SubclassableAllocator<brotli::enc::command::Command>,
                                                          SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>,
@@ -19,7 +20,8 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
                                                          SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
                                                          SubclassableAllocator<brotli::enc::histogram::ContextType>,
-                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
+                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
+                                                         SubclassableAllocator<brotli::enc::ZopfliNode>>;
 type InternalCompressorFactory = ::DivansCompressorFactoryStruct<SubclassableAllocator<u8>,
                                                          SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>>;
@@ -35,6 +37,7 @@ pub enum CompressorState {
                                                          SubclassableAllocator<u16>,
                                                          SubclassableAllocator<u32>,
                                                          SubclassableAllocator<i32>,
+                                                         SubclassableAllocator<u64>,
                                                          SubclassableAllocator<brotli::enc::command::Command>,
                                                          SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>,
@@ -45,7 +48,8 @@ pub enum CompressorState {
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
                                                          SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
                                                          SubclassableAllocator<brotli::enc::histogram::ContextType>,
-                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>>),
+                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
+                                                         SubclassableAllocator<brotli::enc::ZopfliNode>>),
     InternalCompressor(::DivansCompressor<<InternalCompressorFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
                                                                                                              SubclassableAllocator<u32>,
                                                                                                              SubclassableAllocator<::CDF2>,
@@ -152,6 +156,9 @@ impl CompressorState {
                 DIVANS_OPTION_PRIOR_DEPTH => {
                     opts.prior_depth = Some(value as u8);
                 },
+                DIVANS_OPTION_Q9_5 => {
+                    opts.q9_5 = value as u8 != 0;
+                },
                 _ => return DIVANS_FAILURE,
             }
             return DIVANS_SUCCESS;
@@ -185,6 +192,7 @@ impl CompressorState {
                                                SubclassableAllocator::<u16>::new(allocators.clone()),
                                                SubclassableAllocator::<i32>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::command::Command>::new(allocators.clone()),
+                                               SubclassableAllocator::<u64>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::util::floatX>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::vectorization::Mem256f>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::histogram::HistogramLiteral>::new(allocators.clone()),
@@ -193,6 +201,7 @@ impl CompressorState {
                                                SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::ZopfliNode>::new(allocators.clone()),
                                            ))));
             
             }

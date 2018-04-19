@@ -828,6 +828,7 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<u16>,
                                                          ItemVecAllocator<u32>,
                                                          ItemVecAllocator<i32>,
+                                                         ItemVecAllocator<u64>,
                                                          ItemVecAllocator<brotli::enc::command::Command>,
                                                          ItemVecAllocator<divans::CDF2>,
                                                          ItemVecAllocator<divans::DefaultCDF16>,
@@ -838,7 +839,8 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramDistance>,
                                                          ItemVecAllocator<brotli::enc::cluster::HistogramPair>,
                                                          ItemVecAllocator<brotli::enc::histogram::ContextType>,
-                                                         ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>>;
+                                                         ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>,
+                                                         ItemVecAllocator<brotli::enc::ZopfliNode>>;
 
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
@@ -860,6 +862,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<u16>::default(),
              ItemVecAllocator::<i32>::default(),
              ItemVecAllocator::<brotli::enc::command::Command>::default(),
+             ItemVecAllocator::<u64>::default(),
              ItemVecAllocator::<brotli::enc::util::floatX>::default(),
              ItemVecAllocator::<brotli::enc::vectorization::Mem256f>::default(),
              ItemVecAllocator::<brotli::enc::histogram::HistogramLiteral>::default(),
@@ -868,6 +871,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
+             ItemVecAllocator::<brotli::enc::ZopfliNode>::default(),
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::CDF2>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -1133,6 +1137,7 @@ fn recode<Reader:std::io::BufRead,
 fn main() {
     let mut do_compress = false;
     let mut raw_compress = false;
+    let mut q9_5 = false;
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
@@ -1214,7 +1219,16 @@ fn main() {
                     lgwin=Some(fs);
                     continue;
                 }
-                if argument.starts_with("-q") {
+                if argument.starts_with("-q9.5") {
+                    if argument == "-q9.5x" {
+                        q9_5 = true;
+                        quality = Some(10);
+                    } else {
+                        q9_5 = true;
+                        quality = Some(11);
+                    }
+                    continue;
+                } else if argument.starts_with("-q") {
                     let fs = argument.trim_matches(
                         '-').trim_matches(
                         'q').trim_matches(
@@ -1473,6 +1487,7 @@ fn main() {
             prior_depth: force_prior_depth,
             force_stride_value: force_stride_value,
             quality: quality,
+            q9_5: q9_5,
             window_size: window_size,
             lgblock: lgwin,
             stride_detection_quality: stride_detection_quality,

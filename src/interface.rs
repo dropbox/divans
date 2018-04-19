@@ -245,6 +245,7 @@ pub struct DivansCompressorOptions{
     pub window_size: Option<i32>,
     pub lgblock: Option<u32>,
     pub quality: Option<u16>,
+    pub q9_5: bool,
     pub dynamic_context_mixing: Option<u8>,
     pub stride_detection_quality: Option<u8>,
     pub speed_detection_quality: Option<u8>,
