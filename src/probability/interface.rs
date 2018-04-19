@@ -294,6 +294,11 @@ impl Speed {
     pub fn from_f8_tuple(inp: (u8, u8)) -> Self {
         Speed::new(u8_to_speed(inp.0), u8_to_speed(inp.1))
     }
+    #[inline(never)]
+    #[cold]
+    pub fn cold_new(inc:i16, max: i16) -> Speed {
+        Self::new(inc, max)
+    }
     #[inline(always)]
     pub fn new(inc:i16, max: i16) -> Speed {
         debug_assert!(inc <= 0x4000); // otherwise some sse hax fail

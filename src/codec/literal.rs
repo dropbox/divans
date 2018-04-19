@@ -139,8 +139,9 @@ impl<AllocU8:Allocator<u8>,
         let mm_opts = superstate.bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts != 0) as usize; 
         let mut spd = superstate.bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
-        spd.inc_and_gets(-((mm_opts != 2) as i16)); // set to zero if mm_opts == 2
-        spd.lim_or_gets(((mm_opts == 2) as i16) << 7); // at least 128 if mm_opts == 2
+        if mm_opts == 2 {
+            spd = Speed::cold_new(0, 128);
+        }
         let mm = -(is_mm as isize) as usize;
         let opt_3_f0_mask = if mm_opts == 1 {0xf0} else {0xff};
         let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
