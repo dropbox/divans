@@ -1222,10 +1222,10 @@ fn main() {
                 if argument.starts_with("-q9.5") {
                     if argument == "-q9.5x" {
                         q9_5 = true;
-                        quality = Some(10);
+                        quality = Some(11);
                     } else {
                         q9_5 = true;
-                        quality = Some(11);
+                        quality = Some(10);
                     }
                     continue;
                 } else if argument.starts_with("-q") {

@@ -478,6 +478,11 @@ impl<AllocU8:Allocator<u8>,
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
                                                        u32::from(opt.quality.unwrap_or(10)));
+        if opt.q9_5 {
+            brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
+                                                       brotli::enc::encode::BrotliEncoderParameter::BROTLI_PARAM_Q9_5,
+                                                       1);
+        }
         brotli::enc::encode::BrotliEncoderSetParameter(&mut ret.brotli_encoder,
                                                        brotli::enc::encode::BrotliEncoderParameter::BROTLI_METABLOCK_CALLBACK,
                                                        1);
