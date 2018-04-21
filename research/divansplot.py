@@ -13,10 +13,10 @@ def on_whitelist(key, label):
 colors = [[r for r in reversed(['#aaaaff','#8888cc','#4444aa','#000088',])],                        
            [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])]]                       
 ylabel = {
-    'savings_vs_zlib':'% savings',
-    'encode_speed': 'Mbps',
-    'decode_speed': 'Mbps',
-    'time_pct':'ms',
+    'savings_vs_zlib':'% saving over zlib',
+    'encode_speed': 'Encode Mbps',
+    'decode_speed': 'Decode Mbps',
+    'time_pct':'decode ms',
     }
 
 y_limits= {
@@ -39,6 +39,7 @@ def build_figure(key, ax, data, last=False):
         labels.append(sub_items_key)
         bar_width = 0.35
         sub_items = data[sub_items_key]
+        axen = []
         for (sub_index, sub_item) in enumerate(sub_items):
             kwargs = {}
             if key in do_log:
@@ -51,7 +52,9 @@ def build_figure(key, ax, data, last=False):
                 kwargs['color'] = colors[0][sub_index]
             else:
                 kwargs['color'] = colors[0][-1]
-            ax.bar(index + offset, sub_item, bar_width, **kwargs)
+            axen.append(ax.bar(index + offset, sub_item, bar_width, **kwargs))
+        if index == 0 and len(sub_items) != 1:
+            ax.legend(axen, ['p99.99', 'p99', 'p75', 'p50'], ncol=2)
     ax.set_xticks(np.arange(len(labels)) + offset + bar_width * .5)
     ax.set_xticklabels(labels)
     ax.set_ylabel(ylabel[key])
@@ -67,10 +70,10 @@ def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
     rcParams['pgf.rcfonts'] = False
 
     fig, [ax1, ax2, ax3, ax4] = plt.subplots(4, 1, sharex=True, figsize=(6, 6))
-    build_figure('encode_speed', ax2, encode_avg)
-    build_figure('decode_speed', ax3, decode_avg)
-    build_figure('time_pct', ax4, decode_pct, last=True)
-    build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
+    build_figure('time_pct', ax1, decode_pct, last=True)
+    build_figure('decode_speed', ax2, decode_avg)
+    build_figure('encode_speed', ax3, encode_avg)
+    build_figure('savings_vs_zlib', ax4, ratio_vs_zlib)
     #fig.subplots_adjust(bottom=0.15, right=.99, top=0.99, hspace=0.03)
     plt.savefig('compression_comparison_ratio_speed_time.pdf')
     fig.clear()
