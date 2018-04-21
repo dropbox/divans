@@ -27,6 +27,7 @@ pub enum LiteralSubstate {
     LiteralCountLengthGreater14Less25,
     LiteralCountMantissaNibbles(u8, u32),
     LiteralNibbleIndex(u32),
+    SafeLiteralNibbleIndex(u32),
     LiteralNibbleLowerHalf(u32),
     LiteralNibbleIndexWithECDF(u32),
     FullyDecoded,
@@ -136,7 +137,6 @@ impl<AllocU8:Allocator<u8>,
                          mut cur_nibble: u8,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
-                         _high_entropy: bool,
                          _ctraits: &'static CTraits,
                          _htraits: HTraits,
                          //local_coder: &mut ArithmeticCoder,
@@ -210,9 +210,10 @@ impl<AllocU8:Allocator<u8>,
         nibble_prob.blend(cur_nibble, spd);
         cur_nibble
     }
-    pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>) -> LiteralSubstate {
+
+    pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>, bytes_rem:usize) -> LiteralSubstate {
         if in_cmd.prob.slice().is_empty() {
-            LiteralSubstate::LiteralNibbleIndex(index)
+            self.state_literal_nibble_index(index, bytes_rem)
         } else {
             LiteralSubstate::LiteralNibbleIndexWithECDF(index)
         }
@@ -280,7 +281,7 @@ impl<AllocU8:Allocator<u8>,
                         self.state = LiteralSubstate::LiteralCountSmall(true); // right now just 
                     } else {
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(shortcut_nib as usize + 1);
-                        self.state = self.get_nibble_code_state(0, in_cmd);
+                        self.state = self.get_nibble_code_state(0, in_cmd, input_bytes.len() - *input_offset);
                     }
                 },
                 LiteralSubstate::LiteralCountFirst => {
@@ -295,7 +296,7 @@ impl<AllocU8:Allocator<u8>,
                     } else if beg_nib <= 1 {
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             NUM_LITERAL_LENGTH_MNEMONIC as usize + 1 + beg_nib as usize);
-                        self.state = self.get_nibble_code_state(0, in_cmd);
+                        self.state = self.get_nibble_code_state(0, in_cmd, input_bytes.len() - *input_offset);
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
                                                                                   1 << (beg_nib - 1));
@@ -325,7 +326,7 @@ impl<AllocU8:Allocator<u8>,
                     if next_len_remaining == 0 {
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1);
-                        self.state = self.get_nibble_code_state(0, in_cmd);
+                        self.state = self.get_nibble_code_state(0, in_cmd, input_bytes.len() - *input_offset);
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
                                                                                    next_decoded_so_far);
@@ -371,7 +372,6 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk,
@@ -381,7 +381,6 @@ impl<AllocU8:Allocator<u8>,
                         let cur_nibble = self.code_nibble(byte_to_encode_val & 0xf,
                                                           byte_context,
                                                           prior_nibble >> 4,
-                                                          high_entropy,
                                                           ctraits,
                                                           LowNibble{},
                                                           //&mut local_coder,
@@ -396,19 +395,18 @@ impl<AllocU8:Allocator<u8>,
                         //superstate.coder = local_coder.mov_consume();
                         return BrotliResult::ResultSuccess;
                     } else {
-                        self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 1);
+                        let new_state = self.state_literal_nibble_index(nibble_index + 1, input_bytes.len() - *input_offset);
+                        self.state = new_state;
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     superstate.bk.last_llen = self.lc.data.slice().len() as u32;
-                    let high_entropy = self.lc.high_entropy;
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
                     let cur_nibble = self.code_nibble(byte_to_encode_val >> 4,
                                                       byte_context,
                                                       0,
-                                                      high_entropy,
                                                       ctraits,
                                                       HighNibble{},
                                                       //&mut local_coder,
@@ -424,7 +422,6 @@ impl<AllocU8:Allocator<u8>,
                     let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
                                                     byte_context,
                                                     cur_nibble,
-                                                    high_entropy,
                                                     ctraits,
                                                     LowNibble{},
                                                     //&mut local_coder,
@@ -437,7 +434,42 @@ impl<AllocU8:Allocator<u8>,
                         //superstate.coder = local_coder.mov_consume();
                         return BrotliResult::ResultSuccess;
                     } else {
-                        self.state = LiteralSubstate::LiteralNibbleIndex(nibble_index + 2);
+                        let new_state = self.state_literal_nibble_index(nibble_index + 2, input_bytes.len() - *input_offset);
+                        self.state = new_state;
+                    }
+                },
+                LiteralSubstate::SafeLiteralNibbleIndex(nibble_index) => {
+                    superstate.bk.last_llen = self.lc.data.slice().len() as u32;
+                    let byte_index = (nibble_index as usize) >> 1;
+                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
+                    let byte_context = get_prev_word_context(&superstate.bk, ctraits);
+                    let cur_nibble = self.code_nibble(byte_to_encode_val >> 4,
+                                                      byte_context,
+                                                      0,
+                                                      ctraits,
+                                                      HighNibble{},
+                                                      //&mut local_coder,
+                                                      superstate,
+                                                      );
+                    let result = superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+                    debug_assert!(match result {BrotliResult::ResultSuccess => true, _ => false,});
+                    let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
+                                                    byte_context,
+                                                    cur_nibble,
+                                                    ctraits,
+                                                    LowNibble{},
+                                                    //&mut local_coder,
+                                                    superstate,
+                                                    ) | (cur_nibble << 4);
+                    self.lc.data.slice_mut()[byte_index] = cur_byte;
+                    superstate.bk.push_literal_byte(cur_byte);
+                    if byte_index + 1 == self.lc.data.slice().len() {
+                        self.state = LiteralSubstate::FullyDecoded;
+                        //superstate.coder = local_coder.mov_consume();
+                        return BrotliResult::ResultSuccess;
+                    } else {
+                        let new_state = self.state_literal_nibble_index(nibble_index + 2, input_bytes.len() - *input_offset);
+                        self.state = new_state;
                     }
                 },
                 LiteralSubstate::FullyDecoded => {
@@ -445,6 +477,13 @@ impl<AllocU8:Allocator<u8>,
                     return BrotliResult::ResultSuccess;
                 }
             }
+        }
+    }
+    fn state_literal_nibble_index(&self, new_index: u32, bytes_rem: usize) -> LiteralSubstate {
+        if bytes_rem >= 8 {
+            LiteralSubstate::SafeLiteralNibbleIndex(new_index)
+        }else {
+            LiteralSubstate::LiteralNibbleIndex(new_index)
         }
     }
     #[cold]
