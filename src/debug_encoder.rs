@@ -11,7 +11,7 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
-
+use core;
 use super::arithmetic_coder::{
     EntropyEncoder,
     ByteQueue,
@@ -69,6 +69,11 @@ impl EntropyDecoder for DebugDecoder {
     }
 }
 
+impl DebugEncoder {
+    fn mov_internal(&mut self) -> Self {
+        core::mem::replace(self, DebugEncoder::default())
+    }
+}
 impl ArithmeticEncoderOrDecoder for DebugEncoder {
     arithmetic_encoder_or_decoder_methods!();
 }

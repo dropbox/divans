@@ -17,14 +17,19 @@ use probability::{CDF16, ProbRange};
 use interface::ArithmeticEncoderOrDecoder;
 use super::BrotliResult;
 pub trait ByteQueue {
-      fn num_push_bytes_avail(&self) -> usize;
-      fn num_pop_bytes_avail(&self) -> usize;
-      fn push_data(&mut self, &[u8]) -> usize;
-      fn pop_data(&mut self, &mut [u8]) -> usize;
+    #[inline(always)]
+    fn num_push_bytes_avail(&self) -> usize;
+    #[inline(always)]
+    fn num_pop_bytes_avail(&self) -> usize;
+    #[inline(always)]
+    fn push_data(&mut self, &[u8]) -> usize;
+    #[inline(always)]
+    fn pop_data(&mut self, &mut [u8]) -> usize;
 }
 
 
 pub type FixedRegister = u64;
+#[derive(Clone)]
 pub struct RegisterQueue {
     data : FixedRegister,
     count : u8,
@@ -38,12 +43,15 @@ impl Default for RegisterQueue {
     }
 }
 impl ByteQueue for RegisterQueue {
+    #[inline(always)]
     fn num_push_bytes_avail(&self) -> usize {
         core::mem::size_of::<FixedRegister>() - self.count as usize
     }
+    #[inline(always)]
     fn num_pop_bytes_avail(&self) -> usize {
         self.count as usize
     }
+    #[inline(always)]
     fn push_data(&mut self, data:&[u8]) -> usize {
         let byte_count_to_push = core::cmp::min(self.num_push_bytes_avail(),
                                                 data.len());
@@ -56,6 +64,7 @@ impl ByteQueue for RegisterQueue {
         self.data = reg;
         byte_count_to_push
     }
+    #[inline(always)]
     fn pop_data(&mut self, data:&mut [u8]) -> usize {
         let byte_count_to_pop = core::cmp::min(self.num_pop_bytes_avail(),
                                                data.len());
@@ -165,7 +174,11 @@ pub trait EntropyDecoder {
 }
 
 
-impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
+impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
+    #[inline(always)]
+    fn mov(&mut self) -> Self {
+        self.clone()
+    }
     #[inline(always)]
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer:&[u8],
@@ -203,6 +216,10 @@ impl<Decoder:EntropyDecoder> ArithmeticEncoderOrDecoder for Decoder {
 
 macro_rules! arithmetic_encoder_or_decoder_methods(
     () => {
+            #[inline(always)]
+            fn mov(&mut self) -> Self {
+                self.mov_internal()
+            }
             fn drain_or_fill_internal_buffer(&mut self,
                                              _input_buffer:&[u8],
                                              _input_offset:&mut usize,

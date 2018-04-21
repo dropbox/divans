@@ -13,6 +13,7 @@
 //   limitations under the License.
 
 #![allow(unknown_lints,unused_macros,unused_imports)]
+use core::mem;
 use core::iter::FromIterator;
 use core::marker::PhantomData;
 use alloc::{Allocator};
@@ -40,6 +41,7 @@ macro_rules! println_stderr(
 pub struct BillingArithmeticCoder<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> {
     coder: Coder,
     counter: billing::HashMap<BillingDesignation, (f64, f64)>,
+    movd: bool,
     _phantom: PhantomData<AllocU8>,
 }
 
@@ -50,6 +52,7 @@ impl<AllocU8:Allocator<u8>,
        BillingArithmeticCoder::<AllocU8, Coder>{
            coder: Coder::new(m8),
            counter: billing::HashMap::new(),
+           movd:false,
            _phantom:PhantomData::<AllocU8>::default(),
        }
    }
@@ -80,6 +83,9 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> BillingArithmeticC
 #[cfg(feature="billing")]
 impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> Drop for BillingArithmeticCoder<AllocU8, Coder> {
     fn drop(&mut self) {
+        if self.movd {
+            return;
+        }
         let max_key_len = self.counter.keys().map(|k| format!("{:?}", k).len()).max().unwrap_or(5);
         let report = |k, v: (f64, f64)| {
             println_stderr!("{1:0$} Bit count: {2:9.1} Byte count: {3:11.3} Virtual bits: {4:7.0}",
@@ -102,6 +108,18 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> Drop for BillingAr
 
 #[cfg(feature="billing")]
 impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderOrDecoder for BillingArithmeticCoder<AllocU8, Coder> {
+    fn mov_consume(mut self) -> Self {
+      self.mov()
+    }
+    fn mov(&mut self) -> Self {
+       self.movd = true;
+       BillingArithmeticCoder::<AllocU8, Coder>{
+           coder: self.coder.mov(),
+           counter: mem::replace(&mut self.counter, billing::HashMap::new()),
+           movd: false,
+           _phantom:PhantomData::<AllocU8>::default(),
+       }
+    }
     fn drain_or_fill_internal_buffer(&mut self,
                                      input_buffer: &[u8],
                                      input_offset: &mut usize,

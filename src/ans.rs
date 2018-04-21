@@ -72,6 +72,12 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ByteStack<A> {
 }
 
 impl<AllocU8: Allocator<u8>> ByteStack<AllocU8> {
+    pub fn mov(&mut self) -> Self {
+        ByteStack::<AllocU8> {
+            data:core::mem::replace(&mut self.data, AllocU8::AllocatedMemory::default()),
+            nbytes:self.nbytes,
+        }
+    }
     pub fn reset(&mut self) {
         self.nbytes = self.data.slice().len();
     }
@@ -132,7 +138,7 @@ const ENC_START_STATE: ANSState = NORMALIZATION_INTERVAL;
 const NUM_SYMBOLS_BEFORE_FLUSH:u32 = (MAX_BUFFER_SIZE as u32) >> 2;
 const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ANSDecoder {
     state_a: u64,
     state_b: u64,
@@ -264,6 +270,13 @@ impl<A: Allocator<u8>> NewWithAllocator<A> for ANSEncoder<A> {
 }
 
 impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
+    fn mov_internal(&mut self) -> Self {
+        let old_q = self.q.mov();
+        ANSEncoder::<AllocU8> {
+            q:old_q,
+            start_freq:self.start_freq.mov(),
+        }
+    }
     fn put_nibble_internal<CDF:CDF16>(&mut self, sym: u8, cdf:CDF) -> ProbRange {
         let start_freq = cdf.sym_to_start_and_freq(sym).range;
         if !(start_freq.start >= 0 && i32::from(start_freq.start) < (1 << LOG2_SCALE)) {
