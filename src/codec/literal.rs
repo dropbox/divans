@@ -38,6 +38,20 @@ pub struct LiteralState<AllocU8:Allocator<u8>> {
     pub state: LiteralSubstate,
 }
 
+
+
+
+trait HighTrait {
+    const IS_HIGH: bool;
+}
+struct HighNibble{}
+struct LowNibble{}
+impl HighTrait for HighNibble {
+    const IS_HIGH: bool = true;
+}
+impl HighTrait for LowNibble {
+    const IS_HIGH: bool = false;
+}
 #[inline(always)]
 pub fn get_prev_word_context<Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
@@ -111,19 +125,20 @@ impl<AllocU8:Allocator<u8>,
         cur_nibble
     }
     #[inline(always)]
-    pub fn code_nibble<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+    fn code_nibble<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Cdf16:CDF16,
                        Specialization:EncoderOrDecoderSpecialization,
                        AllocCDF2:Allocator<CDF2>,
                        AllocCDF16:Allocator<Cdf16>,
                        CTraits:CodecTraits,
+                       HTraits:HighTrait,
                        >(&mut self,
-                         high_nibble: bool,
                          mut cur_nibble: u8,
                          byte_context: ByteContext,
                          cur_byte_prior: u8,
                          _high_entropy: bool,
                          _ctraits: &'static CTraits,
+                         _htraits: HTraits,
                          //local_coder: &mut ArithmeticCoder,
                          superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
@@ -132,7 +147,7 @@ impl<AllocU8:Allocator<u8>,
                                                             AllocCDF2,
                                                             AllocCDF16>) -> u8 {
         let mut mixing_mask_index = byte_context.actual_context as usize;
-        if !high_nibble {
+        if !HTraits::IS_HIGH {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
             mixing_mask_index |= 4096;
         } else {
@@ -152,7 +167,7 @@ impl<AllocU8:Allocator<u8>,
         let index_d: usize;
         
         let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as usize & 0xff;
-        if high_nibble {
+        if HTraits::IS_HIGH {
             index_c = stride_selected_byte & mm & opt_3_f0_mask;
             index_d = byte_context.actual_context as usize;
         } else {
@@ -161,12 +176,12 @@ impl<AllocU8:Allocator<u8>,
                 (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
         }
         let nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                                       (high_nibble as usize,
+                                                       (HTraits::IS_HIGH as usize,
                                                         core::cmp::min(mm_opts as usize, 3),
                                                         index_c,
                                                         index_d));
         if CTraits::MIXING_PRIORS {
-            let cm_prob = if high_nibble {
+            let cm_prob = if HTraits::IS_HIGH {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
                                                 (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
                                                  byte_context.actual_context as usize,))
@@ -176,23 +191,21 @@ impl<AllocU8:Allocator<u8>,
                                                  cur_byte_prior as usize,
                                                  byte_context.actual_context as usize))
             };
-            let prob = cm_prob.average(nibble_prob, superstate.bk.model_weights[high_nibble as usize].norm_weight() as u16 as i32);
+            let prob = cm_prob.average(nibble_prob, superstate.bk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
             let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
                                                                          &prob,
-                                                                         BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
-            assert_eq!(superstate.bk.model_weights[high_nibble as usize].should_mix(), true);
+                                                                         BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
+            assert_eq!(superstate.bk.model_weights[HTraits::IS_HIGH as usize].should_mix(), true);
             let model_probs = [
                 cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
             ];
-            superstate.bk.model_weights[high_nibble as usize].update(model_probs, weighted_prob_range.freq);
-            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | high_nibble as usize].clone());
+            superstate.bk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
+            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
         } else {
             superstate.coder.get_or_put_nibble(&mut cur_nibble,
                                                nibble_prob,
-                                               BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!high_nibble as u32)));
-
-
+                                               BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
         }
         nibble_prob.blend(cur_nibble, spd);
         cur_nibble
@@ -365,12 +378,12 @@ impl<AllocU8:Allocator<u8>,
                                                              ctraits);
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
-                        let cur_nibble = self.code_nibble(false,
-                                                          byte_to_encode_val & 0xf,
+                        let cur_nibble = self.code_nibble(byte_to_encode_val & 0xf,
                                                           byte_context,
                                                           prior_nibble >> 4,
                                                           high_entropy,
                                                           ctraits,
+                                                          LowNibble{},
                                                           //&mut local_coder,
                                                           superstate,
                                                           );
@@ -392,12 +405,12 @@ impl<AllocU8:Allocator<u8>,
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
-                    let cur_nibble = self.code_nibble(true,
-                                                      byte_to_encode_val >> 4,
+                    let cur_nibble = self.code_nibble(byte_to_encode_val >> 4,
                                                       byte_context,
                                                       0,
                                                       high_entropy,
                                                       ctraits,
+                                                      HighNibble{},
                                                       //&mut local_coder,
                                                       superstate,
                                                       );
@@ -408,12 +421,12 @@ impl<AllocU8:Allocator<u8>,
                             return self.fallback_byte_encode(cur_nibble, nibble_index, need_something);
                         }
                     }
-                    let cur_byte = self.code_nibble(false,
-                                                    byte_to_encode_val & 0xf,
+                    let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
                                                     byte_context,
                                                     cur_nibble,
                                                     high_entropy,
                                                     ctraits,
+                                                    LowNibble{},
                                                     //&mut local_coder,
                                                     superstate,
                                                     ) | (cur_nibble << 4);
