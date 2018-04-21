@@ -9,7 +9,7 @@ elif len(sys.argv) > 1 and 'b11' in sys.argv[1]:
     best_other_alg = 'b11'
 elif len(sys.argv) > 1:
     assert 'zlib' in sys.argv[1]
-sub_item = 5
+sub_item = 6
 combo_scores = defaultdict(lambda:0)
 data_list = []
 zlib_other_list = []
