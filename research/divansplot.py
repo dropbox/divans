@@ -1,12 +1,15 @@
 
 import matplotlib.pyplot as plt 
 from matplotlib import rcParams                                                                     
-                                                                                                    
+                          
+import matplotlib.patches as patches
+import matplotlib.transforms as transforms                                                                          
 import numpy as np
+from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd0', 'd6', 'zlib', 'z22')
+    return label in ('b11', 'b9', 'd0', 'd6', 'zlib', 'z19')
 colors = [[r for r in reversed(['#aaaaff','#8888cc','#4444aa','#000088',])],                        
            [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])]]                       
 ylabel = {
@@ -18,17 +21,19 @@ ylabel = {
 
 y_limits= {
     'savings_vs_zlib':[.001, 15],
-    'encode_speed': [0,100],
-    'decode_speed': [0,100],
+    'encode_speed': [1,1000],
+    'decode_speed': [1,1000],
 #    'time_pct':
     }
-do_log = set()#set(['encode_speed', 'decode_speed'])
+do_log = set(['decode_speed', 'encode_speed'])
 def build_figure(key, ax, data, last=False):
     if key in do_log:
         ax.set_yscale('log')
     else:
         ax.set_yscale('linear')
     labels = []
+    trans = transforms.blended_transform_factory(
+        ax.transData, ax.transAxes)
     offset = .5
     for (index, sub_items_key) in enumerate([x for x in sorted(data.keys(), key=lambda v: v.replace('d','a')) if on_whitelist(key, x)]):
         labels.append(sub_items_key)
@@ -38,6 +43,8 @@ def build_figure(key, ax, data, last=False):
             kwargs = {}
             if key in do_log:
                 kwargs['log'] = True
+            #if key not in y_limits:
+            #    kwargs['transform'] = trans
             #if sub_index == 0:
             #    kwargs['label'] = key.replace('_', ' ')
             if len(sub_items) != 1:
@@ -51,6 +58,7 @@ def build_figure(key, ax, data, last=False):
     if key in y_limits:                                                                             
         ax.set_ylim(y_limits[key][0], y_limits[key][1])         #
     ax.set_xlim(0,len(labels))
+    ax.yaxis.set_major_formatter(ScalarFormatter())
     #ax.set_xticks([offset + x for (x,_) in enumerate(labels)])
                                                                               
 def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
@@ -59,10 +67,10 @@ def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
     rcParams['pgf.rcfonts'] = False
 
     fig, [ax1, ax2, ax3, ax4] = plt.subplots(4, 1, sharex=True, figsize=(6, 6))
-    build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
     build_figure('encode_speed', ax2, encode_avg)
     build_figure('decode_speed', ax3, decode_avg)
     build_figure('time_pct', ax4, decode_pct, last=True)
+    build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
     #fig.subplots_adjust(bottom=0.15, right=.99, top=0.99, hspace=0.03)
     plt.savefig('compression_comparison_ratio_speed_time.pdf')
     fig.clear()
