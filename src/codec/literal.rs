@@ -155,10 +155,7 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = superstate.bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts != 0) as usize; 
-        let mut spd = superstate.bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
-        if mm_opts == 2 {
-            spd = Speed::cold_new(0, 128);
-        }
+        let spd = superstate.bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
         let mm = -(is_mm as isize) as usize;
         let opt_3_f0_mask = if mm_opts == 1 {0xf0} else {0xff};
         let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
@@ -175,11 +172,21 @@ impl<AllocU8:Allocator<u8>,
             index_d = cur_byte_prior as usize | (
                 (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
         }
-        let nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                                       (HTraits::IS_HIGH as usize,
-                                                        core::cmp::min(mm_opts as usize, 3),
-                                                        index_c,
-                                                        index_d));
+        let mut uniform_prob;
+        let nibble_prob = if mm_opts == 2 {
+            uniform_prob = Cdf16::default();
+            &mut uniform_prob
+        } else if HTraits::IS_HIGH {
+            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                         (core::cmp::min(mm_opts as usize, 2),
+                                          index_c,
+                                          index_d))
+        } else {
+            superstate.bk.lit_low_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                             (core::cmp::min(mm_opts as usize, 2),
+                                              index_c,
+                                              index_d))
+        };
         if CTraits::MIXING_PRIORS {
             let cm_prob = if HTraits::IS_HIGH {
                 superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
