@@ -2,7 +2,7 @@
 use super::div_lut;
 
 #[cfg(feature="simd")]
-use stdsimd::simd;
+use core::simd;
 #[cfg(not(feature="division_table_gen"))]
 pub type DenominatorType = i16;
 #[cfg(feature="division_table_gen")]

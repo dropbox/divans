@@ -28,7 +28,6 @@ vergen = "0.1"
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
 "brotli" = { version = "~2, > 2.0.0"}
-"stdsimd" = { version = "= 0.0.4", optional = true }
 
 [features]
 safe=[]
@@ -41,7 +40,7 @@ debug_entropy = []
 bitcmdselect = []
 float64 = []
 block_switch = []
-simd = ["stdsimd"]
+simd = []
 seccomp = ["brotli/seccomp"]
 no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
 no-stdlib-rust-binding = []

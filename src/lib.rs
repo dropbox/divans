@@ -8,8 +8,7 @@
 //
 //   Unless required by applicable law or agreed to in writing, software
 //   distributed under the License is distributed on an "AS IS" BASIS,
-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//   See the License for the specific language governing permissions and
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.//   See the License for the specific language governing permissions and
 //   limitations under the License.
 //! This is documentation for the `divans` crate
 //!
@@ -17,6 +16,7 @@
 
 #![cfg_attr(feature="benchmark", feature(test))]
 #![cfg_attr(feature="simd", feature(platform_intrinsics))]
+#![cfg_attr(feature="simd", feature(stdsimd))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(lang_items)))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(compiler_builtins_lib)))]
 #![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", crate_type="cdylib"))]
@@ -37,9 +37,6 @@ extern crate std;
 #[cfg(not(any(feature="billing", feature="findspeed")))]
 #[macro_use]
 extern crate std;
-
-#[cfg(feature="simd")]
-extern crate stdsimd;
 
 #[cfg(test)]
 #[macro_use]
