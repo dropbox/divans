@@ -118,8 +118,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub num_literals_coded: u32,
     pub literal_context_map: AllocU8::AllocatedMemory,
     pub distance_context_map: AllocU8::AllocatedMemory,
-    pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
-    pub lit_low_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
@@ -231,9 +229,7 @@ impl<Cdf16:CDF16,
                                                     AllocU8,
                                                     AllocCDF2,
                                                     AllocCDF16> {
-    fn new(lit_prior: AllocCDF16::AllocatedMemory,
-           lit_low_prior: AllocCDF16::AllocatedMemory,
-           cc_prior: AllocCDF16::AllocatedMemory,
+    fn new(cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
            pred_prior: AllocCDF16::AllocatedMemory,
@@ -288,12 +284,6 @@ impl<Cdf16:CDF16,
             },
             lit_cm_priors: LiteralCommandPriorsCM {
                 priors: AllocCDF16::AllocatedMemory::default()
-            },
-            lit_priors: LiteralCommandPriors {
-                priors: lit_prior
-            },
-            lit_low_priors: LiteralCommandPriors {
-                priors: lit_low_prior
             },
             cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
@@ -598,6 +588,8 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub m8: RepurposingAlloc<u8, AllocU8>,
     mcdf2: AllocCDF2,
     pub mcdf16: AllocCDF16,
+    pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    pub lit_low_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
 }
 
@@ -648,9 +640,14 @@ impl <AllocU8:Allocator<u8>,
             m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            bk:CrossCommandBookKeeping::new(lit_priors,
-                                            lit_low_priors,
-                                            cc_priors, copy_priors,
+            lit_priors: LiteralCommandPriors {
+                priors: lit_priors
+            },
+            lit_low_priors: LiteralCommandPriors {
+                priors: lit_low_priors
+            },
+
+            bk:CrossCommandBookKeeping::new(cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             literal_context_map, distance_context_map,
                                             dynamic_context_mixing,
@@ -667,15 +664,15 @@ impl <AllocU8:Allocator<u8>,
         self.bk.cc_priors.summarize_speed_costs();
         self.bk.copy_priors.summarize_speed_costs();
         self.bk.dict_priors.summarize_speed_costs();
-        self.bk.lit_priors.summarize_speed_costs();
-        self.bk.lit_low_priors.summarize_speed_costs();
+        self.lit_priors.summarize_speed_costs();
+        self.lit_low_priors.summarize_speed_costs();
         self.bk.lit_cm_priors.summarize_speed_costs();
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16d = core::mem::replace(&mut self.bk.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16e = core::mem::replace(&mut self.bk.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16d = core::mem::replace(&mut self.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16e = core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16f = core::mem::replace(&mut self.bk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16g = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16h = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());

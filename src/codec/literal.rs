@@ -12,12 +12,14 @@ use super::interface::{
     round_up_mod_4,
     CrossCommandBookKeeping,
 };
+
 use super::specializations::{CodecTraits};
 use ::interface::{
     ArithmeticEncoderOrDecoder,
     BillingDesignation,
     LiteralCommand,
 };
+use super::priors::LiteralCommandPriors;
 use ::priors::PriorCollection;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralSubstate {
@@ -100,8 +102,8 @@ impl<AllocU8:Allocator<u8>,
                          nibble_index: u32,
                          mut cur_nibble: u8,
                          _cur_byte_prior: u8,
-                         //local_coder: &mut ArithmeticCoder,
-                         superstate: &mut CrossCommandState<ArithmeticCoder,
+                         local_coder: &mut ArithmeticCoder,
+                         _superstate: &mut CrossCommandState<ArithmeticCoder,
                                                             Specialization,
                                                             Cdf16,
                                                             AllocU8,
@@ -119,18 +121,17 @@ impl<AllocU8:Allocator<u8>,
             let probs = [in_cmd_prob_slice[st], in_cmd_prob_slice[st + 1],
                              in_cmd_prob_slice[st + 2], in_cmd_prob_slice[st + 3]];
             ecdf.init(cur_nibble, &probs, &nibble_prob);
-            superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
+            local_coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
         } else {
-            superstate.coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
+            local_coder.get_or_put_nibble(&mut cur_nibble, &ecdf, BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(nibble_index & 1)));
         }
         cur_nibble
     }
     #[inline(always)]
-    fn code_nibble<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+    fn code_nibble<'a, ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Cdf16:CDF16,
-                       Specialization:EncoderOrDecoderSpecialization,
-                       AllocCDF2:Allocator<CDF2>,
                        AllocCDF16:Allocator<Cdf16>,
+                       AllocCDF2:Allocator<CDF2>,
                        CTraits:CodecTraits,
                        HTraits:HighTrait,
                        >(&mut self,
@@ -139,13 +140,12 @@ impl<AllocU8:Allocator<u8>,
                          cur_byte_prior: u8,
                          _ctraits: &'static CTraits,
                          _htraits: HTraits,
-                         //local_coder: &mut ArithmeticCoder,
-                         superstate: &mut CrossCommandState<ArithmeticCoder,
-                                                            Specialization,
-                                                            Cdf16,
-                                                            AllocU8,
-                                                            AllocCDF2,
-                                                            AllocCDF16>) -> u8 {
+                         local_coder: &mut ArithmeticCoder,
+                         bk: &mut CrossCommandBookKeeping<Cdf16,
+                                   AllocU8,
+                                   AllocCDF2,
+                                   AllocCDF16>,
+                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> u8 {
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !HTraits::IS_HIGH {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
@@ -153,9 +153,9 @@ impl<AllocU8:Allocator<u8>,
         } else {
             mixing_mask_index |= ((byte_context.prev_byte as usize) >> 4) << 8;
         }
-        let mm_opts = superstate.bk.mixing_mask[mixing_mask_index];
+        let mm_opts = bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts != 0) as usize; 
-        let spd = superstate.bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
+        let spd = bk.literal_adaptation[0];//superstate.bk.literal_adaptation[(((!is_mm)&1) << 1) | high_nibble as usize].clone();
         let mm = -(is_mm as isize) as usize;
         let opt_3_f0_mask = if mm_opts == 1 {0xf0} else {0xff};
         let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
@@ -164,57 +164,58 @@ impl<AllocU8:Allocator<u8>,
         let index_d: usize;
         
         let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as usize & 0xff;
-        if HTraits::IS_HIGH {
+        if mm_opts == 2 {
+            index_c=0x1;
+            index_d=0xfe;
+        } else if HTraits::IS_HIGH {
             index_c = stride_selected_byte & mm & opt_3_f0_mask;
             index_d = byte_context.actual_context as usize;
         } else {
             index_c = (mm & stride_selected_byte) | (!mm & byte_context.actual_context as usize);
             index_d = cur_byte_prior as usize | (
                 (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
-        }
-        let mut uniform_prob;
-        let nibble_prob = if mm_opts == 2 {
-            uniform_prob = Cdf16::default();
-            &mut uniform_prob
-        } else if HTraits::IS_HIGH {
-            superstate.bk.lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+        };
+        let nibble_prob = if HTraits::IS_HIGH {
+            lit_priors.get(LiteralNibblePriorType::CombinedNibble,
                                          (core::cmp::min(mm_opts as usize, 2),
                                           index_c,
                                           index_d))
         } else {
-            superstate.bk.lit_low_priors.get(LiteralNibblePriorType::CombinedNibble,
+            lit_priors.get(LiteralNibblePriorType::CombinedNibble,
                                              (core::cmp::min(mm_opts as usize, 2),
                                               index_c,
                                               index_d))
         };
         if CTraits::MIXING_PRIORS {
             let cm_prob = if HTraits::IS_HIGH {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
-                                                (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
+                                                (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
                                                  byte_context.actual_context as usize,))
             } else {
-                superstate.bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
-                                                (0,//(byte_context.selected_context as i8 & -(superstate.bk.prior_depth as i8)) as usize,
+                bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
+                                                (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
                                                  cur_byte_prior as usize,
                                                  byte_context.actual_context as usize))
             };
-            let prob = cm_prob.average(nibble_prob, superstate.bk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
-            let weighted_prob_range = superstate.coder.get_or_put_nibble(&mut cur_nibble,
+            let prob = cm_prob.average(nibble_prob, bk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
+            let weighted_prob_range = local_coder.get_or_put_nibble(&mut cur_nibble,
                                                                          &prob,
                                                                          BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
-            assert_eq!(superstate.bk.model_weights[HTraits::IS_HIGH as usize].should_mix(), true);
+            assert_eq!(bk.model_weights[HTraits::IS_HIGH as usize].should_mix(), true);
             let model_probs = [
                 cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
                 nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
             ];
-            superstate.bk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
-            cm_prob.blend(cur_nibble, superstate.bk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
+            bk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
+            cm_prob.blend(cur_nibble, bk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
         } else {
-            superstate.coder.get_or_put_nibble(&mut cur_nibble,
+            local_coder.get_or_put_nibble(&mut cur_nibble,
                                                nibble_prob,
                                                BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
         }
+        if mm_opts != 2 {
         nibble_prob.blend(cur_nibble, spd);
+        }
         cur_nibble
     }
 
@@ -249,12 +250,12 @@ impl<AllocU8:Allocator<u8>,
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
-        //let mut local_coder = superstate.coder.mov();
+        let mut local_coder = superstate.coder.mov();
         loop {
-            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+            match local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                 BrotliResult::ResultSuccess => {},
                 need_something => {
-                    //superstate.coder = local_coder.mov_consume();
+                    superstate.coder = local_coder.mov_consume();
                     return need_something
                 },
             }
@@ -276,9 +277,9 @@ impl<AllocU8:Allocator<u8>,
                     if in_cmd.high_entropy && !high_entropy_flag {
                         shortcut_nib = NUM_LITERAL_LENGTH_MNEMONIC as u8 + 1;
                     }
-                    let mut nibble_prob = superstate.bk.lit_priors.get(
+                    let mut nibble_prob = superstate.lit_priors.get(
                         LiteralNibblePriorType::CountSmall, (ctype, index));
-                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    local_coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
 
                     if shortcut_nib as u32 == NUM_LITERAL_LENGTH_MNEMONIC {
@@ -294,8 +295,8 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralCountFirst => {
                     let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeBegNib, (ctype,));
-                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                    let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeBegNib, (ctype,));
+                    local_coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
                     if beg_nib == 15 {
@@ -312,8 +313,8 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeLastNib, (ctype,));
-                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeLastNib, (ctype,));
+                    local_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
@@ -325,8 +326,8 @@ impl<AllocU8:Allocator<u8>,
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, (ctype,));
-                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, (ctype,));
+                    local_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
@@ -355,7 +356,7 @@ impl<AllocU8:Allocator<u8>,
                         cur_nibble = self.ecdf_write_nibble(nibble_index,
                                                             cur_nibble,
                                                             prior_nibble >> 4,
-//                                                            &mut local_coder,
+                                                            &mut local_coder,
                                                             superstate,
                                                             in_cmd.prob.slice());
                                          
@@ -371,7 +372,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
-                        //superstate.coder = local_coder.mov_consume();
+                        superstate.coder = local_coder.mov_consume();
                         return BrotliResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndexWithECDF(nibble_index + 1);
@@ -390,8 +391,9 @@ impl<AllocU8:Allocator<u8>,
                                                           prior_nibble >> 4,
                                                           ctraits,
                                                           LowNibble{},
-                                                          //&mut local_coder,
-                                                          superstate,
+                                                          &mut local_coder,
+                                                          &mut superstate.bk,
+                                                          &mut superstate.lit_low_priors,
                                                           );
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         *cur_byte = cur_nibble | *cur_byte;
@@ -399,7 +401,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                     if byte_index + 1 == self.lc.data.slice().len() {
                         self.state = LiteralSubstate::FullyDecoded;
-                        //superstate.coder = local_coder.mov_consume();
+                        superstate.coder = local_coder.mov_consume();
                         return BrotliResult::ResultSuccess;
                     } else {
                         let new_state = self.state_literal_nibble_index(nibble_index + 1, input_bytes.len() - *input_offset);
@@ -416,13 +418,14 @@ impl<AllocU8:Allocator<u8>,
                                                       0,
                                                       ctraits,
                                                       HighNibble{},
-                                                      //&mut local_coder,
-                                                      superstate,
+                                                      &mut local_coder,
+                                                          &mut superstate.bk,
+                                                          &mut superstate.lit_priors,
                                                       );
-                    match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                    match local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                         BrotliResult::ResultSuccess => {},
                         need_something => {
-                            //superstate.coder = local_coder.mov_consume();
+                            superstate.coder = local_coder.mov_consume();
                             return self.fallback_byte_encode(cur_nibble, nibble_index, need_something);
                         }
                     }
@@ -431,15 +434,16 @@ impl<AllocU8:Allocator<u8>,
                                                     cur_nibble,
                                                     ctraits,
                                                     LowNibble{},
-                                                    //&mut local_coder,
-                                                    superstate,
+                                                    &mut local_coder,
+                                                          &mut superstate.bk,
+                                                          &mut superstate.lit_low_priors,
                                                     ) | (cur_nibble << 4);
                     self.lc.data.slice_mut()[byte_index] = cur_byte;
                     superstate.bk.push_literal_byte(cur_byte);
                     let bytes_left = self.lc.data.slice().len() - byte_index - 1;
                     if bytes_left == 0 {
                         self.state = LiteralSubstate::FullyDecoded;
-                        //superstate.coder = local_coder.mov_consume();
+                        superstate.coder = local_coder.mov_consume();
                         return BrotliResult::ResultSuccess;
                     } else {
                         let new_state = self.state_literal_nibble_index(nibble_index + 2, input_bytes.len() - *input_offset);
@@ -461,10 +465,11 @@ impl<AllocU8:Allocator<u8>,
                                                           0,
                                                           ctraits,
                                                           HighNibble{},
-                                                          //&mut local_coder,
-                                                          superstate,
+                                                          &mut local_coder,
+                                                          &mut superstate.bk,
+                                                          &mut superstate.lit_priors,
                         );
-                        let byte_pull_status = superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+                        let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
                         low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
                         debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
                         let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
@@ -472,8 +477,9 @@ impl<AllocU8:Allocator<u8>,
                                                         cur_nibble,
                                                         ctraits,
                                                         LowNibble{},
-                                                        //&mut local_coder,
-                                                        superstate,
+                                                        &mut local_coder,
+                                                          &mut superstate.bk,
+                                                          &mut superstate.lit_low_priors,
                         ) | (cur_nibble << 4);
                         *lc_target = cur_byte;
                         superstate.bk.push_literal_byte(cur_byte);
@@ -484,7 +490,7 @@ impl<AllocU8:Allocator<u8>,
                             low_buffer_warning = start_byte_index + byte_offset + 1 != superstate.bk.last_llen as usize;
                             break;
                         }
-                        let byte_pull_status = superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+                        let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
                         debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
                     }
                     self.lc.data = lc_data;
@@ -492,11 +498,11 @@ impl<AllocU8:Allocator<u8>,
                         continue;
                     }
                     self.state = LiteralSubstate::FullyDecoded;
-                    //superstate.coder = local_coder.mov_consume();
+                    superstate.coder = local_coder.mov_consume();
                     return BrotliResult::ResultSuccess;
                 },
                 LiteralSubstate::FullyDecoded => {
-                    //superstate.coder = local_coder.mov_consume();
+                    superstate.coder = local_coder.mov_consume();
                     return BrotliResult::ResultSuccess;
                 }
             }
