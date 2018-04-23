@@ -312,8 +312,9 @@ impl Speed {
         ret
     }
     #[inline(always)]
-    pub fn inc_and_gets(&mut self, ander: i16) {
+    pub fn inc_and_gets(&mut self, ander: i16) -> Speed {
         self.0 &= ander;
+        *self
     }
     #[inline(always)]
     pub fn lim_or_gets(&mut self, orer: i16) {
