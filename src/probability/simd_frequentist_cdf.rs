@@ -182,10 +182,7 @@ impl CDF16 for SIMDFrequentistCDF16 {
     fn blend(&mut self, symbol: u8, speed: Speed) {
         let increment_v = i16x16::splat(speed.inc());
         let one_to_16 = i16x16::new(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
-        let mask_v = unsafe {
-            core::arch::x86_64::_mm256_cmpgt_epi16(core::arch::x86_64::__m256i::from_bits(one_to_16),
-                                                   core::arch::x86_64::__m256i::from_bits(i16x16::splat(i16::from(symbol))))
-        };
+        let mask_v = one_to_16.gt(i16x16::splat(i16::from(symbol)));
         self.cdf = self.cdf + (increment_v & i16x16::from_bits(mask_v));
         let mut cdf_max = self.max();
         if cdf_max >= speed.lim() {
