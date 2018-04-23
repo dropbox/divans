@@ -145,7 +145,7 @@ impl<AllocU8:Allocator<u8>,
                                    AllocU8,
                                    AllocCDF2,
                                    AllocCDF16>,
-                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> u8 {
+                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, bool) {
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !HTraits::IS_HIGH {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
@@ -213,10 +213,10 @@ impl<AllocU8:Allocator<u8>,
                                                nibble_prob,
                                                BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
         }
-        if mm_opts != 2 {
-        nibble_prob.blend(cur_nibble, spd);
-        }
-        cur_nibble
+        //if mm_opts != 2 {
+        //nibble_prob.blend(cur_nibble, spd);
+        //}
+        (cur_nibble, nibble_prob, mm_opts != 2)
     }
 
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>, bytes_rem:usize) -> LiteralSubstate {
@@ -386,7 +386,7 @@ impl<AllocU8:Allocator<u8>,
                                                              ctraits);
                     {
                         let prior_nibble = self.lc.data.slice()[byte_index];
-                        let cur_nibble = self.code_nibble(byte_to_encode_val & 0xf,
+                        let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val & 0xf,
                                                           byte_context,
                                                           prior_nibble >> 4,
                                                           ctraits,
@@ -395,6 +395,9 @@ impl<AllocU8:Allocator<u8>,
                                                           &mut superstate.bk,
                                                           &mut superstate.lit_low_priors,
                                                           );
+                        if should_blend {
+                           cur_prob.blend(cur_nibble, superstate.bk.literal_adaptation[0]);
+                        }
                         let cur_byte = &mut self.lc.data.slice_mut()[byte_index];
                         *cur_byte = cur_nibble | *cur_byte;
                         superstate.bk.push_literal_byte(*cur_byte);
@@ -413,7 +416,7 @@ impl<AllocU8:Allocator<u8>,
                     let byte_index = (nibble_index as usize) >> 1;
                     let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
                     let byte_context = get_prev_word_context(&superstate.bk, ctraits);
-                    let cur_nibble = self.code_nibble(byte_to_encode_val >> 4,
+                    let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val >> 4,
                                                       byte_context,
                                                       0,
                                                       ctraits,
@@ -422,6 +425,9 @@ impl<AllocU8:Allocator<u8>,
                                                           &mut superstate.bk,
                                                           &mut superstate.lit_priors,
                                                       );
+                    if should_blend {
+                       cur_prob.blend(cur_nibble, superstate.bk.literal_adaptation[0]);
+                    }
                     match local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
                         BrotliResult::ResultSuccess => {},
                         need_something => {
@@ -429,7 +435,7 @@ impl<AllocU8:Allocator<u8>,
                             return self.fallback_byte_encode(cur_nibble, nibble_index, need_something);
                         }
                     }
-                    let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
+                    let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
                                                     byte_context,
                                                     cur_nibble,
                                                     ctraits,
@@ -437,10 +443,14 @@ impl<AllocU8:Allocator<u8>,
                                                     &mut local_coder,
                                                           &mut superstate.bk,
                                                           &mut superstate.lit_low_priors,
-                                                    ) | (cur_nibble << 4);
+                                                    );
+                                                    let cur_byte = l_nibble | (cur_nibble << 4);
+                    let bytes_left = self.lc.data.slice().len() - byte_index - 1;
                     self.lc.data.slice_mut()[byte_index] = cur_byte;
                     superstate.bk.push_literal_byte(cur_byte);
-                    let bytes_left = self.lc.data.slice().len() - byte_index - 1;
+                    if l_blend {
+                       l_prob.blend(l_nibble, superstate.bk.literal_adaptation[0]);
+                    }
                     if bytes_left == 0 {
                         self.state = LiteralSubstate::FullyDecoded;
                         superstate.coder = local_coder.mov_consume();
@@ -460,7 +470,7 @@ impl<AllocU8:Allocator<u8>,
                         let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd,
                                                                                                 start_byte_index.wrapping_add(byte_offset));
                         let byte_context = get_prev_word_context(&superstate.bk, ctraits);
-                        let cur_nibble = self.code_nibble(byte_to_encode_val >> 4,
+                        let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val >> 4,
                                                           byte_context,
                                                           0,
                                                           ctraits,
@@ -469,10 +479,14 @@ impl<AllocU8:Allocator<u8>,
                                                           &mut superstate.bk,
                                                           &mut superstate.lit_priors,
                         );
+                        
                         let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
                         low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
                         debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
-                        let cur_byte = self.code_nibble(byte_to_encode_val & 0xf,
+                        if should_blend {
+                            cur_prob.blend(cur_nibble, superstate.bk.literal_adaptation[0]);
+                        }
+                        let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
                                                         byte_context,
                                                         cur_nibble,
                                                         ctraits,
@@ -480,9 +494,14 @@ impl<AllocU8:Allocator<u8>,
                                                         &mut local_coder,
                                                           &mut superstate.bk,
                                                           &mut superstate.lit_low_priors,
-                        ) | (cur_nibble << 4);
+                        );
+                        let cur_byte = l_nibble | (cur_nibble << 4);
                         *lc_target = cur_byte;
                         superstate.bk.push_literal_byte(cur_byte);
+                        if l_blend {
+                            l_prob.blend(l_nibble, superstate.bk.literal_adaptation[0]);
+                        }
+
                         if low_buffer_warning {
                             let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
                                                                             input_bytes.len() - *input_offset);
