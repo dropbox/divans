@@ -250,16 +250,16 @@ impl<AllocU8:Allocator<u8>,
                           specialization: &Specialization,
                           _nibble_array_type: NibbleArrayType,
                           ctraits: &'static CTraits,
-) -> BrotliResult {
-        let mut lc_data = core::mem::replace(&mut self.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default());
-        bk.last_llen = lc_data.slice().len() as u32;
-        let start_byte_index = (start_nibble_index as usize) >> 1;
-        let mut retval = BrotliResult::ResultSuccess;
-        for (byte_offset, lc_target) in lc_data.slice_mut()[start_byte_index..bk.last_llen as usize].iter_mut().enumerate() {
-             let mut byte_to_encode_val = specialization.get_literal_byte(in_cmd,
+  ) -> BrotliResult {
+      let mut lc_data = core::mem::replace(&mut self.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default());
+      bk.last_llen = lc_data.slice().len() as u32;
+      let start_byte_index = (start_nibble_index as usize) >> 1;
+      let mut retval = BrotliResult::ResultSuccess;
+      for (byte_offset, lc_target) in lc_data.slice_mut()[start_byte_index..bk.last_llen as usize].iter_mut().enumerate() {
+           let mut byte_to_encode_val = specialization.get_literal_byte(in_cmd,
                                                                           start_byte_index.wrapping_add(byte_offset));
-             let byte_context = get_prev_word_context(&bk, ctraits);
-             let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val >> 4,
+           let byte_context = get_prev_word_context(&bk, ctraits);
+           let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val >> 4,
                                                                          byte_context,
                                                                          0,
                                                                          ctraits,
@@ -267,56 +267,61 @@ impl<AllocU8:Allocator<u8>,
                                                                          local_coder,
                                                                          bk,
                                                                          lit_priors);
-                        
-             let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
-             let low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
-             cur_prob.blend(cur_nibble, should_blend);
-             if NibbleArrayType::FULLY_SAFE {
-                 debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
-             } else {
-                    match byte_pull_status {
-                        BrotliResult::ResultSuccess => {},
-                        need_something => {
-                            retval = self.fallback_byte_encode(cur_nibble, start_nibble_index + byte_offset as u32 * 2 + 1, need_something);
-                            break;
-                        }
-                    }
-             }
-             let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
-                                                                byte_context,
-                                                                cur_nibble,
-                                                                ctraits,
-                                                                LowNibble{},
-                                                                local_coder,
-                                                                bk,
-                                                                lit_low_priors,
-                                                                );
-             l_prob.blend(l_nibble, l_blend);
-             let cur_byte = l_nibble | (cur_nibble << 4);
-             *lc_target = cur_byte;
-             bk.push_literal_byte(cur_byte);
 
-             if NibbleArrayType::FULLY_SAFE && low_buffer_warning {
-                 let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
-                                                                 input_bytes.len() - *input_offset);
-                 self.state = new_state;
-                 if start_byte_index + byte_offset + 1 != bk.last_llen as usize {
-                    retval = BrotliResult::NeedsMoreInput;
-                 }
-                 break;
-              }
-              let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
-              if NibbleArrayType::FULLY_SAFE {
-                  debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
-              } else {
-                 let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
-                                                                 input_bytes.len() - *input_offset);
-                 self.state = new_state;
-                 if start_byte_index + byte_offset + 1 != bk.last_llen as usize {
-                    retval = BrotliResult::NeedsMoreInput;
-                 }
-                 break;                   
-              }
+           let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+           let low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
+           cur_prob.blend(cur_nibble, should_blend);
+           if NibbleArrayType::FULLY_SAFE {
+               debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
+           } else {
+               match byte_pull_status {
+                   BrotliResult::ResultSuccess => {},
+                   need_something => {
+                       retval = self.fallback_byte_encode(lc_target, cur_nibble, start_nibble_index + byte_offset as u32 * 2 + 1, need_something);
+                       break;
+                   }
+               }
+           }
+           let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
+                                                               byte_context,
+                                                              cur_nibble,
+                                                              ctraits,
+                                                              LowNibble{},
+                                                              local_coder,
+                                                              bk,
+                                                              lit_low_priors,
+                                                              );
+           l_prob.blend(l_nibble, l_blend);
+           let cur_byte = l_nibble | (cur_nibble << 4);
+           *lc_target = cur_byte;
+           bk.push_literal_byte(cur_byte);
+
+           if NibbleArrayType::FULLY_SAFE && low_buffer_warning {
+               let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
+                                                               input_bytes.len() - *input_offset);
+               self.state = new_state;
+               if start_byte_index + byte_offset + 1 != bk.last_llen as usize {
+                  retval = BrotliResult::NeedsMoreInput;
+               }
+               break;
+            }
+            let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
+            if NibbleArrayType::FULLY_SAFE {
+                debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
+            } else {
+                match byte_pull_status {
+                  BrotliResult::ResultSuccess => {},
+                  need_something => {
+                      let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
+                                                                       input_bytes.len() - *input_offset);
+                      self.state = new_state;
+                      if start_byte_index + byte_offset + 1 != bk.last_llen as usize {
+                          retval = need_something;
+                      }
+                      break;
+                  }
+               }
+            }
         }
         self.lc.data = lc_data;
         retval
@@ -509,46 +514,16 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    superstate.bk.last_llen = self.lc.data.slice().len() as u32;
-                    let byte_index = (nibble_index as usize) >> 1;
-                    let mut byte_to_encode_val = superstate.specialization.get_literal_byte(in_cmd, byte_index);
-                    let byte_context = get_prev_word_context(&superstate.bk, ctraits);
-                    let (cur_nibble, cur_prob, should_blend) = self.code_nibble(byte_to_encode_val >> 4,
-                                                      byte_context,
-                                                      0,
-                                                      ctraits,
-                                                      HighNibble{},
-                                                      local_coder,
-                                                          &mut superstate.bk,
-                                                          &mut superstate.lit_priors,
-                                                      );
-                    cur_prob.blend(cur_nibble, should_blend);
-                    match local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                        BrotliResult::ResultSuccess => {},
-                        need_something => {
-                            return self.fallback_byte_encode(cur_nibble, nibble_index, need_something);
-                        }
-                    }
-                    let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
-                                                    byte_context,
-                                                    cur_nibble,
-                                                    ctraits,
-                                                    LowNibble{},
-                                                    local_coder,
-                                                          &mut superstate.bk,
-                                                          &mut superstate.lit_low_priors,
-                                                    );
-                                                    let cur_byte = l_nibble | (cur_nibble << 4);
-                    let bytes_left = self.lc.data.slice().len() - byte_index - 1;
-                    self.lc.data.slice_mut()[byte_index] = cur_byte;
-                    superstate.bk.push_literal_byte(cur_byte);
-                       l_prob.blend(l_nibble, l_blend);
-                    if bytes_left == 0 {
-                        self.state = LiteralSubstate::FullyDecoded;
-                        return BrotliResult::ResultSuccess;
-                    } else {
-                        let new_state = self.state_literal_nibble_index(nibble_index + 2, input_bytes.len() - *input_offset);
-                        self.state = new_state;
+                    let code_result = self.code_nibble_array(input_bytes, input_offset, output_bytes, output_offset,
+                                           in_cmd, nibble_index,
+                                           local_coder, &mut superstate.lit_priors, &mut superstate.lit_low_priors,
+                                           &mut superstate.bk, &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
+                    match code_result {
+                      BrotliResult::ResultSuccess => {
+                         self.state = LiteralSubstate::FullyDecoded;
+                         return BrotliResult::ResultSuccess;
+                      },
+                       _ => return code_result,
                     }
                 },
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
@@ -581,9 +556,9 @@ impl<AllocU8:Allocator<u8>,
         }
     }
     #[cold]
-    fn fallback_byte_encode(&mut self, cur_nibble: u8, nibble_index: u32, res: BrotliResult) -> BrotliResult{
-        self.lc.data.slice_mut()[(nibble_index >> 1) as usize] = cur_nibble << 4;
-        self.state = LiteralSubstate::LiteralNibbleLowerHalf(nibble_index + 1);
+    fn fallback_byte_encode(&mut self, lc_target: &mut u8, cur_nibble: u8, new_nibble_index: u32, res: BrotliResult) -> BrotliResult{
+        *lc_target = cur_nibble << 4;
+        self.state = LiteralSubstate::LiteralNibbleLowerHalf(new_nibble_index);
         res
     }
 }
