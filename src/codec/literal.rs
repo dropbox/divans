@@ -156,7 +156,7 @@ impl<AllocU8:Allocator<u8>,
                                    AllocU8,
                                    AllocCDF2,
                                    AllocCDF16>,
-                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, Speed) {
+                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, bool) {
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !HTraits::IS_HIGH {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
@@ -166,30 +166,29 @@ impl<AllocU8:Allocator<u8>,
         }
         let mm_opts = bk.mixing_mask[mixing_mask_index];
         let is_mm = (mm_opts != 0) as usize; 
-        let mm = -(is_mm as isize) as usize;
-        let opt_3_f0_mask = if mm_opts == 1 {0xf0} else {0xff};
+        let mm = -(is_mm as isize) as u8;
+        let opt_3_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
         let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
         //let stride_offset = (-((mm_opts >= 4) as isize) as usize) & core::cmp::min(7, mm_opts as usize ^ 4);
         let index_c: usize;
         let index_d: usize;
         
-        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as usize & 0xff;
+        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as u8 & 0xff;
         if HTraits::IS_HIGH {
-            index_c = stride_selected_byte & mm & opt_3_f0_mask;
+            index_c = (stride_selected_byte & mm & (!opt_3_f_mask)) as usize;
             index_d = byte_context.actual_context as usize;
         } else {
-            index_c = (mm & stride_selected_byte) | (!mm & byte_context.actual_context as usize);
-            index_d = cur_byte_prior as usize | (
-                (byte_context.actual_context as usize & 0xf & !opt_3_f0_mask) << 4);
+            index_c = ((mm & stride_selected_byte) | (!mm & byte_context.actual_context)) as usize;
+            index_d = (cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4)) as usize;
         };
         let nibble_prob = if HTraits::IS_HIGH {
             lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (core::cmp::min(mm_opts as usize, 2),
+                                         (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
                                           index_c,
                                           index_d))
         } else {
             lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                             (core::cmp::min(mm_opts as usize, 2),
+                                             (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
                                               index_c,
                                               index_d))
         };
@@ -223,7 +222,7 @@ impl<AllocU8:Allocator<u8>,
         //if mm_opts != 2 {
         //nibble_prob.blend(cur_nibble, spd);
         //}
-        (cur_nibble, nibble_prob, bk.literal_adaptation[0].inc_and_gets(-((mm_opts != 2) as i16)))
+        (cur_nibble, nibble_prob, mm_opts != 2)
     }
     fn code_nibble_array<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                          Specialization:EncoderOrDecoderSpecialization,
@@ -271,10 +270,12 @@ impl<AllocU8:Allocator<u8>,
                                                                            local_coder,
                                                                            bk,
                                                                            lit_priors);
-               h_nibble = cur_nibble;
                let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
                low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
-               cur_prob.blend(cur_nibble, should_blend);
+               h_nibble = cur_nibble;
+               if should_blend {
+                   cur_prob.blend(cur_nibble, bk.literal_adaptation[0]);
+               }
                if NibbleArrayType::FULLY_SAFE {
                    debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
                } else {
@@ -289,8 +290,8 @@ impl<AllocU8:Allocator<u8>,
            } else {
                h_nibble = *lc_target >> 4;
                low_buffer_warning = false;
+               first = false;
            }
-           first = false;
            let (l_nibble, l_prob, l_blend) = self.code_nibble(byte_to_encode_val & 0xf,
                                                                byte_context,
                                                               h_nibble,
@@ -300,18 +301,21 @@ impl<AllocU8:Allocator<u8>,
                                                               bk,
                                                               lit_low_priors,
                                                               );
-           l_prob.blend(l_nibble, l_blend);
            let cur_byte = l_nibble | (h_nibble << 4);
-           *lc_target = cur_byte;
            bk.push_literal_byte(cur_byte);
+           *lc_target = cur_byte;
+           if l_blend {
+               l_prob.blend(l_nibble, bk.literal_adaptation[0]);
+           }
 
            if NibbleArrayType::FULLY_SAFE && low_buffer_warning {
-               let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
-                                                               input_bytes.len() - *input_offset);
-               self.state = new_state;
-               if start_byte_index + byte_offset + 1 != bk.last_llen as usize {
+               let new_byte_index = start_byte_index + byte_offset + 1;
+               if new_byte_index != bk.last_llen as usize {
                   retval = BrotliResult::NeedsMoreInput;
                }
+               let new_state = self.state_literal_nibble_index((new_byte_index << 1) as u32,
+                                                               input_bytes.len() - *input_offset);
+               self.state = new_state;
                break;
             }
             let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
