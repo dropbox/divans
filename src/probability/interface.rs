@@ -1,4 +1,5 @@
 use core;
+use super::numeric;
 pub type Prob = i16; // can be i32
 pub const
 MAX_FREQUENTIST_PROB: Prob = 0xa00;
@@ -38,6 +39,15 @@ fn log2(x:f64) -> f64 {
 #[cfg(feature="no-stdlib")]
 fn log2(x:f64) -> f64 {
     (63 - (x as u64).leading_zeros()) as f64 // hack
+}
+#[cfg(feature="avoid-divide")]
+#[inline(always)]
+pub fn lookup_divisor(cdfmax: i16) -> (i64, u8) {
+    numeric::lookup_divisor(cdfmax)
+}
+#[cfg(not(feature="avoid-divide"))]
+#[inline(always)]
+pub fn lookup_divisor(_cdfmax:i16) {
 }
 
 // Common interface for CDF2 and CDF16, with optional methods.
@@ -97,13 +107,37 @@ pub trait BaseCDF {
         }
     }
     #[inline(always)]
+    #[cfg(not(feature="avoid-divide"))]
+    fn sym_to_start_and_freq_with_div_hint(&self,
+                                           sym: u8,
+                                           inv_max_and_bitlen:()) -> SymStartFreq {
+        self.sym_to_start_and_freq(sym)
+    }
+    #[inline(always)]
+    #[cfg(feature="avoid-divide")]
+    fn sym_to_start_and_freq_with_div_hint(&self,
+                                           sym: u8,
+                                           inv_max_and_bitlen:(i64, u8)) -> SymStartFreq {
+        let cdf_sym = numeric::fast_divide_30bit_by_16bit((i32::from(self.cdf(sym)) << LOG2_SCALE), inv_max_and_bitlen);
+        let cdf_prev = if sym != 0 {numeric::fast_divide_30bit_by_16bit(i32::from(self.cdf(sym - 1)) << LOG2_SCALE, inv_max_and_bitlen)} else { 0 };
+        let freq = cdf_sym - cdf_prev;
+        SymStartFreq {
+            range: ProbRange {start: cdf_prev as Prob + 1, // major hax
+                              freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            },
+            sym: sym,
+        }
+    }
+    #[inline(always)]
     fn rescaled_cdf(&self, sym: u8) -> i32 {
         i32::from(self.cdf(sym)) << LOG2_SCALE
     }
     #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
-        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(self.max())) >> LOG2_SCALE) as i16;
+        let cdfmax = self.max();
+        let inv_max_and_bitlen = lookup_divisor(cdfmax);
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
         /* nice log(n) version which has too much dependent math, apparently, to be efficient
         let candidate0 = 7u8;
         let candidate1 = candidate0 - 4 + (((rescaled_cdf_offset >= self.cdf(candidate0)) as u8) << 3); // candidate1=3 or 11
@@ -152,7 +186,7 @@ pub trait BaseCDF {
         assert!(sym != 0);
         assert!(sym <= 15);
             
-        return self.sym_to_start_and_freq(sym);
+        return self.sym_to_start_and_freq_with_div_hint(sym, inv_max_and_bitlen);
         /* // this really should be the same speed as above
         for i in 0..15 {
             if rescaled_cdf_offset < self.cdf(i as u8) {

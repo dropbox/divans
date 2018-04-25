@@ -30,6 +30,7 @@ vergen = "0.1"
 "brotli" = { version = "~2, > 2.0.0"}
 
 [features]
+avoid-divide=[]
 safe=[]
 default= []#["simd"]
 findspeed = []
