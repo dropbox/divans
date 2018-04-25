@@ -97,18 +97,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
                                                  [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]) };
         let bitmask = unsafe { core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp)) };
         let symbol_id = (32 - (bitmask as u32).leading_zeros()) as u8;
-        if bitmask == 0 {
-            return self.sym_to_start_and_freq(0);
-        }
-        let cdf_prev = self.div_by_max(i32::from(self.cdf.extract(symbol_id as usize - 1)) << LOG2_SCALE);
-        let cdf_sym = self.div_by_max((i32::from(self.cdf.extract(symbol_id as usize)) << LOG2_SCALE));
-        let freq = cdf_sym - cdf_prev;
-        SymStartFreq {
-            range: super::interface::ProbRange {start: cdf_prev as Prob + 1, // major hax
-                              freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
-            },
-            sym: symbol_id,
-        }
+        self.sym_to_start_and_freq(symbol_id)
     }
 }
 

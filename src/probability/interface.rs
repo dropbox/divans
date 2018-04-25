@@ -86,8 +86,8 @@ pub trait BaseCDF {
     #[inline(always)]
     fn sym_to_start_and_freq(&self,
                              sym: u8) -> SymStartFreq {
-        let cdf_prev = if sym != 0 {self.div_by_max(i32::from(self.cdf(sym - 1)) << LOG2_SCALE)} else { 0 };
         let cdf_sym = self.div_by_max((i32::from(self.cdf(sym)) << LOG2_SCALE));
+        let cdf_prev = if sym != 0 {self.div_by_max(i32::from(self.cdf(sym - 1)) << LOG2_SCALE)} else { 0 };
         let freq = cdf_sym - cdf_prev;
         SymStartFreq {
             range: ProbRange {start: cdf_prev as Prob + 1, // major hax
