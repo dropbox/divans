@@ -3,7 +3,7 @@ use core::simd::FromBits;
 use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE};
 use super::numeric;
 use core::simd;
-use core::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
+use core::simd::{i32x2, f64x2, i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 //use stdsimd::vendor::__m256i;
 
 #[derive(Clone,Copy)]
@@ -62,21 +62,26 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         }
         true
     }
-    /* //slower
+
+    #[inline(always)]
     fn sym_to_start_and_freq(&self,
                              sym: u8) -> SymStartFreq {
-        let prev_cur = i64x2::new(if sym != 0 {self.cdf(sym - 1) as u64 as i64} else {0},
-                                  self.cdf(sym) as u64 as i64);
-        let scaled_prev_cur = prev_cur << LOG2_SCALE;
-        let prev_cur_over_max = numeric::fast_divide_30bit_i64x2_by_16bit(scaled_prev_cur, self.inv_max);
-        let cdf_prev = prev_cur_over_max.extract(0);
-        let freq = prev_cur_over_max.extract(1) - cdf_prev;
+        let prev_cur = i32x2::new(if sym != 0 {self.cdf(sym - 1) as i32} else {0},
+                                  self.cdf(sym) as i32);
+        let scaled_prev_cur = f64x2::from(prev_cur << LOG2_SCALE);
+        let prev_cur_over_max = scaled_prev_cur / (self.max() as f64);
+        let start_end = i32x2::from(prev_cur_over_max);
+        let start = start_end.extract(0) + 1;
+        let freq = start_end.extract(1) - start;
         SymStartFreq {
-            start: cdf_prev as Prob + 1, // major hax
-            freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            range: super::interface::ProbRange{
+                start: start as Prob, // major hax
+                freq:  freq as Prob, // don't want rounding errors to work out unfavorably
+            },
             sym: sym,
         }
-}*/
+    }
+
     #[cfg(feature="avx2")]
     #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
