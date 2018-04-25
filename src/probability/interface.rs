@@ -116,8 +116,9 @@ pub trait BaseCDF {
         //        let cdf15 = self.cdf(15);
         let sym: u8;
         if rescaled_cdf_offset < self.cdf(0) {
-            sym = 0;
-        } else if rescaled_cdf_offset < self.cdf(1) {
+            return self.sym_to_start_and_freq(0);
+        }
+        if rescaled_cdf_offset < self.cdf(1) {
             sym = 1;
         } else if rescaled_cdf_offset < self.cdf(2) {
             sym = 2;
@@ -148,6 +149,9 @@ pub trait BaseCDF {
         } else {
             sym = 15;
         }
+        assert!(sym != 0);
+        assert!(sym <= 15);
+            
         return self.sym_to_start_and_freq(sym);
         /* // this really should be the same speed as above
         for i in 0..15 {

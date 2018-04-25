@@ -9,18 +9,14 @@ use core::simd::{i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8}
 #[derive(Clone,Copy)]
 pub struct SIMDFrequentistCDF16 {
     pub cdf: i16x16,
-    pub inv_max: (i64, u8),
 }
 
 impl SIMDFrequentistCDF16 {
     #[inline(always)]
     fn new(input: i16x16) -> Self {
-        let mut ret = SIMDFrequentistCDF16 {
+        SIMDFrequentistCDF16 {
             cdf: input,
-            inv_max: (0, 0),
-        };
-        ret.inv_max = numeric::lookup_divisor(ret.max());
-        ret
+        }
     }
 }
 
@@ -44,7 +40,10 @@ impl BaseCDF for SIMDFrequentistCDF16 {
     #[inline(always)]
     fn max(&self) -> Prob { self.cdf.extract(15) }
     #[inline(always)]
-    fn div_by_max(&self, val:i32) -> i32 { numeric::fast_divide_30bit_by_16bit(val, self.inv_max) }
+    fn div_by_max(&self, val:i32) -> i32 {
+        let divisor = self.cdf.extract(15) as u16;
+        val / i32::from(divisor)
+    }
     #[inline(always)]
     fn log_max(&self) -> Option<i8> { None }
     #[inline(always)]
@@ -61,7 +60,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
                 return false;
             }
         }
-        self.inv_max == numeric::lookup_divisor(self.max())
+        true
     }
     /* //slower
     fn sym_to_start_and_freq(&self,
@@ -98,7 +97,18 @@ impl BaseCDF for SIMDFrequentistCDF16 {
                                                  [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]) };
         let bitmask = unsafe { core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp)) };
         let symbol_id = (32 - (bitmask as u32).leading_zeros()) as u8;
-        self.sym_to_start_and_freq(symbol_id)
+        if bitmask == 0 {
+            return self.sym_to_start_and_freq(0);
+        }
+        let cdf_prev = self.div_by_max(i32::from(self.cdf.extract(symbol_id as usize - 1)) << LOG2_SCALE);
+        let cdf_sym = self.div_by_max((i32::from(self.cdf.extract(symbol_id as usize)) << LOG2_SCALE));
+        let freq = cdf_sym - cdf_prev;
+        SymStartFreq {
+            range: super::interface::ProbRange {start: cdf_prev as Prob + 1, // major hax
+                              freq:  freq as Prob - 1, // don't want rounding errors to work out unfavorably
+            },
+            sym: symbol_id,
+        }
     }
 }
 
@@ -190,7 +200,6 @@ impl CDF16 for SIMDFrequentistCDF16 {
             self.cdf = self.cdf + cdf_bias - ((self.cdf + cdf_bias) >> 2);
             cdf_max = self.max();
         }
-        self.inv_max = numeric::lookup_divisor(cdf_max);
     }
 }
 
