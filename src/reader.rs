@@ -443,7 +443,7 @@ mod test {
     }
     #[test]
     fn test_hybrid_reader_compressor_on_alice_full() {
-        hy_reader_tst(include_bytes!("../testdata/64x"),
+        hy_reader_tst(include_bytes!("../testdata/alice29"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
                            force_literal_context_mode:None,
