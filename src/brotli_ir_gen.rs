@@ -11,7 +11,6 @@
 //   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
-
 use core::marker::PhantomData;
 use core::cmp::{min, max};
 use super::probability::{CDF2,CDF16};
@@ -132,7 +131,7 @@ impl<SelectedCDF:CDF16,
                 let output = data.checkout_next_buffer(codec.get_m8().get_base_alloc(),
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
-                    match write_header(header_progress, window_size, output, &mut output_offset) {
+                    match write_header(header_progress, window_size, output, &mut output_offset, codec.get_crc()) {
                         BrotliResult::ResultSuccess => {},
                         _ => panic!("Unexpected failure writing header"),
                     }
@@ -341,7 +340,7 @@ impl<SelectedCDF:CDF16,
                                                            output :&mut[u8],
                                                            output_offset: &mut usize) -> BrotliResult {
         if self.header_progress != interface::HEADER_LENGTH {
-            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset, self.codec.get_crc()) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
@@ -549,3 +548,5 @@ impl<AllocU8:Allocator<u8>,
         ret
     }
 }
+
+

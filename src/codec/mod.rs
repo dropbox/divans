@@ -14,6 +14,9 @@
 
 #![allow(dead_code)]
 use core;
+use core::hash::Hasher;
+use crc;
+
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
 use ::alloc_util::UninitializedOnAlloc;
@@ -185,6 +188,8 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            AllocCDF16>,
     state : EncodeOrDecodeState<AllocU8>,
     codec_traits: CodecTraitSelector,
+    crc: crc::crc64::Digest,
+    frozen_checksum: Option<u64>,
 }
 
 pub enum OneCommandReturn {
@@ -241,6 +246,8 @@ impl<AllocU8: Allocator<u8>,
             ),
             state:EncodeOrDecodeState::Begin,
             codec_traits: CodecTraitSelector::DefaultTrait(&specializations::DEFAULT_TRAIT),
+            crc: default_crc(),
+            frozen_checksum: None,
         };
         ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
         ret
@@ -257,7 +264,22 @@ impl<AllocU8: Allocator<u8>,
     pub fn coder(&mut self) -> &mut ArithmeticCoder {
         &mut self.cross_command_state.coder
     }
+    pub fn get_crc(&mut self) -> &mut crc::crc64::Digest {
+        &mut self.crc
+    }
     pub fn flush(&mut self,
+             output_bytes: &mut [u8],
+             output_bytes_offset: &mut usize) -> BrotliResult{
+        let ret = self.internal_flush(output_bytes, output_bytes_offset);
+        match self.frozen_checksum {
+            None => if !Specialization::IS_DECODING_FILE {
+                self.crc.write(output_bytes.split_at(*output_bytes_offset).0);
+            },
+            _ => {},
+        }
+        ret
+    }
+    fn internal_flush(&mut self,
                  output_bytes: &mut [u8],
                  output_bytes_offset: &mut usize) -> BrotliResult{
         let nop = Command::<AllocU8::AllocatedMemory>::nop();
@@ -313,20 +335,30 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
+                    match self.frozen_checksum {
+                        None => {
+                            if !Specialization::IS_DECODING_FILE {
+                                self.crc.write(output_bytes.split_at(*output_bytes_offset).0);
+                            }
+                            self.frozen_checksum = Some(self.crc.finish());
+                        },
+                        _ => {},
+                    };
+                    let crc = self.frozen_checksum.unwrap();
                     let bytes_remaining = output_bytes.len() - *output_bytes_offset;
                     let checksum_cur_index = count;
                     let bytes_needed = CHECKSUM_LENGTH - count;
 
                     let count_to_copy = core::cmp::min(bytes_remaining,
                                                        bytes_needed);
-                    let checksum = [b'~',
-                                    b'd',
-                                    b'i',
-                                    b'v',
-                                    b'a',
-                                    b'n',
-                                    b's',
-                                    b'~'];
+                    let checksum = [crc as u8 & 255,
+                                    (crc >> 8) as u8 & 255,
+                                    (crc >> 16) as u8 & 255,
+                                    (crc >> 24) as u8 & 255,
+                                    (crc >> 32) as u8 & 255,
+                                    (crc >> 40) as u8 & 255,
+                                    (crc >> 48) as u8 & 255,
+                                    (crc >> 56) as u8 & 255];
                     output_bytes.split_at_mut(*output_bytes_offset).1.split_at_mut(
                         count_to_copy).0.clone_from_slice(checksum.split_at(checksum_cur_index).1.split_at(count_to_copy).0);
                     *output_bytes_offset += count_to_copy;
@@ -372,6 +404,14 @@ impl<AllocU8: Allocator<u8>,
                 self.codec_traits = update;
             }
             if let Some(result) = res.0 {
+                match self.frozen_checksum {
+                    Some(_) => {},
+                    None => if Specialization::IS_DECODING_FILE {
+                        self.crc.write(input_bytes.split_at(*input_bytes_offset).0);
+                    } else {
+                        self.crc.write(output_bytes.split_at(*output_bytes_offset).0);
+                    },
+                }
                 return result;
             }
         }
@@ -437,6 +477,7 @@ impl<AllocU8: Allocator<u8>,
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
+                    assert!(Specialization::IS_DECODING_FILE);
                     // decoder only operation
                     let checksum_cur_index = count;
                     let bytes_needed = CHECKSUM_LENGTH - count;
@@ -446,14 +487,23 @@ impl<AllocU8: Allocator<u8>,
                     if to_check == 0 {
                         return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreInput));
                     }
-                    let checksum = [b'~',
-                                    b'd',
-                                    b'i',
-                                    b'v',
-                                    b'a',
-                                    b'n',
-                                    b's',
-                                    b'~'];
+                    match self.frozen_checksum {
+                        Some(_) => {},
+                        None => {
+                            self.crc.write(input_bytes.split_at(*input_bytes_offset).0);
+                            self.frozen_checksum= Some(self.crc.finish());
+                        },
+                    }
+                    let crc = self.frozen_checksum.unwrap();
+                    let checksum = [crc as u8 & 255,
+                                    (crc >> 8) as u8 & 255,
+                                    (crc >> 16) as u8 & 255,
+                                    (crc >> 24) as u8 & 255,
+                                    (crc >> 32) as u8 & 255,
+                                    (crc >> 40) as u8 & 255,
+                                    (crc >> 48) as u8 & 255,
+                                    (crc >> 56) as u8 & 255];
+
                     for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
                         input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
                         if *chk != *fil {
@@ -735,4 +785,7 @@ impl<AllocU8: Allocator<u8>,
             }
         }
     }
+}
+pub fn default_crc() -> crc::crc64::Digest {
+    crc::crc64::Digest::new(crc::crc64::ECMA)
 }

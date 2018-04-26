@@ -16,6 +16,7 @@
 // then it generates a valid divans bitstream using the ANS encoder
 use core;
 use core::marker::PhantomData;
+use core::hash::Hasher;
 use super::probability;
 use super::brotli;
 use super::raw_to_cmd;
@@ -41,7 +42,7 @@ pub use super::interface::{
     };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc};
 use super::interface;
 use super::brotli::BrotliResult;
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
@@ -84,15 +85,15 @@ impl<AllocU8:Allocator<u8>,
      type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>;
      type AdditionalArgs = ();
      fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
-                opts: super::interface::DivansCompressorOptions,
-           _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-        let window_size = core::cmp::min(24, core::cmp::max(10, opts.window_size.unwrap_or(22)));
-        let ring_buffer = m8.alloc_cell(1<<window_size);
-        let prediction_mode_backing = m8.alloc_cell(interface::MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE);
-        let literal_context_map = m8.alloc_cell(interface::MAX_LITERAL_CONTEXT_MAP_SIZE);
-        let enc = Self::DefaultEncoder::new(&mut m8);
-        let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
-          DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+            opts: super::interface::DivansCompressorOptions,
+            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+         let window_size = core::cmp::min(24, core::cmp::max(10, opts.window_size.unwrap_or(22)));
+         let ring_buffer = m8.alloc_cell(1<<window_size);
+         let prediction_mode_backing = m8.alloc_cell(interface::MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE);
+         let literal_context_map = m8.alloc_cell(interface::MAX_LITERAL_CONTEXT_MAP_SIZE);
+         let enc = Self::DefaultEncoder::new(&mut m8);
+         let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
+         DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
             m32 :m32,
             codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
@@ -160,24 +161,27 @@ fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>
     FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>(item.0.freeze_dry())
 }
 
-pub fn write_header(header_progress: &mut usize,
-                    window_size: u8,
-                    output: &mut[u8],
-                    output_offset:&mut usize) -> BrotliResult {
-        let bytes_avail = output.len() - *output_offset;
-        if bytes_avail + *header_progress < interface::HEADER_LENGTH {
-            output.split_at_mut(*output_offset).1.clone_from_slice(
-                &make_header(window_size)[*header_progress..
-                                              (*header_progress + bytes_avail)]);
-            *output_offset += bytes_avail;
-            *header_progress += bytes_avail;
-            return BrotliResult::NeedsMoreOutput;
-        }
-        output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
-                &make_header(window_size)[*header_progress..]);
-        *output_offset += interface::HEADER_LENGTH - *header_progress;
-        *header_progress = interface::HEADER_LENGTH;
-        BrotliResult::ResultSuccess
+pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
+                                window_size: u8,
+                                output: &mut[u8],
+                                output_offset:&mut usize,
+                                crc: &mut CRC) -> BrotliResult {
+    let bytes_avail = output.len() - *output_offset;
+    if bytes_avail + *header_progress < interface::HEADER_LENGTH {
+        let to_write = &make_header(window_size)[*header_progress..
+                                                 (*header_progress + bytes_avail)];
+        crc.write(to_write);
+        output.split_at_mut(*output_offset).1.clone_from_slice(
+            to_write);
+        *output_offset += bytes_avail;
+        *header_progress += bytes_avail;
+        return BrotliResult::NeedsMoreOutput;
+    }
+    output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
+        &make_header(window_size)[*header_progress..]);
+    *output_offset += interface::HEADER_LENGTH - *header_progress;
+    *header_progress = interface::HEADER_LENGTH;
+    BrotliResult::ResultSuccess
 
 }
 
@@ -276,7 +280,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
               output: &mut [u8],
               output_offset: &mut usize) -> BrotliResult {
         if self.header_progress != interface::HEADER_LENGTH {
-            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset,
+                               self.codec.get_crc()) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
@@ -339,7 +344,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                           output :&mut[u8],
                                           output_offset: &mut usize) -> BrotliResult{
         if self.header_progress != interface::HEADER_LENGTH {
-            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset,
+                               self.codec.get_crc()) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
@@ -356,7 +362,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
              output: &mut [u8],
              output_offset: &mut usize) -> BrotliResult {
         if self.header_progress != interface::HEADER_LENGTH {
-            match write_header(&mut self.header_progress, self.window_size, output, output_offset) {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset,
+                               self.codec.get_crc()) {
                 BrotliResult::ResultSuccess => {},
                 res => return res,
             }
