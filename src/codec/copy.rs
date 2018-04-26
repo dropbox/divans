@@ -38,6 +38,15 @@ pub struct CopyState {
 
 
 impl CopyState {
+    pub fn begin() -> Self {
+        CopyState{
+            cc: CopyCommand {
+                distance:0,
+                num_bytes:0,
+            },
+            state:CopySubstate::Begin,
+        }
+    }
     #[inline(always)]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,

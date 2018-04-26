@@ -52,6 +52,9 @@ fn find_best_match(data: Speed, palette: &SpeedPalette) -> usize {
     best_index
 }
 impl PredictionModeState {
+    pub fn begin() -> Self {
+        PredictionModeState::Begin
+    }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,

@@ -94,29 +94,29 @@ use super::probability::{CDF2, CDF16, Speed};
 
 
 
-
-enum EncodeOrDecodeState<AllocU8: Allocator<u8> > {
+#[derive(Clone,Copy,Debug)]
+enum EncodeOrDecodeState {
     Begin,
-    Literal(literal::LiteralState<AllocU8>),
-    Dict(dict::DictState),
-    Copy(copy::CopyState),
-    BlockSwitchLiteral(block_type::LiteralBlockTypeState),
-    BlockSwitchCommand(block_type::BlockTypeState),
-    BlockSwitchDistance(block_type::BlockTypeState),
-    PredictionMode(context_map::PredictionModeState),
-    PopulateRingBuffer(Command<AllocatedMemoryPrefix<u8, AllocU8>>),
+    Literal,
+    Dict,
+    Copy,
+    BlockSwitchLiteral,
+    BlockSwitchCommand,
+    BlockSwitchDistance,
+    PredictionMode,
+    PopulateRingBuffer,
     DivansSuccess,
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
     CoderBufferDrain,
     UpdateCodecTrait,
-    WriteChecksum(usize),
+    WriteChecksum(u8),
 }
 
 const CHECKSUM_LENGTH: usize = 8;
 
 
-impl<AllocU8:Allocator<u8>> Default for EncodeOrDecodeState<AllocU8> {
+impl Default for EncodeOrDecodeState {
     fn default() -> Self {
         EncodeOrDecodeState::Begin
     }
@@ -144,35 +144,6 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
 fn use_legacy_bitwise_command_type_code() -> bool {
     true
 }
-fn get_command_state_from_nibble<AllocU8:Allocator<u8>>(command_type_code:u8, is_end: bool) -> EncodeOrDecodeState<AllocU8> {
-   match command_type_code {
-      1 => EncodeOrDecodeState::Copy(copy::CopyState {
-                            cc: CopyCommand {
-                                distance:0,
-                                num_bytes:0,
-                            },
-                            state:copy::CopySubstate::Begin,
-                        }),
-      2 => EncodeOrDecodeState::Dict(dict::DictState {
-                                dc: DictCommand::nop(),
-                                state: dict::DictSubstate::Begin,
-                            }),
-      3 => EncodeOrDecodeState::Literal(literal::LiteralState {
-                                lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
-                                state:literal::LiteralSubstate::Begin,
-                            }),
-     4 => EncodeOrDecodeState::BlockSwitchLiteral(block_type::LiteralBlockTypeState::Begin),
-     5 => EncodeOrDecodeState::BlockSwitchCommand(block_type::BlockTypeState::Begin),
-     6 => EncodeOrDecodeState::BlockSwitchDistance(block_type::BlockTypeState::Begin),
-     7 => EncodeOrDecodeState::PredictionMode(context_map::PredictionModeState::Begin),
-     0xf => if is_end {
-         EncodeOrDecodeState::DivansSuccess // encoder flows through this path
-     } else {
-         EncodeOrDecodeState::WriteChecksum(0)
-     },
-      _ => panic!("unimpl"),
-   }
-}
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
@@ -186,7 +157,14 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            AllocU8,
                                            AllocCDF2,
                                            AllocCDF16>,
-    state : EncodeOrDecodeState<AllocU8>,
+    state: EncodeOrDecodeState,
+    state_lit: literal::LiteralState<AllocU8>,
+    state_copy: copy::CopyState,
+    state_dict: dict::DictState,
+    state_lit_block_switch: block_type::LiteralBlockTypeState,
+    state_block_switch: block_type::BlockTypeState,
+    state_prediction_mode: context_map::PredictionModeState,
+    state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
     codec_traits: CodecTraitSelector,
     crc: SubDigest,
     frozen_checksum: Option<u64>,
@@ -248,12 +226,75 @@ impl<AllocU8: Allocator<u8>,
             ),
             state:EncodeOrDecodeState::Begin,
             codec_traits: CodecTraitSelector::DefaultTrait(&specializations::DEFAULT_TRAIT),
+            state_copy: copy::CopyState::begin(),
+            state_dict: dict::DictState::begin(),
+            state_lit: literal::LiteralState {
+                lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+                state:literal::LiteralSubstate::Begin,
+            },
+            state_lit_block_switch: block_type::LiteralBlockTypeState::begin(),
+            state_block_switch: block_type::BlockTypeState::begin(),
+            state_prediction_mode: context_map::PredictionModeState::begin(),
+            state_populate_ring_buffer: Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             crc: default_crc(),
             frozen_checksum: None,
             skip_checksum:skip_checksum,
         };
         ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
         ret
+    }
+    fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> BrotliResult{
+        match command_type_code {
+            1 => {
+                self.state_copy = copy::CopyState::begin();
+                self.state = EncodeOrDecodeState::Copy;
+                self.state
+            },
+            2 => {
+                self.state_dict = dict::DictState::begin();
+                self.state = EncodeOrDecodeState::Dict;
+                self.state
+            }
+            
+            3 => {
+                self.state_lit = literal::LiteralState {
+                    lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+                    state:literal::LiteralSubstate::Begin,
+                };
+                self.state = EncodeOrDecodeState::Literal;
+            self.state
+            },
+            4 => {
+                self.state_lit_block_switch = block_type::LiteralBlockTypeState::begin();
+                self.state = EncodeOrDecodeState::BlockSwitchLiteral;
+                self.state
+            },
+            
+            5 => {
+                self.state_block_switch = block_type::BlockTypeState::begin();
+                self.state = EncodeOrDecodeState::BlockSwitchCommand;
+                self.state
+            },
+            6 => {
+                self.state_block_switch = block_type::BlockTypeState::begin();
+                self.state = EncodeOrDecodeState::BlockSwitchDistance;
+                self.state
+            },
+            7 => {
+                self.state_prediction_mode = context_map::PredictionModeState::begin();
+                self.state = EncodeOrDecodeState::PredictionMode;
+                self.state
+            },
+            0xf => if is_end {
+                self.state = EncodeOrDecodeState::DivansSuccess; // encoder flows through this path
+                self.state
+            } else {
+                self.state = EncodeOrDecodeState::WriteChecksum(0);
+                self.state
+            },
+            _ => return BrotliResult::ResultFailure,
+        };
+        BrotliResult::ResultSuccess
     }
     pub fn get_coder(&self) -> &ArithmeticCoder {
         &self.cross_command_state.coder
@@ -352,8 +393,8 @@ impl<AllocU8: Allocator<u8>,
                     };
                     let crc = self.frozen_checksum.unwrap();
                     let bytes_remaining = output_bytes.len() - *output_bytes_offset;
-                    let checksum_cur_index = count;
-                    let bytes_needed = CHECKSUM_LENGTH - count;
+                    let checksum_cur_index = count as usize;
+                    let bytes_needed = CHECKSUM_LENGTH - count as usize;
 
                     let count_to_copy = core::cmp::min(bytes_remaining,
                                                        bytes_needed);
@@ -373,7 +414,7 @@ impl<AllocU8: Allocator<u8>,
                         self.state = EncodeOrDecodeState::DivansSuccess;
                         return BrotliResult::ResultSuccess;
                     } else {
-                        self.state = EncodeOrDecodeState::WriteChecksum(count + count_to_copy);
+                        self.state = EncodeOrDecodeState::WriteChecksum(count + count_to_copy as u8);
                         return BrotliResult::NeedsMoreOutput;
                     }
                 },
@@ -483,7 +524,7 @@ impl<AllocU8: Allocator<u8>,
                                                          ctraits: &'static CTraits,
                                                          is_end: bool) -> CodecTraitResult {
         loop {
-            let new_state: Option<EncodeOrDecodeState<AllocU8>>;
+            let mut new_state: Option<EncodeOrDecodeState> = None;
             match self.state {
                 EncodeOrDecodeState::EncodedShutdownNode
                     | EncodeOrDecodeState::ShutdownCoder
@@ -498,7 +539,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                     // decoder only operation
                     let checksum_cur_index = count;
-                    let bytes_needed = CHECKSUM_LENGTH - count;
+                    let bytes_needed = CHECKSUM_LENGTH - count as usize;
 
                     let to_check = core::cmp::min(input_bytes.len() - *input_bytes_offset,
                                                   bytes_needed);
@@ -523,17 +564,17 @@ impl<AllocU8: Allocator<u8>,
                                     b's',
                                     b'~'];
 
-                    for (index, (chk, fil)) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
+                    for (index, (chk, fil)) in checksum.split_at(checksum_cur_index as usize).1.split_at(to_check).0.iter().zip(
                         input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()).enumerate() {
                         if *chk != *fil {
-                            if checksum_cur_index + index >= 4 || !self.skip_checksum {
+                            if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                             }
                         }
                     }
                     *input_bytes_offset += to_check;
                     if bytes_needed != to_check {
-                        new_state = Some(EncodeOrDecodeState::WriteChecksum(count + to_check));
+                        new_state = Some(EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8));
                     } else {
                         new_state = Some(EncodeOrDecodeState::DivansSuccess);
                     }
@@ -556,16 +597,18 @@ impl<AllocU8: Allocator<u8>,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
                         command_type_prob.blend(command_type_code, Speed::ROCKET);
                     }
-                    let command_state = get_command_state_from_nibble(command_type_code, is_end);
-                    match command_state {
-                        EncodeOrDecodeState::Copy(_) => { self.cross_command_state.bk.obs_copy_state(); },
-                        EncodeOrDecodeState::Dict(_) => { self.cross_command_state.bk.obs_dict_state(); },
-                        EncodeOrDecodeState::Literal(_) => { self.cross_command_state.bk.obs_literal_state(); },
+                    match self.update_command_state_from_nibble(command_type_code, is_end) {
+                        BrotliResult::ResultSuccess => {},
+                        need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
+                    }
+                    match self.state {
+                        EncodeOrDecodeState::Copy => { self.cross_command_state.bk.obs_copy_state(); },
+                        EncodeOrDecodeState::Dict => { self.cross_command_state.bk.obs_dict_state(); },
+                        EncodeOrDecodeState::Literal => { self.cross_command_state.bk.obs_literal_state(); },
                         _ => {},
                     }
-                    new_state = Some(command_state);
                 },
-                EncodeOrDecodeState::PredictionMode(ref mut prediction_mode_state) => {
+                EncodeOrDecodeState::PredictionMode => {
                     let default_prediction_mode_context_map = PredictionModeContextMap::<ISl> {
                         literal_context_map:ISl::default(),
                         predmode_speed_and_distance_context_map:ISl::default(),
@@ -574,7 +617,7 @@ impl<AllocU8: Allocator<u8>,
                         Command::PredictionMode(ref pm) => pm,
                         _ => &default_prediction_mode_context_map,
                      };
-                     match prediction_mode_state.encode_or_decode(&mut self.cross_command_state,
+                     match self.state_prediction_mode.encode_or_decode(&mut self.cross_command_state,
                                                                   src_pred_mode,
                                                                   input_bytes,
                                                                   input_bytes_offset,
@@ -585,12 +628,12 @@ impl<AllocU8: Allocator<u8>,
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
                 },
-                EncodeOrDecodeState::BlockSwitchLiteral(ref mut block_type_state) => {
+                EncodeOrDecodeState::BlockSwitchLiteral => {
                     let src_block_switch_literal = match *input_cmd {
                         Command::BlockSwitchLiteral(bs) => bs,
                         _ => LiteralBlockSwitch::default(),
                     };
-                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_lit_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_literal,
                                                             input_bytes,
                                                             input_bytes_offset,
@@ -598,7 +641,7 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
                             let old_stride = self.cross_command_state.bk.stride;
-                            self.cross_command_state.bk.obs_btypel(match *block_type_state {
+                            self.cross_command_state.bk.obs_btypel(match self.state_lit_block_switch {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
                                 _ => panic!("illegal output state"),
                             });
@@ -614,12 +657,12 @@ impl<AllocU8: Allocator<u8>,
                         }
                     }
                 },
-                EncodeOrDecodeState::BlockSwitchCommand(ref mut block_type_state) => {
+                EncodeOrDecodeState::BlockSwitchCommand => {
                     let src_block_switch_command = match *input_cmd {
                         Command::BlockSwitchCommand(bs) => bs,
                         _ => BlockSwitch::default(),
                     };
-                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_command,
                                                             self::interface::BLOCK_TYPE_COMMAND_SWITCH,
                                                             input_bytes,
@@ -627,7 +670,7 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_btypec(match *block_type_state {
+                            self.cross_command_state.bk.obs_btypec(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
                             });
@@ -638,13 +681,13 @@ impl<AllocU8: Allocator<u8>,
                         }
                     }
                 },
-                EncodeOrDecodeState::BlockSwitchDistance(ref mut block_type_state) => {
+                EncodeOrDecodeState::BlockSwitchDistance => {
                     let src_block_switch_distance = match *input_cmd {
                         Command::BlockSwitchDistance(bs) => bs,
                         _ => BlockSwitch::default(),
                     };
 
-                    match block_type_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_distance,
                                                             self::interface::BLOCK_TYPE_DISTANCE_SWITCH,
                                                             input_bytes,
@@ -652,7 +695,7 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_btyped(match *block_type_state {
+                            self.cross_command_state.bk.obs_btyped(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
                             });
@@ -663,14 +706,14 @@ impl<AllocU8: Allocator<u8>,
                         }
                     }
                 },
-                EncodeOrDecodeState::Copy(ref mut copy_state) => {
+                EncodeOrDecodeState::Copy => {
                     let backing_store = CopyCommand{
                         distance:1,
                         num_bytes:0,
                     };
                     let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
                                                                                                            &backing_store);
-                    match copy_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_copy.encode_or_decode(&mut self.cross_command_state,
                                                       src_copy_command,
                                                       input_bytes,
                                                       input_bytes_offset,
@@ -678,22 +721,23 @@ impl<AllocU8: Allocator<u8>,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            self.cross_command_state.bk.obs_distance(&copy_state.cc);
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
-                                Command::Copy(core::mem::replace(&mut copy_state.cc,
-                                                                 CopyCommand{distance:1, num_bytes:0}))));
+                            self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
+                            self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
+                                &mut self.state_copy.cc,
+                                CopyCommand{distance:1, num_bytes:0}));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
-                EncodeOrDecodeState::Literal(ref mut lit_state) => {
+                EncodeOrDecodeState::Literal => {
                     let backing_store = LiteralCommand::nop();
                     let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
                         input_cmd,
                         &backing_store);
-                    match lit_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_lit.encode_or_decode(&mut self.cross_command_state,
                                                      src_literal_command,
                                                      input_bytes,
                                                      input_bytes_offset,
@@ -701,20 +745,21 @@ impl<AllocU8: Allocator<u8>,
                                                      output_bytes_offset,
                                                      ctraits) {
                         BrotliResult::ResultSuccess => {
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
-                                Command::Literal(core::mem::replace(&mut lit_state.lc,
-                                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()))));
+                            self.state_populate_ring_buffer = Command::Literal(
+                                core::mem::replace(&mut self.state_lit.lc,
+                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
-                EncodeOrDecodeState::Dict(ref mut dict_state) => {
+                EncodeOrDecodeState::Dict => {
                     let backing_store = DictCommand::nop();
                     let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
                                                                                                                  &backing_store);
-                    match dict_state.encode_or_decode(&mut self.cross_command_state,
+                    match self.state_dict.encode_or_decode(&mut self.cross_command_state,
                                                       src_dict_command,
                                                       input_bytes,
                                                       input_bytes_offset,
@@ -722,21 +767,22 @@ impl<AllocU8: Allocator<u8>,
                                                       output_bytes_offset
                                                       ) {
                         BrotliResult::ResultSuccess => {
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer(
-                                Command::Dict(core::mem::replace(&mut dict_state.dc,
-                                                                 DictCommand::nop()))));
+                            self.state_populate_ring_buffer = Command::Dict(
+                                core::mem::replace(&mut self.state_dict.dc,
+                                                   DictCommand::nop()));
+                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
-                EncodeOrDecodeState::PopulateRingBuffer(ref mut o_cmd) => {
+                EncodeOrDecodeState::PopulateRingBuffer => {
                     let mut tmp_output_offset_bytes_backing: usize = 0;
                     let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
                         output_bytes_offset,
                         &mut tmp_output_offset_bytes_backing);
-                    match self.cross_command_state.recoder.encode_cmd(o_cmd,
+                    match self.cross_command_state.recoder.encode_cmd(&mut self.state_populate_ring_buffer,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
@@ -767,8 +813,8 @@ impl<AllocU8: Allocator<u8>,
                                 | (u64::from(last_8[6])<<0x30)
                                 | (u64::from(last_8[7])<<0x38);
                             new_state = Some(EncodeOrDecodeState::Begin);
-                            match *o_cmd {
-                                Command::Literal(ref mut l) => {
+                            match &mut self.state_populate_ring_buffer {
+                                &mut Command::Literal(ref mut l) => {
                                     let mfd = core::mem::replace(
                                         &mut l.data,
                                         AllocatedMemoryPrefix::<u8, AllocU8>::default());
@@ -776,12 +822,12 @@ impl<AllocU8: Allocator<u8>,
                                             UninitializedOnAlloc>().free_cell(mfd);
                                     //FIXME: what about prob array: should that be freed
                                 },
-                                Command::Dict(_) |
-                                Command::Copy(_) |
-                                Command::BlockSwitchCommand(_) |
-                                Command::BlockSwitchLiteral(_) |
-                                Command::BlockSwitchDistance(_) |
-                                Command::PredictionMode(_) => {},
+                                &mut Command::Dict(_) |
+                                &mut Command::Copy(_) |
+                                &mut Command::BlockSwitchCommand(_) |
+                                &mut Command::BlockSwitchLiteral(_) |
+                                &mut Command::BlockSwitchDistance(_) |
+                                &mut Command::PredictionMode(_) => {},
                             }
                         },
                     }

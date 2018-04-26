@@ -2,6 +2,7 @@ use core;
 use brotli::BrotliResult;
 use alloc::Allocator;
 use brotli::transform::TransformDictionaryWord;
+use brotli::interface::Nop;
 use ::priors::PriorCollection;
 use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
 use ::probability::{CDF2, CDF16, Speed};
@@ -39,6 +40,12 @@ const DICT_BITS:[u8;25] = [
 
 
 impl DictState {
+    pub fn begin() -> Self {
+        DictState {
+            dc: DictCommand::nop(),
+            state: DictSubstate::Begin,
+        }
+    }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,

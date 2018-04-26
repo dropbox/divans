@@ -25,6 +25,9 @@ pub enum BlockTypeState {
 
 
 impl BlockTypeState {
+    pub fn begin() -> Self {
+        BlockTypeState::Begin
+    }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
@@ -111,6 +114,9 @@ pub enum LiteralBlockTypeState {
 }
 
 impl LiteralBlockTypeState {
+    pub fn begin() -> Self {
+        LiteralBlockTypeState::Begin
+    }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
