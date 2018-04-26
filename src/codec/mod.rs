@@ -188,8 +188,9 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            AllocCDF16>,
     state : EncodeOrDecodeState<AllocU8>,
     codec_traits: CodecTraitSelector,
-    crc: crc::crc64::Digest,
+    crc: SubDigest,
     frozen_checksum: Option<u64>,
+    skip_checksum: bool,
 }
 
 pub enum OneCommandReturn {
@@ -225,7 +226,8 @@ impl<AllocU8: Allocator<u8>,
                prior_depth: Option<u8>,
                literal_adaptation_rate: Option<[Speed;4]>,
                do_context_map: bool,
-               force_stride: interface::StrideSelection) -> Self {
+               force_stride: interface::StrideSelection,
+               skip_checksum: bool) -> Self {
         let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
@@ -248,6 +250,7 @@ impl<AllocU8: Allocator<u8>,
             codec_traits: CodecTraitSelector::DefaultTrait(&specializations::DEFAULT_TRAIT),
             crc: default_crc(),
             frozen_checksum: None,
+            skip_checksum:skip_checksum,
         };
         ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
         ret
@@ -264,16 +267,19 @@ impl<AllocU8: Allocator<u8>,
     pub fn coder(&mut self) -> &mut ArithmeticCoder {
         &mut self.cross_command_state.coder
     }
-    pub fn get_crc(&mut self) -> &mut crc::crc64::Digest {
+    pub fn get_crc(&mut self) -> &mut SubDigest {
         &mut self.crc
     }
     pub fn flush(&mut self,
              output_bytes: &mut [u8],
              output_bytes_offset: &mut usize) -> BrotliResult{
-        let ret = self.internal_flush(output_bytes, output_bytes_offset);
+        let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
+        let mut adjusted_output_bytes_offset = 0usize;
+        let ret = self.internal_flush(adjusted_output_bytes, &mut adjusted_output_bytes_offset);
+        *output_bytes_offset += adjusted_output_bytes_offset;
         match self.frozen_checksum {
             None => if !Specialization::IS_DECODING_FILE {
-                self.crc.write(output_bytes.split_at(*output_bytes_offset).0);
+                self.crc.write(adjusted_output_bytes.split_at(adjusted_output_bytes_offset).0);
             },
             _ => {},
         }
@@ -382,20 +388,24 @@ impl<AllocU8: Allocator<u8>,
                                                           output_bytes_offset: &mut usize,
                                                           input_commands: &[Command<ISl>],
                                                           input_command_offset: &mut usize) -> BrotliResult {
+        let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
+        let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
+        let mut adjusted_input_bytes_offset = 0usize;
+        let mut adjusted_output_bytes_offset = 0usize;
         loop {
             let res:(Option<BrotliResult>, Option<CodecTraitSelector>);
             match self.codec_traits {
-                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(input_bytes,
-                                                                                         input_bytes_offset,
-                                                                                         output_bytes,
-                                                                                         output_bytes_offset,
+                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(adjusted_input_bytes,
+                                                                                         &mut adjusted_input_bytes_offset,
+                                                                                         adjusted_output_bytes,
+                                                                                         &mut adjusted_output_bytes_offset,
                                                                                          input_commands,
                                                                                          input_command_offset,
                                                                                          tr),
-                CodecTraitSelector::DefaultTrait(tr) => res = self.e_or_d_specialize(input_bytes,
-                                                                                     input_bytes_offset,
-                                                                                     output_bytes,
-                                                                                     output_bytes_offset,
+                CodecTraitSelector::DefaultTrait(tr) => res = self.e_or_d_specialize(adjusted_input_bytes,
+                                                                                     &mut adjusted_input_bytes_offset,
+                                                                                     adjusted_output_bytes,
+                                                                                     &mut adjusted_output_bytes_offset,
                                                                                      input_commands,
                                                                                      input_command_offset,
                                                                                      tr),
@@ -404,12 +414,16 @@ impl<AllocU8: Allocator<u8>,
                 self.codec_traits = update;
             }
             if let Some(result) = res.0 {
+                *input_bytes_offset += adjusted_input_bytes_offset;
+                *output_bytes_offset += adjusted_output_bytes_offset;
                 match self.frozen_checksum {
                     Some(_) => {},
                     None => if Specialization::IS_DECODING_FILE {
-                        self.crc.write(input_bytes.split_at(*input_bytes_offset).0);
+                        if !self.skip_checksum {
+                            self.crc.write(&adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
+                        }
                     } else {
-                        self.crc.write(output_bytes.split_at(*output_bytes_offset).0);
+                        self.crc.write(&adjusted_output_bytes.split_at(adjusted_output_bytes_offset).0);
                     },
                 }
                 return result;
@@ -478,6 +492,9 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     assert!(Specialization::IS_DECODING_FILE);
+                    if self.skip_checksum {
+                        self.frozen_checksum = Some(0);
+                    }
                     // decoder only operation
                     let checksum_cur_index = count;
                     let bytes_needed = CHECKSUM_LENGTH - count;
@@ -494,20 +511,22 @@ impl<AllocU8: Allocator<u8>,
                             self.frozen_checksum= Some(self.crc.finish());
                         },
                     }
-                    let crc = self.frozen_checksum.unwrap();
-                    let checksum = [crc as u8 & 255,
-                                    (crc >> 8) as u8 & 255,
-                                    (crc >> 16) as u8 & 255,
-                                    (crc >> 24) as u8 & 255,
-                                    (crc >> 32) as u8 & 255,
-                                    (crc >> 40) as u8 & 255,
-                                    (crc >> 48) as u8 & 255,
-                                    (crc >> 56) as u8 & 255];
-
-                    for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
-                        input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
-                        if *chk != *fil {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                    if !self.skip_checksum {
+                        let crc = self.frozen_checksum.unwrap();
+                        let checksum = [crc as u8 & 255,
+                                        (crc >> 8) as u8 & 255,
+                                        (crc >> 16) as u8 & 255,
+                                        (crc >> 24) as u8 & 255,
+                                        (crc >> 32) as u8 & 255,
+                                        (crc >> 40) as u8 & 255,
+                                        (crc >> 48) as u8 & 255,
+                                        (crc >> 56) as u8 & 255];
+                        
+                        for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
+                            input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
+                            if *chk != *fil {
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                            }
                         }
                     }
                     *input_bytes_offset += to_check;
@@ -786,6 +805,21 @@ impl<AllocU8: Allocator<u8>,
         }
     }
 }
-pub fn default_crc() -> crc::crc64::Digest {
-    crc::crc64::Digest::new(crc::crc64::ECMA)
+
+
+pub struct SubDigest(crc::crc64::Digest);
+impl core::hash::Hasher for SubDigest {
+    #[inline(always)]
+    fn write(&mut self, data:&[u8]) {
+        self.0.write(data)
+            
+    }
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        self.0.finish()
+    }
 }
+pub fn default_crc() -> SubDigest {
+    SubDigest(crc::crc64::Digest::new(crc::crc64::ECMA))
+}
+

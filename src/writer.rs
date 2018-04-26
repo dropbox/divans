@@ -247,7 +247,7 @@ impl<W:Write> Write for DivansDecompressorWriter<W> {
     }
 }
 impl<W:Write> DivansDecompressorWriter<W> {
-    pub fn new(writer: W, mut buffer_size: usize) -> Self {
+    pub fn new(writer: W, mut buffer_size: usize, skip_crc:bool) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -262,6 +262,7 @@ impl<W:Write> DivansDecompressorWriter<W> {
                               m8,
                               HeapAlloc::<::CDF2>::new(::CDF2::default()),
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              skip_crc,
                           ),
                           buffer,
                           false,
@@ -339,7 +340,7 @@ mod test {
               writer: tmp,
               output: &mut dest,
           };
-          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size);
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false);
             let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
                 writer:decompress,
                 output: &mut ub,
@@ -374,7 +375,7 @@ mod test {
               writer: tmp,
               output: &mut dest,
           };
-          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size);
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false);
             let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
                 writer:decompress,
                 output: &mut ub,

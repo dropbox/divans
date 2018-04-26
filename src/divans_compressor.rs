@@ -107,6 +107,7 @@ impl<AllocU8:Allocator<u8>,
                 opts.literal_adaptation,
                 opts.use_context_map,
                 opts.force_stride_value,
+                false,
             ),
             literal_context_map_backing: literal_context_map,
             prediction_mode_backing: prediction_mode_backing,
@@ -177,8 +178,10 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
         *header_progress += bytes_avail;
         return BrotliResult::NeedsMoreOutput;
     }
+    let to_write = &make_header(window_size)[*header_progress..];
     output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
-        &make_header(window_size)[*header_progress..]);
+        to_write);
+    crc.write(to_write);
     *output_offset += interface::HEADER_LENGTH - *header_progress;
     *header_progress = interface::HEADER_LENGTH;
     BrotliResult::ResultSuccess

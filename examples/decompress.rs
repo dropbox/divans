@@ -12,6 +12,7 @@ fn main() {
         let mut reader = divans::DivansDecompressorReader::new(
             stdin,
             4096, // buffer size
+            false,
         );
         let mut buf = [0u8; 4096];
         loop {

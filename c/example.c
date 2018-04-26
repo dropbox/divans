@@ -59,7 +59,7 @@ DivansResult compress(const unsigned char *data, size_t len, struct VecU8 *ret_b
 DivansResult decompress(const unsigned char *data, size_t len, struct VecU8 *ret_buffer) {
     unsigned char buf[BUF_SIZE];
     struct CAllocator alloc = {custom_malloc, custom_free, custom_alloc_opaque};
-    struct DivansDecompressorState *state = divans_new_decompressor_with_custom_alloc(alloc);
+    struct DivansDecompressorState *state = divans_new_decompressor_with_custom_alloc(alloc, 0);
     DivansResult res;
     do {
         size_t read_offset = 0;

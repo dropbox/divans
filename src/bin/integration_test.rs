@@ -130,7 +130,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         },
                         buffer_size,
                         use_brotli).unwrap();
-    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
     if !(actual_ratio <= ratio) {
@@ -171,7 +171,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    opts.dynamic_context_mixing=Some(1);
    opts.use_context_map = true;
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();//Some(1), Some(0), Some(, true, StrideSelection::UseBrotliRec).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -206,7 +206,7 @@ fn test_e2e_32xx() {
    opts.literal_adaptation = None;
 
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, false).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
@@ -225,7 +225,7 @@ fn test_e2e_262145_at() {
    opts.use_context_map = true;
    opts.dynamic_context_mixing = Some(2);
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, false).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);

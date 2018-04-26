@@ -23,13 +23,14 @@ typedef uint8_t DivansOptionSelect;
 #define DIVANS_OPTION_FORCE_STRIDE_VALUE 9
 #define DIVANS_OPTION_STRIDE_DETECTION_QUALITY 10
 #define DIVANS_OPTION_PRIOR_DEPTH 11
-#define DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW 12
+#define DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_HIGH 12
 #define DIVANS_OPTION_LITERAL_ADAPTATION_CM_LOW 13
 #define DIVANS_OPTION_LITERAL_ADAPTATION_STRIDE_LOW 14
 #define DIVANS_OPTION_BROTLI_LITERAL_BYTE_SCORE 15
 #define DIVANS_OPTION_SPEED_DETECTION_QUALITY 16
 #define DIVANS_OPTION_PRIOR_BITMASK_DETECTION 17
 #define DIVANS_OPTION_Q9_5 18
+#define DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE 19
 
 
 /// a struct specifying custom allocators for divans to use instead of the builtin rust allocators.
@@ -57,7 +58,7 @@ void divans_free_compressor(struct DivansCompressorState* mfd);
 
 
 struct DivansDecompressorState* divans_new_decompressor();
-struct DivansDecompressorState* divans_new_decompressor_with_custom_alloc(struct CAllocator alloc);
+struct DivansDecompressorState* divans_new_decompressor_with_custom_alloc(struct CAllocator alloc, uint8_t skip_crc);
 DivansResult divans_decode(struct DivansDecompressorState* state,
                            const uint8_t *input_buf_ptr, size_t input_size, size_t*input_offset,
                            uint8_t *output_buf_ptr, size_t output_size, size_t *output_offset);

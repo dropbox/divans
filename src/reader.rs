@@ -269,7 +269,7 @@ impl<R:Read> Read for DivansDecompressorReader<R> {
     }
 }
 impl<R:Read> DivansDecompressorReader<R> {
-    pub fn new(reader: R, mut buffer_size: usize) -> Self {
+    pub fn new(reader: R, mut buffer_size: usize, skip_crc:bool) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -284,6 +284,7 @@ impl<R:Read> DivansDecompressorReader<R> {
                               m8,
                               HeapAlloc::<::CDF2>::new(::CDF2::default()),
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              skip_crc,
                           ),
                           buffer,
                           false,
@@ -369,7 +370,7 @@ mod test {
                 reader:compress,
                 output: &mut ub,
             };
-            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size);
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false);
             let mut local_buffer = vec![0u8; buffer_size];
             let mut offset: usize = 0;
             loop {
@@ -398,7 +399,7 @@ mod test {
                 reader:compress,
                 output: &mut ub,
             };
-            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size);
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false);
             let mut local_buffer = vec![0u8; buffer_size];
             let mut offset: usize = 0;
             loop {
@@ -442,7 +443,7 @@ mod test {
     }
     #[test]
     fn test_hybrid_reader_compressor_on_alice_full() {
-        hy_reader_tst(include_bytes!("../testdata/alice29"),
+        hy_reader_tst(include_bytes!("../testdata/64x"),
                        interface::DivansCompressorOptions{
                            literal_adaptation:None,
                            force_literal_context_mode:None,

@@ -1,5 +1,6 @@
 use core;
 use core::marker::PhantomData;
+use core::hash::Hasher;
 use ::probability;
 use ::interface;
 use ::interface::{NewWithAllocator, Decompressor};
@@ -18,6 +19,7 @@ pub struct HeaderParser<AllocU8:Allocator<u8>,
     m8: Option<AllocU8>,
     mcdf2: Option<AllocCDF2>,
     mcdf16: Option<AllocCDF16>,
+    skip_crc: bool,
 }
 impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
@@ -57,8 +59,12 @@ pub trait DivansDecompressorFactory<
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
-    fn new(m8: AllocU8, mcdf2:AllocCDF2, mcdf16:AllocCDF16) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
-        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16)})
+    fn new(m8: AllocU8,
+           mcdf2:AllocCDF2,
+           mcdf16:AllocCDF16,
+           skip_crc:bool) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
+        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16),
+                                                skip_crc:skip_crc})
     }
 }
 
@@ -78,12 +84,16 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
         let mcdf16:AllocCDF16;
+        let raw_header:[u8; interface::HEADER_LENGTH];
+        let skip_crc:bool;
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
                     None => return BrotliResult::ResultFailure,
                     Some(m) => m,
-                }
+                };
+                raw_header = header.header;
+                skip_crc = header.skip_crc;
             },
             _ => return BrotliResult::ResultFailure,
         }
@@ -107,24 +117,29 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         //update this if you change the SelectedArithmeticDecoder macro
         let decoder = DefaultDecoder::new(&mut m8);
+        let mut codec = codec::DivansCodec::<DefaultDecoder,
+                                             DecoderSpecialization,
+                                             interface::DefaultCDF16,
+                                             AllocU8,
+                                             AllocCDF2,
+                                             AllocCDF16>::new(m8,
+                                                              mcdf2,
+                                                              mcdf16,
+                                                              decoder,
+                                                              DecoderSpecialization::new(),
+                                                              window_size,
+                                                              0,
+                                                              None,
+                                                              None,
+                                                          true,
+                                                              codec::StrideSelection::UseBrotliRec,
+                                                              skip_crc);
+        if !skip_crc {
+            codec.get_crc().write(&raw_header[..]);
+        }
         core::mem::replace(self,
                            DivansDecompressor::Decode(
-                               codec::DivansCodec::<DefaultDecoder,
-                                                    DecoderSpecialization,
-                                                    interface::DefaultCDF16,
-                                                    AllocU8,
-                                                    AllocCDF2,
-                                                    AllocCDF16>::new(m8,
-                                                                     mcdf2,
-                                                                     mcdf16,
-                                                                     decoder,
-                                                                     DecoderSpecialization::new(),
-                                                                     window_size,
-                                                                     0,
-                                                                     None,
-                                                                     None,
-                                                                     true,
-                                                                     codec::StrideSelection::UseBrotliRec), 0));
+                               codec, 0));
         BrotliResult::ResultSuccess
     }
     pub fn free_ref(&mut self) {

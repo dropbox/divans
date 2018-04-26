@@ -16,6 +16,10 @@ void set_options(struct DivansCompressorState *state, int argc, char **argv) {
             ret = divans_set_option(state, DIVANS_OPTION_QUALITY, atoi(argv[i] + 2));
             assert(ret == DIVANS_SUCCESS);
         }
+        if (strstr(argv[i], "-p") == argv[i]) {
+            ret = divans_set_option(state, DIVANS_OPTION_PRIOR_BITMASK_DETECTION, atoi(argv[i] + 2));
+            assert(ret == DIVANS_SUCCESS);
+        }
         if (strstr(argv[i], "-l") == argv[i]) {
             ret = divans_set_option(state, DIVANS_OPTION_USE_BROTLI_COMMAND_SELECTION, 0);
             assert(ret == DIVANS_SUCCESS);
@@ -25,13 +29,17 @@ void set_options(struct DivansCompressorState *state, int argc, char **argv) {
             assert(ret == DIVANS_SUCCESS);
         }
         if (strstr(argv[i], "-a") == argv[i]) {
-            ret = divans_set_option(state, DIVANS_OPTION_LITERAL_ADAPTATION, atoi(argv[i] + 2));
+            ret = divans_set_option(state, DIVANS_OPTION_LITERAL_ADAPTATION_CM_HIGH, atoi(argv[i] + 2));
             assert(ret == DIVANS_SUCCESS);
         }
         if (strstr(argv[i], "-cm") == argv[i]) {
             used_cm = 1;
             ret = divans_set_option(state, DIVANS_OPTION_USE_CONTEXT_MAP, 1);
             assert(ret == DIVANS_SUCCESS);
+            if (argv[i] + 3 !='\0') {
+                ret = divans_set_option(state, DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE, atoi(argv[i] + 3));
+                assert(ret == DIVANS_SUCCESS);
+            }
         }
         if (strstr(argv[i], "-bs") == argv[i]) {
             ret = divans_set_option(state, DIVANS_OPTION_STRIDE_DETECTION_QUALITY, 1);

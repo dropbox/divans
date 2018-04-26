@@ -945,15 +945,17 @@ fn zero_slice(sl: &mut [u8]) -> usize {
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (r:&mut Reader,
                                       w:&mut Writer,
-                                      buffer_size: usize) -> io::Result<()> {
+                                      buffer_size: usize,
+                                      skip_crc: bool) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
     let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                         ItemVecAllocator<divans::CDF2>,
-                                         ItemVecAllocator<divans::DefaultCDF16>>::new(m8,
-                                                                ItemVecAllocator::<divans::CDF2>::default(),
-    ItemVecAllocator::<divans::DefaultCDF16>::default());
+                                                      ItemVecAllocator<divans::CDF2>,
+                                                      ItemVecAllocator<divans::DefaultCDF16>>::new(
+        m8,
+        ItemVecAllocator::<divans::CDF2>::default(),
+        ItemVecAllocator::<divans::DefaultCDF16>::default(), skip_crc);
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
@@ -1158,11 +1160,20 @@ fn main() {
     let mut doubledash = false;
     let mut prior_bitmask_detection = false;
     let mut force_literal_context_mode:Option<LiteralPredictionModeNibble> = None;
+    let mut skip_crc = false;
 
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
             if !doubledash {
                 if argument == "-d" {
+                    continue;
+                }
+                if argument == "-skipcrc" {
+                    skip_crc = true;
+                    continue;
+                }
+                if argument == "-nocrc" {
+                    skip_crc = true;
                     continue;
                 }
                 if argument == "--" {
@@ -1546,7 +1557,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, buffer_size) {
+                        match decompress(&mut input, &mut output, buffer_size, skip_crc) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1579,7 +1590,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), buffer_size) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size, skip_crc) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1609,7 +1620,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1617,7 +1628,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }
