@@ -512,21 +512,21 @@ impl<AllocU8: Allocator<u8>,
                             self.frozen_checksum= Some(self.crc.finish());
                         },
                     }
-                    if !self.skip_checksum {
-                        let crc = self.frozen_checksum.unwrap();
-                        assert!(crc <= 0xffffffff);
-                        let checksum = [crc as u8 & 255,
-                                        (crc >> 8) as u8 & 255,
-                                        (crc >> 16) as u8 & 255,
-                                        (crc >> 24) as u8 & 255,
-                                        b'a',
-                                        b'n',
-                                        b's',
-                                        b'~'];
-                        
-                        for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
-                            input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
-                            if *chk != *fil {
+                    let crc = self.frozen_checksum.unwrap();
+                    assert!(crc <= 0xffffffff);
+                    let checksum = [crc as u8 & 255,
+                                    (crc >> 8) as u8 & 255,
+                                    (crc >> 16) as u8 & 255,
+                                    (crc >> 24) as u8 & 255,
+                                    b'a',
+                                    b'n',
+                                    b's',
+                                    b'~'];
+
+                    for (index, (chk, fil)) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
+                        input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()).enumerate() {
+                        if *chk != *fil {
+                            if checksum_cur_index + index >= 4 || !self.skip_checksum {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                             }
                         }
