@@ -11,11 +11,30 @@ Redistribution and use in source and binary forms, with or without modification,
 
     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+use core;
 use super::crc32_table::TABLE16;
 pub fn crc32c_init() -> u32 {
     0
 }
-pub fn crc32c_update(mut crc:u32, mut buf: &[u8]) -> u32 {
+#[cfg(not(feature="simd"))]
+#[inline(always)]
+pub fn crc32c_update(crc:u32, buf: &[u8]) -> u32 {
+    fallback_crc32c_update(crc, buf)
+}
+
+#[cfg(feature="simd")]
+#[inline(always)]
+pub fn crc32c_update(crc:u32, buf: &[u8]) -> u32 {
+    if is_x86_feature_detected!("sse4.2") {
+        return unsafe {
+            sse_crc32c_update(crc, buf)
+        };
+    }
+    fallback_crc32c_update(crc, buf)
+}
+
+#[inline(always)]
+pub fn fallback_crc32c_update(mut crc:u32, mut buf: &[u8]) -> u32 {
     crc = !crc;
     while buf.len() >= 16 {
         crc ^= u32::from(buf[0]) | (u32::from(buf[1]) << 8) | (u32::from(buf[2]) << 16) | (u32::from(buf[3]) << 24);
@@ -42,6 +61,28 @@ pub fn crc32c_update(mut crc:u32, mut buf: &[u8]) -> u32 {
     }
     !crc
 }
+#[cfg(feature="simd")]
+#[cfg(not(target_arch = "x86_64"))]
+fn sse_crc32c_update(_crc:u32, _buf: &[u8]) -> u32 {
+  unimplemented!();
+}
+#[cfg(feature="simd")]
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+//#[target_feature(enable = "sse4.2")]
+unsafe fn sse_crc32c_update(mut crc:u32, mut buf: &[u8]) -> u32 {
+    crc = !crc;
+    while buf.len() >= 8 {
+        crc = core::arch::x86_64::_mm_crc32_u64(u64::from(crc),
+                                                u64::from(buf[0]) | (u64::from(buf[1]) << 8) | (u64::from(buf[2]) << 16) | (u64::from(buf[3]) << 24)
+                                                |(u64::from(buf[4])<<32) | (u64::from(buf[5]) << 40) | (u64::from(buf[6]) << 48) | (u64::from(buf[7]) << 56)) as u32;
+        buf = &buf.split_at(8).1;
+    }
+    for &b in buf {
+        crc = core::arch::x86_64::_mm_crc32_u8(crc, b);
+    }
+    !crc
+  }
 mod test {
     #[cfg(test)]
     use super::{crc32c_init, crc32c_update};
