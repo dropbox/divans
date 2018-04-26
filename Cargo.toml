@@ -26,7 +26,6 @@ lto=true
 vergen = "0.1"
 
 [dependencies]
-"crc" = "1.8.1"
 "alloc-no-stdlib" = "~1.2"
 "brotli" = { version = "~2, > 2.0.0"}
 

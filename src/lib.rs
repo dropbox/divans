@@ -64,7 +64,6 @@ mod billing;
 pub mod test_helper;
 mod test_ans;
 mod ans;
-extern crate crc;
 mod brotli_ir_gen;
 mod divans_compressor;
 mod divans_decompressor;

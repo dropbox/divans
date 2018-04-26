@@ -15,8 +15,9 @@
 #![allow(dead_code)]
 use core;
 use core::hash::Hasher;
-use crc;
-
+mod crc32;
+mod crc32_table;
+use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
 use brotli::BrotliResult;
 use ::alloc_util::UninitializedOnAlloc;
@@ -53,7 +54,6 @@ use super::interface::{
     LiteralCommand,
     PredictionModeContextMap,
 };
-
 pub mod copy;
 pub mod dict;
 pub mod literal;
@@ -357,14 +357,15 @@ impl<AllocU8: Allocator<u8>,
 
                     let count_to_copy = core::cmp::min(bytes_remaining,
                                                        bytes_needed);
+                    assert!(crc <= 0xffffffff);
                     let checksum = [crc as u8 & 255,
                                     (crc >> 8) as u8 & 255,
                                     (crc >> 16) as u8 & 255,
                                     (crc >> 24) as u8 & 255,
-                                    (crc >> 32) as u8 & 255,
-                                    (crc >> 40) as u8 & 255,
-                                    (crc >> 48) as u8 & 255,
-                                    (crc >> 56) as u8 & 255];
+                                    b'a',
+                                    b'n',
+                                    b's',
+                                    b'~'];
                     output_bytes.split_at_mut(*output_bytes_offset).1.split_at_mut(
                         count_to_copy).0.clone_from_slice(checksum.split_at(checksum_cur_index).1.split_at(count_to_copy).0);
                     *output_bytes_offset += count_to_copy;
@@ -513,14 +514,15 @@ impl<AllocU8: Allocator<u8>,
                     }
                     if !self.skip_checksum {
                         let crc = self.frozen_checksum.unwrap();
+                        assert!(crc <= 0xffffffff);
                         let checksum = [crc as u8 & 255,
                                         (crc >> 8) as u8 & 255,
                                         (crc >> 16) as u8 & 255,
                                         (crc >> 24) as u8 & 255,
-                                        (crc >> 32) as u8 & 255,
-                                        (crc >> 40) as u8 & 255,
-                                        (crc >> 48) as u8 & 255,
-                                        (crc >> 56) as u8 & 255];
+                                        b'a',
+                                        b'n',
+                                        b's',
+                                        b'~'];
                         
                         for (chk, fil) in checksum.split_at(checksum_cur_index).1.split_at(to_check).0.iter().zip(
                             input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()) {
@@ -806,7 +808,21 @@ impl<AllocU8: Allocator<u8>,
     }
 }
 
-
+pub struct SubDigest(u32);
+impl core::hash::Hasher for SubDigest {
+    #[inline(always)]
+    fn write(&mut self, data:&[u8]) {
+        self.0 = crc32c_update(self.0, data)
+    }
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        u64::from(self.0)
+    }
+}
+pub fn default_crc() -> SubDigest {
+    SubDigest(crc32c_init())
+}
+/*
 pub struct SubDigest(crc::crc64::Digest);
 impl core::hash::Hasher for SubDigest {
     #[inline(always)]
@@ -823,3 +839,4 @@ pub fn default_crc() -> SubDigest {
     SubDigest(crc::crc64::Digest::new(crc::crc64::ECMA))
 }
 
+*/
