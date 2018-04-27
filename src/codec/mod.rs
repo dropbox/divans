@@ -242,17 +242,16 @@ impl<AllocU8: Allocator<u8>,
         ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
         ret
     }
+    #[inline(always)]
     fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> DivansResult{
         match command_type_code {
             1 => {
                 self.state_copy = copy::CopyState::begin();
                 self.state = EncodeOrDecodeState::Copy;
-                self.state
             },
             2 => {
                 self.state_dict = dict::DictState::begin();
                 self.state = EncodeOrDecodeState::Dict;
-                self.state
             }
             
             3 => {
@@ -261,35 +260,28 @@ impl<AllocU8: Allocator<u8>,
                     state:literal::LiteralSubstate::Begin,
                 };
                 self.state = EncodeOrDecodeState::Literal;
-            self.state
             },
             4 => {
                 self.state_lit_block_switch = block_type::LiteralBlockTypeState::begin();
                 self.state = EncodeOrDecodeState::BlockSwitchLiteral;
-                self.state
             },
             
             5 => {
                 self.state_block_switch = block_type::BlockTypeState::begin();
                 self.state = EncodeOrDecodeState::BlockSwitchCommand;
-                self.state
             },
             6 => {
                 self.state_block_switch = block_type::BlockTypeState::begin();
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
-                self.state
             },
             7 => {
                 self.state_prediction_mode = context_map::PredictionModeState::begin();
                 self.state = EncodeOrDecodeState::PredictionMode;
-                self.state
             },
             0xf => if is_end {
                 self.state = EncodeOrDecodeState::DivansSuccess; // encoder flows through this path
-                self.state
             } else {
                 self.state = EncodeOrDecodeState::WriteChecksum(0);
-                self.state
             },
             _ => return DivansResult::Failure(ErrMsg::CommandCodeOutOfBounds(command_type_code)),
         };

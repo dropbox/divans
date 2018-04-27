@@ -71,6 +71,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
     // this copies as much data as possible from the RingBuffer
     // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
+    #[inline(always)]
     pub fn flush(&mut self, output :&mut[u8], output_offset: &mut usize) -> DivansOutputResult {
         if self.ring_buffer_decode_index < self.ring_buffer_output_index { // we wrap around
             let bytes_until_wrap = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
@@ -133,6 +134,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
 
     //precondition: that there is sufficient room for amount_to_copy in buffer
+    #[inline(always)]
     fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> Result<u32,()> {
         desired_amount_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer() as u32,
                                                 desired_amount_to_copy);
@@ -171,6 +173,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
 
     // takes in a buffer of data to copy to the ring buffer--returns the number of bytes persisted
+    #[inline(always)]
     fn copy_to_ring_buffer(&mut self, mut data: &[u8]) -> usize {
         data = data.split_at(core::cmp::min(data.len() as u32, self.decode_space_left_in_ring_buffer()) as usize).0;
         let mut retval = 0usize;
@@ -189,6 +192,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
         retval
     }
+    #[inline(always)]
     fn parse_literal(&mut self, data:&[u8]) -> DivansOutputResult {
        let data_len = data.len(); 
         if data_len < self.input_sub_offset { // this means user passed us different data a second time
@@ -221,6 +225,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         self.input_sub_offset = copy.num_bytes as usize;
         DivansOutputResult::Success
     }
+    #[inline(always)]
     fn parse_copy(&mut self, copy:&CopyCommand) -> DivansOutputResult {
         let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset as u32;
         if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
@@ -286,17 +291,24 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         self.input_sub_offset = final_len as usize;
         DivansOutputResult::Success
     }
+    #[inline(always)]
     fn parse_command<SliceType:SliceWrapper<u8>>(&mut self, cmd: &Command<SliceType>) -> DivansOutputResult {
-        match *cmd {
-              Command::Copy(ref copy) => self.parse_copy(copy),
+        if let &Command::Literal(ref literal) = cmd {
+            return self.parse_literal(literal.slice());
+        }
+        if let &Command::Copy(ref copy) = cmd {
+            return self.parse_copy(copy);
+        }
+        match cmd {
+              Command::Copy(_) | Command::Literal(_) => panic!("Already processed: here to track full set of states"),
               Command::Dict(ref dict) => self.parse_dictionary(dict),
-              Command::Literal(ref literal) => self.parse_literal(literal.slice()),
               Command::PredictionMode(_)
               | Command::BlockSwitchCommand(_)
               | Command::BlockSwitchDistance(_)
               | Command::BlockSwitchLiteral(_) => DivansOutputResult::Success,
         }
     }
+    #[inline(always)]
     pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
                   cmd:&Command<SliceType>,
                   output :&mut[u8],
