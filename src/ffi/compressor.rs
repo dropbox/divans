@@ -231,8 +231,8 @@ impl CompressorState {
             },
         };
         match res {
-            DivansResult::ResultSuccess => DIVANS_SUCCESS,
-            DivansResult::ResultFailure => DIVANS_FAILURE,
+            DivansResult::Success => DIVANS_SUCCESS,
+            DivansResult::Failure => DIVANS_FAILURE,
             DivansResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
             DivansResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
         }
@@ -254,8 +254,8 @@ impl CompressorState {
             },
         };
         match res {
-            DivansResult::ResultSuccess => DIVANS_SUCCESS,
-            DivansResult::ResultFailure => DIVANS_FAILURE,
+            DivansResult::Success => DIVANS_SUCCESS,
+            DivansResult::Failure => DIVANS_FAILURE,
             DivansResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
             DivansResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
         }

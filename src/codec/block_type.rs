@@ -64,7 +64,7 @@ impl BlockTypeState {
                                                                  input_offset,
                                                                  output_bytes,
                                                                  output_offset) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType);
@@ -98,7 +98,7 @@ impl BlockTypeState {
                     *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
                 BlockTypeState::FullyDecoded(_) =>   {
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
             }
         }
@@ -150,7 +150,7 @@ impl LiteralBlockTypeState {
                       input_offset,
                       output_bytes,
                       output_offset) {
-                        DivansResult::ResultSuccess => None,
+                        DivansResult::Success => None,
                         any => Some(any),
                     };
                     match local_bts {
@@ -170,7 +170,7 @@ impl LiteralBlockTypeState {
                                                                  input_offset,
                                                                  output_bytes,
                                                                  output_offset) {
-                         DivansResult::ResultSuccess => {},
+                         DivansResult::Success => {},
                          need_something => return need_something,
                     }
 		            let mut stride_nibble = match superstate.bk.desired_force_stride {
@@ -184,7 +184,7 @@ impl LiteralBlockTypeState {
                     *self = LiteralBlockTypeState::FullyDecoded(ltype, stride_nibble);
                 },
                 LiteralBlockTypeState::FullyDecoded(_ltype, _stride) => {
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
             }
         }

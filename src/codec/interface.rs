@@ -85,7 +85,7 @@ pub trait EncoderOrDecoderSpecialization {
 
 #[allow(non_snake_case)]
 pub fn Fail() -> DivansResult {
-    DivansResult::ResultFailure
+    DivansResult::Failure
 }
 
 
@@ -332,10 +332,10 @@ impl<Cdf16:CDF16,
     }
     pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> DivansResult {
         //if index >= self.mixing_mask.len() {
-        //return DivansResult::ResultFailure;
+        //return DivansResult::Failure;
         //}
         self.mixing_mask[index] = value;
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     pub fn clear_mixing_values(&mut self) {
         for item in self.mixing_mask.iter_mut()  {
@@ -386,7 +386,7 @@ impl<Cdf16:CDF16,
             ContextMapType::Distance=> self.distance_context_map.slice_mut(),
         };
         if index as usize >= target_array.len() {
-            return           DivansResult::ResultFailure;
+            return           DivansResult::Failure;
         }
 
         target_array[index as usize] = val;
@@ -404,7 +404,7 @@ impl<Cdf16:CDF16,
             },
         }
         self.cmap_lru[0] = val;
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     pub fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
         let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
@@ -511,12 +511,12 @@ impl<Cdf16:CDF16,
        match new_mode.0 {
            LITERAL_PREDICTION_MODE_SIGN | LITERAL_PREDICTION_MODE_UTF8 | LITERAL_PREDICTION_MODE_MSB6 | LITERAL_PREDICTION_MODE_LSB6 => {
            },
-           _ => return DivansResult::ResultFailure,
+           _ => return DivansResult::Failure,
        }
        self.literal_prediction_mode = new_mode;
        self.literal_lut0 = get_lut0(new_mode);
        self.literal_lut1 = get_lut1(new_mode);
-       DivansResult::ResultSuccess
+       DivansResult::Success
     }
     pub fn obs_dict_state(&mut self) {
         self.next_state();

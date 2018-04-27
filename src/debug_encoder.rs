@@ -65,7 +65,7 @@ impl EntropyDecoder for DebugDecoder {
         return_value != 0
     }
     fn flush(&mut self) -> DivansResult {
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
 }
 

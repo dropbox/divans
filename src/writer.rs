@@ -44,8 +44,8 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
             match op_result {
                 DivansResult::NeedsMoreInput => assert_eq!(avail_in, 0),
                 DivansResult::NeedsMoreOutput => continue,
-                DivansResult::ResultSuccess => return Ok(buf.len()),
-                DivansResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
+                DivansResult::Success => return Ok(buf.len()),
+                DivansResult::Failure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
             }
             if avail_in == 0 {
                 break
@@ -64,11 +64,11 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
                 Err(e) => return Err(e),
             }
             match ret {
-                DivansResult::NeedsMoreInput | DivansResult::ResultFailure => {
+                DivansResult::NeedsMoreInput | DivansResult::Failure => {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input"))
                 }
                 DivansResult::NeedsMoreOutput => {},
-                DivansResult::ResultSuccess => {
+                DivansResult::Success => {
                     self.has_flushed = true;
                 }
             }

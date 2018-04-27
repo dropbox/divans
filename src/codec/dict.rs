@@ -66,7 +66,7 @@ impl DictState {
 
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::DictCommand(match self.state {
@@ -101,7 +101,7 @@ impl DictState {
 
                     self.dc.word_size = beg_nib + 19;
                     if self.dc.word_size > 24 {
-                        return DivansResult::ResultFailure;
+                        return DivansResult::Failure;
                     }
                     self.state = DictSubstate::WordIndexMantissa(0, round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                 }
@@ -148,7 +148,7 @@ impl DictState {
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
                     let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
                     if self.dc.transform >= 121 {
-                        return DivansResult::ResultFailure;
+                        return DivansResult::Failure;
                     }
                     let final_len = TransformDictionaryWord(&mut transformed_word[..],
                                                             &word[..],
@@ -156,10 +156,10 @@ impl DictState {
                                                             i32::from(self.dc.transform));
                     self.dc.final_size = final_len as u8;// WHA
                     self.state = DictSubstate::FullyDecoded;
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
                 DictSubstate::FullyDecoded => {
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
             }
         }

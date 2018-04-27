@@ -364,7 +364,7 @@ fn bench_no_ir<Run: Runner,
                 let mut o_processed_index = 0;
                 match encode_state.flush(temp_buffer.slice_mut(),
                                          &mut o_processed_index) {
-                    DivansResult::ResultSuccess => {
+                    DivansResult::Success => {
                         if o_processed_index != 0 {
                             dv_buffer.write_all(temp_buffer.slice_mut().split_at(o_processed_index).0).unwrap();
                         }

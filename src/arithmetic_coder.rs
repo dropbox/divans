@@ -194,7 +194,7 @@ impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
                 return DivansResult::NeedsMoreInput;
             }
         }
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
@@ -234,7 +234,7 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                         return DivansResult::NeedsMoreOutput;
                     }
                 }
-                return DivansResult::ResultSuccess;
+                return DivansResult::Success;
             }
             fn get_or_put_bit_without_billing(&mut self,
                                               bit: &mut bool,
@@ -248,7 +248,7 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
             }
             fn close(&mut self) -> DivansResult {
                 self.flush();
-                DivansResult::ResultSuccess
+                DivansResult::Success
             }
         }
 );
@@ -309,7 +309,7 @@ mod test {
             bit
         }
         fn flush(&mut self) -> DivansResult {
-            DivansResult::ResultSuccess
+            DivansResult::Success
         }
     }
     #[allow(unused)]

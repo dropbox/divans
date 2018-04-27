@@ -100,7 +100,7 @@ impl PredictionModeState {
         }
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::PredModeCtxMap(match *self {
@@ -130,11 +130,11 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
-                      Err(_) => return DivansResult::ResultFailure,
+                      Err(_) => return DivansResult::Failure,
                       Ok(pred_mode) => pred_mode,
                    };
                    match superstate.bk.obs_pred_mode(pred_mode) {
-                       DivansResult::ResultFailure => return DivansResult::ResultFailure,
+                       DivansResult::Failure => return DivansResult::Failure,
                        _ => {},
                    }
                    *self = PredictionModeState::DynamicContextMixing;
@@ -252,8 +252,8 @@ impl PredictionModeState {
                        } else {
                            superstate.bk.cmap_lru[mnemonic_nibble as usize]
                        };
-                       if let DivansResult::ResultFailure = superstate.bk.obs_context_map(context_map_type, index, val) {
-                           return DivansResult::ResultFailure;
+                       if let DivansResult::Failure = superstate.bk.obs_context_map(context_map_type, index, val) {
+                           return DivansResult::Failure;
                        }
                        *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                    }
@@ -293,8 +293,8 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
                        nibble_prob.blend(lsn_nib, Speed::MED);
                    }
-                   if let DivansResult::ResultFailure = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
-                       return DivansResult::ResultFailure;
+                   if let DivansResult::Failure = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
+                       return DivansResult::Failure;
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
@@ -320,17 +320,17 @@ impl PredictionModeState {
                        *self = PredictionModeState::FullyDecoded;
                    } else {
                        match superstate.bk.obs_mixing_value(index, mixing_nib) {
-                           DivansResult::ResultSuccess => {
+                           DivansResult::Success => {
                                *self = PredictionModeState::MixingValues(index + 1);
                            },
                            _ => {
-                               return DivansResult::ResultFailure;
+                               return DivansResult::Failure;
                            },
                        }
                    }
                },
                PredictionModeState::FullyDecoded => {
-                   return DivansResult::ResultSuccess;
+                   return DivansResult::Success;
                }
             }
         }

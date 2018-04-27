@@ -195,8 +195,8 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
                         None => return DIVANS_FAILURE,
                         Some(state_ref) => {
                             match state_ref.decompressor.decode(input_buf, input_offset, output_buf, output_offset) {
-                                ::interface::DivansResult::ResultSuccess => return DIVANS_SUCCESS,
-                                ::interface::DivansResult::ResultFailure => return DIVANS_FAILURE,
+                                ::interface::DivansResult::Success => return DIVANS_SUCCESS,
+                                ::interface::DivansResult::Failure => return DIVANS_FAILURE,
                                 ::interface::DivansResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
                                 ::interface::DivansResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
                             }

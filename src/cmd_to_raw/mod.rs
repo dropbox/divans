@@ -100,7 +100,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if self.ring_buffer_output_index != self.ring_buffer_decode_index {
             return DivansResult::NeedsMoreOutput;
         }
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn decode_space_left_in_ring_buffer(&self) -> u32 {
         // tried optimizing with predicates but no luck: the branch wins here (largely coherent; does less work in the common case)
@@ -192,7 +192,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     fn parse_literal(&mut self, data:&[u8]) -> DivansResult {
        let data_len = data.len(); 
         if data_len < self.input_sub_offset { // this means user passed us different data a second time
-           return DivansResult::ResultFailure;
+           return DivansResult::Failure;
        }
        let remainder = data.split_at(self.input_sub_offset).1;
        let bytes_copied = self.copy_to_ring_buffer(remainder);
@@ -200,7 +200,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
        if bytes_copied != remainder.len() {
           return DivansResult::NeedsMoreOutput;
        }
-       DivansResult::ResultSuccess
+       DivansResult::Success
     }
     #[allow(unused)]
     fn parse_copy_simplified(&mut self, copy:&CopyCommand) -> DivansResult {
@@ -219,7 +219,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             }
         }
         self.input_sub_offset = copy.num_bytes as usize;
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn parse_copy(&mut self, copy:&CopyCommand) -> DivansResult {
         let num_bytes_left_in_cmd = copy.num_bytes - self.input_sub_offset as u32;
@@ -243,14 +243,14 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
                 return DivansResult::NeedsMoreOutput;
             }
-            return DivansResult::ResultSuccess;
+            return DivansResult::Success;
         }
         let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd, copy.distance);
         let copy_count = match self.copy_some_decoded_from_ring_buffer_to_decoded(
             copy.distance,
             num_bytes_to_copy) {
             Ok(copy_count) => copy_count,
-            Err(_) => return DivansResult::ResultFailure,
+            Err(_) => return DivansResult::Failure,
         };
         self.input_sub_offset += copy_count as usize;
         // by taking the min of copy.distance and items to copy, we are nonoverlapping
@@ -258,7 +258,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         if copy_count != num_bytes_left_in_cmd {
             return DivansResult::NeedsMoreOutput;
         }
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> DivansResult {
         // dictionary words are bounded in size: make sure there's enough room for the whole word
@@ -276,7 +276,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             return DivansResult::NeedsMoreOutput;
         }
         if dict_cmd.final_size != 0 && final_len as usize != dict_cmd.final_size as usize {
-            return DivansResult::ResultFailure;
+            return DivansResult::Failure;
         }
         if self.input_sub_offset != 0 {
             assert_eq!(self.input_sub_offset as i32, final_len);
@@ -284,7 +284,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             panic!("We already assured sufficient space in buffer for word: internal error");
         }
         self.input_sub_offset = final_len as usize;
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn parse_command<SliceType:SliceWrapper<u8>>(&mut self, cmd: &Command<SliceType>) -> DivansResult {
         match *cmd {
@@ -294,7 +294,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
               Command::PredictionMode(_)
               | Command::BlockSwitchCommand(_)
               | Command::BlockSwitchDistance(_)
-              | Command::BlockSwitchLiteral(_) => DivansResult::ResultSuccess,
+              | Command::BlockSwitchLiteral(_) => DivansResult::Success,
         }
     }
     pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
@@ -305,12 +305,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             let prev_output_offset = *output_offset;
             let res = self.parse_command(cmd);
             match res {
-                DivansResult::ResultSuccess => {
+                DivansResult::Success => {
                     break;
                 }, // move on to the next command
                 DivansResult::NeedsMoreOutput => {
                     match self.flush(output, output_offset) {
-                        DivansResult::ResultSuccess => {},
+                        DivansResult::Success => {},
                         flush_res => {
                             self.total_offset += *output_offset - prev_output_offset;
                             return flush_res
@@ -322,10 +322,10 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
         let prev_output_offset = *output_offset;
         match self.flush(output, output_offset)  {
-            DivansResult::ResultSuccess => {
+            DivansResult::Success => {
                 self.input_sub_offset = 0;
                 self.total_offset += *output_offset - prev_output_offset;
-                DivansResult::ResultSuccess
+                DivansResult::Success
             },
             res => {
                 self.total_offset += *output_offset - prev_output_offset;
@@ -341,12 +341,12 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
        *input_offset += amt_to_copy;
        *output_offset += amt_to_copy;
        if *input_offset == input.len() {
-          return DivansResult::ResultSuccess;
+          return DivansResult::Success;
        }
        if *output_offset == output.len() {
           return DivansResult::NeedsMoreOutput;
        }
-       DivansResult::ResultFailure
+       DivansResult::Failure
     }
     fn encode_commands<SliceType:SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
@@ -354,18 +354,18 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
                   output :&mut[u8],
                   output_offset: &mut usize) -> DivansResult {
         if *input_offset > input.len() {
-            return DivansResult::ResultFailure;
+            return DivansResult::Failure;
         }
         for cmd in input.split_at(*input_offset).1.iter() {
             loop {
                 let mut res = self.flush(output, output_offset);
                  match res {
-                    DivansResult::ResultSuccess => {},
+                    DivansResult::Success => {},
                     _ => {return res}
                  }
                  res = self.parse_command(cmd);
                  match res {
-                    DivansResult::ResultSuccess => {
+                    DivansResult::Success => {
                         self.input_sub_offset = 0; // done w/this command, no partial work
                         break;
                     }, // move on to the next command
@@ -380,6 +380,6 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
     fn flush(&mut self,
              _output:&mut[u8],
              _output_offset:&mut usize)->DivansResult{
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
 }

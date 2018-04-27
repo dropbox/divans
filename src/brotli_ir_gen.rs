@@ -132,7 +132,7 @@ impl<SelectedCDF:CDF16,
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset, codec.get_crc()) {
-                        DivansResult::ResultSuccess => {},
+                        DivansResult::Success => {},
                         _ => panic!("Unexpected failure writing header"),
                     }
                 }
@@ -145,12 +145,12 @@ impl<SelectedCDF:CDF16,
                                              &mut cmd_offset);
             }
             match ret {
-                DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => {
+                DivansResult::Success | DivansResult::NeedsMoreInput => {
                     assert_eq!(cmd_offset, cmd.len());
                     data.commit_next_buffer(output_offset);
                     return;
                 },
-                DivansResult::ResultFailure => panic!("Unexpected error code"),
+                DivansResult::Failure => panic!("Unexpected error code"),
                 DivansResult::NeedsMoreOutput => {
                     data.commit_next_buffer(output_offset);
                 }
@@ -177,7 +177,7 @@ impl<SelectedCDF:CDF16,
             {
                 let mut available_in = input.len() - *input_offset;
                 if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
                 let mut available_out;
                 let mut brotli_out_offset = 0usize;
@@ -205,7 +205,7 @@ impl<SelectedCDF:CDF16,
                                                    &mut brotli_out_offset,
                                                    &mut nothing,
                                                    &mut closure) <= 0 {
-                        return DivansResult::ResultFailure;
+                        return DivansResult::Failure;
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
@@ -228,9 +228,9 @@ impl<SelectedCDF:CDF16,
                 }
                 self.divans_data.commit_next_buffer(output_offset);
                 match ret {
-                    DivansResult::ResultSuccess => return ret,
+                    DivansResult::Success => return ret,
                     DivansResult::NeedsMoreOutput => {},
-                    DivansResult::NeedsMoreInput | DivansResult::ResultFailure => return DivansResult::ResultFailure,
+                    DivansResult::NeedsMoreInput | DivansResult::Failure => return DivansResult::Failure,
                 }
             }
         } else {
@@ -302,8 +302,8 @@ impl<SelectedCDF:CDF16,
                                           input,
                                           input_offset,
                                           false) {
-            DivansResult::ResultFailure => DivansResult::ResultFailure,
-            DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
+            DivansResult::Failure => DivansResult::Failure,
+            DivansResult::Success | DivansResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
             DivansResult::NeedsMoreOutput => panic!("unexpected code"),
         }
     }
@@ -316,8 +316,8 @@ impl<SelectedCDF:CDF16,
                                               &[],
                                               &mut zero,
                                               true) {
-                DivansResult::ResultFailure => return DivansResult::ResultFailure,
-                DivansResult::ResultSuccess => break,
+                DivansResult::Failure => return DivansResult::Failure,
+                DivansResult::Success => break,
                 DivansResult::NeedsMoreOutput => {},
                 DivansResult::NeedsMoreInput => panic!("unexpected code"),
             }
@@ -330,7 +330,7 @@ impl<SelectedCDF:CDF16,
         *output_offset += copy_len;
         self.encoded_byte_offset += copy_len;
         if self.encoded_byte_offset == self.divans_data.len() {
-            return DivansResult::ResultSuccess;
+            return DivansResult::Success;
         }
         DivansResult::NeedsMoreOutput
     }
@@ -341,7 +341,7 @@ impl<SelectedCDF:CDF16,
                                                            output_offset: &mut usize) -> DivansResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset, self.codec.get_crc()) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 res => return res,
             }
         }

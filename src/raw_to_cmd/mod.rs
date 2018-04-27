@@ -81,8 +81,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                 DivansResult::NeedsMoreOutput => {
                   return DivansResult::NeedsMoreOutput;
                 }
-                DivansResult::ResultFailure => {
-                    return DivansResult::ResultFailure;
+                DivansResult::Failure => {
+                    return DivansResult::Failure;
                 },
                 _ => {
                     if *input_offset != input.len() {
@@ -165,7 +165,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            self.ring_buffer_output_index = self.ring_buffer_decode_index;
            assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
         }
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     pub fn free(&mut self, m32: &mut AllocU32) {
         self.hash_match.free(m32);

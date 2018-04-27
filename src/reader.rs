@@ -79,8 +79,8 @@ impl<R:Read, P:Processor, BufferType:SliceWrapperMut<u8>> Read for GenReader<R,P
              }
            }
            match ret {
-             DivansResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid Data")),
-             DivansResult::ResultSuccess => {
+             DivansResult::Failure => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid Data")),
+             DivansResult::Success => {
                if self.input_eof && avail_in == 0 && self.has_flushed {
                  break;
                }

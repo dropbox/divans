@@ -25,26 +25,26 @@ pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
 
 pub enum DivansOpResult {
-    ResultFailure,
-    ResultSuccess,
+    Failure,
+    Success,
 }
 
 pub enum DivansResult {
-    ResultFailure,
-    ResultSuccess,
+    Failure,
+    Success,
     NeedsMoreInput,
     NeedsMoreOutput,
 }
 
 pub enum DivansInputResult {
-    ResultFailure,
-    ResultSuccess,
+    Failure,
+    Success,
     NeedsMoreInput,
 }
 
 pub enum DivansOutputResult {
-    ResultFailure,
-    ResultSuccess,
+    Failure,
+    Success,
     NeedsMoreOutput,
 }
 

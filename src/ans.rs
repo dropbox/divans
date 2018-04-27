@@ -461,7 +461,7 @@ impl EntropyDecoder for ANSDecoder {
         bit
     }
     fn flush(&mut self) -> DivansResult {
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
 }
 

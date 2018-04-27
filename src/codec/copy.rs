@@ -72,7 +72,7 @@ impl CopyState {
         }
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::CopyCommand(match self.state {
@@ -179,7 +179,7 @@ impl CopyState {
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         if !ok {
-                            return DivansResult::ResultFailure;
+                            return DivansResult::Failure;
                         }
                         self.state = CopySubstate::FullyDecoded;
                     }
@@ -260,7 +260,7 @@ impl CopyState {
                     }
                 },
                 CopySubstate::FullyDecoded => {
-                    return DivansResult::ResultSuccess;
+                    return DivansResult::Success;
                 }
             }
         }

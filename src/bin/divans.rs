@@ -493,7 +493,7 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
                            &mut i_processed_index,
                            output_scratch,
                            &mut o_processed_index) {
-            DivansResult::ResultSuccess => {
+            DivansResult::Success => {
                 assert_eq!(i_processed_index, cmd_buffer.len());
                 break;
             },
@@ -511,7 +511,7 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
 //                return Err(io::Error::new(io::ErrorKind::InvalidInput,
 //                               "Unknown Error Type: Needs more input (Partial command?)"));
             }
-            DivansResult::ResultFailure => {
+            DivansResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -583,7 +583,7 @@ fn recode_inner<Reader:std::io::BufRead,
         let mut o_processed_index = 0;
         match state.flush(&mut obuffer[..],
                           &mut o_processed_index) {
-            DivansResult::ResultSuccess => {
+            DivansResult::Success => {
                 if o_processed_index != 0 {
                     if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                         return Err(x);
@@ -600,7 +600,7 @@ fn recode_inner<Reader:std::io::BufRead,
             DivansResult::NeedsMoreInput => {
                 panic!("Unreasonable demand: no input avail in this code path");
             }
-            DivansResult::ResultFailure => {
+            DivansResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -690,7 +690,7 @@ fn compress_inner<Reader:std::io::BufRead,
         let mut o_processed_index = 0;
         match state.flush(&mut obuffer[..],
                           &mut o_processed_index) {
-            DivansResult::ResultSuccess => {
+            DivansResult::Success => {
                 if o_processed_index != 0 {
                     if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                         return Err(x);
@@ -707,7 +707,7 @@ fn compress_inner<Reader:std::io::BufRead,
             DivansResult::NeedsMoreInput => {
                 panic!("Unreasonable demand: no input avail in this code path");
             }
-            DivansResult::ResultFailure => {
+            DivansResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -753,8 +753,8 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                                &mut idec_index,
                                obuffer.slice_mut().split_at_mut(oenc_index).1,
                                &mut olim) {
-                DivansResult::ResultSuccess => continue,
-                DivansResult::ResultFailure => {
+                DivansResult::Success => continue,
+                DivansResult::Failure => {
                     let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
@@ -785,8 +785,8 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
     while !done {
         match compress_state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
                           &mut olim) {
-            DivansResult::ResultSuccess => done = true,
-            DivansResult::ResultFailure => {
+            DivansResult::Success => done = true,
+            DivansResult::Failure => {
                 let mut m8 = free_state(compress_state);
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
@@ -965,10 +965,10 @@ fn decompress<Reader:std::io::Read,
                            &mut input_offset,
                            obuffer.slice_mut(),
                            &mut output_offset) {
-            DivansResult::ResultSuccess => {
+            DivansResult::Success => {
                 break
             },
-            DivansResult::ResultFailure => {
+            DivansResult::Failure => {
                 let mut m8 = state.free().0;
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);

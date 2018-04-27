@@ -184,7 +184,7 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
     crc.write(to_write);
     *output_offset += interface::HEADER_LENGTH - *header_progress;
     *header_progress = interface::HEADER_LENGTH;
-    DivansResult::ResultSuccess
+    DivansResult::Success
 
 }
 
@@ -201,12 +201,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                                     output_offset,
                                     thawed_buffer.split_at(self.freeze_dried_cmd_end).0,
                                     &mut self.freeze_dried_cmd_start) {
-               DivansResult::ResultFailure => return DivansResult::ResultFailure,
-               DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
+               DivansResult::Failure => return DivansResult::Failure,
+               DivansResult::NeedsMoreInput | DivansResult::Success => {},
                DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
             }
         }
-        DivansResult::ResultSuccess
+        DivansResult::Success
     }
     fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                       freeze_dried_cmd_start: &mut usize,
@@ -285,13 +285,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 res => return res,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-            DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
-            DivansResult::ResultFailure => return DivansResult::ResultFailure,
+            DivansResult::NeedsMoreInput | DivansResult::Success => {},
+            DivansResult::Failure => return DivansResult::Failure,
             DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
         }
         let literal_context_map = self.literal_context_map_backing.slice_mut();
@@ -310,8 +310,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                         return DivansResult::NeedsMoreInput;
                     }
                 },
-                DivansResult::ResultFailure | DivansResult::ResultSuccess => {
-                    return DivansResult::ResultFailure; // we are never done
+                DivansResult::Failure | DivansResult::Success => {
+                    return DivansResult::Failure; // we are never done
                 },
                 DivansResult::NeedsMoreOutput => {},
             }
@@ -324,13 +324,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         temp_bs.split_at(temp_cmd_offset).0,
                                                         &mut out_cmd_offset);
             match codec_ret {
-                DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {
+                DivansResult::NeedsMoreInput | DivansResult::Success => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
                     if let DivansResult::NeedsMoreInput = command_decode_ret {
                         return DivansResult::NeedsMoreInput; // we've exhausted all commands and all input
                     }
                 },
-                DivansResult::NeedsMoreOutput | DivansResult::ResultFailure => {
+                DivansResult::NeedsMoreOutput | DivansResult::Failure => {
                     Self::freeze_dry(
                         &mut self.freeze_dried_cmd_array,
                         &mut self.freeze_dried_cmd_start,
@@ -349,7 +349,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 res => return res,
             }
         }
@@ -367,14 +367,14 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::ResultSuccess => {},
+                DivansResult::Success => {},
                 res => return res,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-               DivansResult::ResultFailure => return DivansResult::ResultFailure, 
+               DivansResult::Failure => return DivansResult::Failure, 
                DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
-               DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
+               DivansResult::NeedsMoreInput | DivansResult::Success => {},
         }
         loop {
             let literal_context_map_backing = self.literal_context_map_backing.slice_mut();
@@ -384,13 +384,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             let mut temp_cmd_offset = 0;
             let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset, literal_context_map_backing, prediction_mode_backing);
             match command_flush_ret {
-                DivansResult::ResultSuccess => {
+                DivansResult::Success => {
                     if temp_cmd_offset == 0 {
                         break; // no output from the cmd_assembler, just plain flush the codec
                     }
                 },
-                DivansResult::ResultFailure | DivansResult::NeedsMoreInput => {
-                    return DivansResult::ResultFailure; // we are never done
+                DivansResult::Failure | DivansResult::NeedsMoreInput => {
+                    return DivansResult::Failure; // we are never done
                 },
                 DivansResult::NeedsMoreOutput => {},
             }
@@ -403,13 +403,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         temp_bs.split_at(temp_cmd_offset).0,
                                                         &mut out_cmd_offset);
             match codec_ret {
-                DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => {
+                DivansResult::Success | DivansResult::NeedsMoreInput => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
-                    if let DivansResult::ResultSuccess = command_flush_ret {
+                    if let DivansResult::Success = command_flush_ret {
                          break; // we've exhausted all commands and all input
                     }
                 },
-                DivansResult::NeedsMoreOutput | DivansResult::ResultFailure => {
+                DivansResult::NeedsMoreOutput | DivansResult::Failure => {
                     Self::freeze_dry(
                         &mut self.freeze_dried_cmd_array,
                         &mut self.freeze_dried_cmd_start,
