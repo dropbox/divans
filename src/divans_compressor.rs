@@ -417,7 +417,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                         &mut self.freeze_dried_cmd_end,
                         &temp_bs[out_cmd_offset..temp_cmd_offset]);
                     match codec_ret {
-                        DivansResult::Success | DivansResult::NeedsMoreInput => panic!("unreachable"),
+                        DivansResult::Success | DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(
+                            ErrMsg::WrongInternalEncoderState(0)),
                         DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
                         DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                     }

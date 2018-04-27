@@ -336,15 +336,15 @@ impl<AllocU8: Allocator<u8>,
                             OneCommandReturn::BufferExhausted(res) => {
                                 match res {
                                     DivansResult::Success => {},
-                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::EncodeOneCommandNeedsInput),//panic!("unreachable"),//return DivansOutputResult::Success,
+                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::EncodeOneCommandNeedsInput),//"unreachable",//return DivansOutputResult::Success,
                                     DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
                                     DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                                 }
                             },
-                            OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
+                            OneCommandReturn::Advance => return DivansOutputResult::Failure(ErrMsg::UnintendedCodecState(3)),
                         },
                         CodecTraitResult::UpdateCodecTraitAndAdvance(_) => {
-                            panic!("Unintended state: flush => UpdateCodeTraitAndAdvance");
+                            return DivansOutputResult::Failure(ErrMsg::UnintendedCodecState(4));
                         },
                     }
                     self.state = EncodeOrDecodeState::EncodedShutdownNode;
@@ -647,7 +647,8 @@ impl<AllocU8: Allocator<u8>,
                             let old_stride = self.cross_command_state.bk.stride;
                             self.cross_command_state.bk.obs_btypel(match self.state_lit_block_switch {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
-                                _ => panic!("illegal output state"),
+                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(0)))),
                             });
                             if (old_stride <= 1) != (self.cross_command_state.bk.stride <= 1) {
                                 self.state = EncodeOrDecodeState::Begin;
@@ -679,7 +680,8 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_btypec(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
-                                _ => panic!("illegal output state"),
+                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(1)))),
                             });
                             self.state = EncodeOrDecodeState::Begin;
                             return CodecTraitResult::Res(OneCommandReturn::Advance);
@@ -705,7 +707,8 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_btyped(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
-                                _ => panic!("illegal output state"),
+                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(2)))),
                             });
                             self.state = EncodeOrDecodeState::Begin;
                             return CodecTraitResult::Res(OneCommandReturn::Advance);

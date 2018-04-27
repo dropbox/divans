@@ -56,6 +56,8 @@ pub enum ErrMsg {
     BadWindowSize(u8),
     MissingAllocator(u8),
     WrongInternalDecoderState,
+    WrongInternalEncoderState(u8),
+    UnintendedCodecState(u8),
 }
 
 
