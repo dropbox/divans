@@ -290,9 +290,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-            DivansResult::NeedsMoreInput | DivansResult::Success => {},
-            DivansResult::Failure => return DivansResult::Failure,
-            DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
+            DivansOutputResult::Success => {},
+            res => return DivansResult::from(res),
         }
         let literal_context_map = self.literal_context_map_backing.slice_mut();
         let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
@@ -349,7 +348,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::Success => {},
+                DivansOutputResult::Success => {},
                 res => return res,
             }
         }
@@ -376,9 +375,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-               DivansResult::Failure => return DivansResult::Failure, 
-               DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
-               DivansResult::NeedsMoreInput | DivansResult::Success => {},
+               DivansOutputResult::Success => {},
+               res => return res,
         }
         loop {
             let literal_context_map_backing = self.literal_context_map_backing.slice_mut();
@@ -394,7 +392,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                     }
                 },
                 DivansResult::Failure | DivansResult::NeedsMoreInput => {
-                    return DivansResult::Failure; // we are never done
+                    return DivansOutputResult::Failure; // we are never done
                 },
                 DivansResult::NeedsMoreOutput => {},
             }
@@ -419,7 +417,11 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                         &mut self.freeze_dried_cmd_start,
                         &mut self.freeze_dried_cmd_end,
                         &temp_bs[out_cmd_offset..temp_cmd_offset]);
-                    return codec_ret;
+                    match codec_ret {
+                        DivansResult::Success | DivansResult::NeedsMoreInput => panic!("unreachable"),
+                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                        DivansResult::Failure => return DivansOutputResult::Failure,
+                    }
                 }
             }
         }

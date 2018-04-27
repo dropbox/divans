@@ -20,7 +20,7 @@ use std::io::{self,Write, BufReader};
 
 use super::ItemVecAllocator;
 use super::ItemVec;
-use divans::DivansResult;
+use divans::{DivansResult, DivansOutputResult};
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 
 use divans::Command;
@@ -364,18 +364,18 @@ fn bench_no_ir<Run: Runner,
                 let mut o_processed_index = 0;
                 match encode_state.flush(temp_buffer.slice_mut(),
                                          &mut o_processed_index) {
-                    DivansResult::Success => {
+                    DivansOutputResult::Success => {
                         if o_processed_index != 0 {
                             dv_buffer.write_all(temp_buffer.slice_mut().split_at(o_processed_index).0).unwrap();
                         }
                         break;
                     },
-                    DivansResult::NeedsMoreOutput => {
+                    DivansOutputResult::NeedsMoreOutput => {
                     assert!(o_processed_index != 0);
                         dv_buffer.write_all(temp_buffer.slice_mut().split_at(o_processed_index).0).unwrap();
                     }
                     _ => {
-                        panic!("Unreasonable demand: no input avail in this code path");
+                        panic!("Failure");
                     }
                 }
             }

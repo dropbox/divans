@@ -3,7 +3,7 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 pub use alloc::HeapAlloc;
 use std::io;
 use std::io::{Read};
-use super::DivansResult;
+use super::interface::{DivansResult, DivansOutputResult};
 use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
@@ -11,7 +11,7 @@ use ::interface;
 
 trait Processor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult;
 }
 
 struct GenReader<R: Read,
@@ -57,9 +57,9 @@ impl<R:Read, P:Processor, BufferType:SliceWrapperMut<u8>> Read for GenReader<R,P
            let old_input_offset = self.input_offset;
            let ret = if avail_in == 0 {
                self.has_flushed = true;
-               self.compressor.close(
+               DivansResult::from(self.compressor.close(
                    buf.split_at_mut(output_offset + avail_out).0,
-                   &mut output_offset)
+                   &mut output_offset))
            } else {
                self.compressor.process(
                    self.input_buffer.slice_mut().split_at_mut(self.input_offset + avail_in).0,
@@ -142,7 +142,7 @@ impl<T:Compressor> Processor for T {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.encode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult{
       self.flush(output, output_offset)
    }
 
@@ -253,9 +253,13 @@ impl Processor for DivansConstructedDecompressor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.decode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult{
        let mut input_offset = 0usize;
-       self.decode(&[], &mut input_offset, output, output_offset)
+       match self.decode(&[], &mut input_offset, output, output_offset) {
+       DivansResult::NeedsMoreInput | DivansResult::Failure => DivansOutputResult::Failure,
+       DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
+       DivansResult::Success => DivansOutputResult::Success,
+       }
    }
 
 }

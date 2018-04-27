@@ -312,7 +312,7 @@ impl<AllocU8: Allocator<u8>,
     }
     pub fn flush(&mut self,
              output_bytes: &mut [u8],
-             output_bytes_offset: &mut usize) -> DivansResult{
+             output_bytes_offset: &mut usize) -> DivansOutputResult{
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
         let ret = self.internal_flush(adjusted_output_bytes, &mut adjusted_output_bytes_offset);
@@ -327,7 +327,7 @@ impl<AllocU8: Allocator<u8>,
     }
     fn internal_flush(&mut self,
                  output_bytes: &mut [u8],
-                 output_bytes_offset: &mut usize) -> DivansResult{
+                 output_bytes_offset: &mut usize) -> DivansOutputResult{
         let nop = Command::<AllocU8::AllocatedMemory>::nop();
         loop {
             match self.state {
@@ -344,7 +344,9 @@ impl<AllocU8: Allocator<u8>,
                             OneCommandReturn::BufferExhausted(res) => {
                                 match res {
                                     DivansResult::Success => {},
-                                    need => return need,
+                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure,//panic!("unreachable"),//return DivansOutputResult::Success,
+                                    DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                                    DivansResult::Failure => return DivansOutputResult::Failure,
                                 }
                             },
                             OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
@@ -359,13 +361,17 @@ impl<AllocU8: Allocator<u8>,
                     let mut unused = 0usize;
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
                         DivansResult::Success => self.state = EncodeOrDecodeState::ShutdownCoder,
-                        ret => return ret,
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                        DivansResult::Failure => return DivansOutputResult::Failure,
                     }
                 },
                 EncodeOrDecodeState::ShutdownCoder => {
                     match self.cross_command_state.coder.close() {
                         DivansResult::Success => self.state = EncodeOrDecodeState::CoderBufferDrain,
-                        ret => return ret,
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                        DivansResult::Failure => return DivansOutputResult::Failure,
                     }
                 },
                 EncodeOrDecodeState::CoderBufferDrain => {
@@ -377,7 +383,9 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.state = EncodeOrDecodeState::WriteChecksum(0);
                         },
-                        ret => return ret,
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                        DivansResult::Failure => return DivansOutputResult::Failure,
                     }
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
@@ -411,14 +419,14 @@ impl<AllocU8: Allocator<u8>,
                     *output_bytes_offset += count_to_copy;
                     if bytes_needed <= bytes_remaining {
                         self.state = EncodeOrDecodeState::DivansSuccess;
-                        return DivansResult::Success;
+                        return DivansOutputResult::Success;
                     } else {
                         self.state = EncodeOrDecodeState::WriteChecksum(count + count_to_copy as u8);
-                        return DivansResult::NeedsMoreOutput;
+                        return DivansOutputResult::NeedsMoreOutput;
                     }
                 },
-                EncodeOrDecodeState::DivansSuccess => return DivansResult::Success,
-                _ => return self::interface::Fail(), // not allowed to flush if previous command was partially processed
+                EncodeOrDecodeState::DivansSuccess => return DivansOutputResult::Success,
+                _ => return DivansOutputResult::Failure, // not allowed to flush if previous command was partially processed
             }
         }
     }

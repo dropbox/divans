@@ -1,5 +1,5 @@
 use ::brotli;
-use ::interface::DivansResult;
+use ::interface::{DivansResult, DivansOutputResult};
 use ::brotli::enc::interface::LiteralPredictionModeNibble;
 use core;
 use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor};
@@ -254,10 +254,9 @@ impl CompressorState {
             },
         };
         match res {
-            DivansResult::Success => DIVANS_SUCCESS,
-            DivansResult::Failure => DIVANS_FAILURE,
-            DivansResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
-            DivansResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
+            DivansOutputResult::Success => DIVANS_SUCCESS,
+            DivansOutputResult::Failure => DIVANS_FAILURE,
+            DivansOutputResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
         }
     }
 }

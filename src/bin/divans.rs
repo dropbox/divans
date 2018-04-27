@@ -47,6 +47,7 @@ use divans::PredictionModeContextMap;
 use divans::Command;
 use divans::DictCommand;
 use divans::DivansResult;
+use divans::DivansOutputResult;
 use divans::Compressor;
 use divans::Decompressor;
 use divans::Speed;
@@ -493,11 +494,11 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
                            &mut i_processed_index,
                            output_scratch,
                            &mut o_processed_index) {
-            DivansResult::Success => {
+            DivansOutputResult::Success => {
                 assert_eq!(i_processed_index, cmd_buffer.len());
                 break;
             },
-            DivansResult::NeedsMoreOutput => {
+            DivansOutputResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
                 if let Err(x) = w.write_all(output_scratch.split_at(o_processed_index).0) {
                     return Err(x);
@@ -505,13 +506,11 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
                 ret += o_processed_index;
                 o_processed_index = 0;
             }
-            DivansResult::NeedsMoreInput => {
-                assert_eq!(i_processed_index, cmd_buffer.len());
-                break;
-//                return Err(io::Error::new(io::ErrorKind::InvalidInput,
-//                               "Unknown Error Type: Needs more input (Partial command?)"));
-            }
-            DivansResult::Failure => {
+//            DivansResult::NeedsMoreInput => {
+//                assert_eq!(i_processed_index, cmd_buffer.len());
+//                break;
+//            }
+            DivansOutputResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -583,7 +582,7 @@ fn recode_inner<Reader:std::io::BufRead,
         let mut o_processed_index = 0;
         match state.flush(&mut obuffer[..],
                           &mut o_processed_index) {
-            DivansResult::Success => {
+            DivansOutputResult::Success => {
                 if o_processed_index != 0 {
                     if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                         return Err(x);
@@ -591,16 +590,13 @@ fn recode_inner<Reader:std::io::BufRead,
                 }
                 break;
             },
-            DivansResult::NeedsMoreOutput => {
+            DivansOutputResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
                 if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                     return Err(x);
                 }
             }
-            DivansResult::NeedsMoreInput => {
-                panic!("Unreasonable demand: no input avail in this code path");
-            }
-            DivansResult::Failure => {
+            DivansOutputResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -690,7 +686,7 @@ fn compress_inner<Reader:std::io::BufRead,
         let mut o_processed_index = 0;
         match state.flush(&mut obuffer[..],
                           &mut o_processed_index) {
-            DivansResult::Success => {
+            DivansOutputResult::Success => {
                 if o_processed_index != 0 {
                     if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                         return Err(x);
@@ -698,16 +694,13 @@ fn compress_inner<Reader:std::io::BufRead,
                 }
                 break;
             },
-            DivansResult::NeedsMoreOutput => {
+            DivansOutputResult::NeedsMoreOutput => {
                 assert!(o_processed_index != 0);
                 if let Err(x) = w.write_all(obuffer.split_at(o_processed_index).0) {
                     return Err(x);
                 }
             }
-            DivansResult::NeedsMoreInput => {
-                panic!("Unreasonable demand: no input avail in this code path");
-            }
-            DivansResult::Failure => {
+            DivansOutputResult::Failure => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                "Brotli Failure to recode file"));
             }
@@ -785,19 +778,15 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
     while !done {
         match compress_state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
                           &mut olim) {
-            DivansResult::Success => done = true,
-            DivansResult::Failure => {
+            DivansOutputResult::Success => done = true,
+            DivansOutputResult::Failure => {
                 let mut m8 = free_state(compress_state);
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::Other,
                                           "Failure encoding brotli"));
             },
-            DivansResult::NeedsMoreInput => {
-                done = true; // should we assert here?
-                assert!(false);// we are flushing--should be success here
-            }
-            DivansResult::NeedsMoreOutput => {
+            DivansOutputResult::NeedsMoreOutput => {
             }
         }
         while oenc_index != olim {

@@ -228,9 +228,8 @@ impl<SelectedCDF:CDF16,
                 }
                 self.divans_data.commit_next_buffer(output_offset);
                 match ret {
-                    DivansResult::Success => return ret,
-                    DivansResult::NeedsMoreOutput => {},
-                    DivansResult::NeedsMoreInput | DivansResult::Failure => return DivansResult::Failure,
+                    DivansOutputResult::NeedsMoreOutput => {},
+                    _ => return DivansResult::from(ret),
                 }
             }
         } else {

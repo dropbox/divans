@@ -68,7 +68,7 @@ mod brotli_ir_gen;
 mod divans_compressor;
 mod divans_decompressor;
 pub mod constants;
-pub use self::interface::DivansResult;
+pub use self::interface::{DivansInputResult,DivansOpResult,DivansOutputResult, DivansResult};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
                     DefaultCDF16};
