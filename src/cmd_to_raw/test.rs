@@ -15,7 +15,7 @@
 #![cfg(test)]
 
 use super::super::SliceWrapper;
-use super::super::BrotliResult;
+use super::super::DivansResult;
 const TEST_RING_SIZE: usize = 1<<7;
 struct ExRingBuffer([u8;TEST_RING_SIZE]);
 impl Default for ExRingBuffer {
@@ -54,11 +54,11 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_id:index
         });
         match ret {
-            BrotliResult::ResultSuccess => {
+            DivansResult::ResultSuccess => {
                 assert!(index < 5);
                 state.input_sub_offset = 0; // reset decode
             },
-            BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
+            DivansResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
         }
     }
@@ -105,11 +105,11 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             word_id:index
         });
         match ret {
-            BrotliResult::ResultSuccess => {
+            DivansResult::ResultSuccess => {
                 assert!(index < 5);
                 state.input_sub_offset = 0;
             },
-            BrotliResult::NeedsMoreOutput => assert_eq!(index, 5),
+            DivansResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
         }
     }
@@ -160,8 +160,8 @@ fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:112,
                                                   num_bytes:29}) {
-            BrotliResult::NeedsMoreOutput=>{},
-            BrotliResult::ResultSuccess=>break,
+            DivansResult::NeedsMoreOutput=>{},
+            DivansResult::ResultSuccess=>break,
             res => panic!("UH OH"),
         }
     }
@@ -205,8 +205,8 @@ fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:15,
                                                    num_bytes:64}) {
-            BrotliResult::NeedsMoreOutput=>{},
-            BrotliResult::ResultSuccess=>break,
+            DivansResult::NeedsMoreOutput=>{},
+            DivansResult::ResultSuccess=>break,
             res => panic!("UH OH"),
         }
     }
@@ -236,8 +236,8 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
                                                    num_bytes:258}) {
-            BrotliResult::NeedsMoreOutput=>{},
-            BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
+            DivansResult::NeedsMoreOutput=>{},
+            DivansResult::ResultSuccess=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
         }
     }
@@ -252,8 +252,8 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
                                                    num_bytes:258}) {
-            BrotliResult::NeedsMoreOutput=>{},
-            BrotliResult::ResultSuccess=>panic!("Not enough buffer room"),
+            DivansResult::NeedsMoreOutput=>{},
+            DivansResult::ResultSuccess=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
         }
     }
@@ -276,8 +276,8 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
                                                    num_bytes:258}) {
-            BrotliResult::NeedsMoreOutput=>{},
-            BrotliResult::ResultSuccess=>break,
+            DivansResult::NeedsMoreOutput=>{},
+            DivansResult::ResultSuccess=>break,
             res => panic!("uh oh"),
         }
     }
@@ -335,8 +335,8 @@ fn help_test_insert(mut state: super::DivansRecodeState<ExRingBuffer>,
         state.flush(&mut last_readout, &mut last_index);
         if last_index == 0 {
             match state.parse_literal(super::LiteralCommand{data:SimpleSliceWrapper(values_to_insert), prob: super::FeatureFlagSliceType::<SimpleSliceWrapper>::default(), high_entropy:false}.slice()) {
-                BrotliResult::NeedsMoreOutput=>{},
-                BrotliResult::ResultSuccess=>{done=true;},
+                DivansResult::NeedsMoreOutput=>{},
+                DivansResult::ResultSuccess=>{done=true;},
                 res => panic!("uh oh"),
             }               
             state.flush(&mut last_readout, &mut last_index);

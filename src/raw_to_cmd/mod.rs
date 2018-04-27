@@ -17,7 +17,7 @@ mod hash_match;
 use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
-pub use brotli::BrotliResult;
+pub use interface::DivansResult;
 pub use super::interface::{PredictionModeContextMap, Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     AllocU32:Allocator<u32>>{
@@ -55,7 +55,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                       output_offset:&mut usize,
                       literal_context_map: &'a mut[u8],
                       prediction_mode_backing:&'a mut[u8],
-    ) -> BrotliResult {
+    ) -> DivansResult {
         if self.ring_buffer_decode_index >= self.ring_buffer_output_index {
             let max_copy = core::cmp::min(self.ring_buffer.slice().len() - self.ring_buffer_decode_index as usize,
                                           input.len() - *input_offset);
@@ -78,35 +78,35 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         }
         if *output_offset < output.len() && self.ring_buffer_full() {
             match self.flush(output, output_offset, literal_context_map, prediction_mode_backing) {
-                BrotliResult::NeedsMoreOutput => {
-                  return BrotliResult::NeedsMoreOutput;
+                DivansResult::NeedsMoreOutput => {
+                  return DivansResult::NeedsMoreOutput;
                 }
-                BrotliResult::ResultFailure => {
-                    return BrotliResult::ResultFailure;
+                DivansResult::ResultFailure => {
+                    return DivansResult::ResultFailure;
                 },
                 _ => {
                     if *input_offset != input.len() {
                         // not really true: we may be able to consume more input, but ourr
                         // ring buffer is borrowed
-                        return BrotliResult::NeedsMoreOutput;
+                        return DivansResult::NeedsMoreOutput;
                     }
                 },
             }
         } else if *output_offset == output.len() {
-            return BrotliResult::NeedsMoreOutput;
+            return DivansResult::NeedsMoreOutput;
         }
         assert_eq!(*input_offset, input.len());
-        BrotliResult::NeedsMoreInput
+        DivansResult::NeedsMoreInput
     }
     pub fn flush<'a>(
               &'a mut self,
               output: &mut [Command<SliceReference<'a, u8>>],
               output_offset:&mut usize,
               literal_context_map: &'a mut[u8],
-              prediction_mode_backing:&'a mut[u8]) -> BrotliResult {
+              prediction_mode_backing:&'a mut[u8]) -> DivansResult {
 
         if *output_offset == output.len() {
-           return BrotliResult::NeedsMoreOutput;
+           return DivansResult::NeedsMoreOutput;
         }
         if !self.has_produced_header {
             self.has_produced_header = true;
@@ -126,7 +126,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                     });
             *output_offset += 1;
             if *output_offset == output.len() {
-                return BrotliResult::NeedsMoreOutput;
+                return DivansResult::NeedsMoreOutput;
             }
         }
         if self.ring_buffer_decode_index < self.ring_buffer_output_index {
@@ -149,7 +149,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         }
         if self.ring_buffer_decode_index != self.ring_buffer_output_index {
            if *output_offset == output.len() {
-               return BrotliResult::NeedsMoreOutput;
+               return DivansResult::NeedsMoreOutput;
            }
            let max_copy = self.ring_buffer_decode_index as usize - self.ring_buffer_output_index as usize;
            output[*output_offset] = Command::Literal(
@@ -165,7 +165,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            self.ring_buffer_output_index = self.ring_buffer_decode_index;
            assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
         }
-        BrotliResult::ResultSuccess
+        DivansResult::ResultSuccess
     }
     pub fn free(&mut self, m32: &mut AllocU32) {
         self.hash_match.free(m32);

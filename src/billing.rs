@@ -19,7 +19,7 @@ use core::marker::PhantomData;
 use alloc::{Allocator};
 use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
 use super::probability::{CDF16, ProbRange};
-use brotli::BrotliResult;
+use interface::DivansResult;
 
 #[cfg(feature="billing")]
 mod billing {
@@ -124,7 +124,7 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
                                      input_buffer: &[u8],
                                      input_offset: &mut usize,
                                      output_buffer: &mut [u8],
-                                     output_offset: &mut usize) -> BrotliResult{
+                                     output_offset: &mut usize) -> DivansResult{
        self.coder.drain_or_fill_internal_buffer(input_buffer, input_offset, output_buffer, output_offset)
     }
     fn get_or_put_bit_without_billing(&mut self,
@@ -161,7 +161,7 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
         (*v).1 += 4.0;
         ret
     }
-    fn close(&mut self) -> BrotliResult {
+    fn close(&mut self) -> DivansResult {
         self.coder.close()
     }
 }

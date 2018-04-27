@@ -1,5 +1,5 @@
 use core;
-use brotli::BrotliResult;
+use interface::DivansResult;
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
 use super::priors::LiteralNibblePriorType;
 use ::slice_util::AllocatedMemoryPrefix;
@@ -249,11 +249,11 @@ impl<AllocU8:Allocator<u8>,
                           specialization: &Specialization,
                           _nibble_array_type: NibbleArrayType,
                           ctraits: &'static CTraits,
-  ) -> BrotliResult {
+  ) -> DivansResult {
       let mut lc_data = core::mem::replace(&mut self.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default());
       bk.last_llen = lc_data.slice().len() as u32;
       let start_byte_index = (start_nibble_index as usize) >> 1;
-      let mut retval = BrotliResult::ResultSuccess;
+      let mut retval = DivansResult::ResultSuccess;
       let mut first = true;
       for (byte_offset, lc_target) in lc_data.slice_mut()[start_byte_index..bk.last_llen as usize].iter_mut().enumerate() {
            let mut byte_to_encode_val = specialization.get_literal_byte(in_cmd,
@@ -277,10 +277,10 @@ impl<AllocU8:Allocator<u8>,
                    cur_prob.blend(cur_nibble, bk.literal_adaptation[0]);
                }
                if NibbleArrayType::FULLY_SAFE {
-                   debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
+                   debug_assert!(match byte_pull_status {DivansResult::ResultSuccess => true, _ => false,});
                } else {
                    match byte_pull_status {
-                       BrotliResult::ResultSuccess => {},
+                       DivansResult::ResultSuccess => {},
                        need_something => {
                            retval = self.fallback_byte_encode(lc_target, cur_nibble, (start_byte_index + byte_offset) as u32 * 2 + 1, need_something);
                            break;
@@ -311,7 +311,7 @@ impl<AllocU8:Allocator<u8>,
            if NibbleArrayType::FULLY_SAFE && low_buffer_warning {
                let new_byte_index = start_byte_index + byte_offset + 1;
                if new_byte_index != bk.last_llen as usize {
-                  retval = BrotliResult::NeedsMoreInput;
+                  retval = DivansResult::NeedsMoreInput;
                }
                let new_state = self.state_literal_nibble_index((new_byte_index << 1) as u32,
                                                                input_bytes.len() - *input_offset);
@@ -320,10 +320,10 @@ impl<AllocU8:Allocator<u8>,
             }
             let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
             if NibbleArrayType::FULLY_SAFE {
-                debug_assert!(match byte_pull_status {BrotliResult::ResultSuccess => true, _ => false,});
+                debug_assert!(match byte_pull_status {DivansResult::ResultSuccess => true, _ => false,});
             } else {
                 match byte_pull_status {
-                  BrotliResult::ResultSuccess => {},
+                  DivansResult::ResultSuccess => {},
                   need_something => {
                       let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
                                                                        input_bytes.len() - *input_offset);
@@ -365,7 +365,7 @@ impl<AllocU8:Allocator<u8>,
                           input_offset: &mut usize,
                           output_bytes:&mut [u8],
                           output_offset: &mut usize,
-                          ctraits: &'static CTraits) -> BrotliResult {
+                          ctraits: &'static CTraits) -> DivansResult {
         let literal_len = in_cmd.data.slice().len() as u32;
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
@@ -373,7 +373,7 @@ impl<AllocU8:Allocator<u8>,
         let local_coder = &mut superstate.coder;
         loop {
             match local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 need_something => {
                     return need_something
                 },
@@ -491,7 +491,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
                         self.state = LiteralSubstate::FullyDecoded;
-                        return BrotliResult::ResultSuccess;
+                        return DivansResult::ResultSuccess;
                     } else {
                         self.state = LiteralSubstate::LiteralNibbleIndexWithECDF(nibble_index + 1);
                     }
@@ -503,9 +503,9 @@ impl<AllocU8:Allocator<u8>,
                                            local_coder, &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                            &mut superstate.bk, &mut superstate.specialization, NibbleArraySecond{}, ctraits);
                     match code_result {
-                      BrotliResult::ResultSuccess => {
+                      DivansResult::ResultSuccess => {
                          self.state = LiteralSubstate::FullyDecoded;
-                         return BrotliResult::ResultSuccess;
+                         return DivansResult::ResultSuccess;
                       },
                        _ => return code_result,
                     }
@@ -516,9 +516,9 @@ impl<AllocU8:Allocator<u8>,
                                            local_coder, &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                            &mut superstate.bk, &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
                     match code_result {
-                      BrotliResult::ResultSuccess => {
+                      DivansResult::ResultSuccess => {
                          self.state = LiteralSubstate::FullyDecoded;
-                         return BrotliResult::ResultSuccess;
+                         return DivansResult::ResultSuccess;
                       },
                        _ => return code_result,
                     }
@@ -528,19 +528,19 @@ impl<AllocU8:Allocator<u8>,
                                            in_cmd, start_nibble_index,
                                            local_coder, &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                            &mut superstate.bk, &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
-                      BrotliResult::NeedsMoreInput => {
+                      DivansResult::NeedsMoreInput => {
                          continue;
                       }
-                      BrotliResult::ResultFailure => {
-                         return BrotliResult::ResultFailure;
+                      DivansResult::ResultFailure => {
+                         return DivansResult::ResultFailure;
                       }
                       _ => {},
                     }
                     self.state = LiteralSubstate::FullyDecoded;
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 },
                 LiteralSubstate::FullyDecoded => {
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 }
             }
         }
@@ -553,7 +553,7 @@ impl<AllocU8:Allocator<u8>,
         }
     }
     #[cold]
-    fn fallback_byte_encode(&mut self, lc_target: &mut u8, cur_nibble: u8, new_nibble_index: u32, res: BrotliResult) -> BrotliResult{
+    fn fallback_byte_encode(&mut self, lc_target: &mut u8, cur_nibble: u8, new_nibble_index: u32, res: DivansResult) -> DivansResult{
         *lc_target = cur_nibble << 4;
         self.state = LiteralSubstate::LiteralNibbleLowerHalf(new_nibble_index);
         res

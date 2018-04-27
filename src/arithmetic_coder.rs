@@ -15,7 +15,7 @@ use core;
 use core::default::Default;
 use probability::{CDF16, ProbRange};
 use interface::ArithmeticEncoderOrDecoder;
-use super::BrotliResult;
+use super::DivansResult;
 pub trait ByteQueue {
     #[inline(always)]
     fn num_push_bytes_avail(&self) -> usize;
@@ -170,7 +170,7 @@ pub trait EntropyDecoder {
         }
         ret
     }
-    fn flush(&mut self) -> BrotliResult;
+    fn flush(&mut self) -> DivansResult;
 }
 
 
@@ -184,17 +184,17 @@ impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
                                      input_buffer:&[u8],
                                      input_offset:&mut usize,
                                      _output_buffer:&mut [u8],
-                                     _output_offset: &mut usize) -> BrotliResult {
+                                     _output_offset: &mut usize) -> DivansResult {
         let ibuffer = self.get_internal_buffer();
         let coder_bytes_avail = ibuffer.num_push_bytes_avail();
         if coder_bytes_avail != 0 {
             let push_count = ibuffer.push_data(input_buffer.split_at(*input_offset).1);
             *input_offset += push_count;
             if ibuffer.num_push_bytes_avail() != 0 {
-                return BrotliResult::NeedsMoreInput;
+                return DivansResult::NeedsMoreInput;
             }
         }
-        BrotliResult::ResultSuccess
+        DivansResult::ResultSuccess
     }
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
@@ -209,7 +209,7 @@ impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
         *nibble = nib;
         ret
     }
-    fn close(&mut self) -> BrotliResult {
+    fn close(&mut self) -> DivansResult {
         self.flush()
     }
 }
@@ -224,17 +224,17 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                                              _input_buffer:&[u8],
                                              _input_offset:&mut usize,
                                              output_buffer:&mut [u8],
-                                             output_offset: &mut usize) -> BrotliResult {
+                                             output_offset: &mut usize) -> DivansResult {
                 let ibuffer = self.get_internal_buffer();
                 let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
                 if coder_bytes_avail != 0 {
                     let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);
                     *output_offset += push_count;
                     if ibuffer.num_pop_bytes_avail() != 0 {
-                        return BrotliResult::NeedsMoreOutput;
+                        return DivansResult::NeedsMoreOutput;
                     }
                 }
-                return BrotliResult::ResultSuccess;
+                return DivansResult::ResultSuccess;
             }
             fn get_or_put_bit_without_billing(&mut self,
                                               bit: &mut bool,
@@ -246,9 +246,9 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                                                            prob: &C) -> ::probability::ProbRange {
                 self.put_nibble(*nibble, prob)
             }
-            fn close(&mut self) -> BrotliResult {
+            fn close(&mut self) -> DivansResult {
                 self.flush();
-                BrotliResult::ResultSuccess
+                DivansResult::ResultSuccess
             }
         }
 );
@@ -260,7 +260,7 @@ mod test {
     use std::fmt::Formatter;
     use super::ByteQueue;
     use super::{EntropyEncoder, EntropyDecoder};
-    use super::super::BrotliResult;
+    use super::super::DivansResult;
     #[allow(unused_imports)]
     use probability::{BaseCDF, CDF16, FrequentistCDF16, BlendCDF16, Speed};
     #[allow(unused)]
@@ -308,8 +308,8 @@ mod test {
             self.num_calls += 1;
             bit
         }
-        fn flush(&mut self) -> BrotliResult {
-            BrotliResult::ResultSuccess
+        fn flush(&mut self) -> DivansResult {
+            DivansResult::ResultSuccess
         }
     }
     #[allow(unused)]

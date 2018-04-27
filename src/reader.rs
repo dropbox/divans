@@ -3,15 +3,15 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 pub use alloc::HeapAlloc;
 use std::io;
 use std::io::{Read};
-use super::BrotliResult;
+use super::DivansResult;
 use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
 
 trait Processor {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult;
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult;
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
 }
 
 struct GenReader<R: Read,
@@ -79,13 +79,13 @@ impl<R:Read, P:Processor, BufferType:SliceWrapperMut<u8>> Read for GenReader<R,P
              }
            }
            match ret {
-             BrotliResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid Data")),
-             BrotliResult::ResultSuccess => {
+             DivansResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid Data")),
+             DivansResult::ResultSuccess => {
                if self.input_eof && avail_in == 0 && self.has_flushed {
                  break;
                }
              },
-             BrotliResult::NeedsMoreInput | BrotliResult::NeedsMoreOutput => {},
+             DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {},
            }
         }
         Ok(output_offset)
@@ -139,10 +139,10 @@ type DivansBrotliConstructedCompressor = <DivansBrotliFactory as ::DivansCompres
                                                                                            HeapAlloc<::CDF2>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
 impl<T:Compressor> Processor for T {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult {
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.encode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
       self.flush(output, output_offset)
    }
 
@@ -250,10 +250,10 @@ type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompr
                                                           HeapAlloc<::CDF2>,
                                                           HeapAlloc<::DefaultCDF16>>;
 impl Processor for DivansConstructedDecompressor {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult {
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.decode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
        let mut input_offset = 0usize;
        self.decode(&[], &mut input_offset, output, output_offset)
    }

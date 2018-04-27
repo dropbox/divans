@@ -18,7 +18,7 @@ use core;
 use core::marker::PhantomData;
 use core::hash::Hasher;
 use super::probability;
-use super::brotli;
+
 use super::raw_to_cmd;
 use super::slice_util;
 use super::alloc_util::RepurposingAlloc;
@@ -44,7 +44,7 @@ pub use super::interface::{
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc};
 use super::interface;
-use super::brotli::BrotliResult;
+use super::interface::DivansResult;
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
@@ -166,7 +166,7 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
                                 window_size: u8,
                                 output: &mut[u8],
                                 output_offset:&mut usize,
-                                crc: &mut CRC) -> BrotliResult {
+                                crc: &mut CRC) -> DivansResult {
     let bytes_avail = output.len() - *output_offset;
     if bytes_avail + *header_progress < interface::HEADER_LENGTH {
         let to_write = &make_header(window_size)[*header_progress..
@@ -176,7 +176,7 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
             to_write);
         *output_offset += bytes_avail;
         *header_progress += bytes_avail;
-        return BrotliResult::NeedsMoreOutput;
+        return DivansResult::NeedsMoreOutput;
     }
     let to_write = &make_header(window_size)[*header_progress..];
     output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
@@ -184,13 +184,13 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
     crc.write(to_write);
     *output_offset += interface::HEADER_LENGTH - *header_progress;
     *header_progress = interface::HEADER_LENGTH;
-    BrotliResult::ResultSuccess
+    DivansResult::ResultSuccess
 
 }
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-    fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> brotli::BrotliResult {
+    fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansResult {
         if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
             let thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
                                                   self.freeze_dried_cmd_start, self.freeze_dried_cmd_end);
@@ -201,12 +201,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                                     output_offset,
                                     thawed_buffer.split_at(self.freeze_dried_cmd_end).0,
                                     &mut self.freeze_dried_cmd_start) {
-               BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-               BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
-               BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
+               DivansResult::ResultFailure => return DivansResult::ResultFailure,
+               DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
+               DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
             }
         }
-        BrotliResult::ResultSuccess
+        DivansResult::ResultSuccess
     }
     fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                       freeze_dried_cmd_start: &mut usize,
@@ -281,18 +281,18 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
               input: &[u8],
               input_offset: &mut usize,
               output: &mut [u8],
-              output_offset: &mut usize) -> BrotliResult {
+              output_offset: &mut usize) -> DivansResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 res => return res,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-            BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
-            BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-            BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
+            DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
+            DivansResult::ResultFailure => return DivansResult::ResultFailure,
+            DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
         }
         let literal_context_map = self.literal_context_map_backing.slice_mut();
         let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
@@ -304,16 +304,16 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                                &mut temp_bs[..], &mut temp_cmd_offset,
                                                                literal_context_map, prediction_mode_backing);
             match command_decode_ret {
-                BrotliResult::NeedsMoreInput => {
+                DivansResult::NeedsMoreInput => {
                     if temp_cmd_offset == 0 {
                         // nothing to freeze dry, return
-                        return BrotliResult::NeedsMoreInput;
+                        return DivansResult::NeedsMoreInput;
                     }
                 },
-                BrotliResult::ResultFailure | BrotliResult::ResultSuccess => {
-                    return BrotliResult::ResultFailure; // we are never done
+                DivansResult::ResultFailure | DivansResult::ResultSuccess => {
+                    return DivansResult::ResultFailure; // we are never done
                 },
-                BrotliResult::NeedsMoreOutput => {},
+                DivansResult::NeedsMoreOutput => {},
             }
             let mut out_cmd_offset = 0;
             let mut zero: usize = 0;
@@ -324,13 +324,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         temp_bs.split_at(temp_cmd_offset).0,
                                                         &mut out_cmd_offset);
             match codec_ret {
-                BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {
+                DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
-                    if let BrotliResult::NeedsMoreInput = command_decode_ret {
-                        return BrotliResult::NeedsMoreInput; // we've exhausted all commands and all input
+                    if let DivansResult::NeedsMoreInput = command_decode_ret {
+                        return DivansResult::NeedsMoreInput; // we've exhausted all commands and all input
                     }
                 },
-                BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {
+                DivansResult::NeedsMoreOutput | DivansResult::ResultFailure => {
                     Self::freeze_dry(
                         &mut self.freeze_dried_cmd_array,
                         &mut self.freeze_dried_cmd_start,
@@ -345,11 +345,11 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> BrotliResult{
+                                          output_offset: &mut usize) -> DivansResult{
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 res => return res,
             }
         }
@@ -363,18 +363,18 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
     }
     fn flush(&mut self,
              output: &mut [u8],
-             output_offset: &mut usize) -> BrotliResult {
+             output_offset: &mut usize) -> DivansResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 res => return res,
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
-               BrotliResult::ResultFailure => return BrotliResult::ResultFailure, 
-               BrotliResult::NeedsMoreOutput => return BrotliResult::NeedsMoreOutput,
-               BrotliResult::NeedsMoreInput | BrotliResult::ResultSuccess => {},
+               DivansResult::ResultFailure => return DivansResult::ResultFailure, 
+               DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
+               DivansResult::NeedsMoreInput | DivansResult::ResultSuccess => {},
         }
         loop {
             let literal_context_map_backing = self.literal_context_map_backing.slice_mut();
@@ -384,15 +384,15 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             let mut temp_cmd_offset = 0;
             let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset, literal_context_map_backing, prediction_mode_backing);
             match command_flush_ret {
-                BrotliResult::ResultSuccess => {
+                DivansResult::ResultSuccess => {
                     if temp_cmd_offset == 0 {
                         break; // no output from the cmd_assembler, just plain flush the codec
                     }
                 },
-                BrotliResult::ResultFailure | BrotliResult::NeedsMoreInput => {
-                    return BrotliResult::ResultFailure; // we are never done
+                DivansResult::ResultFailure | DivansResult::NeedsMoreInput => {
+                    return DivansResult::ResultFailure; // we are never done
                 },
-                BrotliResult::NeedsMoreOutput => {},
+                DivansResult::NeedsMoreOutput => {},
             }
             let mut out_cmd_offset = 0;
             let mut zero: usize = 0;
@@ -403,13 +403,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         temp_bs.split_at(temp_cmd_offset).0,
                                                         &mut out_cmd_offset);
             match codec_ret {
-                BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => {
+                DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => {
                     assert_eq!(temp_cmd_offset, out_cmd_offset); // must have consumed all commands
-                    if let BrotliResult::ResultSuccess = command_flush_ret {
+                    if let DivansResult::ResultSuccess = command_flush_ret {
                          break; // we've exhausted all commands and all input
                     }
                 },
-                BrotliResult::NeedsMoreOutput | BrotliResult::ResultFailure => {
+                DivansResult::NeedsMoreOutput | DivansResult::ResultFailure => {
                     Self::freeze_dry(
                         &mut self.freeze_dried_cmd_array,
                         &mut self.freeze_dried_cmd_start,

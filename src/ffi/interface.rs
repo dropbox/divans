@@ -5,11 +5,11 @@ pub enum c_void{
 }
 
 #[no_mangle]
-pub type DivansResult = u8;
-pub const DIVANS_SUCCESS: DivansResult = 0;
-pub const DIVANS_NEEDS_MORE_INPUT: DivansResult = 1;
-pub const DIVANS_NEEDS_MORE_OUTPUT: DivansResult = 2;
-pub const DIVANS_FAILURE: DivansResult = 3;
+pub type DivansReturnCode = u8;
+pub const DIVANS_SUCCESS: DivansReturnCode = 0;
+pub const DIVANS_NEEDS_MORE_INPUT: DivansReturnCode = 1;
+pub const DIVANS_NEEDS_MORE_OUTPUT: DivansReturnCode = 2;
+pub const DIVANS_FAILURE: DivansReturnCode = 3;
 
 
 

@@ -1,4 +1,4 @@
-use brotli::BrotliResult;
+use interface::DivansResult;
 use alloc::Allocator;
 use super::interface::{
     EncoderOrDecoderSpecialization,
@@ -46,7 +46,7 @@ impl BlockTypeState {
         input_bytes: &[u8],
         input_offset: &mut usize,
         output_bytes: &mut [u8],
-        output_offset: &mut usize) -> BrotliResult {
+        output_offset: &mut usize) -> DivansResult {
         let mut varint_nibble:u8 =
             if input_bs.block_type() == superstate.bk.btype_lru[block_type_switch_index][1] {
                 0
@@ -64,7 +64,7 @@ impl BlockTypeState {
                                                                  input_offset,
                                                                  output_bytes,
                                                                  output_offset) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType);
@@ -98,7 +98,7 @@ impl BlockTypeState {
                     *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
                 BlockTypeState::FullyDecoded(_) =>   {
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 }
             }
         }
@@ -134,7 +134,7 @@ impl LiteralBlockTypeState {
         input_bytes: &[u8],
         input_offset: &mut usize,
         output_bytes: &mut [u8],
-        output_offset: &mut usize) -> BrotliResult {
+        output_offset: &mut usize) -> DivansResult {
         loop {
             let billing = BillingDesignation::CrossCommand(CrossCommandBilling::BlockSwitchType);
             match *self {
@@ -150,7 +150,7 @@ impl LiteralBlockTypeState {
                       input_offset,
                       output_bytes,
                       output_offset) {
-                        BrotliResult::ResultSuccess => None,
+                        DivansResult::ResultSuccess => None,
                         any => Some(any),
                     };
                     match local_bts {
@@ -170,7 +170,7 @@ impl LiteralBlockTypeState {
                                                                  input_offset,
                                                                  output_bytes,
                                                                  output_offset) {
-                         BrotliResult::ResultSuccess => {},
+                         DivansResult::ResultSuccess => {},
                          need_something => return need_something,
                     }
 		            let mut stride_nibble = match superstate.bk.desired_force_stride {
@@ -184,7 +184,7 @@ impl LiteralBlockTypeState {
                     *self = LiteralBlockTypeState::FullyDecoded(ltype, stride_nibble);
                 },
                 LiteralBlockTypeState::FullyDecoded(_ltype, _stride) => {
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 }
             }
         }

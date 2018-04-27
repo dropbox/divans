@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use brotli::BrotliResult;
+use interface::DivansResult;
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -172,7 +172,7 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
 
 pub enum OneCommandReturn {
     Advance,
-    BufferExhausted(BrotliResult),
+    BufferExhausted(DivansResult),
 }
 enum CodecTraitResult {
     Res(OneCommandReturn),
@@ -242,7 +242,7 @@ impl<AllocU8: Allocator<u8>,
         ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
         ret
     }
-    fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> BrotliResult{
+    fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> DivansResult{
         match command_type_code {
             1 => {
                 self.state_copy = copy::CopyState::begin();
@@ -291,9 +291,9 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::WriteChecksum(0);
                 self.state
             },
-            _ => return BrotliResult::ResultFailure,
+            _ => return DivansResult::ResultFailure,
         };
-        BrotliResult::ResultSuccess
+        DivansResult::ResultSuccess
     }
     pub fn get_coder(&self) -> &ArithmeticCoder {
         &self.cross_command_state.coder
@@ -312,7 +312,7 @@ impl<AllocU8: Allocator<u8>,
     }
     pub fn flush(&mut self,
              output_bytes: &mut [u8],
-             output_bytes_offset: &mut usize) -> BrotliResult{
+             output_bytes_offset: &mut usize) -> DivansResult{
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
         let ret = self.internal_flush(adjusted_output_bytes, &mut adjusted_output_bytes_offset);
@@ -327,7 +327,7 @@ impl<AllocU8: Allocator<u8>,
     }
     fn internal_flush(&mut self,
                  output_bytes: &mut [u8],
-                 output_bytes_offset: &mut usize) -> BrotliResult{
+                 output_bytes_offset: &mut usize) -> DivansResult{
         let nop = Command::<AllocU8::AllocatedMemory>::nop();
         loop {
             match self.state {
@@ -343,7 +343,7 @@ impl<AllocU8: Allocator<u8>,
                         CodecTraitResult::Res(one_command_return) => match one_command_return {
                             OneCommandReturn::BufferExhausted(res) => {
                                 match res {
-                                    BrotliResult::ResultSuccess => {},
+                                    DivansResult::ResultSuccess => {},
                                     need => return need,
                                 }
                             },
@@ -358,13 +358,13 @@ impl<AllocU8: Allocator<u8>,
                 EncodeOrDecodeState::EncodedShutdownNode => {
                     let mut unused = 0usize;
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
-                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::ShutdownCoder,
+                        DivansResult::ResultSuccess => self.state = EncodeOrDecodeState::ShutdownCoder,
                         ret => return ret,
                     }
                 },
                 EncodeOrDecodeState::ShutdownCoder => {
                     match self.cross_command_state.coder.close() {
-                        BrotliResult::ResultSuccess => self.state = EncodeOrDecodeState::CoderBufferDrain,
+                        DivansResult::ResultSuccess => self.state = EncodeOrDecodeState::CoderBufferDrain,
                         ret => return ret,
                     }
                 },
@@ -374,7 +374,7 @@ impl<AllocU8: Allocator<u8>,
                                                                                        &mut unused,
                                                                                        output_bytes,
                                                                                        output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.state = EncodeOrDecodeState::WriteChecksum(0);
                         },
                         ret => return ret,
@@ -411,13 +411,13 @@ impl<AllocU8: Allocator<u8>,
                     *output_bytes_offset += count_to_copy;
                     if bytes_needed <= bytes_remaining {
                         self.state = EncodeOrDecodeState::DivansSuccess;
-                        return BrotliResult::ResultSuccess;
+                        return DivansResult::ResultSuccess;
                     } else {
                         self.state = EncodeOrDecodeState::WriteChecksum(count + count_to_copy as u8);
-                        return BrotliResult::NeedsMoreOutput;
+                        return DivansResult::NeedsMoreOutput;
                     }
                 },
-                EncodeOrDecodeState::DivansSuccess => return BrotliResult::ResultSuccess,
+                EncodeOrDecodeState::DivansSuccess => return DivansResult::ResultSuccess,
                 _ => return self::interface::Fail(), // not allowed to flush if previous command was partially processed
             }
         }
@@ -428,13 +428,13 @@ impl<AllocU8: Allocator<u8>,
                                                           output_bytes: &mut [u8],
                                                           output_bytes_offset: &mut usize,
                                                           input_commands: &[Command<ISl>],
-                                                          input_command_offset: &mut usize) -> BrotliResult {
+                                                          input_command_offset: &mut usize) -> DivansResult {
         let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_input_bytes_offset = 0usize;
         let mut adjusted_output_bytes_offset = 0usize;
         loop {
-            let res:(Option<BrotliResult>, Option<CodecTraitSelector>);
+            let res:(Option<DivansResult>, Option<CodecTraitSelector>);
             match self.codec_traits {
                 CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(adjusted_input_bytes,
                                                                                          &mut adjusted_input_bytes_offset,
@@ -479,7 +479,7 @@ impl<AllocU8: Allocator<u8>,
                                               output_bytes_offset: &mut usize,
                                               input_commands: &[Command<ISl>],
                                               input_command_offset: &mut usize,
-                                              ctraits: &'static CTraits) -> (Option<BrotliResult>, Option<CodecTraitSelector>) {
+                                              ctraits: &'static CTraits) -> (Option<DivansResult>, Option<CodecTraitSelector>) {
         let i_cmd_backing = Command::<ISl>::nop();
         loop {
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
@@ -496,7 +496,7 @@ impl<AllocU8: Allocator<u8>,
                     OneCommandReturn::Advance => {
                         *input_command_offset += 1;
                         if input_commands.len() == *input_command_offset {
-                            return (Some(BrotliResult::NeedsMoreInput), None);
+                            return (Some(DivansResult::NeedsMoreInput), None);
                         }
                     },
                     OneCommandReturn::BufferExhausted(result) => {
@@ -506,7 +506,7 @@ impl<AllocU8: Allocator<u8>,
                 CodecTraitResult::UpdateCodecTraitAndAdvance(cts) => {
                     *input_command_offset += 1;
                     if input_commands.len() == *input_command_offset {
-                        return (Some(BrotliResult::NeedsMoreInput), Some(cts));
+                        return (Some(DivansResult::NeedsMoreInput), Some(cts));
                     }
                     return (None, Some(cts));
                 },
@@ -542,7 +542,7 @@ impl<AllocU8: Allocator<u8>,
                     let to_check = core::cmp::min(input_bytes.len() - *input_bytes_offset,
                                                   bytes_needed);
                     if to_check == 0 {
-                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreInput));
+                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
                     }
                     match self.frozen_checksum {
                         Some(_) => {},
@@ -578,12 +578,12 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => {
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::ResultSuccess));
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::ResultSuccess));
                 },
                 EncodeOrDecodeState::Begin => {
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(input_bytes, input_bytes_offset,
                                                                                       output_bytes, output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {},
+                        DivansResult::ResultSuccess => {},
                         need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
@@ -596,7 +596,7 @@ impl<AllocU8: Allocator<u8>,
                         command_type_prob.blend(command_type_code, Speed::ROCKET);
                     }
                     match self.update_command_state_from_nibble(command_type_code, is_end) {
-                        BrotliResult::ResultSuccess => {},
+                        DivansResult::ResultSuccess => {},
                         need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
                     }
                     match self.state {
@@ -621,7 +621,7 @@ impl<AllocU8: Allocator<u8>,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                         BrotliResult::ResultSuccess => {
+                         DivansResult::ResultSuccess => {
                              self.state = EncodeOrDecodeState::Begin;
                              return CodecTraitResult::UpdateCodecTraitAndAdvance(
                                  construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
@@ -641,7 +641,7 @@ impl<AllocU8: Allocator<u8>,
                                                             input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             let old_stride = self.cross_command_state.bk.stride;
                             self.cross_command_state.bk.obs_btypel(match self.state_lit_block_switch {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
@@ -674,7 +674,7 @@ impl<AllocU8: Allocator<u8>,
                                                             input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.cross_command_state.bk.obs_btypec(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
@@ -700,7 +700,7 @@ impl<AllocU8: Allocator<u8>,
                                                             input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.cross_command_state.bk.obs_btyped(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
@@ -727,7 +727,7 @@ impl<AllocU8: Allocator<u8>,
                                                       output_bytes,
                                                       output_bytes_offset
                                                       ) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
                             self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
                                 &mut self.state_copy.cc,
@@ -751,7 +751,7 @@ impl<AllocU8: Allocator<u8>,
                                                      output_bytes,
                                                      output_bytes_offset,
                                                      ctraits) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
@@ -773,7 +773,7 @@ impl<AllocU8: Allocator<u8>,
                                                       output_bytes,
                                                       output_bytes_offset
                                                       ) {
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.state_populate_ring_buffer = Command::Dict(
                                 core::mem::replace(&mut self.state_dict.dc,
                                                    DictCommand::nop()));
@@ -793,18 +793,18 @@ impl<AllocU8: Allocator<u8>,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
-                        BrotliResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
-                        BrotliResult::NeedsMoreOutput => {
+                        DivansResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
+                        DivansResult::NeedsMoreOutput => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput)); // we need the caller to drain the buffer
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                         },
-                        BrotliResult::ResultFailure => {
+                        DivansResult::ResultFailure => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                         },
-                        BrotliResult::ResultSuccess => {
+                        DivansResult::ResultSuccess => {
                             self.cross_command_state.bk.command_count += 1;
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals

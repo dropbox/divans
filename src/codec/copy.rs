@@ -1,6 +1,6 @@
 use core;
 use alloc::Allocator;
-use brotli::BrotliResult;
+use interface::DivansResult;
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
@@ -64,7 +64,7 @@ impl CopyState {
                                                input_bytes:&[u8],
                                                     input_offset: &mut usize,
                                                     output_bytes:&mut [u8],
-                                                    output_offset: &mut usize) -> BrotliResult {
+                                                    output_offset: &mut usize) -> DivansResult {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
         let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
         if dlen ==0 {
@@ -72,7 +72,7 @@ impl CopyState {
         }
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 need_something => return need_something,
             }
             let billing = BillingDesignation::CopyCommand(match self.state {
@@ -179,7 +179,7 @@ impl CopyState {
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         if !ok {
-                            return BrotliResult::ResultFailure;
+                            return DivansResult::ResultFailure;
                         }
                         self.state = CopySubstate::FullyDecoded;
                     }
@@ -260,7 +260,7 @@ impl CopyState {
                     }
                 },
                 CopySubstate::FullyDecoded => {
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 }
             }
         }

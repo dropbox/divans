@@ -3,15 +3,15 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 pub use alloc::HeapAlloc;
 use std::io;
 use std::io::Write;
-use super::BrotliResult;
+use super::DivansResult;
 use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
 
 trait Processor {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult;
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult;
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
 }
 
 struct GenWriter<W: Write,
@@ -42,10 +42,10 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
                 Err(e) => return Err(e),
             }
             match op_result {
-                BrotliResult::NeedsMoreInput => assert_eq!(avail_in, 0),
-                BrotliResult::NeedsMoreOutput => continue,
-                BrotliResult::ResultSuccess => return Ok(buf.len()),
-                BrotliResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
+                DivansResult::NeedsMoreInput => assert_eq!(avail_in, 0),
+                DivansResult::NeedsMoreOutput => continue,
+                DivansResult::ResultSuccess => return Ok(buf.len()),
+                DivansResult::ResultFailure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
             }
             if avail_in == 0 {
                 break
@@ -64,11 +64,11 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
                 Err(e) => return Err(e),
             }
             match ret {
-                BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => {
+                DivansResult::NeedsMoreInput | DivansResult::ResultFailure => {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input"))
                 }
-                BrotliResult::NeedsMoreOutput => {},
-                BrotliResult::ResultSuccess => {
+                DivansResult::NeedsMoreOutput => {},
+                DivansResult::ResultSuccess => {
                     self.has_flushed = true;
                 }
             }
@@ -108,10 +108,10 @@ type DivansBrotliConstructedCompressor = <DivansBrotliFactory as ::DivansCompres
                                                                                            HeapAlloc<::CDF2>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
 impl<T:Compressor> Processor for T {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult {
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.encode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
       self.flush(output, output_offset)
    }
 
@@ -225,10 +225,10 @@ type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompr
                                                           HeapAlloc<::CDF2>,
                                                           HeapAlloc<::DefaultCDF16>>;
 impl Processor for DivansConstructedDecompressor {
-   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> BrotliResult {
+   fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.decode(input, input_offset, output, output_offset)
    }
-   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> BrotliResult{
+   fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansResult{
        let mut input_offset = 0usize;
        self.decode(&[], &mut input_offset, output, output_offset)
    }

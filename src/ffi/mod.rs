@@ -3,7 +3,7 @@
 #[no_mangle]
 use core;
 use core::slice;
-use brotli::BrotliResult;
+
 use super::DivansDecompressorFactory;
 use super::interface::Decompressor;
 pub mod interface;
@@ -13,7 +13,7 @@ mod compressor;
 mod decompressor;
 use self::compressor::DivansCompressorState;
 use self::decompressor::DivansDecompressorState;
-use self::interface::{CAllocator, c_void, DivansOptionSelect, DivansResult, DIVANS_FAILURE, DIVANS_SUCCESS, DIVANS_NEEDS_MORE_INPUT, DIVANS_NEEDS_MORE_OUTPUT};
+use self::interface::{CAllocator, c_void, DivansOptionSelect, DivansReturnCode, DIVANS_FAILURE, DIVANS_SUCCESS, DIVANS_NEEDS_MORE_INPUT, DIVANS_NEEDS_MORE_OUTPUT};
 #[no_mangle]
 pub extern fn divans_new_compressor() -> *mut compressor::DivansCompressorState{
     unsafe {
@@ -55,7 +55,7 @@ pub unsafe extern fn divans_new_compressor_with_custom_alloc(allocators:CAllocat
 #[no_mangle]
 pub unsafe extern fn divans_set_option(state_ptr: *mut DivansCompressorState,
                                        selector: DivansOptionSelect,
-                                       value: u32) -> DivansResult {
+                                       value: u32) -> DivansReturnCode {
     match state_ptr.as_mut() {
         None => DIVANS_FAILURE,
         Some(state_ref) => {
@@ -67,7 +67,7 @@ pub unsafe extern fn divans_set_option(state_ptr: *mut DivansCompressorState,
 #[no_mangle]
 pub unsafe extern fn divans_encode(state_ptr: *mut DivansCompressorState,
                                    input_buf_ptr: *const u8, input_size: usize, input_offset_ptr: *mut usize,
-                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansReturnCode {
     let input_buf = slice::from_raw_parts(input_buf_ptr, input_size);
     let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
     match input_offset_ptr.as_mut() {
@@ -90,7 +90,7 @@ pub unsafe extern fn divans_encode(state_ptr: *mut DivansCompressorState,
 
 #[no_mangle]
 pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
-                                         output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+                                         output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansReturnCode {
     let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
     match output_offset_ptr.as_mut() {
         None => return DIVANS_FAILURE,
@@ -182,7 +182,7 @@ pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAlloc
 #[no_mangle]
 pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
                                    input_buf_ptr: *const u8, input_size: usize, input_offset_ptr: *mut usize,
-                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansResult {
+                                   output_buf_ptr: *mut u8, output_size: usize, output_offset_ptr: *mut usize) -> DivansReturnCode {
     let input_buf = slice::from_raw_parts(input_buf_ptr, input_size);
     let output_buf = slice::from_raw_parts_mut(output_buf_ptr, output_size);
     match input_offset_ptr.as_mut() {
@@ -195,10 +195,10 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
                         None => return DIVANS_FAILURE,
                         Some(state_ref) => {
                             match state_ref.decompressor.decode(input_buf, input_offset, output_buf, output_offset) {
-                                BrotliResult::ResultSuccess => return DIVANS_SUCCESS,
-                                BrotliResult::ResultFailure => return DIVANS_FAILURE,
-                                BrotliResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
-                                BrotliResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
+                                ::interface::DivansResult::ResultSuccess => return DIVANS_SUCCESS,
+                                ::interface::DivansResult::ResultFailure => return DIVANS_FAILURE,
+                                ::interface::DivansResult::NeedsMoreInput => return DIVANS_NEEDS_MORE_INPUT,
+                                ::interface::DivansResult::NeedsMoreOutput => return DIVANS_NEEDS_MORE_OUTPUT,
                             }
                         }
                     }

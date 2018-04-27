@@ -1,5 +1,5 @@
 use ::brotli;
-use ::brotli::BrotliResult;
+use ::interface::DivansResult;
 use ::brotli::enc::interface::LiteralPredictionModeNibble;
 use core;
 use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor};
@@ -68,7 +68,7 @@ impl Default for CompressorState {
     }
 }
 impl CompressorState {
-    pub fn set_option(&mut self, selector: super::interface::DivansOptionSelect, value: u32) -> super::interface::DivansResult {
+    pub fn set_option(&mut self, selector: super::interface::DivansOptionSelect, value: u32) -> super::interface::DivansReturnCode {
         if let CompressorState::OptionStage(ref mut opts) = *self {
             match selector {
                 DIVANS_OPTION_QUALITY => {opts.quality = Some(value as u16);},
@@ -217,7 +217,7 @@ impl CompressorState {
               input_offset: &mut usize,
               output_buf:&mut[u8],
               output_offset: &mut usize,
-              allocators: &CAllocator) -> DivansResult {
+              allocators: &CAllocator) -> DivansReturnCode {
         if let CompressorState::OptionStage(opts) = *self {
             self.start(allocators, opts);
         }
@@ -231,16 +231,16 @@ impl CompressorState {
             },
         };
         match res {
-            BrotliResult::ResultSuccess => DIVANS_SUCCESS,
-            BrotliResult::ResultFailure => DIVANS_FAILURE,
-            BrotliResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
-            BrotliResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
+            DivansResult::ResultSuccess => DIVANS_SUCCESS,
+            DivansResult::ResultFailure => DIVANS_FAILURE,
+            DivansResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
+            DivansResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
         }
     }
     pub fn flush(&mut self,
               output_buf:&mut[u8],
              output_offset: &mut usize,
-             allocators: &CAllocator) -> DivansResult {
+             allocators: &CAllocator) -> DivansReturnCode {
         if let CompressorState::OptionStage(opts) = *self {
             self.start(allocators, opts);
         }
@@ -254,10 +254,10 @@ impl CompressorState {
             },
         };
         match res {
-            BrotliResult::ResultSuccess => DIVANS_SUCCESS,
-            BrotliResult::ResultFailure => DIVANS_FAILURE,
-            BrotliResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
-            BrotliResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
+            DivansResult::ResultSuccess => DIVANS_SUCCESS,
+            DivansResult::ResultFailure => DIVANS_FAILURE,
+            DivansResult::NeedsMoreInput => DIVANS_NEEDS_MORE_INPUT,
+            DivansResult::NeedsMoreOutput => DIVANS_NEEDS_MORE_OUTPUT,
         }
     }
 }

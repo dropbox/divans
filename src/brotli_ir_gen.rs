@@ -27,7 +27,7 @@ pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
-use super::brotli::BrotliResult;
+use super::interface::DivansResult;
 use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};
 use super::brotli::enc::backward_references::BrotliEncoderMode;
 use super::divans_compressor::write_header;
@@ -125,14 +125,14 @@ impl<SelectedCDF:CDF16,
                                                           window_size: u8) {
         let mut cmd_offset = 0usize;
         loop {
-            let ret: BrotliResult;
+            let ret: DivansResult;
             let mut output_offset = 0usize;
             {
                 let output = data.checkout_next_buffer(codec.get_m8().get_base_alloc(),
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset, codec.get_crc()) {
-                        BrotliResult::ResultSuccess => {},
+                        DivansResult::ResultSuccess => {},
                         _ => panic!("Unexpected failure writing header"),
                     }
                 }
@@ -145,13 +145,13 @@ impl<SelectedCDF:CDF16,
                                              &mut cmd_offset);
             }
             match ret {
-                BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => {
+                DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => {
                     assert_eq!(cmd_offset, cmd.len());
                     data.commit_next_buffer(output_offset);
                     return;
                 },
-                BrotliResult::ResultFailure => panic!("Unexpected error code"),
-                BrotliResult::NeedsMoreOutput => {
+                DivansResult::ResultFailure => panic!("Unexpected error code"),
+                DivansResult::NeedsMoreOutput => {
                     data.commit_next_buffer(output_offset);
                 }
             }
@@ -160,7 +160,7 @@ impl<SelectedCDF:CDF16,
     fn internal_encode_stream(&mut self,
                               op: BrotliEncoderOperation,
                               input:&[u8], input_offset: &mut usize,
-                              is_end: bool) -> brotli::BrotliResult {
+                              is_end: bool) -> interface::DivansResult {
         let mut nothing : Option<usize> = None;
         {
             let divans_data_ref = &mut self.divans_data;
@@ -177,7 +177,7 @@ impl<SelectedCDF:CDF16,
             {
                 let mut available_in = input.len() - *input_offset;
                 if available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) != 0 {
-                    return BrotliResult::ResultSuccess;
+                    return DivansResult::ResultSuccess;
                 }
                 let mut available_out;
                 let mut brotli_out_offset = 0usize;
@@ -205,17 +205,17 @@ impl<SelectedCDF:CDF16,
                                                    &mut brotli_out_offset,
                                                    &mut nothing,
                                                    &mut closure) <= 0 {
-                        return BrotliResult::ResultFailure;
+                        return DivansResult::ResultFailure;
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
                 if available_out != 0 && available_in == 0 && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
-                    return BrotliResult::NeedsMoreInput;
+                    return DivansResult::NeedsMoreInput;
                 }
             }
         }
         if is_end && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
-            return BrotliResult::NeedsMoreOutput;
+            return DivansResult::NeedsMoreOutput;
         }
         if is_end {
             loop { // flush divans coder
@@ -228,13 +228,13 @@ impl<SelectedCDF:CDF16,
                 }
                 self.divans_data.commit_next_buffer(output_offset);
                 match ret {
-                    BrotliResult::ResultSuccess => return ret,
-                    BrotliResult::NeedsMoreOutput => {},
-                    BrotliResult::NeedsMoreInput | BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                    DivansResult::ResultSuccess => return ret,
+                    DivansResult::NeedsMoreOutput => {},
+                    DivansResult::NeedsMoreInput | DivansResult::ResultFailure => return DivansResult::ResultFailure,
                 }
             }
         } else {
-            return BrotliResult::NeedsMoreInput
+            return DivansResult::NeedsMoreInput
         }
     }
     fn free_internal(&mut self) {
@@ -297,29 +297,29 @@ impl<SelectedCDF:CDF16,
               input: &[u8],
               input_offset: &mut usize,
               _output: &mut [u8],
-              _output_offset: &mut usize) -> BrotliResult {
+              _output_offset: &mut usize) -> DivansResult {
         match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
                                           input,
                                           input_offset,
                                           false) {
-            BrotliResult::ResultFailure => BrotliResult::ResultFailure,
-            BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => BrotliResult::NeedsMoreInput,
-            BrotliResult::NeedsMoreOutput => panic!("unexpected code"),
+            DivansResult::ResultFailure => DivansResult::ResultFailure,
+            DivansResult::ResultSuccess | DivansResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
+            DivansResult::NeedsMoreOutput => panic!("unexpected code"),
         }
     }
     fn flush(&mut self,
              output: &mut [u8],
-             output_offset: &mut usize) -> BrotliResult {
+             output_offset: &mut usize) -> DivansResult {
         let mut zero = 0usize;
         loop {
             match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
                                               &[],
                                               &mut zero,
                                               true) {
-                BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
-                BrotliResult::ResultSuccess => break,
-                BrotliResult::NeedsMoreOutput => {},
-                BrotliResult::NeedsMoreInput => panic!("unexpected code"),
+                DivansResult::ResultFailure => return DivansResult::ResultFailure,
+                DivansResult::ResultSuccess => break,
+                DivansResult::NeedsMoreOutput => {},
+                DivansResult::NeedsMoreInput => panic!("unexpected code"),
             }
         }
         // we're in success area here
@@ -330,18 +330,18 @@ impl<SelectedCDF:CDF16,
         *output_offset += copy_len;
         self.encoded_byte_offset += copy_len;
         if self.encoded_byte_offset == self.divans_data.len() {
-            return BrotliResult::ResultSuccess;
+            return DivansResult::ResultSuccess;
         }
-        BrotliResult::NeedsMoreOutput
+        DivansResult::NeedsMoreOutput
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                            input:&[Command<SliceType>],
                                                            input_offset : &mut usize,
                                                            output :&mut[u8],
-                                                           output_offset: &mut usize) -> BrotliResult {
+                                                           output_offset: &mut usize) -> DivansResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset, self.codec.get_crc()) {
-                BrotliResult::ResultSuccess => {},
+                DivansResult::ResultSuccess => {},
                 res => return res,
             }
         }

@@ -26,7 +26,7 @@ use super::interface::{
     NewWithAllocator,
     BillingCapability,
 };
-use super::BrotliResult;
+use super::DivansResult;
 use super::arithmetic_coder::{
     EntropyEncoder,
     EntropyDecoder,
@@ -460,8 +460,8 @@ impl EntropyDecoder for ANSDecoder {
                                 if bit {inv_rescaled_prob_of_false} else {rescaled_prob_of_false});
         bit
     }
-    fn flush(&mut self) -> BrotliResult {
-        BrotliResult::ResultSuccess
+    fn flush(&mut self) -> DivansResult {
+        DivansResult::ResultSuccess
     }
 }
 

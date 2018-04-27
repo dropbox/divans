@@ -13,7 +13,7 @@
 //   limitations under the License.
 
 use alloc::{SliceWrapper, Allocator};
-use brotli::BrotliResult;
+
 use super::probability::interface::{CDF2, CDF16, ProbRange};
 use super::probability;
 use super::codec::copy::CopySubstate;
@@ -23,6 +23,30 @@ use super::codec::context_map::PredictionModeState;
 use super::codec::block_type::BlockTypeState;
 pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
+
+pub enum DivansOpResult {
+    ResultFailure,
+    ResultSuccess,
+}
+
+pub enum DivansResult {
+    ResultFailure,
+    ResultSuccess,
+    NeedsMoreInput,
+    NeedsMoreOutput,
+}
+
+pub enum DivansInputResult {
+    ResultFailure,
+    ResultSuccess,
+    NeedsMoreInput,
+}
+
+pub enum DivansOutputResult {
+    ResultFailure,
+    ResultSuccess,
+    NeedsMoreOutput,
+}
 
 // The choice of CDF16 struct is controlled by feature flags.
 #[cfg(feature="blend")]
@@ -121,15 +145,15 @@ pub trait Compressor {
               input:&[u8],
               input_offset: &mut usize,
               output:&mut[u8],
-              output_offset:&mut usize) -> BrotliResult;
+              output_offset:&mut usize) -> DivansResult;
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> BrotliResult;
+                                          output_offset: &mut usize) -> DivansResult;
     fn flush(&mut self,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> BrotliResult;
+                                          output_offset: &mut usize) -> DivansResult;
 }
 
 pub trait Decompressor {
@@ -137,7 +161,7 @@ pub trait Decompressor {
               input:&[u8],
               input_offset : &mut usize,
               output :&mut[u8],
-              output_offset: &mut usize) -> BrotliResult;
+              output_offset: &mut usize) -> DivansResult;
 }
 
 pub trait CommandDecoder {
@@ -147,8 +171,8 @@ pub trait CommandDecoder {
         input: &[u8],
         input_offset: &mut usize,
         output: &mut [Command<Self::CommandSliceType>],
-        output_offset: &mut usize) -> BrotliResult;
-    fn flush(&mut self) -> BrotliResult;
+        output_offset: &mut usize) -> DivansResult;
+    fn flush(&mut self) -> DivansResult;
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -197,7 +221,7 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
                                      input_buffer:&[u8],
                                      input_offset:&mut usize,
                                      output_buffer:&mut [u8],
-                                     output_offset: &mut usize) -> BrotliResult;
+                                     output_offset: &mut usize) -> DivansResult;
     #[inline(always)]
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
@@ -221,7 +245,7 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
         self.get_or_put_nibble_without_billing(nibble, prob)
     }
 
-    fn close(&mut self) -> BrotliResult;
+    fn close(&mut self) -> DivansResult;
 }
 pub trait DivansCompressorFactory<
      AllocU8:Allocator<u8>,

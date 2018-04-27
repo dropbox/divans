@@ -20,7 +20,7 @@ use std::io::{self,Write, BufReader};
 
 use super::ItemVecAllocator;
 use super::ItemVec;
-use super::brotli_decompressor::BrotliResult;
+use divans::DivansResult;
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 
 use divans::Command;
@@ -364,13 +364,13 @@ fn bench_no_ir<Run: Runner,
                 let mut o_processed_index = 0;
                 match encode_state.flush(temp_buffer.slice_mut(),
                                          &mut o_processed_index) {
-                    BrotliResult::ResultSuccess => {
+                    DivansResult::ResultSuccess => {
                         if o_processed_index != 0 {
                             dv_buffer.write_all(temp_buffer.slice_mut().split_at(o_processed_index).0).unwrap();
                         }
                         break;
                     },
-                    BrotliResult::NeedsMoreOutput => {
+                    DivansResult::NeedsMoreOutput => {
                     assert!(o_processed_index != 0);
                         dv_buffer.write_all(temp_buffer.slice_mut().split_at(o_processed_index).0).unwrap();
                     }

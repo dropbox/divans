@@ -7,7 +7,7 @@ use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
 
-use ::BrotliResult;
+use ::DivansResult;
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 
@@ -24,16 +24,16 @@ pub struct HeaderParser<AllocU8:Allocator<u8>,
 impl<AllocU8:Allocator<u8>,
      AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>>HeaderParser<AllocU8, AllocCDF2, AllocCDF16> {
-    pub fn parse_header(&mut self)->Result<usize, BrotliResult>{
+    pub fn parse_header(&mut self)->Result<usize, DivansResult>{
         if self.header[0] != interface::MAGIC_NUMBER[0] ||
             self.header[1] != interface::MAGIC_NUMBER[1] ||
             self.header[2] != interface::MAGIC_NUMBER[2] ||
             self.header[3] != interface::MAGIC_NUMBER[3] {
-                return Err(BrotliResult::ResultFailure);
+                return Err(DivansResult::ResultFailure);
             }
         let window_size = self.header[5] as usize;
         if window_size < 10 || window_size > 25 {
-            return Err(BrotliResult::ResultFailure);
+            return Err(DivansResult::ResultFailure);
         }
         Ok(window_size)
     }
@@ -74,12 +74,12 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                         AllocCDF16:Allocator<interface::DefaultCDF16>>
     DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
 
-    fn finish_parsing_header(&mut self, window_size: usize) -> BrotliResult {
+    fn finish_parsing_header(&mut self, window_size: usize) -> DivansResult {
         if window_size < 10 {
-            return BrotliResult::ResultFailure;
+            return DivansResult::ResultFailure;
         }
         if window_size > 24 {
-            return BrotliResult::ResultFailure;
+            return DivansResult::ResultFailure;
         }
         let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
@@ -89,31 +89,31 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
-                    None => return BrotliResult::ResultFailure,
+                    None => return DivansResult::ResultFailure,
                     Some(m) => m,
                 };
                 raw_header = header.header;
                 skip_crc = header.skip_crc;
             },
-            _ => return BrotliResult::ResultFailure,
+            _ => return DivansResult::ResultFailure,
         }
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 mcdf2 = match core::mem::replace(&mut header.mcdf2, None) {
-                    None => return BrotliResult::ResultFailure,
+                    None => return DivansResult::ResultFailure,
                     Some(m) => m,
                 }
             },
-            _ => return BrotliResult::ResultFailure,
+            _ => return DivansResult::ResultFailure,
         }
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 mcdf16 = match core::mem::replace(&mut header.mcdf16, None) {
-                    None => return BrotliResult::ResultFailure,
+                    None => return DivansResult::ResultFailure,
                     Some(m) => m,
                 }
             },
-            _ => return BrotliResult::ResultFailure,
+            _ => return DivansResult::ResultFailure,
         }
         //update this if you change the SelectedArithmeticDecoder macro
         let decoder = DefaultDecoder::new(&mut m8);
@@ -140,7 +140,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         core::mem::replace(self,
                            DivansDecompressor::Decode(
                                codec, 0));
-        BrotliResult::ResultSuccess
+        DivansResult::ResultSuccess
     }
     pub fn free_ref(&mut self) {
         if let DivansDecompressor::Decode(ref mut decoder, _bytes_encoded) = *self {
@@ -173,7 +173,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
               input:&[u8],
               input_offset:&mut usize,
               output:&mut [u8],
-              output_offset: &mut usize) -> BrotliResult {
+              output_offset: &mut usize) -> DivansResult {
         let window_size: usize;
 
         match *self  {
@@ -194,7 +194,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                         input.split_at(*input_offset).1);
                     *input_offset += remaining;
                     header_parser.read_offset += remaining;
-                    return BrotliResult::NeedsMoreInput;
+                    return DivansResult::NeedsMoreInput;
                 }
             },
             DivansDecompressor::Decode(ref mut divans_parser, ref mut bytes_encoded) => {
@@ -215,7 +215,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         if *input_offset < input.len() {
             return self.decode(input, input_offset, output, output_offset);
         }
-        BrotliResult::NeedsMoreInput
+        DivansResult::NeedsMoreInput
     }
 }
 

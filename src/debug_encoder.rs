@@ -20,7 +20,7 @@ use super::arithmetic_coder::{
 };
 use probability::CDF16;
 use super::interface::ArithmeticEncoderOrDecoder;
-use super::BrotliResult;
+use super::DivansResult;
 #[derive(Default)]
 pub struct DebugEncoder {
     buffer: RegisterQueue,
@@ -64,8 +64,8 @@ impl EntropyDecoder for DebugDecoder {
         }
         return_value != 0
     }
-    fn flush(&mut self) -> BrotliResult {
-        BrotliResult::ResultSuccess
+    fn flush(&mut self) -> DivansResult {
+        DivansResult::ResultSuccess
     }
 }
 
