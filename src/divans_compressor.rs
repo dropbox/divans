@@ -44,7 +44,7 @@ pub use super::interface::{
 pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc};
 use super::interface;
-use super::interface::DivansResult;
+use super::interface::{DivansOutputResult, DivansResult};
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
@@ -166,7 +166,7 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
                                 window_size: u8,
                                 output: &mut[u8],
                                 output_offset:&mut usize,
-                                crc: &mut CRC) -> DivansResult {
+                                crc: &mut CRC) -> DivansOutputResult {
     let bytes_avail = output.len() - *output_offset;
     if bytes_avail + *header_progress < interface::HEADER_LENGTH {
         let to_write = &make_header(window_size)[*header_progress..
@@ -176,7 +176,7 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
             to_write);
         *output_offset += bytes_avail;
         *header_progress += bytes_avail;
-        return DivansResult::NeedsMoreOutput;
+        return DivansOutputResult::NeedsMoreOutput;
     }
     let to_write = &make_header(window_size)[*header_progress..];
     output[*output_offset..(*output_offset + interface::HEADER_LENGTH - *header_progress)].clone_from_slice(
@@ -184,13 +184,13 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
     crc.write(to_write);
     *output_offset += interface::HEADER_LENGTH - *header_progress;
     *header_progress = interface::HEADER_LENGTH;
-    DivansResult::Success
+    DivansOutputResult::Success
 
 }
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
-    fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansResult {
+    fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansOutputResult {
         if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
             let thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
                                                   self.freeze_dried_cmd_start, self.freeze_dried_cmd_end);
@@ -201,12 +201,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                                     output_offset,
                                     thawed_buffer.split_at(self.freeze_dried_cmd_end).0,
                                     &mut self.freeze_dried_cmd_start) {
-               DivansResult::Failure => return DivansResult::Failure,
+               DivansResult::Failure => return DivansOutputResult::Failure,
                DivansResult::NeedsMoreInput | DivansResult::Success => {},
-               DivansResult::NeedsMoreOutput => return DivansResult::NeedsMoreOutput,
+               DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
             }
         }
-        DivansResult::Success
+        DivansOutputResult::Success
     }
     fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                       freeze_dried_cmd_start: &mut usize,
@@ -285,8 +285,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::Success => {},
-                res => return res,
+                DivansOutputResult::Success => {},
+                res => return DivansResult::from(res),
             }
         }
         match self.flush_freeze_dried_cmds(output, output_offset) {
@@ -345,7 +345,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> DivansResult{
+                                          output_offset: &mut usize) -> DivansOutputResult{
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
@@ -354,20 +354,24 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
             }
         }
         let mut unused: usize = 0;
-        self.codec.encode_or_decode(&[],
+        match self.codec.encode_or_decode(&[],
                                     &mut unused,
                                     output,
                                     output_offset,
                                     input,
-                                    input_offset)
+                                          input_offset) {
+            DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
+            DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
+            DivansResult::Failure => DivansOutputResult::Failure,
+        }
     }
     fn flush(&mut self,
              output: &mut [u8],
-             output_offset: &mut usize) -> DivansResult {
+             output_offset: &mut usize) -> DivansOutputResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {
-                DivansResult::Success => {},
+                DivansOutputResult::Success => {},
                 res => return res,
             }
         }

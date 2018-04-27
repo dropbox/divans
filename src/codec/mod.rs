@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use interface::DivansResult;
+use interface::{DivansResult, DivansOutputResult};
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -793,18 +793,17 @@ impl<AllocU8: Allocator<u8>,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
-                        DivansResult::NeedsMoreInput => panic!("Unexpected return value"),//new_state = Some(EncodeOrDecodeState::Begin),
-                        DivansResult::NeedsMoreOutput => {
+                        DivansOutputResult::NeedsMoreOutput => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                         },
-                        DivansResult::Failure => {
+                        DivansOutputResult::Failure => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
                         },
-                        DivansResult::Success => {
+                        DivansOutputResult::Success => {
                             self.cross_command_state.bk.command_count += 1;
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals

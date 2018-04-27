@@ -24,11 +24,40 @@ use super::codec::block_type::BlockTypeState;
 pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
 
+#[derive(Copy,Clone,Debug)]
 pub enum DivansOpResult {
     Failure,
     Success,
 }
 
+impl From<DivansOpResult> for DivansResult {
+    fn from(res: DivansOpResult) -> Self {
+        match res {
+            DivansOpResult::Failure => DivansResult::Failure,
+            DivansOpResult::Success => DivansResult::Success,
+        }
+    }
+}
+
+impl From<DivansOpResult> for DivansInputResult {
+    fn from(res: DivansOpResult) -> Self {
+        match res {
+            DivansOpResult::Failure => DivansInputResult::Failure,
+            DivansOpResult::Success => DivansInputResult::Success,
+        }
+    }
+}
+
+impl From<DivansOpResult> for DivansOutputResult {
+    fn from(res: DivansOpResult) -> Self {
+        match res {
+            DivansOpResult::Failure => DivansOutputResult::Failure,
+            DivansOpResult::Success => DivansOutputResult::Success,
+        }
+    }
+}
+
+#[derive(Copy,Clone,Debug)]
 pub enum DivansResult {
     Failure,
     Success,
@@ -36,16 +65,36 @@ pub enum DivansResult {
     NeedsMoreOutput,
 }
 
+
+#[derive(Copy,Clone,Debug)]
 pub enum DivansInputResult {
     Failure,
     Success,
     NeedsMoreInput,
 }
-
+impl From<DivansInputResult> for DivansResult {
+    fn from(res: DivansInputResult) -> Self {
+        match res {
+            DivansInputResult::Failure => DivansResult::Failure,
+            DivansInputResult::Success => DivansResult::Success,
+            DivansInputResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
+        }
+    }
+}
+#[derive(Copy,Clone,Debug)]
 pub enum DivansOutputResult {
     Failure,
     Success,
     NeedsMoreOutput,
+}
+impl From<DivansOutputResult> for DivansResult {
+    fn from(res: DivansOutputResult) -> Self {
+        match res {
+            DivansOutputResult::Failure => DivansResult::Failure,
+            DivansOutputResult::Success => DivansResult::Success,
+            DivansOutputResult::NeedsMoreOutput => DivansResult::NeedsMoreOutput,
+        }
+    }
 }
 
 // The choice of CDF16 struct is controlled by feature flags.
@@ -150,10 +199,10 @@ pub trait Compressor {
                                           input:&[Command<SliceType>],
                                           input_offset : &mut usize,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> DivansResult;
+                                          output_offset: &mut usize) -> DivansOutputResult;
     fn flush(&mut self,
                                           output :&mut[u8],
-                                          output_offset: &mut usize) -> DivansResult;
+                                          output_offset: &mut usize) -> DivansOutputResult;
 }
 
 pub trait Decompressor {

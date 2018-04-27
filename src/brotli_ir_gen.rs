@@ -27,7 +27,7 @@ pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
-use super::interface::DivansResult;
+use super::interface::{DivansOutputResult, DivansResult};
 use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};
 use super::brotli::enc::backward_references::BrotliEncoderMode;
 use super::divans_compressor::write_header;
@@ -132,7 +132,7 @@ impl<SelectedCDF:CDF16,
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset, codec.get_crc()) {
-                        DivansResult::Success => {},
+                        DivansOutputResult::Success => {},
                         _ => panic!("Unexpected failure writing header"),
                     }
                 }
@@ -309,14 +309,14 @@ impl<SelectedCDF:CDF16,
     }
     fn flush(&mut self,
              output: &mut [u8],
-             output_offset: &mut usize) -> DivansResult {
+             output_offset: &mut usize) -> DivansOutputResult {
         let mut zero = 0usize;
         loop {
             match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
                                               &[],
                                               &mut zero,
                                               true) {
-                DivansResult::Failure => return DivansResult::Failure,
+                DivansResult::Failure => return DivansOutputResult::Failure,
                 DivansResult::Success => break,
                 DivansResult::NeedsMoreOutput => {},
                 DivansResult::NeedsMoreInput => panic!("unexpected code"),
@@ -330,28 +330,32 @@ impl<SelectedCDF:CDF16,
         *output_offset += copy_len;
         self.encoded_byte_offset += copy_len;
         if self.encoded_byte_offset == self.divans_data.len() {
-            return DivansResult::Success;
+            return DivansOutputResult::Success;
         }
-        DivansResult::NeedsMoreOutput
+        DivansOutputResult::NeedsMoreOutput
     }
     fn encode_commands<SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                            input:&[Command<SliceType>],
                                                            input_offset : &mut usize,
                                                            output :&mut[u8],
-                                                           output_offset: &mut usize) -> DivansResult {
+                                                           output_offset: &mut usize) -> DivansOutputResult {
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset, self.codec.get_crc()) {
-                DivansResult::Success => {},
+                DivansOutputResult::Success => {},
                 res => return res,
             }
         }
         let mut unused: usize = 0;
-        self.codec.encode_or_decode(&[],
-                                    &mut unused,
-                                    output,
-                                    output_offset,
-                                    input,
-                                    input_offset)
+        match self.codec.encode_or_decode(&[],
+                                          &mut unused,
+                                          output,
+                                          output_offset,
+                                          input,
+                                          input_offset) {
+            DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
+            DivansResult::Failure => DivansOutputResult::Failure,
+            DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
+        }
     }
 }
 
