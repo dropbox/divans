@@ -7,7 +7,8 @@ use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
 
-use ::DivansResult;
+use ::interface::DivansResult;
+use ::interface::ErrMsg;
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 
@@ -26,14 +27,16 @@ impl<AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>>HeaderParser<AllocU8, AllocCDF2, AllocCDF16> {
     pub fn parse_header(&mut self)->Result<usize, DivansResult>{
         if self.header[0] != interface::MAGIC_NUMBER[0] ||
-            self.header[1] != interface::MAGIC_NUMBER[1] ||
-            self.header[2] != interface::MAGIC_NUMBER[2] ||
+            self.header[1] != interface::MAGIC_NUMBER[1] {
+                return Err(DivansResult::Failure(ErrMsg::MagicNumberWrongA(self.header[0], self.header[1])));
+        }
+        if self.header[2] != interface::MAGIC_NUMBER[2] ||
             self.header[3] != interface::MAGIC_NUMBER[3] {
-                return Err(DivansResult::Failure);
-            }
+                return Err(DivansResult::Failure(ErrMsg::MagicNumberWrongB(self.header[2], self.header[3])));
+        }
         let window_size = self.header[5] as usize;
-        if window_size < 10 || window_size > 25 {
-            return Err(DivansResult::Failure);
+        if window_size < 10 || window_size >= 25 {
+            return Err(DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8)));
         }
         Ok(window_size)
     }
@@ -76,10 +79,10 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
 
     fn finish_parsing_header(&mut self, window_size: usize) -> DivansResult {
         if window_size < 10 {
-            return DivansResult::Failure;
+            return DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8));
         }
         if window_size > 24 {
-            return DivansResult::Failure;
+            return DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8));
         }
         let mut m8:AllocU8;
         let mcdf2:AllocCDF2;
@@ -89,31 +92,31 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
-                    None => return DivansResult::Failure,
+                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(8)),
                     Some(m) => m,
                 };
                 raw_header = header.header;
                 skip_crc = header.skip_crc;
             },
-            _ => return DivansResult::Failure,
+            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
         }
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 mcdf2 = match core::mem::replace(&mut header.mcdf2, None) {
-                    None => return DivansResult::Failure,
+                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(2)),
                     Some(m) => m,
                 }
             },
-            _ => return DivansResult::Failure,
+            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
         }
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 mcdf16 = match core::mem::replace(&mut header.mcdf16, None) {
-                    None => return DivansResult::Failure,
+                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(16)),
                     Some(m) => m,
                 }
             },
-            _ => return DivansResult::Failure,
+            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
         }
         //update this if you change the SelectedArithmeticDecoder macro
         let decoder = DefaultDecoder::new(&mut m8);

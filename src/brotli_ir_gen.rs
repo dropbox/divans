@@ -27,7 +27,7 @@ pub use super::cmd_to_divans::EncoderSpecialization;
 pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
 use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
-use super::interface::{DivansOutputResult, DivansResult};
+use super::interface::{DivansOutputResult, DivansResult, ErrMsg};
 use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompressStream, BrotliEncoderOperation, BrotliEncoderIsFinished};
 use super::brotli::enc::backward_references::BrotliEncoderMode;
 use super::divans_compressor::write_header;
@@ -150,7 +150,7 @@ impl<SelectedCDF:CDF16,
                     data.commit_next_buffer(output_offset);
                     return;
                 },
-                DivansResult::Failure => panic!("Unexpected error code"),
+                DivansResult::Failure(m) => panic!(m),
                 DivansResult::NeedsMoreOutput => {
                     data.commit_next_buffer(output_offset);
                 }
@@ -205,7 +205,7 @@ impl<SelectedCDF:CDF16,
                                                    &mut brotli_out_offset,
                                                    &mut nothing,
                                                    &mut closure) <= 0 {
-                        return DivansResult::Failure;
+                        return DivansResult::Failure(ErrMsg::BrotliCompressStreamFail(0xff, 0xff));
                     }
                 }
                 self.brotli_data.commit_next_buffer(brotli_out_offset);
@@ -301,9 +301,9 @@ impl<SelectedCDF:CDF16,
                                           input,
                                           input_offset,
                                           false) {
-            DivansResult::Failure => DivansResult::Failure,
+            DivansResult::NeedsMoreOutput => DivansResult::Failure(ErrMsg::BrotliInternalEncodeStreamNeedsOutputWithoutFlush),
+            DivansResult::Failure(m) => DivansResult::Failure(m),
             DivansResult::Success | DivansResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
-            DivansResult::NeedsMoreOutput => panic!("unexpected code"),
         }
     }
     fn flush(&mut self,
@@ -315,10 +315,10 @@ impl<SelectedCDF:CDF16,
                                               &[],
                                               &mut zero,
                                               true) {
-                DivansResult::Failure => return DivansOutputResult::Failure,
+                DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                 DivansResult::Success => break,
                 DivansResult::NeedsMoreOutput => {},
-                DivansResult::NeedsMoreInput => panic!("unexpected code"),
+                DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::BrotliIrGenFlushStreamNeedsInput),
             }
         }
         // we're in success area here
@@ -352,7 +352,7 @@ impl<SelectedCDF:CDF16,
                                           input,
                                           input_offset) {
             DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
-            DivansResult::Failure => DivansOutputResult::Failure,
+            DivansResult::Failure(m) => DivansOutputResult::Failure(m),
             DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
         }
     }

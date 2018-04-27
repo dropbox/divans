@@ -25,15 +25,50 @@ pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
 
 #[derive(Copy,Clone,Debug)]
+pub enum ErrMsg {
+    PredictionModeFail(()),
+    ShutdownCoderNeedsInput,
+    EncodeOneCommandNeedsInput,
+    NotAllowedToFlushIfPreviousCommandPartial,
+    NotAllowedToEncodeAfterFlush,
+    Distance0NotAllowed,
+    DrainOrFillNeedsInput(u8),
+    BrotliIrGenFlushStreamNeedsInput,
+    AssemblerStreamReportsDone,
+    UnexpectedEof,
+    TrailingInput(u8),
+    InputChangedAfterContinuation,
+    DistanceGreaterRingBuffer,
+    DictTransformDiffersFromExpectedSize,
+    MinLogicError,
+    InputOffsetOutOfBounds,
+    CommandCodeOutOfBounds(u8),
+    CopyDistanceMnemonicCodeBad(u8, u8),
+    BadChecksum(u8, u8),
+    IndexBeyondContextMapSize(u8, u8),
+    PredictionModeOutOfBounds(u8),
+    DictWordSizeTooLarge(u8),
+    DictTransformIndexUndefined(u8),
+    BrotliCompressStreamFail(u8, u8),
+    BrotliInternalEncodeStreamNeedsOutputWithoutFlush,
+    MagicNumberWrongA(u8, u8),
+    MagicNumberWrongB(u8, u8),
+    BadWindowSize(u8),
+    MissingAllocator(u8),
+    WrongInternalDecoderState,
+}
+
+
+#[derive(Copy,Clone,Debug)]
 pub enum DivansOpResult {
-    Failure,
+    Failure(ErrMsg),
     Success,
 }
 
 impl From<DivansOpResult> for DivansResult {
     fn from(res: DivansOpResult) -> Self {
         match res {
-            DivansOpResult::Failure => DivansResult::Failure,
+            DivansOpResult::Failure(x) => DivansResult::Failure(x),
             DivansOpResult::Success => DivansResult::Success,
         }
     }
@@ -42,7 +77,7 @@ impl From<DivansOpResult> for DivansResult {
 impl From<DivansOpResult> for DivansInputResult {
     fn from(res: DivansOpResult) -> Self {
         match res {
-            DivansOpResult::Failure => DivansInputResult::Failure,
+            DivansOpResult::Failure(x) => DivansInputResult::Failure(x),
             DivansOpResult::Success => DivansInputResult::Success,
         }
     }
@@ -51,7 +86,7 @@ impl From<DivansOpResult> for DivansInputResult {
 impl From<DivansOpResult> for DivansOutputResult {
     fn from(res: DivansOpResult) -> Self {
         match res {
-            DivansOpResult::Failure => DivansOutputResult::Failure,
+            DivansOpResult::Failure(x) => DivansOutputResult::Failure(x),
             DivansOpResult::Success => DivansOutputResult::Success,
         }
     }
@@ -59,7 +94,7 @@ impl From<DivansOpResult> for DivansOutputResult {
 
 #[derive(Copy,Clone,Debug)]
 pub enum DivansResult {
-    Failure,
+    Failure(ErrMsg),
     Success,
     NeedsMoreInput,
     NeedsMoreOutput,
@@ -68,14 +103,14 @@ pub enum DivansResult {
 
 #[derive(Copy,Clone,Debug)]
 pub enum DivansInputResult {
-    Failure,
+    Failure(ErrMsg),
     Success,
     NeedsMoreInput,
 }
 impl From<DivansInputResult> for DivansResult {
     fn from(res: DivansInputResult) -> Self {
         match res {
-            DivansInputResult::Failure => DivansResult::Failure,
+            DivansInputResult::Failure(x) => DivansResult::Failure(x),
             DivansInputResult::Success => DivansResult::Success,
             DivansInputResult::NeedsMoreInput => DivansResult::NeedsMoreInput,
         }
@@ -83,14 +118,14 @@ impl From<DivansInputResult> for DivansResult {
 }
 #[derive(Copy,Clone,Debug)]
 pub enum DivansOutputResult {
-    Failure,
+    Failure(ErrMsg),
     Success,
     NeedsMoreOutput,
 }
 impl From<DivansOutputResult> for DivansResult {
     fn from(res: DivansOutputResult) -> Self {
         match res {
-            DivansOutputResult::Failure => DivansResult::Failure,
+            DivansOutputResult::Failure(x) => DivansResult::Failure(x),
             DivansOutputResult::Success => DivansResult::Success,
             DivansOutputResult::NeedsMoreOutput => DivansResult::NeedsMoreOutput,
         }

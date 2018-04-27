@@ -20,7 +20,7 @@ use std::io::{self,Write, BufReader};
 
 use super::ItemVecAllocator;
 use super::ItemVec;
-use divans::{DivansResult, DivansOutputResult};
+use divans::{DivansOutputResult};
 use super::alloc::{Allocator, SliceWrapperMut, SliceWrapper};
 
 use divans::Command;

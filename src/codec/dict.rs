@@ -1,5 +1,5 @@
 use core;
-use interface::DivansResult;
+use interface::{DivansResult, ErrMsg};
 use alloc::Allocator;
 use brotli::transform::TransformDictionaryWord;
 use brotli::interface::Nop;
@@ -101,7 +101,7 @@ impl DictState {
 
                     self.dc.word_size = beg_nib + 19;
                     if self.dc.word_size > 24 {
-                        return DivansResult::Failure;
+                        return DivansResult::Failure(ErrMsg::DictWordSizeTooLarge(self.dc.word_size as u8));
                     }
                     self.state = DictSubstate::WordIndexMantissa(0, round_up_mod_4(DICT_BITS[self.dc.word_size as usize]), 0);
                 }
@@ -148,7 +148,7 @@ impl DictState {
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
                     let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
                     if self.dc.transform >= 121 {
-                        return DivansResult::Failure;
+                        return DivansResult::Failure(ErrMsg::DictTransformIndexUndefined(self.dc.transform));
                     }
                     let final_len = TransformDictionaryWord(&mut transformed_word[..],
                                                             &word[..],

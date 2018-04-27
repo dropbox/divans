@@ -1,5 +1,5 @@
 use core;
-use interface::DivansResult;
+use interface::{DivansOpResult, ErrMsg};
 use ::cmd_to_raw::DivansRecodeState;
 use ::probability::{CDF2, CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
@@ -83,10 +83,6 @@ pub trait EncoderOrDecoderSpecialization {
                                      backing: &'a mut usize) -> &'a mut usize;
 }
 
-#[allow(non_snake_case)]
-pub fn Fail() -> DivansResult {
-    DivansResult::Failure
-}
 
 
 
@@ -330,12 +326,12 @@ impl<Cdf16:CDF16,
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map
     }
-    pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> DivansResult {
+    pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> DivansOpResult {
         //if index >= self.mixing_mask.len() {
         //return DivansResult::Failure;
         //}
         self.mixing_mask[index] = value;
-        DivansResult::Success
+        DivansOpResult::Success
     }
     pub fn clear_mixing_values(&mut self) {
         for item in self.mixing_mask.iter_mut()  {
@@ -379,14 +375,14 @@ impl<Cdf16:CDF16,
             *item = index as u8 & 0x3;
         }
     }
-    pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> DivansResult {
+    pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> DivansOpResult {
         self.materialized_context_map = true;
         let target_array = match context_map_type {
             ContextMapType::Literal => self.literal_context_map.slice_mut(),
             ContextMapType::Distance=> self.distance_context_map.slice_mut(),
         };
         if index as usize >= target_array.len() {
-            return           DivansResult::Failure;
+            return  DivansOpResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
         }
 
         target_array[index as usize] = val;
@@ -404,7 +400,7 @@ impl<Cdf16:CDF16,
             },
         }
         self.cmap_lru[0] = val;
-        DivansResult::Success
+        DivansOpResult::Success
     }
     pub fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
         let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
@@ -506,17 +502,17 @@ impl<Cdf16:CDF16,
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
-    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> DivansResult {
+    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> DivansOpResult {
        self.next_state();
        match new_mode.0 {
            LITERAL_PREDICTION_MODE_SIGN | LITERAL_PREDICTION_MODE_UTF8 | LITERAL_PREDICTION_MODE_MSB6 | LITERAL_PREDICTION_MODE_LSB6 => {
            },
-           _ => return DivansResult::Failure,
+           _ => return DivansOpResult::Failure(ErrMsg::PredictionModeOutOfBounds(new_mode.0)),
        }
        self.literal_prediction_mode = new_mode;
        self.literal_lut0 = get_lut0(new_mode);
        self.literal_lut1 = get_lut1(new_mode);
-       DivansResult::Success
+       DivansOpResult::Success
     }
     pub fn obs_dict_state(&mut self) {
         self.next_state();

@@ -33,7 +33,7 @@ mod util;
 
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use std::env;
-
+use std::error;
 
 use core::convert::From;
 use std::vec::Vec;
@@ -103,6 +103,20 @@ fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
     }
     Ok(output)
 }
+#[derive(Copy,Clone,Debug)]
+struct ErrorErrMsg(pub divans::ErrMsg);
+impl core::fmt::Display for ErrorErrMsg {
+    fn fmt(&self, f:&mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> {
+        <divans::ErrMsg as core::fmt::Debug>::fmt(&self.0, f)
+    }
+}
+impl error::Error for ErrorErrMsg {
+    fn description(&self) -> &str {
+        "Divans error"
+    }
+    fn cause(&self) -> Option<&error::Error> {None}
+}
+
 #[derive(Debug)]
 pub struct ItemVec<Item:Sized+Default>(Vec<Item>);
 impl<Item:Sized+Default> Default for ItemVec<Item> {
@@ -510,9 +524,9 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
 //                assert_eq!(i_processed_index, cmd_buffer.len());
 //                break;
 //            }
-            DivansOutputResult::Failure => {
+            DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               "Brotli Failure to recode file"));
+                               ErrorErrMsg(m)));
             }
         }
     }
@@ -596,9 +610,9 @@ fn recode_inner<Reader:std::io::BufRead,
                     return Err(x);
                 }
             }
-            DivansOutputResult::Failure => {
+            DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               "Brotli Failure to recode file"));
+                               ErrorErrMsg(m)));
             }
         }
     }
@@ -700,9 +714,9 @@ fn compress_inner<Reader:std::io::BufRead,
                     return Err(x);
                 }
             }
-            DivansOutputResult::Failure => {
+            DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               "Brotli Failure to recode file"));
+                               ErrorErrMsg(m)));
             }
         }
     }
@@ -747,12 +761,12 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                                obuffer.slice_mut().split_at_mut(oenc_index).1,
                                &mut olim) {
                 DivansResult::Success => continue,
-                DivansResult::Failure => {
+                DivansResult::Failure(m) => {
                     let mut m8 = free_state(compress_state);
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(io::Error::new(io::ErrorKind::Other,
-                               "Failure encoding brotli"));
+                               ErrorErrMsg(m)));
                 },
                 DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {},
             }
@@ -779,12 +793,12 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
         match compress_state.flush(obuffer.slice_mut().split_at_mut(oenc_index).1,
                           &mut olim) {
             DivansOutputResult::Success => done = true,
-            DivansOutputResult::Failure => {
+            DivansOutputResult::Failure(m) => {
                 let mut m8 = free_state(compress_state);
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::Other,
-                                          "Failure encoding brotli"));
+                                          ErrorErrMsg(m)));
             },
             DivansOutputResult::NeedsMoreOutput => {
             }
@@ -957,12 +971,12 @@ fn decompress<Reader:std::io::Read,
             DivansResult::Success => {
                 break
             },
-            DivansResult::Failure => {
+            DivansResult::Failure(m) => {
                 let mut m8 = state.free().0;
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          "Error within Divans File"));
+                                          ErrorErrMsg(m)));
             },
             DivansResult::NeedsMoreOutput => {
                 let mut output_written = 0;

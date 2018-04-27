@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use interface::{DivansResult, DivansOutputResult};
+use interface::{DivansResult, DivansOutputResult, ErrMsg};
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -291,7 +291,7 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::WriteChecksum(0);
                 self.state
             },
-            _ => return DivansResult::Failure,
+            _ => return DivansResult::Failure(ErrMsg::CommandCodeOutOfBounds(command_type_code)),
         };
         DivansResult::Success
     }
@@ -344,9 +344,9 @@ impl<AllocU8: Allocator<u8>,
                             OneCommandReturn::BufferExhausted(res) => {
                                 match res {
                                     DivansResult::Success => {},
-                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure,//panic!("unreachable"),//return DivansOutputResult::Success,
+                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::EncodeOneCommandNeedsInput),//panic!("unreachable"),//return DivansOutputResult::Success,
                                     DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                                    DivansResult::Failure => return DivansOutputResult::Failure,
+                                    DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                                 }
                             },
                             OneCommandReturn::Advance => panic!("Unintended state: flush => Advance"),
@@ -361,17 +361,17 @@ impl<AllocU8: Allocator<u8>,
                     let mut unused = 0usize;
                     match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
                         DivansResult::Success => self.state = EncodeOrDecodeState::ShutdownCoder,
-                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(0)), // FIXME: is this possible?
                         DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                        DivansResult::Failure => return DivansOutputResult::Failure,
+                        DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                     }
                 },
                 EncodeOrDecodeState::ShutdownCoder => {
                     match self.cross_command_state.coder.close() {
                         DivansResult::Success => self.state = EncodeOrDecodeState::CoderBufferDrain,
-                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::ShutdownCoderNeedsInput), // FIXME: is this possible?
                         DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                        DivansResult::Failure => return DivansOutputResult::Failure,
+                        DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                     }
                 },
                 EncodeOrDecodeState::CoderBufferDrain => {
@@ -383,9 +383,9 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.state = EncodeOrDecodeState::WriteChecksum(0);
                         },
-                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure, // FIXME: is this possible?
+                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(1)), // FIXME: is this possible?
                         DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                        DivansResult::Failure => return DivansOutputResult::Failure,
+                        DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                     }
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
@@ -426,7 +426,8 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => return DivansOutputResult::Success,
-                _ => return DivansOutputResult::Failure, // not allowed to flush if previous command was partially processed
+                // not allowed to flush if previous command was partially processed
+                _ => return DivansOutputResult::Failure(ErrMsg::NotAllowedToFlushIfPreviousCommandPartial),
             }
         }
     }
@@ -536,7 +537,7 @@ impl<AllocU8: Allocator<u8>,
                     | EncodeOrDecodeState::ShutdownCoder
                     | EncodeOrDecodeState::CoderBufferDrain => {
                     // not allowed to encode additional commands after flush is invoked
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(ErrMsg::NotAllowedToEncodeAfterFlush)));
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     assert!(Specialization::IS_DECODING_FILE);
@@ -574,7 +575,8 @@ impl<AllocU8: Allocator<u8>,
                         input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()).enumerate() {
                         if *chk != *fil {
                             if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(
+                                    ErrMsg::BadChecksum(*chk, *fil))));
                             }
                         }
                     }
@@ -807,9 +809,9 @@ impl<AllocU8: Allocator<u8>,
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                         },
-                        DivansOutputResult::Failure => {
+                        DivansOutputResult::Failure(m) => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(self::interface::Fail()));
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
                         },
                         DivansOutputResult::Success => {
                             self.cross_command_state.bk.command_count += 1;

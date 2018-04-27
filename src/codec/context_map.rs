@@ -1,4 +1,4 @@
-use interface::DivansResult;
+use interface::{DivansResult, ErrMsg, DivansOpResult};
 use super::interface::ContextMapType;
 use super::priors::{PredictionModePriorType};
 use alloc::{Allocator, SliceWrapper};
@@ -130,12 +130,12 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
-                      Err(_) => return DivansResult::Failure,
+                      Err(x) => return DivansResult::Failure(ErrMsg::PredictionModeFail(x)),
                       Ok(pred_mode) => pred_mode,
                    };
                    match superstate.bk.obs_pred_mode(pred_mode) {
-                       DivansResult::Failure => return DivansResult::Failure,
-                       _ => {},
+                       DivansOpResult::Failure(m) => return DivansResult::Failure(m),
+                       DivansOpResult::Success => {},
                    }
                    *self = PredictionModeState::DynamicContextMixing;
                },
@@ -252,8 +252,8 @@ impl PredictionModeState {
                        } else {
                            superstate.bk.cmap_lru[mnemonic_nibble as usize]
                        };
-                       if let DivansResult::Failure = superstate.bk.obs_context_map(context_map_type, index, val) {
-                           return DivansResult::Failure;
+                       if let DivansOpResult::Failure(m) = superstate.bk.obs_context_map(context_map_type, index, val) {
+                           return DivansResult::Failure(m);
                        }
                        *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                    }
@@ -293,8 +293,8 @@ impl PredictionModeState {
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
                        nibble_prob.blend(lsn_nib, Speed::MED);
                    }
-                   if let DivansResult::Failure = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
-                       return DivansResult::Failure;
+                   if let DivansOpResult::Failure(m) = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
+                       return DivansResult::Failure(m);
                    }
                    *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
                },
@@ -320,12 +320,10 @@ impl PredictionModeState {
                        *self = PredictionModeState::FullyDecoded;
                    } else {
                        match superstate.bk.obs_mixing_value(index, mixing_nib) {
-                           DivansResult::Success => {
+                           DivansOpResult::Success => {
                                *self = PredictionModeState::MixingValues(index + 1);
                            },
-                           _ => {
-                               return DivansResult::Failure;
-                           },
+                           DivansOpResult::Failure(m) => return DivansResult::Failure(m),
                        }
                    }
                },

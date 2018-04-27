@@ -3,7 +3,8 @@ pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, 
 pub use alloc::HeapAlloc;
 use std::io;
 use std::io::Write;
-use super::interface::{DivansResult, DivansOutputResult};
+use core;
+use super::interface::{DivansResult, DivansOutputResult, ErrMsg};
 use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
@@ -42,10 +43,14 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
                 Err(e) => return Err(e),
             }
             match op_result {
-                DivansResult::NeedsMoreInput => assert_eq!(avail_in, 0),
+                DivansResult::NeedsMoreInput => if avail_in != 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        ErrMsg::TrailingInput(core::cmp::min(avail_in, 255) as u8)));
+                },
                 DivansResult::NeedsMoreOutput => continue,
                 DivansResult::Success => return Ok(buf.len()),
-                DivansResult::Failure => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input")),
+                DivansResult::Failure(m) => return Err(io::Error::new(io::ErrorKind::InvalidInput, m)),
             }
             if avail_in == 0 {
                 break
@@ -64,8 +69,8 @@ impl<W:Write, P:Processor, BufferType:SliceWrapperMut<u8>> Write for GenWriter<W
                 Err(e) => return Err(e),
             }
             match ret {
-                DivansOutputResult::Failure => {
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid input"))
+                DivansOutputResult::Failure(m) => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, m))
                 }
                 DivansOutputResult::NeedsMoreOutput => {},
                 DivansOutputResult::Success => {
@@ -231,7 +236,8 @@ impl Processor for DivansConstructedDecompressor {
    fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult{
        let mut input_offset = 0usize;
        match self.decode(&[], &mut input_offset, output, output_offset) {
-           DivansResult::NeedsMoreInput | DivansResult::Failure => DivansOutputResult::Failure,
+           DivansResult::NeedsMoreInput => DivansOutputResult::Failure(ErrMsg::UnexpectedEof),
+           DivansResult::Failure(m) => DivansOutputResult::Failure(m),
            DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
            DivansResult::Success => DivansOutputResult::Success,
        }

@@ -1,10 +1,9 @@
 use core;
 use alloc::Allocator;
-use interface::DivansResult;
+use interface::{DivansResult, ErrMsg};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
-    Fail,
     round_up_mod_4,
 };
 use ::interface::{
@@ -68,7 +67,7 @@ impl CopyState {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
         let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
         if dlen ==0 {
-            return Fail(); // not allowed to copy from 0 distance
+            return DivansResult::Failure(ErrMsg::Distance0NotAllowed); // not allowed to copy from 0 distance
         }
         loop {
             match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
@@ -179,7 +178,7 @@ impl CopyState {
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         if !ok {
-                            return DivansResult::Failure;
+                            return DivansResult::Failure(ErrMsg::CopyDistanceMnemonicCodeBad(dist as u8, (dist >> 8) as u8));
                         }
                         self.state = CopySubstate::FullyDecoded;
                     }

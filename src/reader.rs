@@ -1,14 +1,26 @@
 #![cfg(not(feature="no-stdlib"))]
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use alloc::HeapAlloc;
+use core;
+use std::error;
 use std::io;
 use std::io::{Read};
-use super::interface::{DivansResult, DivansOutputResult};
+use super::interface::{DivansResult, DivansOutputResult, ErrMsg};
 use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
-
+impl core::fmt::Display for ErrMsg {
+    fn fmt(&self, f:&mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> {
+        <Self as core::fmt::Debug>::fmt(self, f)
+    }
+}
+impl error::Error for ErrMsg {
+    fn description(&self) -> &str {
+        "Divans error"
+    }
+    fn cause(&self) -> Option<&error::Error> {None}
+}
 trait Processor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
    fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult;
@@ -79,7 +91,7 @@ impl<R:Read, P:Processor, BufferType:SliceWrapperMut<u8>> Read for GenReader<R,P
              }
            }
            match ret {
-             DivansResult::Failure => return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid Data")),
+             DivansResult::Failure(m) => return Err(io::Error::new(io::ErrorKind::InvalidData, m)),
              DivansResult::Success => {
                if self.input_eof && avail_in == 0 && self.has_flushed {
                  break;
@@ -256,7 +268,8 @@ impl Processor for DivansConstructedDecompressor {
    fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult{
        let mut input_offset = 0usize;
        match self.decode(&[], &mut input_offset, output, output_offset) {
-       DivansResult::NeedsMoreInput | DivansResult::Failure => DivansOutputResult::Failure,
+       DivansResult::NeedsMoreInput => DivansOutputResult::Failure(ErrMsg::UnexpectedEof),
+       DivansResult::Failure(m) => DivansOutputResult::Failure(m),
        DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
        DivansResult::Success => DivansOutputResult::Success,
        }

@@ -1,5 +1,5 @@
 use core;
-use interface::DivansResult;
+use interface::{DivansResult};
 use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
 use super::priors::LiteralNibblePriorType;
 use ::slice_util::AllocatedMemoryPrefix;
@@ -531,8 +531,8 @@ impl<AllocU8:Allocator<u8>,
                       DivansResult::NeedsMoreInput => {
                          continue;
                       }
-                      DivansResult::Failure => {
-                         return DivansResult::Failure;
+                      DivansResult::Failure(m) => {
+                         return DivansResult::Failure(m);
                       }
                       _ => {},
                     }

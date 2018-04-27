@@ -17,7 +17,7 @@ mod hash_match;
 use self::hash_match::HashMatch;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
-pub use interface::DivansResult;
+pub use interface::{DivansResult, DivansOutputResult};
 pub use super::interface::{PredictionModeContextMap, Command, Compressor, LiteralCommand, CopyCommand, DictCommand, FeatureFlagSliceType};
 pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     AllocU32:Allocator<u32>>{
@@ -78,11 +78,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         }
         if *output_offset < output.len() && self.ring_buffer_full() {
             match self.flush(output, output_offset, literal_context_map, prediction_mode_backing) {
-                DivansResult::NeedsMoreOutput => {
+                DivansOutputResult::NeedsMoreOutput => {
                   return DivansResult::NeedsMoreOutput;
                 }
-                DivansResult::Failure => {
-                    return DivansResult::Failure;
+                DivansOutputResult::Failure(m) => {
+                    return DivansResult::Failure(m);
                 },
                 _ => {
                     if *input_offset != input.len() {
@@ -103,10 +103,10 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
               output: &mut [Command<SliceReference<'a, u8>>],
               output_offset:&mut usize,
               literal_context_map: &'a mut[u8],
-              prediction_mode_backing:&'a mut[u8]) -> DivansResult {
+              prediction_mode_backing:&'a mut[u8]) -> DivansOutputResult {
 
         if *output_offset == output.len() {
-           return DivansResult::NeedsMoreOutput;
+           return DivansOutputResult::NeedsMoreOutput;
         }
         if !self.has_produced_header {
             self.has_produced_header = true;
@@ -126,7 +126,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                     });
             *output_offset += 1;
             if *output_offset == output.len() {
-                return DivansResult::NeedsMoreOutput;
+                return DivansOutputResult::NeedsMoreOutput;
             }
         }
         if self.ring_buffer_decode_index < self.ring_buffer_output_index {
@@ -149,7 +149,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
         }
         if self.ring_buffer_decode_index != self.ring_buffer_output_index {
            if *output_offset == output.len() {
-               return DivansResult::NeedsMoreOutput;
+               return DivansOutputResult::NeedsMoreOutput;
            }
            let max_copy = self.ring_buffer_decode_index as usize - self.ring_buffer_output_index as usize;
            output[*output_offset] = Command::Literal(
@@ -165,7 +165,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            self.ring_buffer_output_index = self.ring_buffer_decode_index;
            assert!(self.ring_buffer_output_index <= self.ring_buffer.slice().len() as u32);
         }
-        DivansResult::Success
+        DivansOutputResult::Success
     }
     pub fn free(&mut self, m32: &mut AllocU32) {
         self.hash_match.free(m32);

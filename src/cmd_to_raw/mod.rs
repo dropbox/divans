@@ -14,7 +14,7 @@
 
 use core;
 
-pub use interface::{DivansResult, DivansOutputResult};
+pub use interface::{DivansResult, DivansOutputResult, ErrMsg};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary,
                                       kBrotliDictionaryOffsetsByLength};
@@ -192,7 +192,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     fn parse_literal(&mut self, data:&[u8]) -> DivansOutputResult {
        let data_len = data.len(); 
         if data_len < self.input_sub_offset { // this means user passed us different data a second time
-           return DivansOutputResult::Failure;
+           return DivansOutputResult::Failure(ErrMsg::InputChangedAfterContinuation);
        }
        let remainder = data.split_at(self.input_sub_offset).1;
        let bytes_copied = self.copy_to_ring_buffer(remainder);
@@ -250,7 +250,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             copy.distance,
             num_bytes_to_copy) {
             Ok(copy_count) => copy_count,
-            Err(_) => return DivansOutputResult::Failure,
+            Err(_) => return DivansOutputResult::Failure(ErrMsg::DistanceGreaterRingBuffer),
         };
         self.input_sub_offset += copy_count as usize;
         // by taking the min of copy.distance and items to copy, we are nonoverlapping
@@ -276,7 +276,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             return DivansOutputResult::NeedsMoreOutput;
         }
         if dict_cmd.final_size != 0 && final_len as usize != dict_cmd.final_size as usize {
-            return DivansOutputResult::Failure;
+            return DivansOutputResult::Failure(ErrMsg::DictTransformDiffersFromExpectedSize);
         }
         if self.input_sub_offset != 0 {
             assert_eq!(self.input_sub_offset as i32, final_len);
@@ -317,7 +317,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                         },
                     }
                 }, // flush, and try again
-                DivansOutputResult::Failure => return res,
+                DivansOutputResult::Failure(_) => return res,
             }
         }
         let prev_output_offset = *output_offset;
@@ -346,7 +346,7 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
        if *output_offset == output.len() {
           return DivansResult::NeedsMoreOutput;
        }
-       DivansResult::Failure
+       DivansResult::Failure(ErrMsg::MinLogicError)
     }
     fn encode_commands<SliceType:SliceWrapper<u8>>(&mut self,
                   input:&[Command<SliceType>],
@@ -354,7 +354,7 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
                   output :&mut[u8],
                   output_offset: &mut usize) -> DivansOutputResult {
         if *input_offset > input.len() {
-            return DivansOutputResult::Failure;
+            return DivansOutputResult::Failure(ErrMsg::InputOffsetOutOfBounds);
         }
         for cmd in input.split_at(*input_offset).1.iter() {
             loop {
@@ -370,7 +370,7 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
                         break;
                     }, // move on to the next command
                     DivansOutputResult::NeedsMoreOutput => continue, // flush, and try again
-                    DivansOutputResult::Failure => return res,
+                    DivansOutputResult::Failure(_) => return res,
                  }
             }
             *input_offset += 1;
