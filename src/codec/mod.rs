@@ -109,7 +109,6 @@ enum EncodeOrDecodeState {
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
     CoderBufferDrain,
-    UpdateCodecTrait,
     WriteChecksum(u8),
 }
 
@@ -524,7 +523,6 @@ impl<AllocU8: Allocator<u8>,
                                                          ctraits: &'static CTraits,
                                                          is_end: bool) -> CodecTraitResult {
         loop {
-            let mut new_state: Option<EncodeOrDecodeState> = None;
             match self.state {
                 EncodeOrDecodeState::EncodedShutdownNode
                     | EncodeOrDecodeState::ShutdownCoder
@@ -574,9 +572,9 @@ impl<AllocU8: Allocator<u8>,
                     }
                     *input_bytes_offset += to_check;
                     if bytes_needed != to_check {
-                        new_state = Some(EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8));
+                        self.state = EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8);
                     } else {
-                        new_state = Some(EncodeOrDecodeState::DivansSuccess);
+                        self.state = EncodeOrDecodeState::DivansSuccess;
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => {
@@ -623,7 +621,11 @@ impl<AllocU8: Allocator<u8>,
                                                                   input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
-                         BrotliResult::ResultSuccess => new_state = Some(EncodeOrDecodeState::UpdateCodecTrait),
+                         BrotliResult::ResultSuccess => {
+                             self.state = EncodeOrDecodeState::Begin;
+                             return CodecTraitResult::UpdateCodecTraitAndAdvance(
+                                 construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
+                         },
                          // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
                     }
@@ -646,10 +648,13 @@ impl<AllocU8: Allocator<u8>,
                                 _ => panic!("illegal output state"),
                             });
                             if (old_stride <= 1) != (self.cross_command_state.bk.stride <= 1) {
-                                new_state = Some(EncodeOrDecodeState::UpdateCodecTrait);
+                                self.state = EncodeOrDecodeState::Begin;
+                                return CodecTraitResult::UpdateCodecTraitAndAdvance(
+                                    construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
                                 // we need to chage to update codec trait
                             } else {
-                                new_state = Some(EncodeOrDecodeState::Begin);
+                                self.state = EncodeOrDecodeState::Begin;
+                                return CodecTraitResult::Res(OneCommandReturn::Advance);
                             }
                         },
                         retval => {
@@ -674,7 +679,8 @@ impl<AllocU8: Allocator<u8>,
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
                             });
-                            new_state = Some(EncodeOrDecodeState::Begin);
+                            self.state = EncodeOrDecodeState::Begin;
+                            return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -699,7 +705,8 @@ impl<AllocU8: Allocator<u8>,
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
                                 _ => panic!("illegal output state"),
                             });
-                            new_state = Some(EncodeOrDecodeState::Begin);
+                            self.state = EncodeOrDecodeState::Begin;
+                            return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -725,7 +732,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
                                 &mut self.state_copy.cc,
                                 CopyCommand{distance:1, num_bytes:0}));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -748,7 +755,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -770,7 +777,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state_populate_ring_buffer = Command::Dict(
                                 core::mem::replace(&mut self.state_dict.dc,
                                                    DictCommand::nop()));
-                            new_state = Some(EncodeOrDecodeState::PopulateRingBuffer);
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -792,7 +799,6 @@ impl<AllocU8: Allocator<u8>,
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(BrotliResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
-                            new_state = None;
                         },
                         BrotliResult::ResultFailure => {
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
@@ -812,7 +818,7 @@ impl<AllocU8: Allocator<u8>,
                                 | (u64::from(last_8[5])<<0x28)
                                 | (u64::from(last_8[6])<<0x30)
                                 | (u64::from(last_8[7])<<0x38);
-                            new_state = Some(EncodeOrDecodeState::Begin);
+                            self.state = EncodeOrDecodeState::Begin;
                             match &mut self.state_populate_ring_buffer {
                                 &mut Command::Literal(ref mut l) => {
                                     let mfd = core::mem::replace(
@@ -829,26 +835,10 @@ impl<AllocU8: Allocator<u8>,
                                 &mut Command::BlockSwitchDistance(_) |
                                 &mut Command::PredictionMode(_) => {},
                             }
+                            return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                     }
                 },
-                EncodeOrDecodeState::UpdateCodecTrait => {
-                    new_state = Some(EncodeOrDecodeState::UpdateCodecTrait);
-                },
-            }
-            if let Some(ns) = new_state {
-                match ns {
-                    EncodeOrDecodeState::UpdateCodecTrait => {
-                        self.state = EncodeOrDecodeState::Begin;
-                        return CodecTraitResult::UpdateCodecTraitAndAdvance(
-                            construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
-                    },
-                    EncodeOrDecodeState::Begin => {
-                        self.state = EncodeOrDecodeState::Begin;
-                        return CodecTraitResult::Res(OneCommandReturn::Advance);
-                    },
-                    _ => self.state = ns,
-                }
             }
         }
     }
