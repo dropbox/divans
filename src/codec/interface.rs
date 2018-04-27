@@ -440,7 +440,7 @@ impl<Cdf16:CDF16,
         15
     }
     #[inline(always)]
-    pub fn get_distance_from_mnemonic_code(&self, code:u8) -> u32 {
+    pub fn get_distance_from_mnemonic_code(&self, code:u8) -> (u32, bool) {
         /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
             0 => self.distance_lru[0],
             1 => self.distance_lru[1],
@@ -461,17 +461,19 @@ impl<Cdf16:CDF16,
             _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
         }*/
         if code < 4 {
-            return self.distance_lru[code as usize]; // less than four is a fetch
+            return (self.distance_lru[code as usize], true); // less than four is a fetch
         }
         let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
         // the value depending on if its an even or odd code
         // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
         let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
-        ((self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand) as u32
+        let ret = (self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand;
+        (ret as u32, ret > 0)
     }
     pub fn distance_mnemonic_code(&self, d: u32) -> u8 {
         for i in 0..15 {
-            if self.get_distance_from_mnemonic_code(i as u8) == d {
+            let (item, ok) = self.get_distance_from_mnemonic_code(i as u8);
+            if item == d && ok {
                 return i as u8;
             }
         }
@@ -504,11 +506,17 @@ impl<Cdf16:CDF16,
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
-    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) {
+    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> BrotliResult {
        self.next_state();
+       match new_mode.0 {
+           LITERAL_PREDICTION_MODE_SIGN | LITERAL_PREDICTION_MODE_UTF8 | LITERAL_PREDICTION_MODE_MSB6 | LITERAL_PREDICTION_MODE_LSB6 => {
+           },
+           _ => return BrotliResult::ResultFailure,
+       }
        self.literal_prediction_mode = new_mode;
        self.literal_lut0 = get_lut0(new_mode);
        self.literal_lut1 = get_lut1(new_mode);
+       BrotliResult::ResultSuccess
     }
     pub fn obs_dict_state(&mut self) {
         self.next_state();

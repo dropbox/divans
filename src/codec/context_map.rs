@@ -133,7 +133,10 @@ impl PredictionModeState {
                       Err(_) => return BrotliResult::ResultFailure,
                       Ok(pred_mode) => pred_mode,
                    };
-                   superstate.bk.obs_pred_mode(pred_mode);
+                   match superstate.bk.obs_pred_mode(pred_mode) {
+                       BrotliResult::ResultFailure => return BrotliResult::ResultFailure,
+                       _ => {},
+                   }
                    *self = PredictionModeState::DynamicContextMixing;
                },
                PredictionModeState::DynamicContextMixing => {

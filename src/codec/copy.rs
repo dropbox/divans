@@ -174,9 +174,13 @@ impl CopyState {
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
+                        let (dist, ok) = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
+                        self.cc.distance = dist;
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
+                        if !ok {
+                            return BrotliResult::ResultFailure;
+                        }
                         self.state = CopySubstate::FullyDecoded;
                     }
                 },

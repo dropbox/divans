@@ -147,6 +147,9 @@ impl DictState {
                     let dict = &kBrotliDictionary;
                     let word = &dict[(self.dc.word_id as usize)..(self.dc.word_id as usize + self.dc.word_size as usize)];
                     let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
+                    if self.dc.transform >= 121 {
+                        return BrotliResult::ResultFailure;
+                    }
                     let final_len = TransformDictionaryWord(&mut transformed_word[..],
                                                             &word[..],
                                                             i32::from(self.dc.word_size),
