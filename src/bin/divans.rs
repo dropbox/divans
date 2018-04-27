@@ -104,13 +104,13 @@ fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
     Ok(output)
 }
 #[derive(Copy,Clone,Debug)]
-struct ErrorErrMsg(pub divans::ErrMsg);
-impl core::fmt::Display for ErrorErrMsg {
+struct DivansErrMsg(pub divans::ErrMsg);
+impl core::fmt::Display for DivansErrMsg {
     fn fmt(&self, f:&mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> {
         <divans::ErrMsg as core::fmt::Debug>::fmt(&self.0, f)
     }
 }
-impl error::Error for ErrorErrMsg {
+impl error::Error for DivansErrMsg {
     fn description(&self) -> &str {
         "Divans error"
     }
@@ -526,7 +526,7 @@ fn recode_cmd_buffer<RState:divans::interface::Compressor,
 //            }
             DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               ErrorErrMsg(m)));
+                               DivansErrMsg(m)));
             }
         }
     }
@@ -612,7 +612,7 @@ fn recode_inner<Reader:std::io::BufRead,
             }
             DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               ErrorErrMsg(m)));
+                               DivansErrMsg(m)));
             }
         }
     }
@@ -716,7 +716,7 @@ fn compress_inner<Reader:std::io::BufRead,
             }
             DivansOutputResult::Failure(m) => {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                               ErrorErrMsg(m)));
+                               DivansErrMsg(m)));
             }
         }
     }
@@ -766,7 +766,7 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                     m8.free_cell(ibuffer);
                     m8.free_cell(obuffer);
                     return Err(io::Error::new(io::ErrorKind::Other,
-                               ErrorErrMsg(m)));
+                               DivansErrMsg(m)));
                 },
                 DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {},
             }
@@ -798,7 +798,7 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::Other,
-                                          ErrorErrMsg(m)));
+                                          DivansErrMsg(m)));
             },
             DivansOutputResult::NeedsMoreOutput => {
             }
@@ -976,7 +976,7 @@ fn decompress<Reader:std::io::Read,
                 m8.free_cell(ibuffer);
                 m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                          ErrorErrMsg(m)));
+                                          DivansErrMsg(m)));
             },
             DivansResult::NeedsMoreOutput => {
                 let mut output_written = 0;
