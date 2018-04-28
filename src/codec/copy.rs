@@ -84,13 +84,13 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = ((superstate.bk.last_4_states as usize >> 4) & 3) + 4 * core::cmp::min(superstate.bk.last_llen as usize - 1, 3);
-                    let ctype = superstate.bk.get_command_block_type();
+                    let index = ((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
+                    let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
-                    nibble_prob.blend(shortcut_nib, Speed::MED);
+                    nibble_prob.blend(shortcut_nib, Speed::MUD);
 
                     if shortcut_nib == 15 {
                         self.state = CopySubstate::CountLengthFirst;
@@ -140,7 +140,7 @@ impl CopyState {
                         CopyCommandNibblePriorType::CountMantissaNib, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
-                    nibble_prob.blend(last_nib, if index > 1 {Speed::MED} else {Speed::SLOW});
+                    nibble_prob.blend(last_nib, Speed::SLOW);
 
                     if next_len_remaining == 0 {
                         self.cc.num_bytes = next_decoded_so_far;
@@ -235,17 +235,18 @@ impl CopyState {
                     self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15), 1 << (last_nib + 15));
                 },
                 CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
+                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let next_len_remaining = len_remaining - 4;
                     let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let index = if len_decoded == 0 { ((superstate.bk.last_dlen % 4) + 1) as usize } else { 0usize };
-                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
+                    let index = if len_decoded == 0 { ((superstate.bk.last_dlen & 3) + 1) as usize } else { 0usize };
+                    let four_if_0_or_1_64_if_2_3_or_4 = 0x4 << ((index & 6) << ((index & 2)>>1));
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
-                    nibble_prob.blend(last_nib, if index > 1 {Speed::FAST} else {Speed::GLACIAL});
+                    nibble_prob.blend(last_nib, Speed::new(four_if_0_or_1_64_if_2_3_or_4, 0x4000));
 
                     if next_len_remaining == 0 {
                         //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
