@@ -234,30 +234,41 @@ impl CopyState {
                     superstate.bk.last_dlen = (last_nib + 15) + 1;
                     self.state = CopySubstate::DistanceMantissaNibbles(0, round_up_mod_4(last_nib + 15), 1 << (last_nib + 15));
                 },
-                CopySubstate::DistanceMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
-                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
-                    let next_len_remaining = len_remaining - 4;
-                    let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
-                    // debug_assert!(last_nib_as_u32 < 16); only for encoding
-                    let mut last_nib = last_nib_as_u32 as u8;
-                    let index = if len_decoded == 0 { ((superstate.bk.last_dlen & 3) + 1) as usize } else { 0usize };
-                    let four_if_0_or_1_64_if_2_3_or_4 = 0x4 << ((index & 6) << ((index & 2)>>1));
-                    let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
-                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
-                    let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
-                    nibble_prob.blend(last_nib, Speed::new(four_if_0_or_1_64_if_2_3_or_4, 0x4000));
-
-                    if next_len_remaining == 0 {
-                        //println_stderr!("C:{}:D:{}", self.cc.num_bytes, next_decoded_so_far);
-                        self.cc.distance = next_decoded_so_far;
-                        self.state = CopySubstate::FullyDecoded;
-                    } else {
-                        self.state  = CopySubstate::DistanceMantissaNibbles(
-                            len_decoded + 4,
-                            next_len_remaining,
-                            next_decoded_so_far);
+                CopySubstate::DistanceMantissaNibbles(mut len_decoded, start_len_remaining, mut decoded_so_far) => {
+                    for next_len_remaining_sr2 in (0..((start_len_remaining as usize + 3) >> 2)).rev() {
+                        let next_len_remaining = (next_len_remaining_sr2 as u8) << 2;
+                        let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
+                        let last_nib_as_u32 = (in_cmd.distance ^ decoded_so_far) >> next_len_remaining;
+                        let mut last_nib = last_nib_as_u32 as u8;
+                        let index = if len_decoded == 0 { ((superstate.bk.last_dlen & 3) + 1) as usize } else { 0usize };
+                        let four_if_0_or_1_64_if_2_3_or_4 = 0x4 << ((index & 6) << ((index & 2)>>1));
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
+                        superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, BillingDesignation::CopyCommand(
+                            CopySubstate::DistanceMantissaNibbles(0, 0, 0)));
+                        let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
+                        nibble_prob.blend(last_nib, Speed::new(four_if_0_or_1_64_if_2_3_or_4, 0x4000));
+                        match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+                            DivansResult::Success => {},
+                            need_something => {
+                                if next_len_remaining == 0 {
+                                    self.cc.distance = next_decoded_so_far;
+                                    self.state = CopySubstate::FullyDecoded;
+                                } else {
+                                    self.state  = CopySubstate::DistanceMantissaNibbles(
+                                        len_decoded + 4,
+                                        next_len_remaining,
+                                        next_decoded_so_far);
+                                }
+                                return need_something;
+                            },
+                        }
+                        len_decoded += 4;
+                        decoded_so_far = next_decoded_so_far;
                     }
+                    self.cc.distance = decoded_so_far;
+                    self.state = CopySubstate::FullyDecoded;
+                    return DivansResult::Success;
                 },
                 CopySubstate::FullyDecoded => {
                     return DivansResult::Success;
