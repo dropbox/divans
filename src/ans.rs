@@ -331,6 +331,9 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             
     fn flush_chunk(&mut self) {
         let mut len = self.start_freq.bytes().len();
+        if len == 0 {
+            return;
+        }
         assert_eq!(len & 3, 0);
         len >>= 2;
         assert!(len <= NUM_SYMBOLS_BEFORE_FLUSH as usize);
