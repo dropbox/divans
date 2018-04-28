@@ -157,40 +157,36 @@ impl<AllocU8:Allocator<u8>,
                                    AllocCDF2,
                                    AllocCDF16>,
                          lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, bool) {
+        /*
         let mut mixing_mask_index = byte_context.actual_context as usize;
         if !HTraits::IS_HIGH {
             mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
             mixing_mask_index |= 4096;
         } else {
             mixing_mask_index |= ((byte_context.prev_byte as usize) >> 4) << 8;
-        }
-        let mm_opts = bk.mixing_mask[mixing_mask_index];
-        let is_mm = (mm_opts != 0) as usize; 
-        let mm = -(is_mm as isize) as u8;
-        let opt_3_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
-        let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
+        }*/
         //let stride_offset = (-((mm_opts >= 4) as isize) as usize) & core::cmp::min(7, mm_opts as usize ^ 4);
         let index_c: usize;
         let index_d: usize;
         
-        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as u8 & 0xff;
+        let stride_selected_byte = byte_context.stride_bytes >> 0x38;
         if HTraits::IS_HIGH {
-            index_c = (stride_selected_byte & mm & (!opt_3_f_mask)) as usize;
+            index_c = 0;
             index_d = byte_context.actual_context as usize;
         } else {
-            index_c = ((mm & stride_selected_byte) | (!mm & byte_context.actual_context)) as usize;
-            index_d = (cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4)) as usize;
+            index_c = byte_context.actual_context as usize;
+            index_d = cur_byte_prior as usize;
         };
         let nibble_prob = if HTraits::IS_HIGH {
             lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
-                                          index_c,
+                                         (0,
+                                          0,
                                           index_d))
         } else {
             lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                             (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
-                                              index_c,
-                                              index_d))
+                                             (0,
+                                              index_d,
+                                              index_c))
         };
         if CTraits::MIXING_PRIORS {
             let cm_prob = if HTraits::IS_HIGH {
@@ -222,7 +218,7 @@ impl<AllocU8:Allocator<u8>,
         //if mm_opts != 2 {
         //nibble_prob.blend(cur_nibble, spd);
         //}
-        (cur_nibble, nibble_prob, mm_opts != 2)
+        (cur_nibble, nibble_prob, true)
     }
     fn code_nibble_array<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                          Specialization:EncoderOrDecoderSpecialization,
