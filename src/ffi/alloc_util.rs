@@ -187,7 +187,7 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
         if bv.slice().len() != 0 {
             if let Some(_) = self.alloc.alloc_func {
                 if let Some(free_fn) = self.alloc.free_func {
-                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>((&mut bv.slice_mut()[0])))};
+                    unsafe {free_fn(self.alloc.opaque, core::mem::transmute::<*mut Ty, *mut c_void>(&mut bv.slice_mut()[0]))};
                 }
                 core::mem::replace(&mut bv, MemoryBlock::<Ty>::default());
             } else {

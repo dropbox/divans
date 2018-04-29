@@ -113,6 +113,14 @@ impl<SelectedCDF:CDF16,
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8().get_base_alloc()
     }
+    #[cfg(feature="no-stdlib")]
+    fn do_panic(_m:ErrMsg) {
+        panic!("Internal Error With Compression Stage")
+    }
+    #[cfg(not(feature="no-stdlib"))]
+    fn do_panic(m:ErrMsg) {
+        panic!(m)
+    }
     fn divans_encode_commands<SliceType:SliceWrapper<u8>+Default>(cmd:&[brotli::interface::Command<SliceType>],
                                                           header_progress: &mut usize,
                                                           data:&mut ResizableByteBuffer<u8, AllocU8>,
@@ -150,7 +158,7 @@ impl<SelectedCDF:CDF16,
                     data.commit_next_buffer(output_offset);
                     return;
                 },
-                DivansResult::Failure(m) => panic!(m),
+                DivansResult::Failure(m) => Self::do_panic(m),
                 DivansResult::NeedsMoreOutput => {
                     data.commit_next_buffer(output_offset);
                 }
