@@ -138,7 +138,7 @@ impl<AllocU8:Allocator<u8>,
         }
         cur_nibble
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     fn code_nibble<'a, ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Cdf16:CDF16,
                        AllocCDF16:Allocator<Cdf16>,
@@ -224,6 +224,7 @@ impl<AllocU8:Allocator<u8>,
         //}
         (cur_nibble, nibble_prob, mm_opts != 2)
     }
+    //(do not do inline here; doing so causes a sizable perf regression on 1.27.0 nightly 2018-04-18)
     fn code_nibble_array<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                          Specialization:EncoderOrDecoderSpecialization,
                          Cdf16:CDF16,

@@ -139,10 +139,6 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
         Command::PredictionMode(_) => 0x7,
     }
 }
-#[cfg(feature="bitcmdselect")]
-fn use_legacy_bitwise_command_type_code() -> bool {
-    true
-}
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,

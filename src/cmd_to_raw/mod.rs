@@ -71,7 +71,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     }
     // this copies as much data as possible from the RingBuffer
     // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn flush(&mut self, output :&mut[u8], output_offset: &mut usize) -> DivansOutputResult {
         if self.ring_buffer_decode_index < self.ring_buffer_output_index { // we wrap around
             let bytes_until_wrap = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
@@ -308,7 +308,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
               | Command::BlockSwitchLiteral(_) => DivansOutputResult::Success,
         }
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
                   cmd:&Command<SliceType>,
                   output :&mut[u8],

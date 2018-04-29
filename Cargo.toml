@@ -30,22 +30,43 @@ vergen = "0.1"
 "brotli" = { version = "~2, > 2.0.0"}
 
 [features]
+# avoid inlining some key functions (for profiling). Significant perf hit
+no-inline=[]
+
+
+# use 65536-sized table to do 16 bit integer divides: similar speed, but strains memory subsystem
 avoid-divide=[]
+
+# do not compile any unsafe code (this disables C-FFI)
 safe=[]
-default= []#["simd"]
+
+#use dynamic CDF blending depending on samples
 findspeed = []
+
+# use avx2-specific instructions
 avx2=[]
+
+# print breakdown of which parts of the file cost
 billing = []
+
+# use divisionless CDF: averages with other CDFs rather than counting samples like FrequentistCDF
 blend = []
+
+# print trace of probability
 debug_entropy = []
-bitcmdselect = []
-float64 = []
-block_switch = []
+
 simd = []
-seccomp = ["brotli/seccomp"]
+
 no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
+
+# bind to rust with nostdlib
 no-stdlib-rust-binding = []
+
+# turn on benchmark tests and --bench commands (requires nigtly)
 benchmark = ["brotli/benchmark"]
+
+
+# allow specification of a external probability array, to test new prediction schemes
 external-literal-probability = ["brotli/external-literal-probability"]
 
 uncached_frequentist = []
