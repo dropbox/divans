@@ -106,7 +106,7 @@ fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
 #[derive(Copy,Clone,Debug)]
 struct DivansErrMsg(pub divans::ErrMsg);
 impl core::fmt::Display for DivansErrMsg {
-    fn fmt(&self, f:&mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> {
+    fn fmt(&self, f:&mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         <divans::ErrMsg as core::fmt::Debug>::fmt(&self.0, f)
     }
 }

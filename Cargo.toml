@@ -30,21 +30,24 @@ vergen = "0.1"
 "brotli" = { version = "~2, > 2.0.0"}
 
 [features]
+
+# allow use of SIMD to update probability and compute crc32c
+simd = []
+
+# use avx2-specific instructions
+avx2=[]
+
 # avoid inlining some key functions (for profiling). Significant perf hit
 no-inline=[]
-
-
-# use 65536-sized table to do 16 bit integer divides: similar speed, but strains memory subsystem
-avoid-divide=[]
 
 # do not compile any unsafe code (this disables C-FFI)
 safe=[]
 
+# use 65536-sized table to do 16 bit integer divides: similar speed, but strains memory subsystem
+avoid-divide=[]
+
 #use dynamic CDF blending depending on samples
 findspeed = []
-
-# use avx2-specific instructions
-avx2=[]
 
 # print breakdown of which parts of the file cost
 billing = []
@@ -55,7 +58,8 @@ blend = []
 # print trace of probability
 debug_entropy = []
 
-simd = []
+# only use portable SIMD instructions for probability updates
+portable-simd = []
 
 no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
 

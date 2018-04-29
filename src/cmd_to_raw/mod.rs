@@ -300,12 +300,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             return self.parse_copy(copy);
         }
         match cmd {
-              Command::Copy(_) | Command::Literal(_) => panic!("Already processed: here to track full set of states"),
-              Command::Dict(ref dict) => self.parse_dictionary(dict),
-              Command::PredictionMode(_)
-              | Command::BlockSwitchCommand(_)
-              | Command::BlockSwitchDistance(_)
-              | Command::BlockSwitchLiteral(_) => DivansOutputResult::Success,
+              &Command::Copy(_) | &Command::Literal(_) => panic!("Already processed: here to track full set of states"),
+              &Command::Dict(ref dict) => self.parse_dictionary(dict),
+              &Command::PredictionMode(_)
+              | &Command::BlockSwitchCommand(_)
+              | &Command::BlockSwitchDistance(_)
+              | &Command::BlockSwitchLiteral(_) => DivansOutputResult::Success,
         }
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]

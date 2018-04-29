@@ -11,7 +11,7 @@ use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
 impl core::fmt::Display for ErrMsg {
-    fn fmt(&self, f:&mut core::fmt::Formatter<'_>) -> core::result::Result<(), core::fmt::Error> {
+    fn fmt(&self, f:&mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
