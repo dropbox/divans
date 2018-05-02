@@ -25,7 +25,7 @@ pub struct RawToCmdState<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>,
     ring_buffer_decode_index: u32,
     ring_buffer_output_index: u32,
     hash_match: HashMatch<AllocU32>,
-    has_produced_header: bool,
+    pub has_produced_header: bool,
 }
 
 impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>> RawToCmdState<RingBuffer, AllocU32> {
@@ -35,8 +35,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
             ring_buffer_decode_index: 0,
             ring_buffer_output_index: 0,
             hash_match:HashMatch::<AllocU32>::new(m32),
-            has_produced_header: false,
+            has_produced_header: false, // only produce header if no ir_translation
         }
+    }
+    pub fn raw_input_ir_mode(&mut self) {
+        self.has_produced_header = true; // do not wish an additional prediction mode command at the end
     }
     /*
     fn freeze_dry<SliceType:SliceWrapper<u8>+Default>(&mut self, input:&[Command<SliceType>]) {

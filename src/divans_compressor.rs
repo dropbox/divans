@@ -344,6 +344,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                           input_offset : &mut usize,
                                           output :&mut[u8],
                                           output_offset: &mut usize) -> DivansOutputResult{
+        self.cmd_assembler.raw_input_ir_mode();
         if self.header_progress != interface::HEADER_LENGTH {
             match write_header(&mut self.header_progress, self.window_size, output, output_offset,
                                self.codec.get_crc()) {

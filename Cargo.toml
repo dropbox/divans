@@ -27,7 +27,7 @@ vergen = "0.1"
 
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
-"brotli" = { version = "~2, > 2.0.0"}
+"brotli" = { version = "~2.1"}
 
 [features]
 
