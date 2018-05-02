@@ -849,9 +849,12 @@ fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
                                        w:&mut Writer,
                                        opts: divans::DivansCompressorOptions,
-                                       buffer_size: usize,
+                                       mut buffer_size: usize,
                                        use_brotli: bool) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
+    if buffer_size == 0 {
+        buffer_size = 4096;
+    }
     let ibuffer = m8.alloc_cell(buffer_size);
     let obuffer = m8.alloc_cell(buffer_size);
     if use_brotli {
@@ -948,9 +951,12 @@ fn zero_slice(sl: &mut [u8]) -> usize {
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (r:&mut Reader,
                                       w:&mut Writer,
-                                      buffer_size: usize,
+                                      mut buffer_size: usize,
                                       skip_crc: bool) -> io::Result<()> {
     let mut m8 = ItemVecAllocator::<u8>::default();
+    if buffer_size == 0 {
+        buffer_size = 4096;
+    }
     let mut ibuffer = m8.alloc_cell(buffer_size);
     let mut obuffer = m8.alloc_cell(buffer_size);
     let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,

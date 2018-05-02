@@ -318,7 +318,14 @@ impl<SelectedCDF:CDF16,
              output: &mut [u8],
              output_offset: &mut usize) -> DivansOutputResult {
         let mut zero = 0usize;
+        if self.header_progress != interface::HEADER_LENGTH {
+            match write_header(&mut self.header_progress, self.window_size, output, output_offset, self.codec.get_crc()) {
+                DivansOutputResult::Success => {},
+                need => return need,
+            }
+        }
         loop {
+
             match self.internal_encode_stream(BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
                                               &[],
                                               &mut zero,

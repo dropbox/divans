@@ -132,11 +132,13 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         use_brotli).unwrap();
     super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
-    let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
-    if !(actual_ratio <= ratio) {
-        println!("Failed: actual buffer length {} dv_buffer size: {}", in_buffer.data.len(), dv_buffer.data.len());
+    if ratio != 0.0 {
+        let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
+        if !(actual_ratio <= ratio) {
+            println!("Failed: actual buffer length {} dv_buffer size: {}", in_buffer.data.len(), dv_buffer.data.len());
+        }
+        assert!(actual_ratio <= ratio);
     }
-    assert!(actual_ratio <= ratio);
 }
 
 #[test]
@@ -151,6 +153,69 @@ fn test_e2e_ones_tinybuf() {
                  247u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
                  ];
     e2e_no_ir(1, false, false, &data[..], 0.99);
+}
+#[test]
+fn test_e2e_empty_tinybuf() {
+    let data = [];
+    e2e_no_ir(1, false, false, &data[..], 0.0);
+}
+#[test]
+fn test_e2e_empty() {
+    let data = [];
+    e2e_no_ir(65536, false, false, &data[..], 0.0);
+}
+#[test]
+fn test_e2e_empty_br_tinybuf() {
+    let data = [];
+    e2e_no_ir(1, false, true, &data[..], 0.0);
+}
+#[test]
+fn test_e2e_empty_br() {
+    let data = [];
+    e2e_no_ir(65536, false, true, &data[..], 0.0);
+}
+#[test]
+fn test_e2e_empty_just_flush() {
+    use super::ItemVecAllocator;
+    use brotli;
+    use divans::{DivansCompressorFactory, Compressor};
+    use divans;
+    let m8 = ItemVecAllocator::<u8>::default();
+    let mut obuffer=  [0u8;64];
+    let opts = divans::DivansCompressorOptions::default();
+    let mut state =super::BrotliFactory::new(
+        m8,
+        ItemVecAllocator::<u32>::default(),
+        ItemVecAllocator::<divans::CDF2>::default(),
+        ItemVecAllocator::<divans::DefaultCDF16>::default(),
+        opts,
+        (ItemVecAllocator::<u8>::default(),
+         ItemVecAllocator::<u16>::default(),
+         ItemVecAllocator::<i32>::default(),
+         ItemVecAllocator::<brotli::enc::command::Command>::default(),
+         ItemVecAllocator::<u64>::default(),
+         ItemVecAllocator::<brotli::enc::util::floatX>::default(),
+         ItemVecAllocator::<brotli::enc::vectorization::Mem256f>::default(),
+         ItemVecAllocator::<brotli::enc::histogram::HistogramLiteral>::default(),
+         ItemVecAllocator::<brotli::enc::histogram::HistogramCommand>::default(),
+         ItemVecAllocator::<brotli::enc::histogram::HistogramDistance>::default(),
+         ItemVecAllocator::<brotli::enc::cluster::HistogramPair>::default(),
+         ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
+         ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
+         ItemVecAllocator::<brotli::enc::ZopfliNode>::default(),
+        ), 
+    );
+    let mut olim = 0usize;
+    match state.flush(&mut obuffer[..],
+                      &mut olim) {
+        divans::DivansOutputResult::Success => {},
+        need => panic!(need),
+    }
+    let mut rt_buffer = UnlimitedBuffer::new(&[]);
+    let mut dv_buffer = UnlimitedBuffer::new(obuffer.split_at(olim).0);
+    super::decompress(&mut dv_buffer, &mut rt_buffer, 0, false).unwrap();
+    assert_eq!(rt_buffer.data, &[]);
+    state.free();
 }
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_slice = include_bytes!("../../testdata/alice29");
@@ -170,7 +235,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    opts.prior_bitmask_detection=1;
    opts.dynamic_context_mixing=Some(1);
    opts.use_context_map = true;
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();//Some(1), Some(0), Some(, true, StrideSelection::UseBrotliRec).unwrap();
+   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
@@ -211,6 +276,7 @@ fn test_e2e_32xx() {
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
 }
+
 
 #[test]
 fn test_e2e_262145_at() {
