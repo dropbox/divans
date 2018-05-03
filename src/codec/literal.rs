@@ -157,51 +157,53 @@ impl<AllocU8:Allocator<u8>,
                                    AllocCDF2,
                                    AllocCDF16>,
                          lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, bool) {
-        let mut mixing_mask_index = byte_context.actual_context as usize;
+
+        // The mixing_mask is a lookup table that determines which priors are most relevant
+        // for a particular actual_context. The table is also indexed by the
+        // upper half of the current nibble, or the upper half of the previous nibble
+        let mut mixing_mask_index = usize::from(byte_context.actual_context);
         if !HTraits::IS_HIGH {
-            mixing_mask_index |= (cur_byte_prior as usize & 0xf) << 8;
+            mixing_mask_index |= usize::from(cur_byte_prior & 0xf) << 8;
             mixing_mask_index |= 4096;
         } else {
-            mixing_mask_index |= ((byte_context.prev_byte as usize) >> 4) << 8;
+            mixing_mask_index |= (usize::from(byte_context.prev_byte) >> 4) << 8;
         }
         let mm_opts = bk.mixing_mask[mixing_mask_index];
-        let is_mm = (mm_opts != 0) as usize; 
-        let mm = -(is_mm as isize) as u8;
+
+        // if the mixing mask is not zero, the byte, stride distance prior, is a good prior
+        let mm = -((mm_opts != 0) as isize) as u8;
+        // mix 3 lets us examine just half of the previous byte in addition to the context
         let opt_3_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
-        let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4)};
-        //let stride_offset = (-((mm_opts >= 4) as isize) as usize) & core::cmp::min(7, mm_opts as usize ^ 4);
+
+        // Choose the stride b based on the mixing mask
+        let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4) << 3};
+        let index_b: usize;
         let index_c: usize;
-        let index_d: usize;
-        
-        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - (stride_offset << 3))) as u8 & 0xff;
-        if HTraits::IS_HIGH {
-            index_c = (stride_selected_byte & mm & (!opt_3_f_mask)) as usize;
-            index_d = byte_context.actual_context as usize;
-        } else {
-            index_c = ((mm & stride_selected_byte) | (!mm & byte_context.actual_context)) as usize;
-            index_d = (cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4)) as usize;
+        // pick the previous byte based on the chosen stride
+        let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - stride_offset)) as u8 & 0xff;
+        if HTraits::IS_HIGH { // high nibble must depend only on the previous bytes
+            index_b = usize::from(stride_selected_byte & mm & (!opt_3_f_mask));
+            index_c = usize::from(byte_context.actual_context);
+        } else { // low nibble can depend on the upper half of the current byte
+            index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context));
+            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4));
         };
-        let nibble_prob = if HTraits::IS_HIGH {
-            lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
-                                          index_c,
-                                          index_d))
-        } else {
-            lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                             (((mm >> 7) ^ (opt_3_f_mask >> 2)) as usize,
-                                              index_c,
-                                              index_d))
-        };
+
+        // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
+        let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+                                         (usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
+                                          index_b,
+                                          index_c));
         if CTraits::MIXING_PRIORS {
             let cm_prob = if HTraits::IS_HIGH {
                 bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
                                                 (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
-                                                 byte_context.actual_context as usize,))
+                                                 usize::from(byte_context.actual_context),))
             } else {
                 bk.lit_cm_priors.get(LiteralNibblePriorType::SecondNibble,
                                                 (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
-                                                 cur_byte_prior as usize,
-                                                 byte_context.actual_context as usize))
+                                                 usize::from(cur_byte_prior),
+                                                 usize::from(byte_context.actual_context)))
             };
             let prob = cm_prob.average(nibble_prob, bk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
             let weighted_prob_range = local_coder.get_or_put_nibble(&mut cur_nibble,
@@ -215,13 +217,12 @@ impl<AllocU8:Allocator<u8>,
             bk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
             cm_prob.blend(cur_nibble, bk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
         } else {
+            // actually code (or decode) the byte from the file
             local_coder.get_or_put_nibble(&mut cur_nibble,
                                                nibble_prob,
                                                BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
         }
-        //if mm_opts != 2 {
-        //nibble_prob.blend(cur_nibble, spd);
-        //}
+        
         (cur_nibble, nibble_prob, mm_opts != 2)
     }
     //(do not do inline here; doing so causes a sizable perf regression on 1.27.0 nightly 2018-04-18)
