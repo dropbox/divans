@@ -156,7 +156,8 @@ impl<AllocU8:Allocator<u8>,
                                    AllocU8,
                                    AllocCDF2,
                                    AllocCDF16>,
-                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>) -> (u8, &'a mut Cdf16, bool) {
+                         lit_priors:&'a mut LiteralCommandPriors<Cdf16, AllocCDF16>,
+			 immutable_prior: &'a mut Cdf16) -> (u8, &'a mut Cdf16, bool) {
 
         // The mixing_mask is a lookup table that determines which priors are most relevant
         // for a particular actual_context. The table is also indexed by the
@@ -188,12 +189,14 @@ impl<AllocU8:Allocator<u8>,
             index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context));
             index_c = usize::from(cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4));
         };
-
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
-        let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
+        let mut nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
                                          (usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
                                           index_b,
                                           index_c));
+        if mm_opts == 2 {
+	   nibble_prob = immutable_prior;
+	}
         if CTraits::MIXING_PRIORS {
             let cm_prob = if HTraits::IS_HIGH {
                 bk.lit_cm_priors.get(LiteralNibblePriorType::FirstNibble,
@@ -257,6 +260,7 @@ impl<AllocU8:Allocator<u8>,
       let start_byte_index = (start_nibble_index as usize) >> 1;
       let mut retval = DivansResult::Success;
       let mut first = true;
+      let mut immutable_prior = Cdf16::default();
       for (byte_offset, lc_target) in lc_data.slice_mut()[start_byte_index..bk.last_llen as usize].iter_mut().enumerate() {
            let mut byte_to_encode_val = specialization.get_literal_byte(in_cmd,
                                                                         start_byte_index.wrapping_add(byte_offset));
@@ -271,7 +275,7 @@ impl<AllocU8:Allocator<u8>,
                                                                            HighNibble{},
                                                                            local_coder,
                                                                            bk,
-                                                                           lit_priors);
+                                                                           lit_priors, &mut immutable_prior);
                let byte_pull_status = local_coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset);
                low_buffer_warning = (input_bytes.len() - *input_offset) < 16;
                h_nibble = cur_nibble;
@@ -302,6 +306,7 @@ impl<AllocU8:Allocator<u8>,
                                                               local_coder,
                                                               bk,
                                                               lit_low_priors,
+							      &mut immutable_prior,
                                                               );
            let cur_byte = l_nibble | (h_nibble << 4);
            bk.push_literal_byte(cur_byte);
