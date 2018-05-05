@@ -23,8 +23,8 @@ def summarize(show_results=True):
         print str(key) + ':' + str(temp), 'sav', str((total[key][0] + cut) * 100./ (cut + uncut)) + '%'
         ratio_vs_zlib[key] = [100 - 100. * float(total[key][0])/total['zlib'][0]]
         ratio_vs_raw[key] =  [100 - 100. * float(total[key][0])/total['~raw'][0]]
-        encode_avg[key] = [8 * total[key][3]/max(total[key][1], 1)]
-        decode_avg[key] = [8 * total[key][3]/max(total[key][2], 1)]
+        encode_avg[key] = [8 * total[key][3]/max(total[key][1], .00001)]
+        decode_avg[key] = [8 * total[key][3]/max(total[key][2], .00001)]
         if key in decode_hist:
             val = decode_hist[key]
             val.sort()
@@ -72,7 +72,7 @@ for line in sys.stdin:
             continue
         total[key][0] += value[0]
         decode_hist[key].append(value[2])
-        if mb_size >= 1:
+        if mb_size >= 1 or True:
             total[key][1] += value[1]
             total[key][2] += value[2]
             total[key][3] += mb_size

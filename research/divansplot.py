@@ -9,20 +9,31 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd0', 'd6', 'zlib', 'z19')
+    return label in ('b11', 'b9', 'd0', 'd4', 'zlib', 'z19')
+def label_reassign(key):
+    keymap = {
+        'b11': 'brotli-11',
+        'b9': 'brotli-9',
+        'd0': 'divans-11',
+        'd4': 'divans',
+        'z19': 'zstd',
+        }
+    if key in keymap:
+        return keymap[key]
+    return key
 colors = [[r for r in reversed(['#aaaaff','#8888cc','#4444aa','#000088',])],                        
            [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])]]                       
 ylabel = {
-    'savings_vs_zlib':'% saving over zlib',
-    'encode_speed': 'Encode Mbps',
-    'decode_speed': 'Decode Mbps',
-    'time_pct':'decode ms',
+    'savings_vs_zlib':'% saving vs zlib\n',
+    'encode_speed': 'Encode (Mbps)',
+    'decode_speed': 'Decode (Mbps)',
+    'time_pct':'Decode Time (ms)',
     }
 
 y_limits= {
-    'savings_vs_zlib':[.001, 15],
-    'encode_speed': [1,1000],
-    'decode_speed': [1,1000],
+    'savings_vs_zlib':[-.001, 28],
+    'encode_speed': [1,100],
+    'decode_speed': [10,2000],
 #    'time_pct':
     }
 do_log = set(['decode_speed', 'encode_speed'])
@@ -56,7 +67,7 @@ def build_figure(key, ax, data, last=False):
         if index == 0 and len(sub_items) != 1:
             ax.legend(axen, ['p99.99', 'p99', 'p75', 'p50'], ncol=2)
     ax.set_xticks(np.arange(len(labels)) + offset + bar_width * .5)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels([label_reassign(l) for l in labels])
     ax.set_ylabel(ylabel[key])
     if key in y_limits:                                                                             
         ax.set_ylim(y_limits[key][0], y_limits[key][1])         #
@@ -69,11 +80,11 @@ def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
     rcParams['ps.fonttype'] = 42
     rcParams['pgf.rcfonts'] = False
 
-    fig, [ax1, ax2, ax3, ax4] = plt.subplots(4, 1, sharex=True, figsize=(6, 6))
-    build_figure('time_pct', ax1, decode_pct, last=True)
-    build_figure('decode_speed', ax2, decode_avg)
-    build_figure('encode_speed', ax3, encode_avg)
-    build_figure('savings_vs_zlib', ax4, ratio_vs_zlib)
+    fig, [ax1, ax2, ax3] = plt.subplots(3, 1, sharex=True, figsize=(6, 6))
+    #build_figure('time_pct', ax1, decode_pct, last=True)
+    build_figure('decode_speed', ax1, decode_avg, last=True)
+    build_figure('encode_speed', ax2, encode_avg)
+    build_figure('savings_vs_zlib', ax3, ratio_vs_zlib)
     #fig.subplots_adjust(bottom=0.15, right=.99, top=0.99, hspace=0.03)
     plt.savefig('compression_comparison_ratio_speed_time.pdf')
     fig.clear()
