@@ -175,7 +175,8 @@ impl<AllocU8:Allocator<u8>,
         // mix 3 lets us examine just half of the previous byte in addition to the context
         let opt_3_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
 
-        // Choose the stride b based on the mixing mask
+        // Choose the stride b based on the mixing mask. The stride offset is 0, 8, 16, 24 or 56 bits
+        // this translates into actual strides of 1, 2, 3, 4 or 8 bytes
         let stride_offset = if mm_opts < 4 {0} else {core::cmp::min(7, mm_opts as usize ^ 4) << 3};
         let index_b: usize;
         let index_c: usize;
