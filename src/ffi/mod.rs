@@ -25,6 +25,8 @@ pub extern fn divans_new_compressor() -> *mut compressor::DivansCompressorState{
     }
 }
 
+
+
 #[cfg(feature="no-stdlib")]
 fn divans_new_compressor_without_custom_alloc(_to_box: DivansCompressorState) -> *mut DivansCompressorState{
     panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
@@ -104,6 +106,25 @@ pub unsafe extern fn divans_encode_flush(state_ptr: *mut DivansCompressorState,
         }
     }
 }
+
+#[no_mangle]
+pub unsafe extern fn divans_compressor_malloc_u8(state_ptr: *mut DivansCompressorState, size: usize) -> *mut u8 {
+    if let Some(alloc_fn) = (*state_ptr).custom_allocator.alloc_func {
+            return core::mem::transmute::<*mut c_void, *mut u8>(alloc_fn((*state_ptr).custom_allocator.opaque, size));
+    } else {
+        return alloc_util::alloc_stdlib(size);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_compressor_free_u8(state_ptr: *mut DivansCompressorState, data: *mut u8, size: usize) {
+    if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+        free_fn((*state_ptr).custom_allocator.opaque, core::mem::transmute::<*mut u8, *mut c_void>(data));
+    } else {
+        alloc_util::free_stdlib(data, size);
+    }
+}
+
 
 #[cfg(not(feature="no-stdlib"))]
 unsafe fn free_compressor_no_custom_alloc(state_ptr: *mut DivansCompressorState) {
@@ -218,6 +239,24 @@ unsafe fn free_decompressor_no_custom_alloc(_state_ptr: *mut DivansDecompressorS
     unreachable!();
 }
 
+
+#[no_mangle]
+pub unsafe extern fn divans_decompressor_malloc_u8(state_ptr: *mut DivansDecompressorState, size: usize) -> *mut u8 {
+    if let Some(alloc_fn) = (*state_ptr).custom_allocator.alloc_func {
+        return core::mem::transmute::<*mut c_void, *mut u8>(alloc_fn((*state_ptr).custom_allocator.opaque, size));
+    } else {
+        return alloc_util::alloc_stdlib(size);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_decompressor_free_u8(state_ptr: *mut DivansDecompressorState, data: *mut u8, size: usize) {
+    if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+        free_fn((*state_ptr).custom_allocator.opaque, core::mem::transmute::<*mut u8, *mut c_void>(data));
+    } else {
+        alloc_util::free_stdlib(data, size);
+    }
+}
 
 #[no_mangle]
 pub unsafe extern fn divans_free_decompressor(state_ptr: *mut DivansDecompressorState) {

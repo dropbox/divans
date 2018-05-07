@@ -11,6 +11,7 @@ documentation = "tbd"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
 build = "build.rs"
+autobins = false
 
 [lib]
 crate-type=["cdylib", "rlib", "staticlib"]
