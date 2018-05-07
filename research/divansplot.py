@@ -31,7 +31,7 @@ ylabel = {
     }
 
 y_limits= {
-    'savings_vs_zlib':[-.001, 28],
+    #'savings_vs_zlib':[-.001, 28],
     'encode_speed': [1,100],
     'decode_speed': [10,2000],
 #    'time_pct':
