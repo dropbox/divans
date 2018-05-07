@@ -126,6 +126,25 @@ pub unsafe extern fn divans_compressor_free_u8(state_ptr: *mut DivansCompressorS
 }
 
 
+#[no_mangle]
+pub unsafe extern fn divans_compressor_malloc_usize(state_ptr: *mut DivansCompressorState, size: usize) -> *mut usize {
+    if let Some(alloc_fn) = (*state_ptr).custom_allocator.alloc_func {
+        return core::mem::transmute::<*mut c_void, *mut usize>(alloc_fn((*state_ptr).custom_allocator.opaque,
+                                                                         size * core::mem::size_of::<usize>()));
+    } else {
+        return alloc_util::alloc_stdlib(size);
+    }
+}
+#[no_mangle]
+pub unsafe extern fn divans_compressor_free_usize(state_ptr: *mut DivansCompressorState, data: *mut usize, size: usize) {
+    if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+        free_fn((*state_ptr).custom_allocator.opaque, core::mem::transmute::<*mut usize, *mut c_void>(data));
+    } else {
+        alloc_util::free_stdlib(data, size);
+    }
+}
+
+
 #[cfg(not(feature="no-stdlib"))]
 unsafe fn free_compressor_no_custom_alloc(state_ptr: *mut DivansCompressorState) {
     let _state = alloc_util::Box::from_raw(state_ptr);
@@ -253,6 +272,24 @@ pub unsafe extern fn divans_decompressor_malloc_u8(state_ptr: *mut DivansDecompr
 pub unsafe extern fn divans_decompressor_free_u8(state_ptr: *mut DivansDecompressorState, data: *mut u8, size: usize) {
     if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
         free_fn((*state_ptr).custom_allocator.opaque, core::mem::transmute::<*mut u8, *mut c_void>(data));
+    } else {
+        alloc_util::free_stdlib(data, size);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern fn divans_decompressor_malloc_usize(state_ptr: *mut DivansDecompressorState, size: usize) -> *mut usize {
+    if let Some(alloc_fn) = (*state_ptr).custom_allocator.alloc_func {
+        return core::mem::transmute::<*mut c_void, *mut usize>(alloc_fn((*state_ptr).custom_allocator.opaque,
+                                                                         size * core::mem::size_of::<usize>()));
+    } else {
+        return alloc_util::alloc_stdlib(size);
+    }
+}
+#[no_mangle]
+pub unsafe extern fn divans_decompressor_free_usize(state_ptr: *mut DivansDecompressorState, data: *mut usize, size: usize) {
+    if let Some(free_fn) = (*state_ptr).custom_allocator.free_func {
+        free_fn((*state_ptr).custom_allocator.opaque, core::mem::transmute::<*mut usize, *mut c_void>(data));
     } else {
         alloc_util::free_stdlib(data, size);
     }
