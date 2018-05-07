@@ -28,26 +28,24 @@
          var state = divans.divans_new_compressor();
          var input_ptr = divans.divans_compressor_malloc_u8(state, 4096);
          var output_ptr = divans.divans_compressor_malloc_u8(state, 4096);
-         var input_offset_ptr = divans.divans_compressor_malloc_u8(state, 8);
-         var output_offset_ptr = divans.divans_compressor_malloc_u8(state, 8);
+         var input_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
+         var output_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
          var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
          var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
          var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
-         var output_offset_buf = new Uint32Array(divans.memory.buffer, output_offset_ptr, 1);
+
          for (var i= 0;i < 4096; i += 1) {
              input_buf[i] = (i * 2) & 255;
          }
-
-            console.log("WARNING" + output_offset_buf[0]);
-            
-
          var output_size = 0;
          var ret = 0;
          do {
             ret = divans.divans_encode(state, input_ptr, 4096, input_offset_ptr,
-                           output_buf, 4096, output_offset_ptr);
+                           output_ptr, 4096, output_offset_ptr);
+            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
             output_size += output_offset_buf[0];
             console.log(ret);
+            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
             if (output_offset_buf[0] !== 0) {
                  console.log(output_offset_buf[0]);
                  console.log(new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]));
@@ -56,7 +54,8 @@
          } while(ret != 0 && ret != 1);
          do {
             ret = divans.divans_encode_flush(state,
-                           output_buf, 4096, output_offset_ptr);
+                           output_ptr, 4096, output_offset_ptr);
+            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
             output_size += output_offset_buf[0];
             if (output_offset_buf[0] != 0) {
                  console.log(new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]));
@@ -66,8 +65,8 @@
          console.log("TOTAL SIZE " + output_size);
          divans.divans_compressor_free_u8(state, input_ptr, 4096);
          divans.divans_compressor_free_u8(state, output_ptr, 4096);
-         divans.divans_compressor_free_u8(state, input_offset_ptr, 8);
-         divans.divans_compressor_free_u8(state, output_offset_ptr, 8);
+         divans.divans_compressor_free_usize(state, input_offset_ptr, 1);
+         divans.divans_compressor_free_usize(state, output_offset_ptr, 1);
          divans.divans_free_compressor(state);
     })/*.catch((function(reason){
         console.error("wasm streaming compile failed: "+reason);
