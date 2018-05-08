@@ -1,3 +1,6 @@
+// this handles the lepton-format io muxer
+
+
 use core;
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 pub type StreamID = u8;
@@ -11,6 +14,12 @@ enum BytesToDeserialize {
     Header0(StreamID),
     Header1(StreamID, u8),
 }
+enum StreamState {
+    Running,
+    EofStart,
+    EofMid,
+    EofDone,
+}
 pub struct Mux<AllocU8:Allocator<u8> > {
    buf: [AllocU8::AllocatedMemory; NUM_STREAMS as usize],
    read_cursor: [usize; NUM_STREAMS as usize],
@@ -19,8 +28,8 @@ pub struct Mux<AllocU8:Allocator<u8> > {
    cur_stream:StreamID,
    last_flush:[usize; NUM_STREAMS as usize],
    bytes_flushed: usize,
-    bytes_to_deserialize:BytesToDeserialize,
-    eof: bool,
+   bytes_to_deserialize:BytesToDeserialize,
+   eof: StreamState,
 }
 
 fn chunk_size(last_flushed:usize, lagging_stream: bool) -> usize {
@@ -39,7 +48,7 @@ enum MuxSliceHeader {
     Var([u8;MAX_HEADER_SIZE]),
     Fixed([u8;1]),
 }
-const EOF_MARKER: [u8;1] = [0xf];
+pub const EOF_MARKER: [u8;3] = [0xff, 0xfe, 0xff];
 fn get_code(stream_id: StreamID, bytes_to_write: usize, is_lagging: bool) -> (MuxSliceHeader, usize) {
     if is_lagging == false || bytes_to_write == 4096 || bytes_to_write == 16384 || bytes_to_write >= 65536 {
         if bytes_to_write < 4096 {
@@ -65,7 +74,7 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
             bytes_to_deserialize:BytesToDeserialize::None,
             cur_stream: 0,
             cur_stream_bytes_avail: 0,
-            eof:false,
+            eof:StreamState::Running,
             buf:[
               AllocU8::AllocatedMemory::default(),
               AllocU8::AllocatedMemory::default(),
@@ -107,7 +116,10 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                 return false;
             }
         }
-        self.eof
+        match self.eof {
+            StreamState::EofDone => true,
+            _ => false,
+        }
    }
    fn unchecked_push(buf: &mut[u8], write_cursor: &mut usize, data: &[u8]) {
        buf.split_at_mut(*write_cursor).1.split_at_mut(data.len()).0.clone_from_slice(data);
@@ -221,9 +233,50 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
             self.cur_stream = stream_id as StreamID;
         }
     }
+    pub fn deserialize_eof(&mut self, mut input: &[u8]) -> usize {
+        let mut ret = 0usize;
+        assert_eq!(EOF_MARKER.len(), 3);
+        match self.eof {
+            StreamState::Running => {
+                if input[0] == EOF_MARKER[0] {
+                    ret += 1;
+                    input = input.split_at(1).1;
+                    self.eof = StreamState::EofStart;
+                }
+            }
+            _ => {},
+        }
+        if input.len() == 0 {
+            return ret;
+        }
+        match self.eof {
+            StreamState::EofStart => {
+                if input[0] == EOF_MARKER[1] {
+                    ret += 1;
+                    input = input.split_at(1).1;
+                    self.eof = StreamState::EofMid
+                }
+            }
+            _ => {},
+        } 
+        if input.len() == 0 {
+            return ret;
+        }
+        match self.eof {
+            StreamState::EofMid => {
+                if input[0] == EOF_MARKER[2] {
+                    ret += 1;
+                    self.eof = StreamState::EofDone;
+                    return ret;
+                }
+            }
+            _ => {},
+        }
+        return ret;
+    }
     pub fn deserialize(&mut self, mut input:&[u8], m8: &mut AllocU8) -> usize {
         let mut ret = 0usize;
-        while input.len() != 0 && !self.eof {
+        while input.len() != 0 && match self.eof {StreamState::EofDone => false, _ => true} {
             match self.bytes_to_deserialize {
                 BytesToDeserialize::Header0(stream_id) => {
                     self.bytes_to_deserialize = BytesToDeserialize::Header1(stream_id, input[0]);
@@ -246,9 +299,13 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                     ret += to_push.len();
                 }
                 BytesToDeserialize::None => {
-                    if input[0] == EOF_MARKER[0] {
-                        self.eof = true;
-                        return ret + 1;
+                    if input[0] == EOF_MARKER[0] || input[0] == EOF_MARKER[1] || input[0] == EOF_MARKER[2] {
+                        if input[0] == EOF_MARKER[0] || match self.eof {
+                            StreamState::Running => false,
+                            _ => true,
+                        } {
+                            return ret + self.deserialize_eof(input);
+                        }
                     }
                     let stream_id = input[0] & STREAM_ID_MASK;
                     let count: usize;
@@ -307,17 +364,45 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         output_offset
     }
     pub fn serialize_close(&mut self, output:&mut [u8]) -> usize {
-        if self.eof {
-            return 0;
+        match self.eof {
+            StreamState::EofDone => return 0,
+            _ => {},
         }
-        let ret = self.flush(output);
+        let mut ret = self.flush(output);
         if output.len() == ret {
             return ret;
         }
-        output.split_at_mut(ret).1.split_at_mut(EOF_MARKER.len()).0.clone_from_slice(
-            &EOF_MARKER[..]);
-        self.eof = true;
-        return 1 + ret;
+        match self.eof {
+            StreamState::Running => {
+                output[ret] = EOF_MARKER[0];
+                ret += 1;
+                self.eof = StreamState::EofStart;
+            }
+            _ => {},
+        }
+        if output.len() == ret {
+            return ret;
+        }
+        match self.eof {
+            StreamState::EofStart => {
+                output[ret] = EOF_MARKER[1];
+                ret += 1;
+                self.eof = StreamState::EofMid;
+            }
+            _ => {},
+        }
+        if output.len() == ret {
+            return ret;
+        }
+        match self.eof {
+            StreamState::EofMid => {
+                output[ret] = EOF_MARKER[2];
+                ret += 1;
+                self.eof = StreamState::EofDone;
+            }
+            _ => {},
+        }
+        return ret;
     }
     fn flush(&mut self, output:&mut [u8]) -> usize {
         let mut output_offset = 0usize;
