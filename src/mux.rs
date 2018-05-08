@@ -3,7 +3,8 @@
 
 use core;
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
-pub type StreamID = u8;
+use super::slice_util;
+pub use interface::{StreamID, StreamMuxer, StreamDemuxer};
 const NUM_STREAMS: StreamID = 2;
 const STREAM_ID_MASK: StreamID = 0x1;
 const MAX_HEADER_SIZE: usize = 3;
@@ -102,13 +103,64 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
         }
     }
 }
+impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
+    fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
+        self.deserialize(data, m8)
+    }
+    fn data_ready(&self, stream_id:StreamID) -> usize {
+        self.how_much_data_avail(stream_id)
+    }
+    fn peek(&self, stream_id: StreamID) -> &[u8] {
+        self.data_avail(stream_id)
+    }
+    fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8> {
+        let ret = slice_util::AllocatedMemoryRange::<u8, AllocU8>(core::mem::replace(&mut self.buf[usize::from(stream_id)],
+                                                                                 AllocU8::AllocatedMemory::default()),
+                                                              self.read_cursor[usize::from(stream_id)]..self.write_cursor[usize::from(stream_id)]);
+        self.read_cursor[usize::from(stream_id)] = 0;
+        self.write_cursor[usize::from(stream_id)] = 0;
+        ret
+    }
+    fn consume(&mut self, stream_id: StreamID, count: usize) {
+        self.consume_data(stream_id, count)
+    }
+    fn encountered_eof(&self) -> bool {
+        self.is_eof()
+    }
+    fn free_demux(&mut self, m8: &mut AllocU8) {
+        self.free(m8)
+    }
+}
 
+
+impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for Mux<AllocU8> {
+    fn write(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) -> usize {
+        self.push_data(stream_id, data, m8);
+        data.len()
+    }
+    fn linearize(&mut self, output:&mut[u8]) -> usize {
+        self.serialize(output)
+    }
+    fn close(&mut self, output:&mut[u8]) -> usize {
+        self.serialize_close(output)
+    }
+    fn wrote_eof(&self) -> bool {
+        self.is_eof()
+    }
+    fn free_mux(&mut self, m8: &mut AllocU8) {
+        self.free(m8);
+    }
+}
 impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
+   #[inline(always)]
+   pub fn how_much_data_avail(&self, stream_id: StreamID) -> usize {
+       self.write_cursor[usize::from(stream_id)] - self.read_cursor[usize::from(stream_id)]
+   }
    #[inline(always)]
    pub fn data_avail(&self, stream_id: StreamID) -> &[u8] {
       &self.buf[usize::from(stream_id)].slice()[self.read_cursor[usize::from(stream_id)]..self.write_cursor[usize::from(stream_id)]]
    }
-   pub fn consume(&mut self, stream_id: StreamID, count: usize) {
+   pub fn consume_data(&mut self, stream_id: StreamID, count: usize) {
       self.read_cursor[usize::from(stream_id)] += count;
    }
     pub fn is_eof(&self) -> bool {

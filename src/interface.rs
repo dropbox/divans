@@ -13,7 +13,7 @@
 //   limitations under the License.
 
 use alloc::{SliceWrapper, Allocator};
-
+use super::slice_util;
 use super::probability::interface::{CDF2, CDF16, ProbRange};
 use super::probability;
 use super::codec::copy::CopySubstate;
@@ -223,8 +223,24 @@ impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for Command<SliceType> {
         }
     }
 }
-*/
-
+ */
+pub type StreamID = u8;
+pub trait StreamMuxer<AllocU8: Allocator<u8> > {
+    fn write(&mut self, stream_id: StreamID, data:&[u8], m8: &mut AllocU8) -> usize;
+    fn linearize(&mut self, output:&mut[u8]) -> usize;
+    fn close(&mut self, output:&mut[u8]) -> usize;
+    fn wrote_eof(&self) -> bool;
+    fn free_mux(&mut self, m8: &mut AllocU8);
+}
+pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
+    fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize;
+    fn data_ready(&self, stream_id:StreamID) -> usize;
+    fn peek(&self, stream_id: StreamID) -> &[u8];
+    fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8>;
+    fn consume(&mut self, stream_id: StreamID, count: usize);
+    fn encountered_eof(&self) -> bool;
+    fn free_demux(&mut self, m8: &mut AllocU8);
+}
 
 pub trait Compressor {
     fn encode(&mut self,

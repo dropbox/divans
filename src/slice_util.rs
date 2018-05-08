@@ -112,3 +112,56 @@ impl <T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
 
 
 
+pub struct AllocatedMemoryRange<T, AllocT:Allocator<T>>(pub AllocT::AllocatedMemory, pub core::ops::Range<usize>);
+
+impl<T, AllocT: Allocator<T>> core::ops::Index<usize> for AllocatedMemoryRange<T, AllocT> {
+   type Output = T;
+   fn index(&self, index: usize) -> &T {
+      &self.0.slice()[self.1.start + index]
+   }
+}
+
+impl<T, AllocT: Allocator<T>> core::ops::IndexMut<usize> for AllocatedMemoryRange<T, AllocT> {
+   fn index_mut(&mut self, index: usize) -> &mut T {
+      let i = self.1.start + index;
+      &mut self.mem().slice_mut()[i]
+   }
+}
+
+impl<T, AllocT:Allocator<T>> Default for AllocatedMemoryRange<T, AllocT> {
+    fn default() -> Self {
+        AllocatedMemoryRange(AllocT::AllocatedMemory::default(), 0..0)
+    }
+}
+impl<T, AllocT:Allocator<T>> AllocatedMemoryRange<T, AllocT> {
+    pub fn mem(&mut self) -> &mut AllocT::AllocatedMemory {
+        &mut self.0
+    }
+    pub fn components(self) -> (AllocT::AllocatedMemory, core::ops::Range<usize>) {
+        (self.0, self.1.clone())
+    }
+}
+
+impl<T, AllocT:Allocator<T>> SliceWrapperMut<T> for AllocatedMemoryRange<T, AllocT> {
+    fn slice_mut(&mut self) -> &mut [T] {
+        &mut self.0.slice_mut()[self.1.clone()]
+    }
+}
+impl<T, AllocT:Allocator<T>> SliceWrapper<T> for AllocatedMemoryRange<T, AllocT> {
+    fn slice(&self) -> &[T] {
+        &self.0.slice()[self.1.clone()]
+    }
+}
+impl <T, AllocT:Allocator<T>> AllocatedMemoryRange<T, AllocT> {
+    pub fn new(m8 : &mut AllocT, len: usize) -> Self {
+        AllocatedMemoryRange::<T, AllocT>(m8.alloc_cell(len), 0..len)
+    }
+    pub fn realloc(mem : AllocT::AllocatedMemory, range: core::ops::Range<usize>) -> Self {
+        debug_assert!(range.end <= mem.slice().len(), "Must realloc to a smaller size for AllocatedMemoryRange");
+        debug_assert!(range.start <= range.end);
+        AllocatedMemoryRange::<T, AllocT>(mem, range)
+    }
+}
+
+
+

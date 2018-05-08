@@ -55,7 +55,7 @@ fn help_test_mux(i0:&[u8], i1:&[u8], copy_pattern: &[(mux::StreamID, usize)], in
                 assert_eq!(to_match, checkme);
                 input[stream_id] = rem;
             }
-            mux.consume(stream_id as u8, to_match_len);
+            mux.consume_data(stream_id as u8, to_match_len);
         }
         if dv.len() == 0 {
            break;
