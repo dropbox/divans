@@ -44,6 +44,7 @@ fn chunk_size(last_flushed:usize, lagging_stream: bool) -> usize {
     }
     return 65536;
 }
+#[derive(Debug)]
 enum MuxSliceHeader {
     Var([u8;MAX_HEADER_SIZE]),
     Fixed([u8;1]),
@@ -194,6 +195,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         let buf = self.buf[usize::from(stream_id)].slice_mut();
         // find the header and number of bytes that should be written to it
         let (header, mut num_bytes_should_write) = get_code(stream_id, *populated_cursor - *outputted_cursor, is_lagging);
+        //eprint!("{}) header {:?} bytes: {}\n", stream_id, header, num_bytes_should_write);
         self.bytes_flushed += num_bytes_should_write;
         assert!(*outputted_cursor >= MAX_HEADER_SIZE);
         match header {
@@ -284,6 +286,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                 },
                 BytesToDeserialize::Header1(stream_id, lsb) => {
                     self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
+                    //eprint!("{}) Deserializing {}\n", stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
                     return ret + 1 + self.deserialize(input.split_at(1).1, m8);
                 },
                 BytesToDeserialize::Some(stream_id, count) => {
@@ -304,6 +307,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                             StreamState::Running => false,
                             _ => true,
                         } {
+                            //eprint!("DESERIALIZING EOF\n");
                             return ret + self.deserialize_eof(input);
                         }
                     }
@@ -321,6 +325,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                         count = 1;
                         bytes_to_copy = 1024 << ((input[0] >> 4) << 1);
                     }
+                    //eprint!("{}) Deserializing {}\n", stream_id, bytes_to_copy);
                     self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, bytes_to_copy);
                     input = input.split_at(count).1;
                     ret += count;
