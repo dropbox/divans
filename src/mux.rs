@@ -96,17 +96,34 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
 impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    #[inline(always)]
    pub fn data_avail(&self, stream_id: StreamID) -> &[u8] {
-      self.buf[usize::from(stream_id)].slice().split_at(self.read_cursor[usize::from(stream_id)]).1.split_at(self.write_cursor[usize::from(stream_id)]).0
+      &self.buf[usize::from(stream_id)].slice()[self.read_cursor[usize::from(stream_id)]..self.write_cursor[usize::from(stream_id)]]
    }
    pub fn consume(&mut self, stream_id: StreamID, count: usize) {
       self.read_cursor[usize::from(stream_id)] += count;
    }
-   pub fn is_eof(&self) -> bool {
-       self.eof
+    pub fn is_eof(&self) -> bool {
+        for index in 0..NUM_STREAMS as usize {
+            if self.read_cursor[index]  != self.write_cursor[index] {
+                return false;
+            }
+        }
+        self.eof
    }
    fn unchecked_push(buf: &mut[u8], write_cursor: &mut usize, data: &[u8]) {
        buf.split_at_mut(*write_cursor).1.split_at_mut(data.len()).0.clone_from_slice(data);
        *write_cursor += data.len();
+   }
+   pub fn prealloc(&mut self, m8: &mut AllocU8, amount_per_stream: usize) {
+       for buf in self.buf.iter_mut() {
+           assert_eq!(buf.slice().len(), 0);
+           let mfd = core::mem::replace(buf, m8.alloc_cell(amount_per_stream));
+           m8.free_cell(mfd);
+       }
+   }
+   pub fn free(&mut self, m8: &mut AllocU8) {
+      for buf in self.buf.iter_mut() {
+          m8.free_cell(core::mem::replace(buf, AllocU8::AllocatedMemory::default()));
+      }        
    }
    // this pushes data from a source into the stream buffers. This data may later be serialized through serialize()
    // or else consumed through data_avail/consume
@@ -122,7 +139,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
       }
       // if there's too much room at the beginning and the new data fits, then move everything to the beginning and write in the new data
       if buf.slice().len() + (*write_cursor - *read_cursor) >= data.len() && (*read_cursor == *write_cursor
-                                                                    || (*read_cursor >= 16384 && *write_cursor - *read_cursor > *read_cursor + MAX_HEADER_SIZE)) {
+                                                                              || (*read_cursor >= 16384 && *read_cursor > *write_cursor - *read_cursor + MAX_HEADER_SIZE)) {
 
           {
               let (unbuffered_empty_half, full_half) = buf.slice_mut().split_at_mut(*read_cursor);
@@ -137,12 +154,12 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
           return;
       }
       // find the next power of two buffer size that could hold everything including the recently added data
-      let desired_size:u64 = (data.len() + (*write_cursor - *read_cursor)) as u64;
+      let desired_size:u64 = (MAX_HEADER_SIZE + data.len() + (*write_cursor - *read_cursor)) as u64;
       let log_desired_size = (64 - desired_size.leading_zeros()) + 1;
       // allocate the new data and then copy in the current data
-      let mut new_buf = m8.alloc_cell(1 << log_desired_size);
+      let mut new_buf = m8.alloc_cell(1 << core::cmp::max(log_desired_size, 9));
       debug_assert!(new_buf.slice().len() >= *write_cursor - *read_cursor + data.len());
-      new_buf.slice_mut().split_at_mut(*write_cursor - *read_cursor).0.clone_from_slice(
+      new_buf.slice_mut().split_at_mut(MAX_HEADER_SIZE).1.split_at_mut(*write_cursor - *read_cursor).0.clone_from_slice(
           buf.slice().split_at(*read_cursor).1.split_at(*write_cursor - *read_cursor).0);
       *write_cursor = MAX_HEADER_SIZE + *write_cursor - *read_cursor;
       *read_cursor = MAX_HEADER_SIZE;
@@ -162,7 +179,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
     fn serialize_stream_id(&mut self, stream_id: StreamID, output: &mut [u8], output_offset: &mut usize, is_lagging: bool) {
         let outputted_cursor = &mut self.read_cursor[usize::from(stream_id)];
         let populated_cursor = &mut self.write_cursor[usize::from(stream_id)];
-        let buf = &mut self.buf[usize::from(stream_id)].slice();
+        let buf = self.buf[usize::from(stream_id)].slice_mut();
         // find the header and number of bytes that should be written to it
         let (header, mut num_bytes_should_write) = get_code(stream_id, *populated_cursor - *outputted_cursor, is_lagging);
         self.bytes_flushed += num_bytes_should_write;
@@ -174,14 +191,14 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                 // subtract the location of the buffer...this should not bring us below zero
                 *outputted_cursor -= hdr.len();
                 for i in 0..hdr.len(){
-                    output[*outputted_cursor + i] = hdr[i];
+                    buf[*outputted_cursor + i] = hdr[i];
                 }
             },
             MuxSliceHeader::Fixed(hdr) => {
                 num_bytes_should_write += hdr.len();
                 *outputted_cursor -= hdr.len();
                 for i in 0..hdr.len(){
-                    output[*outputted_cursor + i] = hdr[i];
+                    buf[*outputted_cursor + i] = hdr[i];
                 }
             }
         }
@@ -205,53 +222,55 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         }
     }
     pub fn deserialize(&mut self, mut input:&[u8], m8: &mut AllocU8) -> usize {
-        if input.len() == 0 || self.eof {
-            return 0;
-        }
-        match self.bytes_to_deserialize {
-            BytesToDeserialize::Header0(stream_id) => {
-                self.bytes_to_deserialize = BytesToDeserialize::Header1(stream_id, input[0]);
-                return 1 + self.deserialize(input.split_at(1).1, m8);
-            },
-            BytesToDeserialize::Header1(stream_id, lsb) => {
-                self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
-                return 1 + self.deserialize(input.split_at(1).1, m8);
-            },
-            BytesToDeserialize::Some(stream_id, count) => {
-                if count as usize > input.len() {
-                    self.push_data(stream_id, input, m8);
-                    self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, count - input.len() as u32);
-                    return input.len(); // fixme: the only escape hatch
-                }
-                let (to_push, remainder) = input.split_at(count as usize);
-                self.push_data(stream_id, to_push, m8);
-                input = remainder;
-                self.bytes_to_deserialize = BytesToDeserialize::None;
-                return to_push.len() + self.deserialize(input.split_at(1).1, m8);
-            }
-            BytesToDeserialize::None => {
-                if input[0] == EOF_MARKER[0] {
-                    self.eof = true;
-                    return 1;
-                }
-                let stream_id = input[0] & STREAM_ID_MASK;
-                let count: usize;
-                let bytes_to_copy: u32;
-                if input[0] < 16 {
-                    if input.len() < 3 {
-                        self.bytes_to_deserialize=BytesToDeserialize::Header0(stream_id);
-                        return 1 + self.deserialize(input.split_at(1).1, m8); 
+        let mut ret = 0usize;
+        while input.len() != 0 && !self.eof {
+            match self.bytes_to_deserialize {
+                BytesToDeserialize::Header0(stream_id) => {
+                    self.bytes_to_deserialize = BytesToDeserialize::Header1(stream_id, input[0]);
+                    return ret + 1 + self.deserialize(input.split_at(1).1, m8);
+                },
+                BytesToDeserialize::Header1(stream_id, lsb) => {
+                    self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
+                    return ret + 1 + self.deserialize(input.split_at(1).1, m8);
+                },
+                BytesToDeserialize::Some(stream_id, count) => {
+                    if count as usize > input.len() {
+                        self.push_data(stream_id, input, m8);
+                        self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, count - input.len() as u32);
+                        return ret + input.len();
                     }
-                    count = 3;
-                    bytes_to_copy = (input[1] as u32 | (input[2] as u32) << 8) + 1;
-                } else {
-                    count = 1;
-                    bytes_to_copy = 1024 << ((input[0] >> 4) << 1);
+                    let (to_push, remainder) = input.split_at(count as usize);
+                    self.push_data(stream_id, to_push, m8);
+                    input = remainder;
+                    self.bytes_to_deserialize = BytesToDeserialize::None;
+                    ret += to_push.len();
                 }
-                self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, bytes_to_copy);
-                return count + self.deserialize(input.split_at(count).1, m8);
-            },
+                BytesToDeserialize::None => {
+                    if input[0] == EOF_MARKER[0] {
+                        self.eof = true;
+                        return ret + 1;
+                    }
+                    let stream_id = input[0] & STREAM_ID_MASK;
+                    let count: usize;
+                    let bytes_to_copy: u32;
+                    if input[0] < 16 {
+                        if input.len() < 3 {
+                        self.bytes_to_deserialize=BytesToDeserialize::Header0(stream_id);
+                            return ret + 1 + self.deserialize(input.split_at(1).1, m8); 
+                        }
+                        count = 3;
+                        bytes_to_copy = (input[1] as u32 | (input[2] as u32) << 8) + 1;
+                    } else {
+                        count = 1;
+                        bytes_to_copy = 1024 << ((input[0] >> 4) << 1);
+                    }
+                    self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, bytes_to_copy);
+                    input = input.split_at(count).1;
+                    ret += count;
+                },
+            }
         }
+        ret
     }
     pub fn serialize(&mut self, output:&mut [u8]) -> usize {
         let mut output_offset = 0usize;
@@ -276,6 +295,9 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                                                              is_lagging) && self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
                    flushed_any = true;
                    self.serialize_stream_id(index as u8, output, &mut output_offset, is_lagging);
+                   if self.cur_stream_bytes_avail != 0 {
+                       break;
+                   }
                }
            }
            if !flushed_any {
@@ -304,20 +326,31 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         }
         while output_offset < output.len() {
             let mut flushed_any = false;
-            let mut last_flush = self.last_flush[0];
-            for lf in self.last_flush[1..].iter() {
-                if *lf < last_flush {
-                    last_flush = *lf;
+            let mut last_flush: Option<usize> = None;
+            for (lf, (rc, wc)) in self.last_flush.iter().zip(self.read_cursor.iter().zip(self.write_cursor.iter())) {
+                if match last_flush {
+                    None => *rc != *wc, // only consider this item for being the last flush point if it has data to flush
+                    Some(last_flush_some) => *lf < last_flush_some && *rc != *wc,
+                } {
+                    last_flush = Some(*lf);
                 }
             }
             for index in 0..(NUM_STREAMS as usize) {
-                if self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
-                    let mut written = 0;
-                    self.serialize_stream_id(index as u8, output, &mut written, true);
-                    if written != 0 {
+                if match last_flush {
+                    None => true,
+                    Some(last_flush_some) => self.last_flush[index] <= last_flush_some + MAX_FLUSH_VARIANCE,
+                } {
+                    let mut written = output_offset;
+                    if self.read_cursor[index] != self.write_cursor[index] {
+                        self.serialize_stream_id(index as u8, output, &mut written, true);
+                    }
+                    if written != output_offset {
                         flushed_any = true;
                     }
-                    output_offset += written;
+                    output_offset = written;
+                    if self.cur_stream_bytes_avail != 0 {
+                        break;
+                    }
                 }
             }
             if !flushed_any {
