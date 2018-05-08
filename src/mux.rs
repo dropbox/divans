@@ -1,6 +1,6 @@
 use core;
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
-type StreamID = u8;
+pub type StreamID = u8;
 const NUM_STREAMS: StreamID = 2;
 const STREAM_ID_MASK: StreamID = 0x1;
 const MAX_HEADER_SIZE: usize = 3;
@@ -101,13 +101,16 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    pub fn consume(&mut self, stream_id: StreamID, count: usize) {
       self.read_cursor[usize::from(stream_id)] += count;
    }
+   pub fn is_eof(&self) -> bool {
+       self.eof
+   }
    fn unchecked_push(buf: &mut[u8], write_cursor: &mut usize, data: &[u8]) {
        buf.split_at_mut(*write_cursor).1.split_at_mut(data.len()).0.clone_from_slice(data);
        *write_cursor += data.len();
    }
    // this pushes data from a source into the stream buffers. This data may later be serialized through serialize()
    // or else consumed through data_avail/consume
-   fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
+   pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
       let write_cursor = &mut self.write_cursor[stream_id as usize];
       let read_cursor = &mut self.read_cursor[stream_id as usize];
       //let mut write_cursor = &mut self.write_cursor[stream_id as usize];
@@ -294,7 +297,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         self.eof = true;
         return 1 + ret;
     }
-    pub fn flush(&mut self, output:&mut [u8]) -> usize {
+    fn flush(&mut self, output:&mut [u8]) -> usize {
         let mut output_offset = 0usize;
         if self.cur_stream_bytes_avail != 0 {
             output_offset += self.serialize_leftover(output);

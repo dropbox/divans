@@ -63,6 +63,7 @@ mod divans_to_raw;
 mod billing;
 pub mod test_helper;
 mod test_ans;
+mod test_mux;
 mod ans;
 mod brotli_ir_gen;
 mod divans_compressor;
