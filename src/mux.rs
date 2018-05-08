@@ -1,31 +1,71 @@
+use core;
+use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 type StreamID = u8;
 const NUM_STREAMS: StreamID = 2;
-const STREAM_ID_MASK: StreamID = 0x3;
+const STREAM_ID_MASK: StreamID = 0x1;
+const MAX_HEADER_SIZE: usize = 3;
 const MAX_FLUSH_VARIANCE: usize = 131073;
-const CHUNK_SIZE: usize = 65536;
-struct Mux<AllocU8:Allocator<u8> > {
+enum BytesToDeserialize {
+    None,
+    Some(StreamID, u32),
+    Header0(StreamID),
+    Header1(StreamID, u8),
+}
+pub struct Mux<AllocU8:Allocator<u8> > {
    buf: [AllocU8::AllocatedMemory; NUM_STREAMS as usize],
    read_cursor: [usize; NUM_STREAMS as usize],
    write_cursor: [usize; NUM_STREAMS as usize],
    cur_stream_bytes_avail: u32,
-   cur_stream:StreamID;
+   cur_stream:StreamID,
    last_flush:[usize; NUM_STREAMS as usize],
    bytes_flushed: usize,
+    bytes_to_deserialize:BytesToDeserialize,
+    eof: bool,
 }
 
-fn chunk_size(last_flushed:usize) {
-  if last_flushed <= 1024 {
-     return 256;
-  }
-  if last_flushed <= 65536 {
-     return 16384;
-  }
-  return 65536;
+fn chunk_size(last_flushed:usize, lagging_stream: bool) -> usize {
+    if lagging_stream  {
+        return 16;
+    }
+    if last_flushed <= 1024 {
+        return 4096;
+    }
+    if last_flushed <= 65536 {
+        return 16384;
+    }
+    return 65536;
 }
-
+enum MuxSliceHeader {
+    Var([u8;MAX_HEADER_SIZE]),
+    Fixed([u8;1]),
+}
+const EOF_MARKER: [u8;1] = [0xf];
+fn get_code(stream_id: StreamID, bytes_to_write: usize, is_lagging: bool) -> (MuxSliceHeader, usize) {
+    if is_lagging == false || bytes_to_write == 4096 || bytes_to_write == 16384 || bytes_to_write >= 65536 {
+        if bytes_to_write < 4096 {
+            return get_code(stream_id, bytes_to_write, true);
+        }
+        if bytes_to_write < 16384 {
+            return (MuxSliceHeader::Fixed([stream_id  as u8 | (1 << 4)]), 4096);
+        }
+        if bytes_to_write < 65536 {
+            return (MuxSliceHeader::Fixed([stream_id  as u8 | (2 << 4)]), 16384);
+        }
+        return (MuxSliceHeader::Fixed([stream_id  as u8 | (3 << 4)]), 65536);
+    }
+    assert!(bytes_to_write < 65536);
+    let ret = [stream_id as u8,
+               (bytes_to_write - 1) as u8 & 0xff,
+               ((bytes_to_write - 1)>> 8) as u8 & 0xff];
+    return (MuxSliceHeader::Var(ret), bytes_to_write);
+}
 impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
     fn default() -> Self {
         Mux::<AllocU8> {
+            bytes_to_deserialize:BytesToDeserialize::None,
+            cur_stream: 0,
+            cur_stream_bytes_avail: 0,
+            eof:false,
             buf:[
               AllocU8::AllocatedMemory::default(),
               AllocU8::AllocatedMemory::default(),
@@ -55,93 +95,232 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
 
 impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    #[inline(always)]
-   fn data_avail(&self, stream_id: StreamID) -> &[u8] {
-      self.buf[stream_id].split_at(self.read_cursor[stream_id]).1.split_at(self.write_cursor[stream_id]).0
+   pub fn data_avail(&self, stream_id: StreamID) -> &[u8] {
+      self.buf[usize::from(stream_id)].slice().split_at(self.read_cursor[usize::from(stream_id)]).1.split_at(self.write_cursor[usize::from(stream_id)]).0
    }
-   fn consume(&self, count: usize) {
-      read_cursor += count;
+   pub fn consume(&mut self, stream_id: StreamID, count: usize) {
+      self.read_cursor[usize::from(stream_id)] += count;
    }
-   fn unchecked_push(buf: &mut[u8], read_cursor: &mut usize, write_cursor: &mut usize, data: &mut[u8]) {
+   fn unchecked_push(buf: &mut[u8], write_cursor: &mut usize, data: &[u8]) {
        buf.split_at_mut(*write_cursor).1.split_at_mut(data.len()).0.clone_from_slice(data);
        *write_cursor += data.len();
    }
+   // this pushes data from a source into the stream buffers. This data may later be serialized through serialize()
+   // or else consumed through data_avail/consume
    fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
-      let mut read_cursor = &mut self.read_cursor[stream_id as usize];
-      let mut write_cursor = &mut self.write_cursor[stream_id as usize];
-      let mut buf = &mut self.buf[stream_id as usize];
-      if buf.len() - *write_cursor >= data.len() {
-          Self::unchecked_push(buf, read_cursor, write_cursor, data);
+      let write_cursor = &mut self.write_cursor[stream_id as usize];
+      let read_cursor = &mut self.read_cursor[stream_id as usize];
+      //let mut write_cursor = &mut self.write_cursor[stream_id as usize];
+      let buf = &mut self.buf[usize::from(stream_id)];
+      // if there's space in the buffer, simply copy it in
+      if buf.slice().len() - *write_cursor >= data.len() {
+          Self::unchecked_push(buf.slice_mut(), write_cursor, data);
           return;
       }
-      if buf.len() + (*write_cursor - *read_cursor) >= data.len() && (*read_cursor == *write_cursor
-                                                                    || (*read_cursor >= 16384 && *write_cursor - *read_cursor > *read_cursor)) {
-          let (empty_half, full_half) = buf.split_at_mut(read_cursor);
-          *write_cursor = *write_cursor - *read_cursor;
-          *read_cursor = 0;
-          empty_half.split_at_mut(*write_cursor).0.clone_from_slice(full_half.split_at(*write_cursor));
-          Self::unchecked_push(buf, read_cursor, write_cursor, data);
+      // if there's too much room at the beginning and the new data fits, then move everything to the beginning and write in the new data
+      if buf.slice().len() + (*write_cursor - *read_cursor) >= data.len() && (*read_cursor == *write_cursor
+                                                                    || (*read_cursor >= 16384 && *write_cursor - *read_cursor > *read_cursor + MAX_HEADER_SIZE)) {
+
+          {
+              let (unbuffered_empty_half, full_half) = buf.slice_mut().split_at_mut(*read_cursor);
+              let empty_half = unbuffered_empty_half.split_at_mut(MAX_HEADER_SIZE).1; // leave some room on the beginning side for header data to be flushed
+              let amount_of_data_to_copy = *write_cursor - *read_cursor;
+              *write_cursor = MAX_HEADER_SIZE + amount_of_data_to_copy;
+              *read_cursor = MAX_HEADER_SIZE;
+              empty_half.split_at_mut(amount_of_data_to_copy).0.clone_from_slice(
+                  full_half.split_at(amount_of_data_to_copy).0);
+          }
+          Self::unchecked_push(buf.slice_mut(), write_cursor, data);
           return;
       }
+      // find the next power of two buffer size that could hold everything including the recently added data
       let desired_size:u64 = (data.len() + (*write_cursor - *read_cursor)) as u64;
       let log_desired_size = (64 - desired_size.leading_zeros()) + 1;
-      let new_buf = m8.alloc_cell(1 << log_desired_size);
-      debug_assert(new_buf.len() >= *write_cursor - *read_cursor + data.len());
-      new_buf.split_at_mut(*write_cursor - *read_cursor).0.clone_from_slice(buf.split_at(*read_cursor).1.split_at(*write_cursor - *read_cursor).0);
-      *write_cursor = 3 + *write_cursor - *read_cursor;
-      *read_cursor = 3;
+      // allocate the new data and then copy in the current data
+      let mut new_buf = m8.alloc_cell(1 << log_desired_size);
+      debug_assert!(new_buf.slice().len() >= *write_cursor - *read_cursor + data.len());
+      new_buf.slice_mut().split_at_mut(*write_cursor - *read_cursor).0.clone_from_slice(
+          buf.slice().split_at(*read_cursor).1.split_at(*write_cursor - *read_cursor).0);
+      *write_cursor = MAX_HEADER_SIZE + *write_cursor - *read_cursor;
+      *read_cursor = MAX_HEADER_SIZE;
       m8.free_cell(core::mem::replace(buf, new_buf));
-      Self::unchecked_push(buf, read_cursor, write_cursor, data);
+      // finally copy in the input data
+      Self::unchecked_push(buf.slice_mut(), write_cursor, data);
    }
+   // copy the remaining data from a previous serialize
    fn serialize_leftover(&mut self, output:&mut[u8]) -> usize {
-       let to_copy = core::cmp::min(self.cur_stream_bytes_avail, output.len());
-       output.split_at_mut(to_copy).0.clone_from_slice(self.buf[self.cur_stream].split_at(self.read_cursor[self.cur_stream]).1.split_at(to_copy).0;
-       self.read_cursor[self.cur_stream] += to_copy;
-       self.cur_stream_bytes_avail -= to_copy;
-       self.bytes_flushed += to_copy;
-       self.last_flushed[self.cur_stream] = self.bytes_flushed;
+       let to_copy = core::cmp::min(self.cur_stream_bytes_avail as usize, output.len());
+       output.split_at_mut(to_copy).0.clone_from_slice(
+           self.buf[usize::from(self.cur_stream)].slice().split_at(self.read_cursor[usize::from(self.cur_stream)]).1.split_at(to_copy).0);
+       self.read_cursor[usize::from(self.cur_stream)] += to_copy;
+       self.cur_stream_bytes_avail -= to_copy as u32;
        to_copy
    }
-   fn serialize(&mut self, output:&mut [u8]) -> usize {
+    fn serialize_stream_id(&mut self, stream_id: StreamID, output: &mut [u8], output_offset: &mut usize, is_lagging: bool) {
+        let outputted_cursor = &mut self.read_cursor[usize::from(stream_id)];
+        let populated_cursor = &mut self.write_cursor[usize::from(stream_id)];
+        let buf = &mut self.buf[usize::from(stream_id)].slice();
+        // find the header and number of bytes that should be written to it
+        let (header, mut num_bytes_should_write) = get_code(stream_id, *populated_cursor - *outputted_cursor, is_lagging);
+        self.bytes_flushed += num_bytes_should_write;
+        assert!(*outputted_cursor >= MAX_HEADER_SIZE);
+        match header {
+            MuxSliceHeader::Var(hdr) =>  {
+                // add on the number of bytes that should be written
+                num_bytes_should_write += hdr.len();
+                // subtract the location of the buffer...this should not bring us below zero
+                *outputted_cursor -= hdr.len();
+                for i in 0..hdr.len(){
+                    output[*outputted_cursor + i] = hdr[i];
+                }
+            },
+            MuxSliceHeader::Fixed(hdr) => {
+                num_bytes_should_write += hdr.len();
+                *outputted_cursor -= hdr.len();
+                for i in 0..hdr.len(){
+                    output[*outputted_cursor + i] = hdr[i];
+                }
+            }
+        }
+        // set bytes_flushed to the end of the desired bytes to flush, so we know this stream isn't lagging too badly
+        self.last_flush[usize::from(stream_id)] = self.bytes_flushed;
+        // compute the number of bytes that will fit into otput
+        let to_write = core::cmp::min(num_bytes_should_write, output.len() - *output_offset);
+        output.split_at_mut(*output_offset).1.split_at_mut(to_write).0.clone_from_slice(
+            buf.split_at(*outputted_cursor).1.split_at(to_write).0);
+        *outputted_cursor += to_write;
+        // if we have produced everything from this stream, reset the cursors to the beginning to support quick copies
+        if *outputted_cursor == *populated_cursor {
+            *outputted_cursor = MAX_HEADER_SIZE;
+            *populated_cursor = *outputted_cursor; // reset cursors to the beginning of the buffer
+        }
+        *output_offset += to_write;
+        // we have some leftovers that would not fit into the output buffer..store these for the next serialize_leftovers call
+        if to_write != num_bytes_should_write {
+            self.cur_stream_bytes_avail = (num_bytes_should_write - to_write) as u32;
+            self.cur_stream = stream_id as StreamID;
+        }
+    }
+    pub fn deserialize(&mut self, mut input:&[u8], m8: &mut AllocU8) -> usize {
+        if input.len() == 0 || self.eof {
+            return 0;
+        }
+        match self.bytes_to_deserialize {
+            BytesToDeserialize::Header0(stream_id) => {
+                self.bytes_to_deserialize = BytesToDeserialize::Header1(stream_id, input[0]);
+                return 1 + self.deserialize(input.split_at(1).1, m8);
+            },
+            BytesToDeserialize::Header1(stream_id, lsb) => {
+                self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
+                return 1 + self.deserialize(input.split_at(1).1, m8);
+            },
+            BytesToDeserialize::Some(stream_id, count) => {
+                if count as usize > input.len() {
+                    self.push_data(stream_id, input, m8);
+                    self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, count - input.len() as u32);
+                    return input.len(); // fixme: the only escape hatch
+                }
+                let (to_push, remainder) = input.split_at(count as usize);
+                self.push_data(stream_id, to_push, m8);
+                input = remainder;
+                self.bytes_to_deserialize = BytesToDeserialize::None;
+                return to_push.len() + self.deserialize(input.split_at(1).1, m8);
+            }
+            BytesToDeserialize::None => {
+                if input[0] == EOF_MARKER[0] {
+                    self.eof = true;
+                    return 1;
+                }
+                let stream_id = input[0] & STREAM_ID_MASK;
+                let count: usize;
+                let bytes_to_copy: u32;
+                if input[0] < 16 {
+                    if input.len() < 3 {
+                        self.bytes_to_deserialize=BytesToDeserialize::Header0(stream_id);
+                        return 1 + self.deserialize(input.split_at(1).1, m8); 
+                    }
+                    count = 3;
+                    bytes_to_copy = (input[1] as u32 | (input[2] as u32) << 8) + 1;
+                } else {
+                    count = 1;
+                    bytes_to_copy = 1024 << ((input[0] >> 4) << 1);
+                }
+                self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, bytes_to_copy);
+                return count + self.deserialize(input.split_at(count).1, m8);
+            },
+        }
+    }
+    pub fn serialize(&mut self, output:&mut [u8]) -> usize {
         let mut output_offset = 0usize;
         if self.cur_stream_bytes_avail != 0 {
-           output_offset += self.serialize_leftover();
+           output_offset += self.serialize_leftover(output);
         }
-        let output_len = output.len();
         while output_offset < output.len() {
            let mut flushed_any = false;
            let mut last_flush = self.last_flush[0];
-           for lf in self.last_flush[1..] {
+           let mut max_flush = self.last_flush[0];
+           for lf in self.last_flush[1..].iter() {
                if *lf < last_flush {
                   last_flush = *lf;
                }
+               if *lf > max_flush {
+                   max_flush = *lf;
+               }
            }
            for index in 0..(NUM_STREAMS as usize) {
-              let mut read_cursor = &mut self.read_cursor[index];
-              let mut write_cursor = &mut self.write_cursor[index];
-              if *read_cursor - *write_cursor >= chunk_size(self.last_flush[index]) && self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
-                   let mut buf = &mut self.buf[index];
+               let mut is_lagging = max_flush  > MAX_FLUSH_VARIANCE + self.last_flush[index];
+               if self.write_cursor[index] - self.read_cursor[index] >= chunk_size(self.last_flush[index],
+                                                             is_lagging) && self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
                    flushed_any = true;
-                   //FIXME: flush what we have here
-                   let should_write:usize;
-                   (output[output_offset], should_write) = get_code(*write_cursor - *read_cursor);
-                   offset += 1;
-                   let to_write = core::cmp::min(should_write, output.len() - offset);
-                   output.split_at_mut(offset).1.split_at_mut(to_write).0.clone_from_slice(self.buf.split_at(*read_cursor).1.split_at(to_write).0);
-                   *read_cursor += to_write;
-                   output_offset += to_write;
-                   if to_write != should_write {
-                       self.cur_stream_bytes_avail = this_written;
-                       self.cur_stream = index;
-                   }
+                   self.serialize_stream_id(index as u8, output, &mut output_offset, is_lagging);
                }
            }
            if !flushed_any {
              break;
            }
-       }
-       output_offset
-   }
-   fn flush(&mut self, output:&mut [u8]) {
-       
-   }
+        }
+        output_offset
+    }
+    pub fn serialize_close(&mut self, output:&mut [u8]) -> usize {
+        if self.eof {
+            return 0;
+        }
+        let ret = self.flush(output);
+        if output.len() == ret {
+            return ret;
+        }
+        output.split_at_mut(ret).1.split_at_mut(EOF_MARKER.len()).0.clone_from_slice(
+            &EOF_MARKER[..]);
+        self.eof = true;
+        return 1 + ret;
+    }
+    pub fn flush(&mut self, output:&mut [u8]) -> usize {
+        let mut output_offset = 0usize;
+        if self.cur_stream_bytes_avail != 0 {
+            output_offset += self.serialize_leftover(output);
+        }
+        while output_offset < output.len() {
+            let mut flushed_any = false;
+            let mut last_flush = self.last_flush[0];
+            for lf in self.last_flush[1..].iter() {
+                if *lf < last_flush {
+                    last_flush = *lf;
+                }
+            }
+            for index in 0..(NUM_STREAMS as usize) {
+                if self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
+                    let mut written = 0;
+                    self.serialize_stream_id(index as u8, output, &mut written, true);
+                    if written != 0 {
+                        flushed_any = true;
+                    }
+                    output_offset += written;
+                }
+            }
+            if !flushed_any {
+                break;
+            }
+        }
+        output_offset
+    }
 }
