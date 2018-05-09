@@ -351,8 +351,8 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
     // depending on if it is in encode or decode mode
     #[inline(always)]
     fn drain_or_fill_internal_buffer(&mut self,
-                                     input:ReadableBytes,
-                                     output:WritableBytes) -> DivansResult {
+                                     input:&mut ReadableBytes,
+                                     output:&mut WritableBytes) -> DivansResult {
         if self.has_data_to_drain_or_fill() {
             self.drain_or_fill_internal_buffer_unchecked(input, output)
         } else {
@@ -361,8 +361,8 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
     }
     #[inline(always)]
     fn drain_or_fill_internal_buffer_unchecked(&mut self,
-                                               input:ReadableBytes,
-                                               output:WritableBytes) -> DivansResult;
+                                               input:&mut ReadableBytes,
+                                               output:&mut WritableBytes) -> DivansResult;
     #[inline(always)]
     fn has_data_to_drain_or_fill(&self) -> bool;
 

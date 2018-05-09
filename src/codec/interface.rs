@@ -623,22 +623,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     AllocCDF2,
                                                     AllocCDF16>{
     pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
-        if LinearOutputBytes::can_linearize() { //FIXME: should this go before, or after, or both
-            *output_offset += self.muxer.linearize(output.split_at_mut(*output_offset).1);
-        }
-        if self.coder[index].has_data_to_drain_or_fill() {
-            let cur_input = self.demuxer.read_buffer(self.m8.get_base_alloc());
-            let cur_output = self.muxer.write_buffer(self.m8.get_base_alloc());
-            
-            match self.coder[index].drain_or_fill_internal_buffer_unchecked(cur_input[index], cur_output[index]) {
-                DivansResult::Success => {},
-                need_something => return need_something,
-            }
-        }
-        if LinearOutputBytes::can_linearize() {
-            *output_offset += self.muxer.linearize(output.split_at_mut(*output_offset).1);
-        }
-        DivansResult::Success
+        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset, self.m8.get_base_alloc())
     }
 }
 impl <AllocU8:Allocator<u8>,
@@ -762,4 +747,37 @@ impl <AllocU8:Allocator<u8>,
         self.free_internal();
         (self.m8.free(), self.mcdf2, self.mcdf16)
     }
+}
+
+
+pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
+                                   ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                                   LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                                   LinearOutputBytes:StreamMuxer<AllocU8>+Default,
+                                   >(stream_index: usize,
+                                     local_coder: &mut ArithmeticCoder,
+                                     demuxer: &mut LinearInputBytes,
+                                     muxer: &mut LinearOutputBytes,
+                                     output_bytes: &mut[u8],
+                                     output_offset: &mut usize,
+                                     m8:&mut AllocU8) -> DivansResult {
+    while local_coder.has_data_to_drain_or_fill() { // FIXME: this should be the cmd_coder
+        if LinearOutputBytes::can_linearize() { //FIXME: should this go before, or after, or both
+            *output_offset += muxer.linearize(output_bytes.split_at_mut(*output_offset).1);
+        }
+        let mut cur_input = demuxer.read_buffer(m8);
+        let mut cur_output = muxer.write_buffer(m8);
+        match local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index]) {
+            DivansResult::NeedsMoreOutput => {
+                assert!(LinearOutputBytes::can_linearize());
+                if *output_offset == output_bytes.len() {
+                    return DivansResult::NeedsMoreOutput;
+                }
+            },
+            res => {
+                return res;
+            },
+        }
+    }
+    DivansResult::Success
 }

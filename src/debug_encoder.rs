@@ -29,8 +29,11 @@ pub struct DebugEncoder {
 
 impl EntropyEncoder for DebugEncoder {
     type Queue = RegisterQueue;
-    fn get_internal_buffer(&mut self) -> &mut RegisterQueue {
+    fn get_internal_buffer_mut(&mut self) -> &mut RegisterQueue {
         &mut self.buffer
+    }
+    fn get_internal_buffer(&self) -> &RegisterQueue {
+        &self.buffer
     }
     fn put_bit(&mut self, bit: bool, prob_of_false: u8) {
         assert!(self.buffer.num_push_bytes_avail() > 0);
@@ -50,8 +53,11 @@ pub struct DebugDecoder {
 
 impl EntropyDecoder for DebugDecoder {
     type Queue = RegisterQueue;
-    fn get_internal_buffer(&mut self) -> &mut RegisterQueue {
+    fn get_internal_buffer_mut(&mut self) -> &mut RegisterQueue {
         &mut self.buffer
+    }
+    fn get_internal_buffer(&self) -> &RegisterQueue {
+        &self.buffer
     }
     fn get_bit(&mut self, prob_of_false: u8) -> bool {
         assert!(self.buffer.num_pop_bytes_avail() > 0);

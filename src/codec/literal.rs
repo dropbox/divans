@@ -13,6 +13,7 @@ use super::interface::{
     CrossCommandBookKeeping,
     LIT_CODER,
     CMD_CODER,
+    drain_or_fill_static_buffer,
 };
 
 use super::specializations::{CodecTraits};
@@ -296,16 +297,13 @@ impl<AllocU8:Allocator<u8>,
                                                                            local_coder,
                                                                            bk,
                                                                            lit_priors);
-               if LinearOutputBytes::can_linearize() { //FIXME: should this go before, or after, or both
-                   *output_offset += muxer.linearize(output_bytes.split_at_mut(*output_offset).1);
-               }
-               let byte_pull_status = if local_coder.has_data_to_drain_or_fill() {
-                   let cur_input = demuxer.read_buffer(m8);
-                   let cur_output = muxer.write_buffer(m8);
-                   local_coder.drain_or_fill_internal_buffer_unchecked(cur_input[LIT_CODER], cur_output[LIT_CODER])
-               } else {
-                   DivansResult::Success
-               };
+               let byte_pull_status = drain_or_fill_static_buffer(LIT_CODER,
+                                                                  local_coder,
+                                                                  demuxer,
+                                                                  muxer,
+                                                                  output_bytes,
+                                                                  output_offset,
+                                                                  m8);
                low_buffer_warning = demuxer.data_ready(LIT_CODER as u8) < 16;
                h_nibble = cur_nibble;
                if let Some(prob) = cur_prob {
@@ -353,13 +351,13 @@ impl<AllocU8:Allocator<u8>,
                self.state = new_state;
                break;
             }
-            let byte_pull_status = if local_coder.has_data_to_drain_or_fill() {
-                let cur_input = demuxer.read_buffer(m8);
-                let cur_output = muxer.write_buffer(m8);
-                local_coder.drain_or_fill_internal_buffer_unchecked(cur_input[LIT_CODER], cur_output[LIT_CODER])
-            } else {
-                DivansResult::Success
-            };
+            let byte_pull_status = drain_or_fill_static_buffer(LIT_CODER,
+                                                               local_coder,
+                                                               demuxer,
+                                                               muxer,
+                                                               output_bytes,
+                                                               output_offset,
+                                                               m8);
             if NibbleArrayType::FULLY_SAFE {
                 debug_assert!(match byte_pull_status {DivansResult::Success => true, _ => false,});
             } else {
@@ -417,15 +415,13 @@ impl<AllocU8:Allocator<u8>,
         let _ltype = superstate.bk.get_literal_block_type();
         let local_coder = &mut superstate.coder[CMD_CODER]; // FIXME: should this be lit coder?
         loop {
-            if local_coder.has_data_to_drain_or_fill() { // FIXME: this should be the cmd_coder
-                let cur_input = superstate.demuxer.read_buffer(superstate.m8.get_base_alloc());
-                let cur_output = superstate.muxer.write_buffer(superstate.m8.get_base_alloc());
-                match local_coder.drain_or_fill_internal_buffer_unchecked(cur_input[CMD_CODER], cur_output[CMD_CODER]) {
-                    DivansResult::Success => {},
-                    need_something => {
-                        return need_something
-                    },
-                }
+            match drain_or_fill_static_buffer(CMD_CODER,
+                                              local_coder,
+                                              &mut superstate.demuxer, &mut superstate.muxer,
+                                              output_bytes, output_offset,
+                                              superstate.m8.get_base_alloc()) {
+                DivansResult::Success => {},
+                needs_something => return needs_something,
             }
             let billing = BillingDesignation::LiteralCommand(match self.state {
                 LiteralSubstate::LiteralCountMantissaNibbles(_, _) => LiteralSubstate::LiteralCountMantissaNibbles(0, 0),

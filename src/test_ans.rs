@@ -212,7 +212,7 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         }
 
         {
-            let mut q = e.get_internal_buffer();
+            let mut q = e.get_internal_buffer_mut();
             let qb = q.num_pop_bytes_avail();
             if qb > 0 {
                 assert!(qb + *n <= dst.len());
@@ -234,7 +234,7 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
         } else {
             e.put_nibble(low_nibble, &cdf_low_adv[last_nibble])
         };
-        let mut q = e.get_internal_buffer();
+        let mut q = e.get_internal_buffer_mut();
         let qb = q.num_pop_bytes_avail();
         if qb > 0 {
             assert!(qb + *n <= dst.len());
@@ -261,7 +261,7 @@ fn encode_test_nibble_helper<AllocU8: Allocator<u8>,
     assert_eq!(t, src.len());
     e.flush();
     {
-        let q = e.get_internal_buffer();
+        let q = e.get_internal_buffer_mut();
         let qb = q.num_pop_bytes_avail();
         q.pop_data(&mut dst[*n .. *n + qb]);
         *n = *n + qb;
@@ -278,7 +278,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
     let mut last_nibble = 0usize;
     let mut t = 0;
     {
-        let q = d.get_internal_buffer();
+        let q = d.get_internal_buffer_mut();
         let sz = q.num_push_bytes_avail();
         //assert!(sz >= 10);
         //assert!(sz <= 16);
@@ -314,7 +314,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
                               high_weighted_prob_range.freq);
         }
         {
-            let mut q = d.get_internal_buffer();
+            let mut q = d.get_internal_buffer_mut();
             while q.num_push_bytes_avail() > 0 {
                 let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                         max_copy);
@@ -335,7 +335,7 @@ fn decode_test_nibble_helper<AllocU8: Allocator<u8>,
             d.get_nibble(&cdf_low_adv[last_nibble])
         };
         *v |= low_nibble;
-        let mut q = d.get_internal_buffer();
+        let mut q = d.get_internal_buffer_mut();
         while q.num_push_bytes_avail() > 0 {
             let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                     max_copy);
@@ -377,7 +377,7 @@ fn encode_test_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u
         for i in (0..8).rev() {
             let b: bool = (v & (1u8<<i)) != 0;
             e.put_bit(b, p0);
-            let mut q = e.get_internal_buffer();
+            let mut q = e.get_internal_buffer_mut();
             let qb = q.num_pop_bytes_avail();
             if qb > 0 {
                 assert!(qb + *n <= dst.len());
@@ -391,7 +391,7 @@ fn encode_test_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u
     if trailer {
         e.put_bit(true, 1);
         {
-            let q = e.get_internal_buffer();
+            let q = e.get_internal_buffer_mut();
             let qb = q.num_pop_bytes_avail();
             if qb > 0 {
                 assert!(qb + *n <= dst.len());
@@ -401,7 +401,7 @@ fn encode_test_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u
         }
         e.put_bit(false, 1);
         {
-            let q = e.get_internal_buffer();
+            let q = e.get_internal_buffer_mut();
             let qb = q.num_pop_bytes_avail();
             if qb > 0 {
                 assert!(qb + *n <= dst.len());
@@ -412,7 +412,7 @@ fn encode_test_helper<AllocU8: Allocator<u8>>(e: &mut ANSEncoder<AllocU8>, p0: u
     }
     e.flush();
     {
-        let q = e.get_internal_buffer();
+        let q = e.get_internal_buffer_mut();
         let qb = q.num_pop_bytes_avail();
         q.pop_data(&mut dst[*n .. *n + qb]);
         *n = *n + qb;
@@ -423,7 +423,7 @@ fn decode_test_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &
     let max_copy = if trailer {1usize} else {1024usize};
     let mut t = 0;
     {
-        let q = d.get_internal_buffer();
+        let q = d.get_internal_buffer_mut();
         let sz = q.num_push_bytes_avail();
         //assert!(sz >= 10);
         //assert!(sz <= 16);
@@ -440,7 +440,7 @@ fn decode_test_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &
             if bit {
                 *v = *v | (1u8<<(7 - b));
             }
-            let mut q = d.get_internal_buffer();
+            let mut q = d.get_internal_buffer_mut();
             while q.num_push_bytes_avail() > 0 && *n < src.len() {
                 let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                         max_copy);
@@ -455,7 +455,7 @@ fn decode_test_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &
         let bit = d.get_bit(1);
         assert!(bit);
         {
-            let q = d.get_internal_buffer();
+            let q = d.get_internal_buffer_mut();
             while q.num_push_bytes_avail() > 0 && *n < src.len() {
                 let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                         max_copy);
@@ -465,7 +465,7 @@ fn decode_test_helper<AllocU8: Allocator<u8>>(d: &mut ANSDecoder, p0: u8, src: &
         }
         let bit = d.get_bit(1);
         assert!(!bit);
-        let q = d.get_internal_buffer();
+        let q = d.get_internal_buffer_mut();
         while q.num_push_bytes_avail() > 0 && *n < src.len() {
             let sz = core::cmp::min(core::cmp::min(src.len() - *n, q.num_push_bytes_avail()),
                                     max_copy);

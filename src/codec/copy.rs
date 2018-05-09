@@ -248,12 +248,15 @@ impl CopyState {
                         let mut last_nib = last_nib_as_u32 as u8;
                         let index = if len_decoded == 0 { ((superstate.bk.last_dlen & 3) + 1) as usize } else { 0usize };
                         let four_if_0_or_1_64_if_2_3_or_4 = 0x4 << ((index & 6) << ((index & 2)>>1));
-                        let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
-                        superstate.coder[CMD_CODER].get_or_put_nibble(&mut last_nib, nibble_prob, BillingDesignation::CopyCommand(
-                            CopySubstate::DistanceMantissaNibbles(0, 0, 0)));
-                        let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
-                        nibble_prob.blend(last_nib, Speed::new(four_if_0_or_1_64_if_2_3_or_4, 0x4000));
+                        let next_decoded_so_far;
+                        {
+                            let mut nibble_prob = superstate.bk.copy_priors.get(
+                                CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
+                            superstate.coder[CMD_CODER].get_or_put_nibble(&mut last_nib, nibble_prob, BillingDesignation::CopyCommand(
+                                CopySubstate::DistanceMantissaNibbles(0, 0, 0)));
+                            next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
+                            nibble_prob.blend(last_nib, Speed::new(four_if_0_or_1_64_if_2_3_or_4, 0x4000));
+                        }
                         match superstate.drain_or_fill_internal_buffer(CMD_CODER, output_bytes, output_offset) {
                             DivansResult::Success => {},
                             need_something => {

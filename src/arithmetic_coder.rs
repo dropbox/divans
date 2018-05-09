@@ -84,7 +84,8 @@ impl ByteQueue for RegisterQueue {
 pub trait EntropyEncoder {
     type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
-    fn get_internal_buffer(&mut self) -> &mut Self::Queue;
+    fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue;
+    fn get_internal_buffer(&self) -> &Self::Queue;
     fn put_bit(&mut self,
                bit: bool,
                prob_of_false: u8);
@@ -132,7 +133,8 @@ pub trait EntropyEncoder {
 pub trait EntropyDecoder {
     type Queue:ByteQueue;
     // if it's a register, should have a get and a set and pass by value and clobber?
-    fn get_internal_buffer(&mut self) -> &mut Self::Queue;
+    fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue;
+    fn get_internal_buffer(&self) -> &Self::Queue;
     fn get_bit(&mut self, prob_of_false: u8) -> bool;
     fn get_nibble<C: CDF16> (&mut self, prob: &C) -> (u8, ProbRange) {
         let high_bit_prob = prob.cdf(7);
@@ -186,9 +188,9 @@ impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
     
     #[inline(always)]
     fn drain_or_fill_internal_buffer_unchecked(&mut self,
-                                               input: ReadableBytes,
-                                               _output:WritableBytes) -> DivansResult {
-        let ibuffer = self.get_internal_buffer();
+                                               input: &mut ReadableBytes,
+                                               _output:&mut WritableBytes) -> DivansResult {
+        let ibuffer = self.get_internal_buffer_mut();
         let push_count = ibuffer.push_data(input.data.split_at(*input.read_offset).1);
         *input.read_offset += push_count;
         if ibuffer.num_push_bytes_avail() != 0 {
@@ -225,10 +227,10 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                 self.get_internal_buffer().num_pop_bytes_avail() != 0
             }
             fn drain_or_fill_internal_buffer_unchecked(&mut self,
-                                             _input: ::interface::ReadableBytes,
-                                             output: ::interface::WritableBytes,
+                                             _input: &mut ::interface::ReadableBytes,
+                                             output: &mut ::interface::WritableBytes,
                                              ) -> DivansResult {
-                let ibuffer = self.get_internal_buffer();
+                let ibuffer = self.get_internal_buffer_mut();
                 let push_count = ibuffer.pop_data(output.data.split_at_mut(*output.write_offset).1);
                 *output.write_offset += push_count;
                 if ibuffer.num_pop_bytes_avail() != 0 {
@@ -288,8 +290,11 @@ mod test {
     }
     impl EntropyEncoder for MockBitCoder {
         type Queue = MockByteQueue;
-        fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
+        fn get_internal_buffer_mut(&mut self) -> &mut MockByteQueue {
             &mut self.queue
+        }
+        fn get_internal_buffer(&self) -> &MockByteQueue {
+            &self.queue
         }
         fn put_bit(&mut self, bit: bool, prob_of_false: u8) {
             self.calls_to_put_bit[self.num_calls >> 2][self.num_calls&3] = (bit, prob_of_false);
@@ -299,8 +304,11 @@ mod test {
     }
     impl EntropyDecoder for MockBitCoder {
         type Queue = MockByteQueue;
-        fn get_internal_buffer(&mut self) -> &mut MockByteQueue {
+        fn get_internal_buffer_mut(&mut self) -> &mut MockByteQueue {
             &mut self.queue
+        }
+        fn get_internal_buffer(&self) -> &MockByteQueue {
+            &self.queue
         }
         fn get_bit(&mut self, prob_of_false: u8) -> bool {
             let bit = self.calls_to_put_bit[self.num_calls >> 2][self.num_calls&3].0;

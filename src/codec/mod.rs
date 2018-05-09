@@ -465,9 +465,13 @@ impl<AllocU8: Allocator<u8>,
                                                           input_commands: &[Command<ISl>],
                                                           input_command_offset: &mut usize) -> DivansResult {
         let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
+        
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
-        let mut adjusted_input_bytes_offset = 0usize;
+        let mut adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
+            adjusted_input_bytes,
+            self.cross_command_state.m8.get_base_alloc());
         let mut adjusted_output_bytes_offset = 0usize;
+        
         loop {
             let res:(Option<DivansResult>, Option<CodecTraitSelector>);
             match self.codec_traits {

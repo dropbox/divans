@@ -381,8 +381,11 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
 
 impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
     type Queue = ByteStack<AllocU8>;
-    fn get_internal_buffer(&mut self) -> &mut Self::Queue {
+    fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue {
         &mut self.q
+    }
+    fn get_internal_buffer(&self) -> &Self::Queue {
+        &self.q
     }
     fn put_bit(&mut self, bit: bool, mut prob_of_false: u8) {
         if prob_of_false == 0 {
@@ -444,7 +447,10 @@ impl ByteQueue for ANSDecoder {
 impl EntropyDecoder for ANSDecoder {
     type Queue = Self;
     #[inline(always)]
-    fn get_internal_buffer(&mut self) -> &mut Self::Queue {
+    fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue {
+        self
+    }
+    fn get_internal_buffer(&self) -> &Self::Queue {
         self
     }
     #[inline(always)]

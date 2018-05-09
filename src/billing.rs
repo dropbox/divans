@@ -124,8 +124,8 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
         self.coder.has_data_to_drain_or_fill()
     }
     fn drain_or_fill_internal_buffer_unchecked(&mut self,
-                                     input_buffer: ReadableBytes,
-                                     output_buffer: WritableBytes) -> DivansResult {
+                                     input_buffer: &mut ReadableBytes,
+                                     output_buffer: &mut WritableBytes) -> DivansResult {
        self.coder.drain_or_fill_internal_buffer_unchecked(input_buffer, output_buffer)
     }
     fn get_or_put_bit_without_billing(&mut self,
