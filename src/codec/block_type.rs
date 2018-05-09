@@ -1,9 +1,10 @@
-use interface::DivansResult;
+use interface::{DivansResult, StreamMuxer, StreamDemuxer};
 use alloc::Allocator;
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     BLOCK_TYPE_LITERAL_SWITCH,
+    CMD_CODER,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -30,13 +31,17 @@ impl BlockTypeState {
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
-                        AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<CDF2>,
-                        AllocCDF16:Allocator<Cdf16>>(
+                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearOutputBytes:StreamMuxer<AllocU8>+Default,
+                            Cdf16:CDF16,
+                            AllocU8:Allocator<u8>,
+                            AllocCDF2:Allocator<CDF2>,
+                            AllocCDF16:Allocator<Cdf16>>(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,
                                            Specialization,
+                                           LinearInputBytes,
+                                           LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
                                            AllocCDF2,
@@ -60,10 +65,9 @@ impl BlockTypeState {
         let mut first_nibble:u8 = input_bs.block_type() & 0xf;
         let mut second_nibble:u8 = input_bs.block_type() >> 4;
         loop {
-            match superstate.coder.drain_or_fill_internal_buffer(input_bytes,
-                                                                 input_offset,
-                                                                 output_bytes,
-                                                                 output_offset) {
+            match superstate.drain_or_fill_internal_buffer(CMD_CODER,
+                                                           output_bytes,
+                                                           output_offset) {
                 DivansResult::Success => {},
                 need_something => return need_something,
             }
@@ -72,7 +76,7 @@ impl BlockTypeState {
                 BlockTypeState::Begin => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::Mnemonic,
                                                                          (block_type_switch_index,));
-                    superstate.coder.get_or_put_nibble(&mut varint_nibble, nibble_prob, billing);
+                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut varint_nibble, nibble_prob, billing);
                     nibble_prob.blend(varint_nibble, Speed::SLOW);
                     match varint_nibble {
                         0 => *self = BlockTypeState::FullyDecoded(
@@ -86,14 +90,14 @@ impl BlockTypeState {
                 BlockTypeState::TwoNibbleType => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::FirstNibble,
                                                                          (block_type_switch_index,));
-                    superstate.coder.get_or_put_nibble(&mut first_nibble, nibble_prob, billing);
+                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut first_nibble, nibble_prob, billing);
                     nibble_prob.blend(first_nibble, Speed::SLOW);
                     *self = BlockTypeState::FinalNibble(first_nibble);
                 },
                 BlockTypeState::FinalNibble(first_nibble) => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::SecondNibble,
                                                                          (block_type_switch_index,));
-                    superstate.coder.get_or_put_nibble(&mut second_nibble, nibble_prob, billing);
+                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut second_nibble, nibble_prob, billing);
                     nibble_prob.blend(second_nibble, Speed::SLOW);
                     *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
@@ -119,13 +123,17 @@ impl LiteralBlockTypeState {
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
-                        AllocU8:Allocator<u8>,
+                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearOutputBytes:StreamMuxer<AllocU8>+Default,
+                            Cdf16:CDF16,
+                            AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,
                                            Specialization,
+                                           LinearInputBytes,
+                                           LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
                                            AllocCDF2,
@@ -166,8 +174,7 @@ impl LiteralBlockTypeState {
                     }
                 },
                 LiteralBlockTypeState::StrideNibble(ltype) =>   {
-                     match superstate.coder.drain_or_fill_internal_buffer(input_bytes,
-                                                                 input_offset,
+                    match superstate.drain_or_fill_internal_buffer(CMD_CODER,
                                                                  output_bytes,
                                                                  output_offset) {
                          DivansResult::Success => {},
@@ -179,7 +186,7 @@ impl LiteralBlockTypeState {
                     };
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::StrideNibble,
                                                                          (0,));
-                    superstate.coder.get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);
+                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);
                     nibble_prob.blend(stride_nibble, Speed::SLOW);
                     *self = LiteralBlockTypeState::FullyDecoded(ltype, stride_nibble);
                 },

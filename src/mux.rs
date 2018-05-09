@@ -618,4 +618,5 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for DevNull<AllocU8> {
     }
     fn free_mux(&mut self, _m8: &mut AllocU8) {
     }
+    fn can_linearize() -> bool {false}
 }

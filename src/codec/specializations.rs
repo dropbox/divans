@@ -2,7 +2,6 @@ use ::probability::{CDF2, CDF16};
 use alloc::Allocator;
 pub use super::interface::CrossCommandBookKeeping;
 
-
 pub trait CodecTraits {
     const MIXING_PRIORS: bool;
 }
@@ -26,10 +25,10 @@ pub enum CodecTraitSelector {
 }
 
 pub fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
-                                           AllocU8:Allocator<u8>,
-                                           AllocCDF2:Allocator<CDF2>,
-                                           AllocCDF16:Allocator<Cdf16>>(
-    bk:&CrossCommandBookKeeping<Cdf16,AllocU8, AllocCDF2, AllocCDF16>
+                                              AllocU8:Allocator<u8>,
+                                              AllocCDF2:Allocator<CDF2>,
+                                              AllocCDF16:Allocator<Cdf16>>(
+    bk:&CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>
 ) -> CodecTraitSelector {
     if bk.model_weights[0].should_mix() || bk.model_weights[1].should_mix() {
         return CodecTraitSelector::MixingTrait(&MIXING_TRAIT);

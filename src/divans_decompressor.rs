@@ -162,7 +162,10 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                  parser.mcdf16.unwrap())
             },
             DivansDecompressor::Decode(decoder, bytes_encoded) => {
-                decoder.get_coder().debug_print(bytes_encoded);
+                use codec::NUM_ARITHMETIC_CODERS;
+                for index in 0..NUM_ARITHMETIC_CODERS {
+                    decoder.get_coder(index as u8).debug_print(bytes_encoded);
+                }
                 decoder.free()
             }
         }

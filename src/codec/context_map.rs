@@ -1,10 +1,11 @@
-use interface::{DivansResult, ErrMsg, DivansOpResult};
+use interface::{DivansResult, ErrMsg, DivansOpResult, StreamMuxer, StreamDemuxer};
 use super::interface::ContextMapType;
 use super::priors::{PredictionModePriorType};
 use alloc::{Allocator, SliceWrapper};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    CMD_CODER,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -57,14 +58,18 @@ impl PredictionModeState {
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                        Specialization:EncoderOrDecoderSpecialization,
-                        Cdf16:CDF16,
+                            Specialization:EncoderOrDecoderSpecialization,
+                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
+                             Cdf16:CDF16,
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>,
                         SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
+                                                                                  LinearInputBytes,
+                                                                                  LinearOutputBytes,
                                                                                   Cdf16,
                                                                                   AllocU8,
                                                                                   AllocCDF2,
@@ -100,7 +105,7 @@ impl PredictionModeState {
             desired_speeds = adapt;
         }
         loop {
-            match superstate.coder.drain_or_fill_internal_buffer(input_bytes, input_offset, output_bytes, output_offset) {
+            match superstate.drain_or_fill_internal_buffer(CMD_CODER, output_bytes, output_offset) {
                 DivansResult::Success => {},
                 need_something => return need_something,
             }
@@ -127,7 +132,7 @@ impl PredictionModeState {
                    let mut beg_nib = in_cmd.literal_prediction_mode().prediction_mode();
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
-                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
@@ -145,7 +150,7 @@ impl PredictionModeState {
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::DynamicContextMixingSpeed, (0,));
-                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    superstate.bk.obs_dynamic_context_mixing(beg_nib, &mut superstate.mcdf16);
@@ -156,7 +161,7 @@ impl PredictionModeState {
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::PriorDepth, (0,));
-                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::FAST);
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
@@ -179,7 +184,7 @@ impl PredictionModeState {
                    }
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
                                                                              (palette_type as usize,));
-                   superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
+                   superstate.coder[CMD_CODER].get_or_put_nibble(&mut nibble, nibble_prob, billing);
                    nibble_prob.blend(nibble, Speed::FAST);
                    if palette_type == 0 {
                        out_adapt_speed[speed_index].0 |= nibble<<3;
@@ -232,7 +237,7 @@ impl PredictionModeState {
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
-                       superstate.coder.get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
                        nibble_prob.blend(mnemonic_nibble, Speed::MED);
                    }
                    if mnemonic_nibble == 14 {
@@ -272,7 +277,7 @@ impl PredictionModeState {
                    };
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
 
-                   superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
+                   superstate.coder[CMD_CODER].get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                    nibble_prob.blend(msn_nib, Speed::MED);
                    *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, msn_nib);
                },
@@ -291,7 +296,7 @@ impl PredictionModeState {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (0,));
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
-                       superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
                        nibble_prob.blend(lsn_nib, Speed::MED);
                    }
                    if let DivansOpResult::Failure(m) = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
@@ -313,7 +318,7 @@ impl PredictionModeState {
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::PriorMixingValue, (0,));
-                       superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
+                       superstate.coder[CMD_CODER].get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
                        nibble_prob.blend(mixing_nib, Speed::PLANE);
                    }
                    if index + 1 == superstate.bk.mixing_mask.len() {

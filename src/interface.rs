@@ -239,21 +239,37 @@ pub struct WritableBytes<'a> {
 }
 
 pub trait StreamMuxer<AllocU8: Allocator<u8> > {
+    #[inline(always)]
     fn write(&mut self, stream_id: StreamID, data:&[u8], m8: &mut AllocU8) -> usize;
+    #[inline(always)]
     fn write_buffer(&mut self, m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS];
+    #[inline(always)]
+    fn can_linearize() ->  bool {true}
+    #[inline(always)]
     fn linearize(&mut self, output:&mut[u8]) -> usize;
+    #[inline(always)]
     fn flush(&mut self, output:&mut[u8]) -> usize;
+    #[inline(always)]
     fn wrote_eof(&self) -> bool;
+    #[inline(always)]
     fn free_mux(&mut self, m8: &mut AllocU8);
 }
 pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
+    #[inline(always)]
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize;
+    #[inline(always)]
     fn read_buffer(&mut self, m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS];
+    #[inline(always)]
     fn data_ready(&self, stream_id:StreamID) -> usize;
+    #[inline(always)]
     fn peek(&self, stream_id: StreamID) -> &[u8];
+    #[inline(always)]
     fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8>;
+    #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize);
+    #[inline(always)]
     fn encountered_eof(&self) -> bool;
+    #[inline(always)]
     fn free_demux(&mut self, m8: &mut AllocU8);
 }
 
