@@ -15,6 +15,7 @@ use core::marker::PhantomData;
 use core::cmp::{min, max};
 use super::probability::{CDF2,CDF16};
 use super::brotli;
+use super::mux::{Mux,DevNull};
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
@@ -52,7 +53,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocZN: Allocator<brotli::enc::ZopfliNode>
      > {
     brotli_encoder: BrotliEncoderStateStruct<AllocU8, AllocU16, AllocU32, AllocI32, AllocCommand>,
-    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, DevNull<AllocU8>, Mux<AllocU8>, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     m64: AllocU64,
@@ -126,6 +127,8 @@ impl<SelectedCDF:CDF16,
                                                           data:&mut ResizableByteBuffer<u8, AllocU8>,
                                                           codec: &mut DivansCodec<ChosenEncoder,
                                                                                   EncoderSpecialization,
+                                                                                  DevNull<AllocU8>,
+                                                                                  Mux<AllocU8>,
                                                                                   SelectedCDF,
                                                                                   AllocU8,
                                                                                   AllocCDF2,
@@ -476,7 +479,7 @@ impl<AllocU8:Allocator<u8>,
                                                                               additional_args.2,
                                                                               m32,
                                                                               additional_args.3),
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DevNull<AllocU8>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
                 mcdf16,

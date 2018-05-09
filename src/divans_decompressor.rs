@@ -6,7 +6,7 @@ use ::interface;
 use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
-
+use super::mux::{Mux,DevNull};
 use ::interface::DivansResult;
 use ::interface::ErrMsg;
 use ::ArithmeticEncoderOrDecoder;
@@ -49,11 +49,13 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
     Header(HeaderParser<AllocU8, AllocCDF2, AllocCDF16>),
     Decode(codec::DivansCodec<DefaultDecoder,
-           DecoderSpecialization,
-           interface::DefaultCDF16,
-           AllocU8,
-           AllocCDF2,
-           AllocCDF16>,
+                              DecoderSpecialization,
+                              Mux<AllocU8>,
+                              DevNull<AllocU8>,
+                              interface::DefaultCDF16,
+                              AllocU8,
+                              AllocCDF2,
+                              AllocCDF16>,
            usize),
 }
 
@@ -122,6 +124,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let decoder = DefaultDecoder::new(&mut m8);
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
+                                             Mux<AllocU8>,
+                                             DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
                                              AllocCDF2,

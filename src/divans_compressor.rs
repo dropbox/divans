@@ -17,6 +17,7 @@
 use core;
 use core::marker::PhantomData;
 use core::hash::Hasher;
+use super::mux::{Mux,DevNull};
 use super::probability;
 
 use super::raw_to_cmd;
@@ -52,7 +53,7 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
                             AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
     m32: AllocU32,
-    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, DevNull<AllocU8>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     literal_context_map_backing: AllocU8::AllocatedMemory,
@@ -95,7 +96,7 @@ impl<AllocU8:Allocator<u8>,
          let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
          DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
             m32 :m32,
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DevNull<AllocU8>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
                 m8,
                 mcdf2,
                 mcdf16,

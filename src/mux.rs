@@ -21,6 +21,10 @@ enum StreamState {
     EofMid,
     EofDone,
 }
+
+
+
+
 pub struct Mux<AllocU8:Allocator<u8> > {
    buf: [AllocU8::AllocatedMemory; NUM_STREAMS as usize],
    read_cursor: [usize; NUM_STREAMS as usize],
@@ -500,5 +504,58 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
             }
         }
         output_offset
+    }
+}
+
+pub struct DevNull<AllocU8:Allocator<u8>> {
+    _placeholder: core::marker::PhantomData<AllocU8>
+}
+impl<AllocU8: Allocator<u8> > Default for DevNull<AllocU8>{
+    fn default() ->Self {
+        DevNull::<AllocU8> {
+            _placeholder: core::marker::PhantomData::<AllocU8>::default(),
+        }
+    }
+}
+impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
+    fn write_linear(&mut self, data:&[u8], _m8: &mut AllocU8) -> usize {
+        debug_assert_eq!(data.len(), 0);
+        0
+    }
+    fn data_ready(&self, _stream_id:StreamID) -> usize {
+        0
+    }
+    fn peek(&self, _stream_id: StreamID) -> &[u8] {
+        &[]
+    }
+    fn pop(&mut self, _stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8> {
+        slice_util::AllocatedMemoryRange::<u8, AllocU8>::default()
+    }
+    fn consume(&mut self, _stream_id: StreamID, count: usize) {
+        debug_assert_eq!(count, 0);
+    }
+    fn encountered_eof(&self) -> bool {
+        true
+    }
+    fn free_demux(&mut self, _m8: &mut AllocU8) {
+    }
+}
+
+
+impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for DevNull<AllocU8> {
+    fn write(&mut self, _stream_id: StreamID, data: &[u8], _m8: &mut AllocU8) -> usize {
+        debug_assert_eq!(data.len(), 0);
+        0
+    }
+    fn linearize(&mut self, _output:&mut[u8]) -> usize {
+        0
+    }
+    fn close(&mut self, _output:&mut[u8]) -> usize {
+        0
+    }
+    fn wrote_eof(&self) -> bool {
+        true
+    }
+    fn free_mux(&mut self, _m8: &mut AllocU8) {
     }
 }

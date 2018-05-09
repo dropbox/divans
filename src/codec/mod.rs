@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use interface::{DivansResult, DivansOutputResult, ErrMsg};
+use interface::{DivansResult, DivansOutputResult, ErrMsg, StreamMuxer, StreamDemuxer};
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -30,6 +30,7 @@ use super::interface::{
     LiteralBlockSwitch,
     NewWithAllocator,
     Nop
+ 
 };
 pub mod weights;
 pub mod specializations;
@@ -142,6 +143,8 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
+                       LinearInputBytes:StreamMuxer<AllocU8>+Default,
+                       LinearOutputBytes:StreamDemuxer<AllocU8>+Default,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
                        AllocCDF2:Allocator<CDF2>,
@@ -161,6 +164,8 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     state_prediction_mode: context_map::PredictionModeState,
     state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
     codec_traits: CodecTraitSelector,
+    demuxer: LinearInputBytes,
+    muxer: LinearOutputBytes,
     crc: SubDigest,
     frozen_checksum: Option<u64>,
     skip_checksum: bool,
@@ -180,9 +185,11 @@ enum CodecTraitResult {
 impl<AllocU8: Allocator<u8>,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
      Specialization: EncoderOrDecoderSpecialization,
+     LinearInputBytes:StreamMuxer<AllocU8>+Default,
+     LinearOutputBytes:StreamDemuxer<AllocU8>+Default,
      Cdf16:CDF16,
      AllocCDF2: Allocator<CDF2>,
-     AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
+     AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
     pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         self.cross_command_state.free()
     }
@@ -201,7 +208,7 @@ impl<AllocU8: Allocator<u8>,
                do_context_map: bool,
                force_stride: interface::StrideSelection,
                skip_checksum: bool) -> Self {
-        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
+        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
                                                     Cdf16,
@@ -231,6 +238,8 @@ impl<AllocU8: Allocator<u8>,
             state_block_switch: block_type::BlockTypeState::begin(),
             state_prediction_mode: context_map::PredictionModeState::begin(),
             state_populate_ring_buffer: Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+            demuxer: LinearInputBytes::default(),
+            muxer: LinearOutputBytes::default(),
             crc: default_crc(),
             frozen_checksum: None,
             skip_checksum:skip_checksum,
