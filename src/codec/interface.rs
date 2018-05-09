@@ -622,6 +622,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     AllocU8,
                                                     AllocCDF2,
                                                     AllocCDF16>{
+    #[inline(always)]
     pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
         drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset, self.m8.get_base_alloc())
     }
@@ -749,7 +750,7 @@ impl <AllocU8:Allocator<u8>,
     }
 }
 
-
+#[inline(always)]
 pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
                                    ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                    LinearInputBytes:StreamDemuxer<AllocU8>+Default,
@@ -761,23 +762,31 @@ pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
                                      output_bytes: &mut[u8],
                                      output_offset: &mut usize,
                                      m8:&mut AllocU8) -> DivansResult {
-    while local_coder.has_data_to_drain_or_fill() { // FIXME: this should be the cmd_coder
-        if LinearOutputBytes::can_linearize() { //FIXME: should this go before, or after, or both
+    if LinearOutputBytes::can_linearize() {
+        while local_coder.has_data_to_drain_or_fill() {
             *output_offset += muxer.linearize(output_bytes.split_at_mut(*output_offset).1);
+            let mut cur_input = demuxer.read_buffer(m8);
+            let mut cur_output = muxer.write_buffer(m8);
+            match local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index]) {
+                DivansResult::NeedsMoreOutput => {
+                    assert!(LinearOutputBytes::can_linearize());
+                    if *output_offset == output_bytes.len() {
+                        return DivansResult::NeedsMoreOutput;
+                    }
+                },
+                res => {
+                    return res;
+                },
+            }
         }
-        let mut cur_input = demuxer.read_buffer(m8);
-        let mut cur_output = muxer.write_buffer(m8);
-        match local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index]) {
-            DivansResult::NeedsMoreOutput => {
-                assert!(LinearOutputBytes::can_linearize());
-                if *output_offset == output_bytes.len() {
-                    return DivansResult::NeedsMoreOutput;
-                }
-            },
-            res => {
-                return res;
-            },
+        DivansResult::Success
+    } else {
+        if local_coder.has_data_to_drain_or_fill() {
+            let mut cur_input = demuxer.read_buffer(m8);
+            let mut cur_output = muxer.write_buffer(m8);
+            local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index])
+        } else {
+            DivansResult::Success
         }
     }
-    DivansResult::Success
 }
