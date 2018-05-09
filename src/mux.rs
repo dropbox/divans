@@ -175,7 +175,7 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for Mux<AllocU8> {
     fn linearize(&mut self, output:&mut[u8]) -> usize {
         self.serialize(output)
     }
-    fn close(&mut self, output:&mut[u8]) -> usize {
+    fn flush(&mut self, output:&mut[u8]) -> usize {
         self.serialize_close(output)
     }
     fn wrote_eof(&self) -> bool {
@@ -461,7 +461,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
             StreamState::EofDone => return 0,
             _ => {},
         }
-        let mut ret = self.flush(output);
+        let mut ret = self.flush_internal(output);
         if output.len() == ret {
             return ret;
         }
@@ -497,7 +497,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         }
         return ret;
     }
-    fn flush(&mut self, output:&mut [u8]) -> usize {
+    fn flush_internal(&mut self, output:&mut [u8]) -> usize {
         let mut output_offset = 0usize;
         if self.cur_stream_bytes_avail != 0 {
             output_offset += self.serialize_leftover(output);
@@ -610,7 +610,7 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for DevNull<AllocU8> {
     fn linearize(&mut self, _output:&mut[u8]) -> usize {
         0
     }
-    fn close(&mut self, _output:&mut[u8]) -> usize {
+    fn flush(&mut self, _output:&mut[u8]) -> usize {
         0
     }
     fn wrote_eof(&self) -> bool {

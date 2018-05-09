@@ -110,6 +110,7 @@ enum EncodeOrDecodeState {
     EncodedShutdownNode, // in flush/close state (encoder only) and finished flushing the EOF node type
     ShutdownCoder,
     CoderBufferDrain,
+    MuxDrain,
     WriteChecksum(u8),
 }
 
@@ -143,8 +144,8 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
-                       LinearInputBytes:StreamMuxer<AllocU8>+Default,
-                       LinearOutputBytes:StreamDemuxer<AllocU8>+Default,
+                       LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                       LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
                        AllocCDF2:Allocator<CDF2>,
@@ -185,8 +186,8 @@ enum CodecTraitResult {
 impl<AllocU8: Allocator<u8>,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
      Specialization: EncoderOrDecoderSpecialization,
-     LinearInputBytes:StreamMuxer<AllocU8>+Default,
-     LinearOutputBytes:StreamDemuxer<AllocU8>+Default,
+     LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+     LinearOutputBytes:StreamMuxer<AllocU8>+Default,
      Cdf16:CDF16,
      AllocCDF2: Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
@@ -356,11 +357,17 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::EncodedShutdownNode => {
                     let mut unused = 0usize;
-                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[], &mut unused, output_bytes, output_bytes_offset) {
-                        DivansResult::Success => self.state = EncodeOrDecodeState::ShutdownCoder,
-                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(0)), // FIXME: is this possible?
-                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                        DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
+                    if self.cross_command_state.coder.has_data_to_drain_or_fill() {
+                        let cur_input = self.demuxer.read_buffer(self.cross_command_state.m8.get_base_alloc());
+                        let cur_output = self.muxer.write_buffer(self.cross_command_state.m8.get_base_alloc());
+                        match self.cross_command_state.coder.drain_or_fill_internal_buffer_unchecked(cur_input[0], cur_output[0]) {
+                            DivansResult::Success => self.state = EncodeOrDecodeState::ShutdownCoder,
+                            DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(0)), // FIXME: is this possible?
+                            DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                            DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
+                        }
+                    } else {
+                        self.state = EncodeOrDecodeState::ShutdownCoder;
                     }
                 },
                 EncodeOrDecodeState::ShutdownCoder => {
@@ -372,18 +379,34 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::CoderBufferDrain => {
-                    let mut unused = 0usize;
-                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(&[],
-                                                                                       &mut unused,
-                                                                                       output_bytes,
-                                                                                       output_bytes_offset) {
-                        DivansResult::Success => {
-                            self.state = EncodeOrDecodeState::WriteChecksum(0);
-                        },
-                        DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(1)), // FIXME: is this possible?
-                        DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                        DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
+                    if self.cross_command_state.coder.has_data_to_drain_or_fill() {
+                        let cur_input = self.demuxer.read_buffer(self.cross_command_state.m8.get_base_alloc());
+                        let cur_output = self.muxer.write_buffer(self.cross_command_state.m8.get_base_alloc());
+                        match self.cross_command_state.coder.drain_or_fill_internal_buffer_unchecked(cur_input[0], cur_output[0]) {
+                            DivansResult::Success => {
+                                self.state = EncodeOrDecodeState::MuxDrain;
+                            },
+                            DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::DrainOrFillNeedsInput(1)), // FIXME: is this possible?
+                            DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                            DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
+                        }
+                    } else {
+                        self.state = EncodeOrDecodeState::MuxDrain;
                     }
+                },
+                EncodeOrDecodeState::MuxDrain => {
+                    loop {
+                        let output_loc = output_bytes.split_at_mut(*output_bytes_offset).1;
+                        if output_loc.len() == 0 {
+                            return DivansOutputResult::NeedsMoreOutput;
+                        }
+                        let amt = self.muxer.flush(output_loc);
+                        *output_bytes_offset += amt;
+                        if self.muxer.wrote_eof() {
+                            break;
+                        }
+                    }
+                    self.state = EncodeOrDecodeState::WriteChecksum(0);
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     match self.frozen_checksum {
@@ -588,10 +611,14 @@ impl<AllocU8: Allocator<u8>,
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
                 },
                 EncodeOrDecodeState::Begin => {
-                    match self.cross_command_state.coder.drain_or_fill_internal_buffer(input_bytes, input_bytes_offset,
-                                                                                      output_bytes, output_bytes_offset) {
-                        DivansResult::Success => {},
-                        need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
+                    if self.cross_command_state.coder.has_data_to_drain_or_fill() {
+                        let cur_input = self.demuxer.read_buffer(self.cross_command_state.m8.get_base_alloc());
+                        let cur_output = self.muxer.write_buffer(self.cross_command_state.m8.get_base_alloc());
+
+                        match self.cross_command_state.coder.drain_or_fill_internal_buffer_unchecked(cur_input[0], cur_output[0]) {
+                            DivansResult::Success => {},
+                            need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
+                        }
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {

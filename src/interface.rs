@@ -242,7 +242,7 @@ pub trait StreamMuxer<AllocU8: Allocator<u8> > {
     fn write(&mut self, stream_id: StreamID, data:&[u8], m8: &mut AllocU8) -> usize;
     fn write_buffer(&mut self, m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS];
     fn linearize(&mut self, output:&mut[u8]) -> usize;
-    fn close(&mut self, output:&mut[u8]) -> usize;
+    fn flush(&mut self, output:&mut[u8]) -> usize;
     fn wrote_eof(&self) -> bool;
     fn free_mux(&mut self, m8: &mut AllocU8);
 }
@@ -335,10 +335,21 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
     // depending on if it is in encode or decode mode
     #[inline(always)]
     fn drain_or_fill_internal_buffer(&mut self,
-                                     input_buffer:&[u8],
-                                     input_offset:&mut usize,
-                                     output_buffer:&mut [u8],
-                                     output_offset: &mut usize) -> DivansResult;
+                                     input:ReadableBytes,
+                                     output:WritableBytes) -> DivansResult {
+        if self.has_data_to_drain_or_fill() {
+            self.drain_or_fill_internal_buffer_unchecked(input, output)
+        } else {
+            DivansResult::Success
+        }
+    }
+    #[inline(always)]
+    fn drain_or_fill_internal_buffer_unchecked(&mut self,
+                                               input:ReadableBytes,
+                                               output:WritableBytes) -> DivansResult;
+    #[inline(always)]
+    fn has_data_to_drain_or_fill(&self) -> bool;
+
     #[inline(always)]
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,

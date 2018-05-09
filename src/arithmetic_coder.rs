@@ -14,7 +14,7 @@
 use core;
 use core::default::Default;
 use probability::{CDF16, ProbRange};
-use interface::ArithmeticEncoderOrDecoder;
+use interface::{ArithmeticEncoderOrDecoder, ReadableBytes, WritableBytes};
 use super::DivansResult;
 pub trait ByteQueue {
     #[inline(always)]
@@ -180,19 +180,19 @@ impl<Decoder:EntropyDecoder+Clone> ArithmeticEncoderOrDecoder for Decoder {
         self.clone()
     }
     #[inline(always)]
-    fn drain_or_fill_internal_buffer(&mut self,
-                                     input_buffer:&[u8],
-                                     input_offset:&mut usize,
-                                     _output_buffer:&mut [u8],
-                                     _output_offset: &mut usize) -> DivansResult {
+    fn has_data_to_drain_or_fill(&self) -> bool {
+        self.get_internal_buffer().num_push_bytes_avail() != 0
+    }
+    
+    #[inline(always)]
+    fn drain_or_fill_internal_buffer_unchecked(&mut self,
+                                               input: ReadableBytes,
+                                               _output:WritableBytes) -> DivansResult {
         let ibuffer = self.get_internal_buffer();
-        let coder_bytes_avail = ibuffer.num_push_bytes_avail();
-        if coder_bytes_avail != 0 {
-            let push_count = ibuffer.push_data(input_buffer.split_at(*input_offset).1);
-            *input_offset += push_count;
-            if ibuffer.num_push_bytes_avail() != 0 {
-                return DivansResult::NeedsMoreInput;
-            }
+        let push_count = ibuffer.push_data(input.data.split_at(*input.read_offset).1);
+        *input.read_offset += push_count;
+        if ibuffer.num_push_bytes_avail() != 0 {
+            return DivansResult::NeedsMoreInput;
         }
         DivansResult::Success
     }
@@ -220,19 +220,19 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
             fn mov(&mut self) -> Self {
                 self.mov_internal()
             }
-            fn drain_or_fill_internal_buffer(&mut self,
-                                             _input_buffer:&[u8],
-                                             _input_offset:&mut usize,
-                                             output_buffer:&mut [u8],
-                                             output_offset: &mut usize) -> DivansResult {
+            #[inline(always)]
+            fn has_data_to_drain_or_fill(&self) -> bool {
+                self.get_internal_buffer().num_pop_bytes_avail() != 0
+            }
+            fn drain_or_fill_internal_buffer_unchecked(&mut self,
+                                             _input: ::interface::ReadableBytes,
+                                             output: ::interface::WritableBytes,
+                                             ) -> DivansResult {
                 let ibuffer = self.get_internal_buffer();
-                let coder_bytes_avail = ibuffer.num_pop_bytes_avail();
-                if coder_bytes_avail != 0 {
-                    let push_count = ibuffer.pop_data(output_buffer.split_at_mut(*output_offset).1);
-                    *output_offset += push_count;
-                    if ibuffer.num_pop_bytes_avail() != 0 {
-                        return DivansResult::NeedsMoreOutput;
-                    }
+                let push_count = ibuffer.pop_data(output.data.split_at_mut(*output.write_offset).1);
+                *output.write_offset += push_count;
+                if ibuffer.num_pop_bytes_avail() != 0 {
+                    return DivansResult::NeedsMoreOutput;
                 }
                 return DivansResult::Success;
             }

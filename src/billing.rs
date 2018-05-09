@@ -19,7 +19,7 @@ use core::marker::PhantomData;
 use alloc::{Allocator};
 use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
 use super::probability::{CDF16, ProbRange};
-use interface::DivansResult;
+use interface::{DivansResult, ReadableBytes, WritableBytes};
 
 #[cfg(feature="billing")]
 mod billing {
@@ -120,12 +120,13 @@ impl<AllocU8:Allocator<u8>, Coder:ArithmeticEncoderOrDecoder> ArithmeticEncoderO
            _phantom:PhantomData::<AllocU8>::default(),
        }
     }
-    fn drain_or_fill_internal_buffer(&mut self,
-                                     input_buffer: &[u8],
-                                     input_offset: &mut usize,
-                                     output_buffer: &mut [u8],
-                                     output_offset: &mut usize) -> DivansResult{
-       self.coder.drain_or_fill_internal_buffer(input_buffer, input_offset, output_buffer, output_offset)
+    fn has_data_to_drain_or_fill(&self) -> bool {
+        self.coder.has_data_to_drain_or_fill()
+    }
+    fn drain_or_fill_internal_buffer_unchecked(&mut self,
+                                     input_buffer: ReadableBytes,
+                                     output_buffer: WritableBytes) -> DivansResult {
+       self.coder.drain_or_fill_internal_buffer_unchecked(input_buffer, output_buffer)
     }
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
