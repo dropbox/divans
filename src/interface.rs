@@ -224,9 +224,23 @@ impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for Command<SliceType> {
     }
 }
  */
+pub const NUM_STREAMS: usize = 2;
+pub const STREAM_ID_MASK: StreamID = 0x1;
 pub type StreamID = u8;
+
+pub struct ReadableBytes<'a> {
+    pub data: &'a [u8],
+    pub read_offset: &'a mut usize,
+}
+
+pub struct WritableBytes<'a> {
+    pub data: &'a mut [u8],
+    pub write_offset: &'a mut usize,
+}
+
 pub trait StreamMuxer<AllocU8: Allocator<u8> > {
     fn write(&mut self, stream_id: StreamID, data:&[u8], m8: &mut AllocU8) -> usize;
+    fn write_buffer(&mut self, m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS];
     fn linearize(&mut self, output:&mut[u8]) -> usize;
     fn close(&mut self, output:&mut[u8]) -> usize;
     fn wrote_eof(&self) -> bool;
@@ -234,6 +248,7 @@ pub trait StreamMuxer<AllocU8: Allocator<u8> > {
 }
 pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize;
+    fn read_buffer(&mut self, m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS];
     fn data_ready(&self, stream_id:StreamID) -> usize;
     fn peek(&self, stream_id: StreamID) -> &[u8];
     fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8>;

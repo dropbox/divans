@@ -4,11 +4,7 @@
 use core;
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 use super::slice_util;
-pub use interface::{StreamID, StreamMuxer, StreamDemuxer};
-const NUM_STREAMS: StreamID = 2;
-const STREAM_ID_MASK: StreamID = 0x1;
-const MAX_HEADER_SIZE: usize = 3;
-const MAX_FLUSH_VARIANCE: usize = 131073;
+pub use interface::{StreamID, StreamMuxer, StreamDemuxer, NUM_STREAMS, STREAM_ID_MASK, ReadableBytes, WritableBytes};
 enum BytesToDeserialize {
     None,
     Some(StreamID, u32),
@@ -22,6 +18,8 @@ enum StreamState {
     EofDone,
 }
 
+const MAX_HEADER_SIZE: usize = 3;
+const MAX_FLUSH_VARIANCE: usize = 131073;
 
 
 
@@ -111,6 +109,20 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
         self.deserialize(data, m8)
     }
+    fn read_buffer(&mut self, _m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS] {
+        let (s0array, s1array) = self.buf.split_at(1);
+        let (s0loc, s1loc) = self.read_cursor.split_at_mut(1);
+        [
+            ReadableBytes{
+                data:s0array[0].slice().split_at(self.write_cursor[0]).0,
+                read_offset:&mut s0loc[0],
+            },
+            ReadableBytes{
+                data:s1array[0].slice().split_at(self.write_cursor[1]).0,
+                read_offset:&mut s1loc[0],
+            },
+        ]
+    }
     fn data_ready(&self, stream_id:StreamID) -> usize {
         self.how_much_data_avail(stream_id)
     }
@@ -141,6 +153,24 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for Mux<AllocU8> {
     fn write(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) -> usize {
         self.push_data(stream_id, data, m8);
         data.len()
+    }
+    fn write_buffer(&mut self, m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS] { // FIXME: make this generic WRT NUM_STREAMS
+        const MIN_BYTES:usize = 16;
+        for index in 0..NUM_STREAMS {
+            self.prep_push_for_n_bytes(index as StreamID, MIN_BYTES, m8);
+        }
+        let (s0array, s1array) = self.buf.split_at_mut(1);
+        let (s0loc, s1loc) = self.write_cursor.split_at_mut(1);
+        [
+            WritableBytes{
+                data:s0array[0].slice_mut(),
+                write_offset:&mut s0loc[0],
+            },
+            WritableBytes{
+                data:s1array[0].slice_mut(),
+                write_offset:&mut s1loc[0],
+            },
+        ]
     }
     fn linearize(&mut self, output:&mut[u8]) -> usize {
         self.serialize(output)
@@ -194,20 +224,23 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
           m8.free_cell(core::mem::replace(buf, AllocU8::AllocatedMemory::default()));
       }        
    }
+   pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
+       let (buf, offset) = self.prep_push_for_n_bytes(stream_id, data.len(), m8);
+       Self::unchecked_push(buf.slice_mut(), offset, data)
+   }
    // this pushes data from a source into the stream buffers. This data may later be serialized through serialize()
    // or else consumed through data_avail/consume
-   pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
+   pub fn prep_push_for_n_bytes(&mut self, stream_id: StreamID, data_len: usize, m8: &mut AllocU8) -> (&mut AllocU8::AllocatedMemory, &mut usize) {
       let write_cursor = &mut self.write_cursor[stream_id as usize];
       let read_cursor = &mut self.read_cursor[stream_id as usize];
       //let mut write_cursor = &mut self.write_cursor[stream_id as usize];
       let buf = &mut self.buf[usize::from(stream_id)];
       // if there's space in the buffer, simply copy it in
-      if buf.slice().len() - *write_cursor >= data.len() {
-          Self::unchecked_push(buf.slice_mut(), write_cursor, data);
-          return;
+      if buf.slice().len() - *write_cursor >= data_len {
+          return (buf, write_cursor)
       }
       // if there's too much room at the beginning and the new data fits, then move everything to the beginning and write in the new data
-      if buf.slice().len() + (*write_cursor - *read_cursor) >= data.len() && (*read_cursor == *write_cursor
+      if buf.slice().len() + (*write_cursor - *read_cursor) >= data_len && (*read_cursor == *write_cursor
                                                                               || (*read_cursor >= 16384 && *read_cursor > *write_cursor - *read_cursor + MAX_HEADER_SIZE)) {
 
           {
@@ -219,22 +252,21 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
               empty_half.split_at_mut(amount_of_data_to_copy).0.clone_from_slice(
                   full_half.split_at(amount_of_data_to_copy).0);
           }
-          Self::unchecked_push(buf.slice_mut(), write_cursor, data);
-          return;
+          return (buf, write_cursor)
       }
       // find the next power of two buffer size that could hold everything including the recently added data
-      let desired_size:u64 = (MAX_HEADER_SIZE + data.len() + (*write_cursor - *read_cursor)) as u64;
+      let desired_size:u64 = (MAX_HEADER_SIZE + data_len + (*write_cursor - *read_cursor)) as u64;
       let log_desired_size = (64 - desired_size.leading_zeros()) + 1;
       // allocate the new data and then copy in the current data
       let mut new_buf = m8.alloc_cell(1 << core::cmp::max(log_desired_size, 9));
-      debug_assert!(new_buf.slice().len() >= *write_cursor - *read_cursor + data.len());
+      debug_assert!(new_buf.slice().len() >= *write_cursor - *read_cursor + data_len);
       new_buf.slice_mut().split_at_mut(MAX_HEADER_SIZE).1.split_at_mut(*write_cursor - *read_cursor).0.clone_from_slice(
           buf.slice().split_at(*read_cursor).1.split_at(*write_cursor - *read_cursor).0);
       *write_cursor = MAX_HEADER_SIZE + *write_cursor - *read_cursor;
       *read_cursor = MAX_HEADER_SIZE;
       m8.free_cell(core::mem::replace(buf, new_buf));
       // finally copy in the input data
-      Self::unchecked_push(buf.slice_mut(), write_cursor, data);
+      (buf, write_cursor)
    }
    // copy the remaining data from a previous serialize
    fn serialize_leftover(&mut self, output:&mut[u8]) -> usize {
@@ -508,11 +540,13 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
 }
 
 pub struct DevNull<AllocU8:Allocator<u8>> {
+    cursor: [usize; NUM_STREAMS as usize],
     _placeholder: core::marker::PhantomData<AllocU8>
 }
 impl<AllocU8: Allocator<u8> > Default for DevNull<AllocU8>{
     fn default() ->Self {
         DevNull::<AllocU8> {
+            cursor:[0;NUM_STREAMS as usize],
             _placeholder: core::marker::PhantomData::<AllocU8>::default(),
         }
     }
@@ -521,6 +555,19 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
     fn write_linear(&mut self, data:&[u8], _m8: &mut AllocU8) -> usize {
         debug_assert_eq!(data.len(), 0);
         0
+    }
+    fn read_buffer(&mut self, _m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS] {
+        let (s0loc, s1loc) = self.cursor.split_at_mut(1);
+        [
+            ReadableBytes{
+                data:&[],
+                read_offset:&mut s0loc[0],
+            },
+            ReadableBytes{
+                data:&[],
+                read_offset:&mut s1loc[0],
+            },
+        ]
     }
     fn data_ready(&self, _stream_id:StreamID) -> usize {
         0
@@ -543,6 +590,19 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
 
 
 impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for DevNull<AllocU8> {
+    fn write_buffer(&mut self, _m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS] {
+        let (s0loc, s1loc) = self.cursor.split_at_mut(1);
+        [
+            WritableBytes{
+                data:&mut [],
+                write_offset:&mut s0loc[0],
+            },
+            WritableBytes{
+                data:&mut [],
+                write_offset:&mut s1loc[0],
+            },
+        ]
+    }
     fn write(&mut self, _stream_id: StreamID, data: &[u8], _m8: &mut AllocU8) -> usize {
         debug_assert_eq!(data.len(), 0);
         0
