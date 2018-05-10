@@ -233,6 +233,11 @@ pub struct ReadableBytes<'a> {
     pub read_offset: &'a mut usize,
 }
 
+impl<'a> ReadableBytes<'a> {
+    pub fn bytes_avail(&self) -> usize {
+        self.data.len() - *self.read_offset
+    }
+}
 pub struct WritableBytes<'a> {
     pub data: &'a mut [u8],
     pub write_offset: &'a mut usize,

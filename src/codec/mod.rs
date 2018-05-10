@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use interface::{DivansResult, DivansOutputResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID};
+use interface::{DivansResult, DivansOutputResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -337,8 +337,8 @@ impl<AllocU8: Allocator<u8>,
             match self.state {
                 EncodeOrDecodeState::Begin => {
                     let mut unused = 0usize;
-                    match self.encode_or_decode_one_command(&[],
-                                                            &mut unused,
+                    let mut unused = ReadableBytes{data:&[], read_offset: &mut unused};
+                    match self.encode_or_decode_one_command(&mut unused,
                                                             output_bytes,
                                                             output_bytes_offset,
                                                             &nop,
@@ -464,26 +464,29 @@ impl<AllocU8: Allocator<u8>,
                                                           output_bytes_offset: &mut usize,
                                                           input_commands: &[Command<ISl>],
                                                           input_command_offset: &mut usize) -> DivansResult {
-        let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
-        
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
-        let mut adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
-            adjusted_input_bytes,
-            self.cross_command_state.m8.get_base_alloc());
         let mut adjusted_output_bytes_offset = 0usize;
-        
+        {
+            let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
+            let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
+                adjusted_input_bytes,
+                self.cross_command_state.m8.get_base_alloc());
+            if Specialization::IS_DECODING_FILE && !self.skip_checksum {
+                self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
+            }
+            *input_bytes_offset += adjusted_input_bytes_offset;
+        }
+        let mut checksum_input_info = ReadableBytes{data:input_bytes, read_offset:input_bytes_offset};
         loop {
             let res:(Option<DivansResult>, Option<CodecTraitSelector>);
             match self.codec_traits {
-                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(adjusted_input_bytes,
-                                                                                         &mut adjusted_input_bytes_offset,
-                                                                                         adjusted_output_bytes,
-                                                                                         &mut adjusted_output_bytes_offset,
-                                                                                         input_commands,
-                                                                                         input_command_offset,
-                                                                                         tr),
-                CodecTraitSelector::DefaultTrait(tr) => res = self.e_or_d_specialize(adjusted_input_bytes,
-                                                                                     &mut adjusted_input_bytes_offset,
+                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(&mut checksum_input_info,
+                                                                                    adjusted_output_bytes,
+                                                                                    &mut adjusted_output_bytes_offset,
+                                                                                    input_commands,
+                                                                                    input_command_offset,
+                                                                                    tr),
+                CodecTraitSelector::DefaultTrait(tr) => res = self.e_or_d_specialize(&mut checksum_input_info,
                                                                                      adjusted_output_bytes,
                                                                                      &mut adjusted_output_bytes_offset,
                                                                                      input_commands,
@@ -494,15 +497,10 @@ impl<AllocU8: Allocator<u8>,
                 self.codec_traits = update;
             }
             if let Some(result) = res.0 {
-                *input_bytes_offset += adjusted_input_bytes_offset;
                 *output_bytes_offset += adjusted_output_bytes_offset;
                 match self.frozen_checksum {
                     Some(_) => {},
-                    None => if Specialization::IS_DECODING_FILE {
-                        if !self.skip_checksum {
-                            self.crc.write(&adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
-                        }
-                    } else {
+                    None => if !Specialization::IS_DECODING_FILE {
                         self.crc.write(&adjusted_output_bytes.split_at(adjusted_output_bytes_offset).0);
                     },
                 }
@@ -512,8 +510,7 @@ impl<AllocU8: Allocator<u8>,
     }
     fn e_or_d_specialize<ISl:SliceWrapper<u8>+Default,
                          CTraits:CodecTraits>(&mut self,
-                                              input_bytes: &[u8],
-                                              input_bytes_offset: &mut usize,
+                                              checksum_input_info: &mut ReadableBytes,
                                               output_bytes: &mut [u8],
                                               output_bytes_offset: &mut usize,
                                               input_commands: &[Command<ISl>],
@@ -524,8 +521,7 @@ impl<AllocU8: Allocator<u8>,
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
                                                                                    *input_command_offset,
                                                                                    &i_cmd_backing);
-            match self.encode_or_decode_one_command(input_bytes,
-                                                    input_bytes_offset,
+            match self.encode_or_decode_one_command(checksum_input_info,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
@@ -554,8 +550,7 @@ impl<AllocU8: Allocator<u8>,
     }
     fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default,
                                     CTraits:CodecTraits>(&mut self,
-                                                         input_bytes: &[u8],
-                                                         input_bytes_offset: &mut usize,
+                                                         checksum_input_info: &mut ReadableBytes,
                                                          output_bytes: &mut [u8],
                                                          output_bytes_offset: &mut usize,
                                                          input_cmd: &Command<ISl>,
@@ -572,6 +567,9 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     assert!(Specialization::IS_DECODING_FILE);
+                    if !self.cross_command_state.demuxer.encountered_eof() {
+                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
+                    }
                     if self.skip_checksum {
                         self.frozen_checksum = Some(0);
                     }
@@ -579,7 +577,7 @@ impl<AllocU8: Allocator<u8>,
                     let checksum_cur_index = count;
                     let bytes_needed = CHECKSUM_LENGTH - count as usize;
 
-                    let to_check = core::cmp::min(input_bytes.len() - *input_bytes_offset,
+                    let to_check = core::cmp::min(checksum_input_info.data.len() - *checksum_input_info.read_offset,
                                                   bytes_needed);
                     if to_check == 0 {
                         return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
@@ -587,7 +585,7 @@ impl<AllocU8: Allocator<u8>,
                     match self.frozen_checksum {
                         Some(_) => {},
                         None => {
-                            self.crc.write(input_bytes.split_at(*input_bytes_offset).0);
+                            //DO NOT DO AGAIN; self.crc.write(checksum_input_info.data.split_at(*checksum_input_info.read_offset).0); ALREADY DONE
                             self.frozen_checksum= Some(self.crc.finish());
                         },
                     }
@@ -603,7 +601,7 @@ impl<AllocU8: Allocator<u8>,
                                     b'~'];
 
                     for (index, (chk, fil)) in checksum.split_at(checksum_cur_index as usize).1.split_at(to_check).0.iter().zip(
-                        input_bytes.split_at(*input_bytes_offset).1.split_at(to_check).0.iter()).enumerate() {
+                        checksum_input_info.data.split_at(*checksum_input_info.read_offset).1.split_at(to_check).0.iter()).enumerate() {
                         if *chk != *fil {
                             if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(
@@ -611,7 +609,7 @@ impl<AllocU8: Allocator<u8>,
                             }
                         }
                     }
-                    *input_bytes_offset += to_check;
+                    *checksum_input_info.read_offset += to_check;
                     if bytes_needed != to_check {
                         self.state = EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8);
                     } else {
@@ -657,8 +655,6 @@ impl<AllocU8: Allocator<u8>,
                      };
                      match self.state_prediction_mode.encode_or_decode(&mut self.cross_command_state,
                                                                   src_pred_mode,
-                                                                  input_bytes,
-                                                                  input_bytes_offset,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
@@ -677,8 +673,6 @@ impl<AllocU8: Allocator<u8>,
                     };
                     match self.state_lit_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_literal,
-                                                            input_bytes,
-                                                            input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         DivansResult::Success => {
@@ -711,8 +705,6 @@ impl<AllocU8: Allocator<u8>,
                     match self.state_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_command,
                                                             self::interface::BLOCK_TYPE_COMMAND_SWITCH,
-                                                            input_bytes,
-                                                            input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         DivansResult::Success => {
@@ -738,8 +730,6 @@ impl<AllocU8: Allocator<u8>,
                     match self.state_block_switch.encode_or_decode(&mut self.cross_command_state,
                                                             src_block_switch_distance,
                                                             self::interface::BLOCK_TYPE_DISTANCE_SWITCH,
-                                                            input_bytes,
-                                                            input_bytes_offset,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         DivansResult::Success => {
@@ -765,8 +755,6 @@ impl<AllocU8: Allocator<u8>,
                                                                                                            &backing_store);
                     match self.state_copy.encode_or_decode(&mut self.cross_command_state,
                                                       src_copy_command,
-                                                      input_bytes,
-                                                      input_bytes_offset,
                                                       output_bytes,
                                                       output_bytes_offset
                                                       ) {
@@ -789,8 +777,6 @@ impl<AllocU8: Allocator<u8>,
                         &backing_store);
                     match self.state_lit.encode_or_decode(&mut self.cross_command_state,
                                                      src_literal_command,
-                                                     input_bytes,
-                                                     input_bytes_offset,
                                                      output_bytes,
                                                      output_bytes_offset,
                                                      ctraits) {
@@ -811,8 +797,6 @@ impl<AllocU8: Allocator<u8>,
                                                                                                                  &backing_store);
                     match self.state_dict.encode_or_decode(&mut self.cross_command_state,
                                                       src_dict_command,
-                                                      input_bytes,
-                                                      input_bytes_offset,
                                                       output_bytes,
                                                       output_bytes_offset
                                                       ) {

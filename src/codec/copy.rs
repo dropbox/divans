@@ -57,19 +57,17 @@ impl CopyState {
                         AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,
-                                               superstate: &mut CrossCommandState<ArithmeticCoder,
-                                                                                  Specialization,
-                                                                                  LinearInputBytes,
-                                                                                  LinearOutputBytes,
-                                                                                  Cdf16,
-                                                                                  AllocU8,
-                                                                                  AllocCDF2,
-                                                                                  AllocCDF16>,
-                                               in_cmd: &CopyCommand,
-                                               input_bytes:&[u8],
-                                                    input_offset: &mut usize,
-                                                    output_bytes:&mut [u8],
-                                                    output_offset: &mut usize) -> DivansResult {
+                                                     superstate: &mut CrossCommandState<ArithmeticCoder,
+                                                                                        Specialization,
+                                                                                        LinearInputBytes,
+                                                                                        LinearOutputBytes,
+                                                                                        Cdf16,
+                                                                                        AllocU8,
+                                                                                        AllocCDF2,
+                                                                                        AllocCDF16>,
+                                                     in_cmd: &CopyCommand,
+                                                     output_bytes:&mut [u8],
+                                                     output_offset: &mut usize) -> DivansResult {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
         let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
         if dlen ==0 {

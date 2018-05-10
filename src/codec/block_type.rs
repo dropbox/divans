@@ -48,8 +48,6 @@ impl BlockTypeState {
                                            AllocCDF16>,
         input_bs: BlockSwitch,
         block_type_switch_index:usize,
-        input_bytes: &[u8],
-        input_offset: &mut usize,
         output_bytes: &mut [u8],
         output_offset: &mut usize) -> DivansResult {
         let mut varint_nibble:u8 =
@@ -139,8 +137,6 @@ impl LiteralBlockTypeState {
                                            AllocCDF2,
                                            AllocCDF16>,
         input_bs: LiteralBlockSwitch,
-        input_bytes: &[u8],
-        input_offset: &mut usize,
         output_bytes: &mut [u8],
         output_offset: &mut usize) -> DivansResult {
         loop {
@@ -154,8 +150,6 @@ impl LiteralBlockTypeState {
                     let early_ret = match local_bts.encode_or_decode(superstate,
                       input_bs.0,
                       BLOCK_TYPE_LITERAL_SWITCH,
-                      input_bytes,
-                      input_offset,
                       output_bytes,
                       output_offset) {
                         DivansResult::Success => None,

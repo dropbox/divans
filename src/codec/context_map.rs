@@ -75,8 +75,6 @@ impl PredictionModeState {
                                                                                   AllocCDF2,
                                                                                   AllocCDF16>,
                                                in_cmd: &PredictionModeContextMap<SliceType>,
-                                               input_bytes:&[u8],
-                                               input_offset: &mut usize,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> DivansResult {
         let mut desired_speeds = [super::interface::default_literal_speed();4];
