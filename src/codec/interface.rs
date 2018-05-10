@@ -288,9 +288,13 @@ impl<
         self.stride = btype.stride();
     }
     pub fn obs_prediction_mode_context_map<ISlice:SliceWrapper<u8>>(&mut self,
-                                                                    pm: &PredictionModeContextMap<ISlice>) -> DivansOpResult {
+                                                                    pm: &PredictionModeContextMap<ISlice>,
+                                                                    mcdf16: &mut AllocCDF16) -> DivansOpResult {
         self.reset_literal_context_map();
-        match self.obs_pred_mode(pm.literal_prediction_mode()) {
+        let mut combined_prediction_mode = pm.literal_prediction_mode();
+        self.obs_dynamic_context_mixing(combined_prediction_mode.0 >> 6, mcdf16);
+        combined_prediction_mode.0 &= 0xf;
+        match self.obs_pred_mode(combined_prediction_mode) {
             DivansOpResult::Success => {},
             fail => return fail,
         }
@@ -405,25 +409,6 @@ impl<
             desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         };
-        for i in 0..4 {
-            for j in 0..0x10 {
-                let prob = ret.cc_priors.get(CrossCommandBilling::FullSelection,
-                                             (i, j));
-                if j == 0x3 { // starting situation
-                    prob.blend(0x7, Speed::ROCKET);
-                } else {
-                    prob.blend(0x1, Speed::FAST);
-                    prob.blend(0x1, Speed::FAST);
-                    prob.blend(0x2, Speed::FAST);
-                    prob.blend(0x1, Speed::FAST);
-                    prob.blend(0x1, Speed::FAST);
-                    prob.blend(0x1, Speed::FAST);
-                    prob.blend(0x2, Speed::FAST);
-                    prob.blend(0x3, Speed::FAST);
-                    prob.blend(0x3, Speed::FAST);
-                }
-            }
-        }
         ret
     }
     pub fn materialized_prediction_mode(&self) -> bool {
@@ -484,6 +469,8 @@ impl<
         }
         self.cmap_lru[0] = val;
         match context_map_type {
+            ContextMapType::Literal => {
+            }
             ContextMapType::Distance => {
                 if (index as usize) < self.distance_context_map.slice().len() {
                     self.distance_context_map.slice_mut()[index as usize] = val;
@@ -724,7 +711,6 @@ impl <AllocU8:Allocator<u8>,
                do_context_map:bool,
                force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
-        let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let lit_low_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let lit_high_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let lit_len_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);

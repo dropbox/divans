@@ -10,7 +10,7 @@ pub const NUM_STRIDES:usize = 8;
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use probability::{BaseCDF};
 define_prior_struct!(CrossCommandPriors, CrossCommandBilling,
-                     (CrossCommandBilling::FullSelection, 4, NUM_BLOCK_TYPES),
+                     (CrossCommandBilling::FullSelection, 16, 1),
                      (CrossCommandBilling::EndIndicator, 1, NUM_BLOCK_TYPES));
 
 

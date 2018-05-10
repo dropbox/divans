@@ -668,7 +668,8 @@ impl<AllocU8: Allocator<u8>,
                              let ret;
                              {
                                  ret = self.cross_command_state.lbk.obs_prediction_mode_context_map(
-                                     &self.state_prediction_mode.pm);
+                                     &self.state_prediction_mode.pm,
+                                     &mut self.cross_command_state.mcdf16);
                                  
                              }
                              self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
