@@ -13,7 +13,7 @@
 //   limitations under the License.
 use core;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-use super::slice_util::AllocatedMemoryPrefix;
+pub use super::slice_util::AllocatedMemoryPrefix;
 
 /// This struct can be configured in a mode where a single allocation is reused for ever larger allocations
 pub struct RepurposingAlloc<T, AllocT: Allocator<T>> {

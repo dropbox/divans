@@ -19,7 +19,7 @@ use super::probability;
 use super::codec::copy::CopySubstate;
 use super::codec::dict::DictSubstate;
 use super::codec::literal::LiteralSubstate;
-use super::codec::context_map::PredictionModeState;
+use super::codec::context_map::PredictionModeSubstate;
 use super::codec::block_type::BlockTypeState;
 pub use super::codec::StrideSelection;
 pub use brotli::enc::interface::*;
@@ -320,7 +320,7 @@ pub enum BillingDesignation {
     DictCommand(DictSubstate),
     LiteralCommand(LiteralSubstate),
     CrossCommand(CrossCommandBilling),
-    PredModeCtxMap(PredictionModeState),
+    PredModeCtxMap(PredictionModeSubstate),
     BlockType(BlockTypeState),
 }
 

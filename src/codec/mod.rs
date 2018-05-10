@@ -166,7 +166,7 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     state_dict: dict::DictState,
     state_lit_block_switch: block_type::LiteralBlockTypeState,
     state_block_switch: block_type::BlockTypeState,
-    state_prediction_mode: context_map::PredictionModeState,
+    state_prediction_mode: context_map::PredictionModeState<AllocU8>,
     state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
     codec_traits: CodecTraitSelector,
     crc: SubDigest,
@@ -197,6 +197,11 @@ impl<AllocU8: Allocator<u8>,
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
+        self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
+        self.cross_command_state.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+            core::mem::replace(&mut self.state_lit.lc,
+                               LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
+
         self.cross_command_state.free_ref()
     }
     pub fn new(m8:AllocU8,
@@ -243,7 +248,7 @@ impl<AllocU8: Allocator<u8>,
             },
             state_lit_block_switch: block_type::LiteralBlockTypeState::begin(),
             state_block_switch: block_type::BlockTypeState::begin(),
-            state_prediction_mode: context_map::PredictionModeState::begin(),
+            state_prediction_mode: context_map::PredictionModeState::nop(),
             state_populate_ring_buffer: Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             crc: default_crc(),
             frozen_checksum: None,
@@ -285,7 +290,7 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
             },
             7 => {
-                self.state_prediction_mode = context_map::PredictionModeState::begin();
+                self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
                 self.state = EncodeOrDecodeState::PredictionMode;
             },
             0xf => if is_end {
@@ -660,6 +665,10 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
+                             {
+                                 let _ret = &mut self.state_prediction_mode.pm;
+                             }
+                             self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
                              self.state = EncodeOrDecodeState::Begin;
                              return CodecTraitResult::UpdateCodecTraitAndAdvance(
                                  construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
@@ -860,8 +869,20 @@ impl<AllocU8: Allocator<u8>,
                                 &mut Command::Copy(_) |
                                 &mut Command::BlockSwitchCommand(_) |
                                 &mut Command::BlockSwitchLiteral(_) |
-                                &mut Command::BlockSwitchDistance(_) |
-                                &mut Command::PredictionMode(_) => {},
+                                &mut Command::BlockSwitchDistance(_) => {
+                                },
+                                &mut Command::PredictionMode(ref mut pm) => {
+                                    let mfd = core::mem::replace(
+                                        &mut pm.literal_context_map,
+                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                    self.cross_command_state.m8.use_cached_allocation::<
+                                            UninitializedOnAlloc>().free_cell(mfd);
+                                    let mfd = core::mem::replace(
+                                        &mut pm.predmode_speed_and_distance_context_map,
+                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
+                                    self.cross_command_state.m8.use_cached_allocation::<
+                                            UninitializedOnAlloc>().free_cell(mfd);
+                                },
                             }
                             return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },

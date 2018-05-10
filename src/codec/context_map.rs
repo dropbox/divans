@@ -1,7 +1,9 @@
+use core;
 use interface::{DivansResult, ErrMsg, DivansOpResult, StreamMuxer, StreamDemuxer};
 use super::interface::ContextMapType;
 use super::priors::{PredictionModePriorType};
 use alloc::{Allocator, SliceWrapper};
+use alloc_util::{RepurposingAlloc, AllocatedMemoryPrefix, UninitializedOnAlloc};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
@@ -12,11 +14,17 @@ use ::interface::{
     BillingDesignation,
     LiteralPredictionModeNibble,
     PredictionModeContextMap,
+    MAX_LITERAL_CONTEXT_MAP_SIZE,
+    MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
 };
 use ::priors::PriorCollection;
 use ::probability::{Speed, CDF2, CDF16, SpeedPalette};
+pub struct PredictionModeState<AllocU8:Allocator<u8>> {
+    pub pm:PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>,
+    pub state: PredictionModeSubstate,
+}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum PredictionModeState {
+pub enum PredictionModeSubstate {
     Begin,
     DynamicContextMixing,
     PriorDepth,
@@ -52,9 +60,39 @@ fn find_best_match(data: Speed, palette: &SpeedPalette) -> usize {
     }
     best_index
 }
-impl PredictionModeState {
-    pub fn begin() -> Self {
-        PredictionModeState::Begin
+impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
+    pub fn begin(m8:&mut RepurposingAlloc<u8, AllocU8>) -> Self {
+        let mut ret = Self::nop();
+        ret.free(m8);
+        ret.reset(m8);
+        ret
+    }
+    pub fn free(&mut self, m8:&mut RepurposingAlloc<u8, AllocU8>) {
+        m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+            core::mem::replace(&mut self.pm.literal_context_map,
+                               AllocatedMemoryPrefix::<u8, AllocU8>::default()));
+                    
+        m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+            core::mem::replace(&mut self.pm.predmode_speed_and_distance_context_map,
+                               AllocatedMemoryPrefix::<u8, AllocU8>::default()));
+    }
+    pub fn reset(&mut self, m8:&mut RepurposingAlloc<u8, AllocU8>) {
+        let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
+        self.pm = PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+            literal_context_map:lit,
+            predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
+        };
+        self.state = PredictionModeSubstate::Begin;
+    }
+    pub fn nop() -> Self {
+        PredictionModeState::<AllocU8> {
+            pm:PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+                literal_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
+                predmode_speed_and_distance_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
+            },
+            state:PredictionModeSubstate::Begin,
+        }
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
@@ -62,7 +100,6 @@ impl PredictionModeState {
                             LinearInputBytes:StreamDemuxer<AllocU8>+Default,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
-                        AllocU8:Allocator<u8>,
                         AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>,
                         SliceType:SliceWrapper<u8>+Default>(&mut self,
@@ -107,24 +144,24 @@ impl PredictionModeState {
                 DivansResult::Success => {},
                 need_something => return need_something,
             }
-            let billing = BillingDesignation::PredModeCtxMap(match *self {
-                PredictionModeState::ContextMapMnemonic(
-                    _, context_map_type) => PredictionModeState::ContextMapMnemonic(0,
+            let billing = BillingDesignation::PredModeCtxMap(match self.state {
+                PredictionModeSubstate::ContextMapMnemonic(
+                    _, context_map_type) => PredictionModeSubstate::ContextMapMnemonic(0,
                                                                                     context_map_type),
-                PredictionModeState::ContextMapFirstNibble(
-                    _, context_map_type) => PredictionModeState::ContextMapFirstNibble(0,
+                PredictionModeSubstate::ContextMapFirstNibble(
+                    _, context_map_type) => PredictionModeSubstate::ContextMapFirstNibble(0,
                                                                                        context_map_type),
-                PredictionModeState::ContextMapSecondNibble(
-                    _, context_map_type, _) => PredictionModeState::ContextMapSecondNibble(0,
+                PredictionModeSubstate::ContextMapSecondNibble(
+                    _, context_map_type, _) => PredictionModeSubstate::ContextMapSecondNibble(0,
                                                                                            context_map_type,
                                                                                            0),
-                PredictionModeState::AdaptationSpeed(_,_) => PredictionModeState::FullyDecoded,
-                PredictionModeState::MixingValues(_) => PredictionModeState::MixingValues(0),
+                PredictionModeSubstate::AdaptationSpeed(_,_) => PredictionModeSubstate::FullyDecoded,
+                PredictionModeSubstate::MixingValues(_) => PredictionModeSubstate::MixingValues(0),
                 a => a,
             });
 
-            match *self {
-               PredictionModeState::Begin => {
+            match self.state {
+               PredictionModeSubstate::Begin => {
                    superstate.bk.reset_context_map_lru();
                    superstate.bk.reset_context_map();
                    let mut beg_nib = in_cmd.literal_prediction_mode().prediction_mode();
@@ -141,9 +178,9 @@ impl PredictionModeState {
                        DivansOpResult::Failure(m) => return DivansResult::Failure(m),
                        DivansOpResult::Success => {},
                    }
-                   *self = PredictionModeState::DynamicContextMixing;
+                   self.state = PredictionModeSubstate::DynamicContextMixing;
                },
-               PredictionModeState::DynamicContextMixing => {
+               PredictionModeSubstate::DynamicContextMixing => {
                    let mut beg_nib = superstate.bk.desired_context_mixing;
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
@@ -152,9 +189,9 @@ impl PredictionModeState {
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
                    superstate.bk.obs_dynamic_context_mixing(beg_nib, &mut superstate.mcdf16);
-                   *self = PredictionModeState::PriorDepth;
+                   self.state = PredictionModeSubstate::PriorDepth;
                },
-               PredictionModeState::PriorDepth => {
+               PredictionModeSubstate::PriorDepth => {
                    let mut beg_nib = superstate.bk.desired_prior_depth;
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
@@ -164,9 +201,9 @@ impl PredictionModeState {
                    }
                    superstate.bk.obs_prior_depth(beg_nib);
                    superstate.bk.clear_mixing_values();
-                   *self = PredictionModeState::AdaptationSpeed(0, [(0,0);4]);
+                   self.state = PredictionModeSubstate::AdaptationSpeed(0, [(0,0);4]);
                }
-               PredictionModeState::AdaptationSpeed(index, mut out_adapt_speed) => {
+               PredictionModeSubstate::AdaptationSpeed(index, mut out_adapt_speed) => {
                    let speed_index = index as usize >> 2;
                    let cur_speed = desired_speeds[speed_index].to_f8_tuple();
                    let palette_type = index & 3;
@@ -202,12 +239,12 @@ impl PredictionModeState {
                            *out_item = Speed::from_f8_tuple(*in_item);
                        }
                        superstate.bk.literal_adaptation = tmp;
-                       *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Literal);
+                       self.state = PredictionModeSubstate::ContextMapMnemonic(0, ContextMapType::Literal);
                    } else {
-                       *self = PredictionModeState::AdaptationSpeed(index + 1, out_adapt_speed);
+                       self.state = PredictionModeSubstate::AdaptationSpeed(index + 1, out_adapt_speed);
                    }
                },
-               PredictionModeState::ContextMapMnemonic(index, context_map_type) => {
+               PredictionModeSubstate::ContextMapMnemonic(index, context_map_type) => {
                    let mut cur_context_map = match context_map_type {
                            ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                            ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
@@ -242,14 +279,14 @@ impl PredictionModeState {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
                                superstate.bk.reset_context_map_lru(); // distance context map should start with 0..14 as lru
-                               *self = PredictionModeState::ContextMapMnemonic(0, ContextMapType::Distance);
+                               self.state = PredictionModeSubstate::ContextMapMnemonic(0, ContextMapType::Distance);
                            },
                            ContextMapType::Distance => { // finished
-                               *self = PredictionModeState::MixingValues(0);
+                               self.state = PredictionModeSubstate::MixingValues(0);
                            }
                        }
                    } else if mnemonic_nibble == 15 {
-                       *self = PredictionModeState::ContextMapFirstNibble(index, context_map_type);
+                       self.state = PredictionModeSubstate::ContextMapFirstNibble(index, context_map_type);
                    } else {
                        let val = if mnemonic_nibble == 13 {
                            superstate.bk.cmap_lru.iter().max().unwrap().wrapping_add(1)
@@ -259,10 +296,10 @@ impl PredictionModeState {
                        if let DivansOpResult::Failure(m) = superstate.bk.obs_context_map(context_map_type, index, val) {
                            return DivansResult::Failure(m);
                        }
-                       *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
+                       self.state = PredictionModeSubstate::ContextMapMnemonic(index + 1, context_map_type);
                    }
                },
-               PredictionModeState::ContextMapFirstNibble(index, context_map_type) => {
+               PredictionModeSubstate::ContextMapFirstNibble(index, context_map_type) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                        ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
@@ -277,9 +314,9 @@ impl PredictionModeState {
 
                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                    nibble_prob.blend(msn_nib, Speed::MED);
-                   *self = PredictionModeState::ContextMapSecondNibble(index, context_map_type, msn_nib);
+                   self.state = PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, msn_nib);
                },
-               PredictionModeState::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
+               PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, most_significant_nibble) => {
                    let cur_context_map = match context_map_type {
                        ContextMapType::Literal => in_cmd.literal_context_map.slice(),
                        ContextMapType::Distance => if in_cmd.has_context_speeds() {in_cmd.distance_context_map() } else {&[]},
@@ -300,9 +337,9 @@ impl PredictionModeState {
                    if let DivansOpResult::Failure(m) = superstate.bk.obs_context_map(context_map_type, index, (most_significant_nibble << 4) | lsn_nib) {
                        return DivansResult::Failure(m);
                    }
-                   *self = PredictionModeState::ContextMapMnemonic(index + 1, context_map_type);
+                   self.state = PredictionModeSubstate::ContextMapMnemonic(index + 1, context_map_type);
                },
-               PredictionModeState::MixingValues(index) => {
+               PredictionModeSubstate::MixingValues(index) => {
                    let mut mixing_nib = if !superstate.bk.materialized_context_map {
                        4
                    } else if !superstate.bk.combine_literal_predictions {
@@ -321,17 +358,17 @@ impl PredictionModeState {
                    }
                    if index + 1 == superstate.bk.mixing_mask.len() {
                        // reconsil
-                       *self = PredictionModeState::FullyDecoded;
+                       self.state = PredictionModeSubstate::FullyDecoded;
                    } else {
                        match superstate.bk.obs_mixing_value(index, mixing_nib) {
                            DivansOpResult::Success => {
-                               *self = PredictionModeState::MixingValues(index + 1);
+                               self.state = PredictionModeSubstate::MixingValues(index + 1);
                            },
                            DivansOpResult::Failure(m) => return DivansResult::Failure(m),
                        }
                    }
                },
-               PredictionModeState::FullyDecoded => {
+               PredictionModeSubstate::FullyDecoded => {
                    return DivansResult::Success;
                }
             }
