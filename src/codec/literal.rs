@@ -450,7 +450,7 @@ impl<AllocU8:Allocator<u8>,
                     } else {
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(shortcut_nib as usize + 1);
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.read_buffer(superstate.m8.get_base_alloc())[LIT_CODER].bytes_avail());
+                                                                superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                     }
                 },
                 LiteralSubstate::LiteralCountFirst => {
@@ -466,7 +466,7 @@ impl<AllocU8:Allocator<u8>,
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             NUM_LITERAL_LENGTH_MNEMONIC as usize + 1 + beg_nib as usize);
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.read_buffer(superstate.m8.get_base_alloc())[LIT_CODER].bytes_avail());
+                                                                superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
                                                                                   1 << (beg_nib - 1));
@@ -497,7 +497,7 @@ impl<AllocU8:Allocator<u8>,
                         self.lc.data = superstate.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1);
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.read_buffer(superstate.m8.get_base_alloc())[LIT_CODER].bytes_avail());
+                                                                superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
                                                                                    next_decoded_so_far);

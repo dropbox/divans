@@ -263,7 +263,7 @@ pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
     #[inline(always)]
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize;
     #[inline(always)]
-    fn read_buffer(&mut self, m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS];
+    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS];
     #[inline(always)]
     fn data_ready(&self, stream_id:StreamID) -> usize;
     #[inline(always)]

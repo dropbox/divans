@@ -109,7 +109,7 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
         self.deserialize(data, m8)
     }
-    fn read_buffer(&mut self, _m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS] {
+    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
         let (s0array, s1array) = self.buf.split_at(1);
         let (s0loc, s1loc) = self.read_cursor.split_at_mut(1);
         [
@@ -556,7 +556,7 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
         debug_assert_eq!(data.len(), 0);
         0
     }
-    fn read_buffer(&mut self, _m8: &mut AllocU8) -> [ReadableBytes; NUM_STREAMS] {
+    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
         let (s0loc, s1loc) = self.cursor.split_at_mut(1);
         [
             ReadableBytes{

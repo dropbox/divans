@@ -765,7 +765,7 @@ pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
     if LinearOutputBytes::can_linearize() {
         while local_coder.has_data_to_drain_or_fill() {
             *output_offset += muxer.linearize(output_bytes.split_at_mut(*output_offset).1);
-            let mut cur_input = demuxer.read_buffer(m8);
+            let mut cur_input = demuxer.read_buffer();
             let mut cur_output = muxer.write_buffer(m8);
             match local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index]) {
                 DivansResult::NeedsMoreOutput => {
@@ -782,7 +782,7 @@ pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
         DivansResult::Success
     } else {
         if local_coder.has_data_to_drain_or_fill() {
-            let mut cur_input = demuxer.read_buffer(m8);
+            let mut cur_input = demuxer.read_buffer();
             let mut cur_output = muxer.write_buffer(m8);
             local_coder.drain_or_fill_internal_buffer_unchecked(&mut cur_input[stream_index], &mut cur_output[stream_index])
         } else {
