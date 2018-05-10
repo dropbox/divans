@@ -54,19 +54,24 @@ enum MuxSliceHeader {
 }
 pub const EOF_MARKER: [u8;3] = [0xff, 0xfe, 0xff];
 fn get_code(stream_id: StreamID, bytes_to_write: usize, is_lagging: bool) -> (MuxSliceHeader, usize) {
+    //eprintln!("want to: {},{},", stream_id, bytes_to_write);
     if is_lagging == false || bytes_to_write == 4096 || bytes_to_write == 16384 || bytes_to_write >= 65536 {
         if bytes_to_write < 4096 {
             return get_code(stream_id, bytes_to_write, true);
         }
         if bytes_to_write < 16384 {
+            //eprintln!("({},{})", stream_id, 4096);
             return (MuxSliceHeader::Fixed([stream_id  as u8 | (1 << 4)]), 4096);
         }
         if bytes_to_write < 65536 {
+            //eprintln!("({},{})", stream_id, 16384);
             return (MuxSliceHeader::Fixed([stream_id  as u8 | (2 << 4)]), 16384);
         }
+        //eprintln!("({},{})", stream_id, 65536);
         return (MuxSliceHeader::Fixed([stream_id  as u8 | (3 << 4)]), 65536);
     }
     assert!(bytes_to_write < 65536);
+    //eprintln!("({},{})", stream_id, bytes_to_write);
     let ret = [stream_id as u8,
                (bytes_to_write - 1) as u8 & 0xff,
                ((bytes_to_write - 1)>> 8) as u8 & 0xff];
@@ -224,7 +229,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
           m8.free_cell(core::mem::replace(buf, AllocU8::AllocatedMemory::default()));
       }        
    }
-   pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
+    pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
        let (buf, offset) = self.prep_push_for_n_bytes(stream_id, data.len(), m8);
        Self::unchecked_push(buf.slice_mut(), offset, data)
    }
@@ -375,6 +380,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                 BytesToDeserialize::Header1(stream_id, lsb) => {
                     self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
                     //eprint!("{}) Deserializing {}\n", stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
+                    //eprintln!("({},{}),", stream_id, (lsb as u32 | (input[0] as u32) << 8) + 1);
                     return ret + 1 + self.deserialize(input.split_at(1).1, m8);
                 },
                 BytesToDeserialize::Some(stream_id, count) => {
@@ -409,9 +415,11 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                         }
                         count = 3;
                         bytes_to_copy = (input[1] as u32 | (input[2] as u32) << 8) + 1;
+                        //eprintln!("({},{}),", stream_id, bytes_to_copy);
                     } else {
                         count = 1;
                         bytes_to_copy = 1024 << ((input[0] >> 4) << 1);
+                        //eprintln!("({},{}),", stream_id, bytes_to_copy);
                     }
                     //eprint!("{}) Deserializing {}\n", stream_id, bytes_to_copy);
                     self.bytes_to_deserialize = BytesToDeserialize::Some(stream_id, bytes_to_copy);

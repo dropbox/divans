@@ -409,10 +409,20 @@ impl<AllocU8:Allocator<u8>,
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
-        let local_coder = &mut superstate.coder[CMD_CODER]; // FIXME: should this be lit coder?
+        let (cmd_coder_0, lit_coder_0) = superstate.coder.split_at_mut(1); // FIXME: should this be lit coder?
+        let cmd_coder = &mut cmd_coder_0[0];
+        let lit_coder = &mut lit_coder_0[0];
         loop {
             match drain_or_fill_static_buffer(CMD_CODER,
-                                              local_coder,
+                                              cmd_coder,
+                                              &mut superstate.demuxer, &mut superstate.muxer,
+                                              output_bytes, output_offset,
+                                              superstate.m8.get_base_alloc()) {
+                DivansResult::Success => {},
+                needs_something => return needs_something,
+            }
+            match drain_or_fill_static_buffer(LIT_CODER,
+                                              lit_coder,
                                               &mut superstate.demuxer, &mut superstate.muxer,
                                               output_bytes, output_offset,
                                               superstate.m8.get_base_alloc()) {
@@ -439,7 +449,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                     let mut nibble_prob = superstate.lit_priors.get(
                         LiteralNibblePriorType::CountSmall, (ctype, index));
-                    local_coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    cmd_coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
 
                     if shortcut_nib as u32 == NUM_LITERAL_LENGTH_MNEMONIC {
@@ -457,7 +467,7 @@ impl<AllocU8:Allocator<u8>,
                     let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeBegNib, (ctype,));
-                    local_coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                    cmd_coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
                     if beg_nib == 15 {
@@ -476,7 +486,7 @@ impl<AllocU8:Allocator<u8>,
                     let mut last_nib = lllen.wrapping_sub(15);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeLastNib, (ctype,));
-                    local_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    cmd_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
@@ -489,7 +499,7 @@ impl<AllocU8:Allocator<u8>,
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.lit_priors.get(LiteralNibblePriorType::SizeMantissaNib, (ctype,));
-                    local_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    cmd_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
@@ -519,7 +529,7 @@ impl<AllocU8:Allocator<u8>,
                         cur_nibble = self.ecdf_write_nibble(nibble_index,
                                                             cur_nibble,
                                                             prior_nibble >> 4,
-                                                            local_coder,
+                                                            lit_coder,
                                                             Cdf16::default(),
                                                             in_cmd.prob.slice());
                                          
@@ -544,7 +554,7 @@ impl<AllocU8:Allocator<u8>,
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
                     let code_result = self.code_nibble_array(superstate.m8.get_base_alloc(), output_bytes, output_offset,
                                                              in_cmd, nibble_index,
-                                                             local_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                             lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                                              &mut superstate.bk, &mut superstate.specialization, NibbleArraySecond{}, ctraits);
                     match code_result {
@@ -558,7 +568,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     let code_result = self.code_nibble_array(superstate.m8.get_base_alloc(), output_bytes, output_offset,
                                                              in_cmd, nibble_index,
-                                                             local_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                             lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                                              &mut superstate.bk, &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
                     match code_result {
@@ -572,7 +582,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
                     match self.code_nibble_array(superstate.m8.get_base_alloc(), output_bytes, output_offset,
                                                  in_cmd, start_nibble_index,
-                                                 local_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                 lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                  &mut superstate.lit_priors, &mut superstate.lit_low_priors,
                                            &mut superstate.bk, &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
                       DivansResult::NeedsMoreInput => {
