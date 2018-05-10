@@ -19,7 +19,7 @@ mod crc32;
 mod crc32_table;
 use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
-use interface::{DivansResult, DivansOutputResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
+use interface::{DivansResult, DivansOutputResult, DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
 use ::alloc_util::UninitializedOnAlloc;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
@@ -665,11 +665,18 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
+                             let ret;
                              {
-                                 let _ret = &mut self.state_prediction_mode.pm;
+                                 ret = self.cross_command_state.bk.obs_prediction_mode_context_map(
+                                     &self.state_prediction_mode.pm);
+                                 
                              }
                              self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
                              self.state = EncodeOrDecodeState::Begin;
+                             match ret {
+                                 DivansOpResult::Success => {}
+                                 DivansOpResult::Failure(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret))),
+                             }
                              return CodecTraitResult::UpdateCodecTraitAndAdvance(
                                  construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
                          },

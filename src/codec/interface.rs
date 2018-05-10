@@ -11,6 +11,7 @@ use ::interface::{
     CrossCommandBilling,
     Command,
     CopyCommand,
+    PredictionModeContextMap,
     DictCommand,
     LiteralCommand,
     LiteralBlockSwitch,
@@ -379,17 +380,7 @@ impl<
             *item = index as u8 & 0x3;
         }
     }
-    pub fn obs_context_map(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> DivansOpResult {
-        self.materialized_context_map = true;
-        let target_array = match context_map_type {
-            ContextMapType::Literal => self.literal_context_map.slice_mut(),
-            ContextMapType::Distance=> self.distance_context_map.slice_mut(),
-        };
-        if index as usize >= target_array.len() {
-            return  DivansOpResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
-        }
-
-        target_array[index as usize] = val;
+    pub fn obs_context_map_for_lru(&mut self, _context_map_type: ContextMapType, _index : u32, val: u8) -> DivansOpResult {
         match self.cmap_lru.iter().enumerate().find(|x| *x.1 == val) {
             Some((index, _)) => {
                 if index != 0 {
@@ -506,6 +497,33 @@ impl<
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
+    pub fn obs_prediction_mode_context_map<ISlice:SliceWrapper<u8>>(&mut self,
+                                                                    pm: &PredictionModeContextMap<ISlice>) -> DivansOpResult {
+        match self.obs_pred_mode(pm.literal_prediction_mode()) {
+            DivansOpResult::Success => {},
+            fail => return fail,
+        }
+        for (out_item, in_item) in self.literal_adaptation[..2].iter_mut().zip(pm.stride_context_speed_f8().iter()) {
+            *out_item = Speed::from_f8_tuple(*in_item);
+        }
+        for (out_item, in_item) in self.literal_adaptation[2..].iter_mut().zip(pm.context_map_speed_f8().iter()) {
+            *out_item = Speed::from_f8_tuple(*in_item);
+        }
+        self.literal_context_map.slice_mut().clone_from_slice(pm.literal_context_map.slice());
+        self.distance_context_map.slice_mut().clone_from_slice(pm.distance_context_map());
+        for item in self.literal_context_map.slice().iter() {
+            if *item != 0 {
+                self.materialized_context_map = true;
+                break;
+            }
+        }
+        if pm.get_mixing_values().len() != self.mixing_mask.len() {
+            self.clear_mixing_values();
+        }
+        self.mixing_mask.clone_from_slice(pm.get_mixing_values());
+        DivansOpResult::Success
+    }
+
     pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> DivansOpResult {
        self.next_state();
        match new_mode.0 {
