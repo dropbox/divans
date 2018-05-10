@@ -941,13 +941,6 @@ fn compress_ir<Reader:std::io::BufRead,
     compress_inner(state, r, w)
 }
 
-fn zero_slice(sl: &mut [u8]) -> usize {
-    for v in sl.iter_mut() {
-        *v = 0u8;
-    }
-    sl.len()
-}
-
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (r:&mut Reader,
                                       w:&mut Writer,
@@ -1014,11 +1007,9 @@ fn decompress<Reader:std::io::Read,
                         Ok(size) => {
                             if size == 0 {
                                 //println_stderr!("End of file.  Feeding zero's.\n");
-                                let len = zero_slice(ibuffer.slice_mut().split_at_mut(input_end).1);
-                                input_end += len;
-                                //return Err(io::Error::new(
-                                //    io::ErrorKind::UnexpectedEof,
-                                //    "Divans file invalid: didn't have a terminator marker"));
+                                return Err(io::Error::new(
+                                    io::ErrorKind::UnexpectedEof,
+                                    "Divans file invalid: didn't have a terminator marker"));
                             } else {
                                 input_end += size;
                             }

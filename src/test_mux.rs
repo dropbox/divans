@@ -75,7 +75,15 @@ fn rand(size: usize, mut seed: u32) -> Vec<u8> {
     }
     ret
 }
-#[test] fn test_interleaved_mux() {
+#[test]
+fn test_real_mux() {
+    help_test_mux(&rand(27657,1)[..],
+                  &rand(27797,2)[..],
+                  &[(0,8189),(1,8189),(1,17996),(0,19468),(1,1612)],
+                  4096, 4096);
+}
+#[test]
+fn test_interleaved_mux() {
     help_test_mux(&rand(1000000,1)[..],
                   &rand(1000000,2)[..],
                   &[(0,1),(0,1000),(1,1),(0,1),(0,10000),(1,1),
