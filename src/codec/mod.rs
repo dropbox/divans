@@ -254,7 +254,7 @@ impl<AllocU8: Allocator<u8>,
             frozen_checksum: None,
             skip_checksum:skip_checksum,
         };
-        ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.bk);
+        ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.lbk,&ret.cross_command_state.bk);
         ret
     }
     #[inline(always)]
@@ -667,7 +667,7 @@ impl<AllocU8: Allocator<u8>,
                          DivansResult::Success => {
                              let ret;
                              {
-                                 ret = self.cross_command_state.bk.obs_prediction_mode_context_map(
+                                 ret = self.cross_command_state.lbk.obs_prediction_mode_context_map(
                                      &self.state_prediction_mode.pm);
                                  
                              }
@@ -678,7 +678,7 @@ impl<AllocU8: Allocator<u8>,
                                  DivansOpResult::Failure(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret))),
                              }
                              return CodecTraitResult::UpdateCodecTraitAndAdvance(
-                                 construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
+                                 construct_codec_trait_from_bookkeeping(&self.cross_command_state.lbk, &self.cross_command_state.bk));
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
@@ -694,21 +694,15 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes,
                                                             output_bytes_offset) {
                         DivansResult::Success => {
-                            let old_stride = self.cross_command_state.bk.stride;
-                            self.cross_command_state.bk.obs_btypel(match self.state_lit_block_switch {
+                            let new_block_type = match self.state_lit_block_switch {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
                                 _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
                                     DivansResult::Failure(ErrMsg::UnintendedCodecState(0)))),
-                            });
-                            if (old_stride <= 1) != (self.cross_command_state.bk.stride <= 1) {
-                                self.state = EncodeOrDecodeState::Begin;
-                                return CodecTraitResult::UpdateCodecTraitAndAdvance(
-                                    construct_codec_trait_from_bookkeeping(&self.cross_command_state.bk));
-                                // we need to chage to update codec trait
-                            } else {
-                                self.state = EncodeOrDecodeState::Begin;
-                                return CodecTraitResult::Res(OneCommandReturn::Advance);
-                            }
+                            };
+                            self.cross_command_state.bk.obs_btypel(new_block_type);
+                            self.cross_command_state.lbk.obs_literal_block_switch(new_block_type);
+                            self.state = EncodeOrDecodeState::Begin;
+                            return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
@@ -849,11 +843,10 @@ impl<AllocU8: Allocator<u8>,
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
                         },
                         DivansOutputResult::Success => {
-                            self.cross_command_state.bk.command_count += 1;
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
                             let last_8 = self.cross_command_state.recoder.last_8_literals();
-                            self.cross_command_state.bk.last_8_literals =
+                            self.cross_command_state.lbk.last_8_literals =
                                 u64::from(last_8[0])
                                 | (u64::from(last_8[1])<<0x8)
                                 | (u64::from(last_8[2])<<0x10)

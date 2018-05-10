@@ -20,9 +20,11 @@ use ::interface::{
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
     LITERAL_PREDICTION_MODE_LSB6,
+    MAX_LITERAL_CONTEXT_MAP_SIZE,
     NewWithAllocator,
 };
 use super::priors::{
+    LiteralNibblePriors,
     LiteralCommandPriors,
     LiteralCommandPriorsCM,
     CopyCommandPriors,
@@ -33,8 +35,8 @@ use super::priors::{
     NUM_BLOCK_TYPES,
 };
 use ::priors::PriorCollection;
-const LOG_NUM_COPY_TYPE_PRIORS: usize = 2;
-const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
+const LOG_NUM_COPY_TYPE_PRIORS: usize = 4;
+
 pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
@@ -107,17 +109,33 @@ pub struct DistanceCacheEntry {
 
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 
+pub struct LiteralBookKeeping<Cdf16:CDF16,
+                                   AllocU8:Allocator<u8>,
+                                   AllocCDF16:Allocator<Cdf16>> {
+    pub last_8_literals: u64,
+    pub literal_context_map: AllocU8::AllocatedMemory,
+    pub btype_last: u8,
+    pub stride: u8,
+    pub combine_literal_predictions: bool,
+    pub literal_prediction_mode: LiteralPredictionModeNibble,
+    pub literal_adaptation: [Speed; 4],
+    pub literal_lut0:[u8;256],
+    pub literal_lut1:[u8;256],
+    pub mixing_mask:[u8; 8192],
+    pub model_weights: [super::weights::Weights;2],
+    pub materialized_context_map: bool,
+    pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
+}
+
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    pub last_8_literals: u64,
     pub decode_byte_count: u32,
-    pub command_count:u32,
-    pub num_literals_coded: u32,
-    pub literal_context_map: AllocU8::AllocatedMemory,
+    //pub command_count:u32,
+    //pub num_literals_coded: u32,
+    pub lit_len_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub distance_context_map: AllocU8::AllocatedMemory,
-    pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
@@ -128,26 +146,18 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub distance_cache:[[DistanceCacheEntry;3];32],
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
-    pub stride: u8,
-    pub cm_prior_depth_mask: u8,
-    pub prior_bytes_depth_mask: u8,
+    //pub cm_prior_depth_mask: u8,
+    //pub prior_bytes_depth_mask: u8,
     pub last_dlen: u8,
     pub last_clen: u8,
     pub last_llen: u32,
     pub last_4_states: u8,
     pub materialized_context_map: bool,
-    pub combine_literal_predictions: bool,
     pub desired_prior_depth: u8,
-    pub desired_context_mixing: u8,
-    pub literal_prediction_mode: LiteralPredictionModeNibble,
-    pub literal_adaptation: [Speed; 4],
-    pub literal_lut0:[u8;256],
-    pub literal_lut1:[u8;256],
-    pub mixing_mask:[u8; 8192],
     pub desired_literal_adaptation: Option<[Speed;4]>,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
-    pub model_weights: [super::weights::Weights;2],
+    pub desired_context_mixing: u8,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -223,6 +233,108 @@ fn get_lut1(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
 
 impl<                                   
      Cdf16:CDF16,
+     AllocCDF16:Allocator<Cdf16>,
+     AllocU8:Allocator<u8>> LiteralBookKeeping<Cdf16,
+                                               AllocU8,
+                                               AllocCDF16> {
+    fn new(literal_context_map:AllocU8::AllocatedMemory) -> Self {
+        let mut ret = LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
+            //materialized_context_map: false,
+            combine_literal_predictions: false,
+            last_8_literals: 0,
+            stride: 0,
+            literal_adaptation: [default_literal_speed(); 4],
+            literal_prediction_mode: LiteralPredictionModeNibble::default(),
+            literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
+            literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
+            mixing_mask: [0;8192],
+            literal_context_map:literal_context_map,
+            btype_last:0,
+            model_weights:[super::weights::Weights::default(),
+                           super::weights::Weights::default()],
+            materialized_context_map: false,
+            lit_cm_priors: LiteralCommandPriorsCM {
+                priors: AllocCDF16::AllocatedMemory::default()
+            },
+        };
+        ret
+    }
+    pub fn get_literal_block_type(&self) -> u8 {
+        self.btype_last
+    }
+    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> DivansOpResult {
+       // self.next_state(); // FIXME removing: but it seems wrong
+       match new_mode.0 {
+           LITERAL_PREDICTION_MODE_SIGN | LITERAL_PREDICTION_MODE_UTF8 | LITERAL_PREDICTION_MODE_MSB6 | LITERAL_PREDICTION_MODE_LSB6 => {
+           },
+           _ => return DivansOpResult::Failure(ErrMsg::PredictionModeOutOfBounds(new_mode.0)),
+       }
+       self.literal_prediction_mode = new_mode;
+       self.literal_lut0 = get_lut0(new_mode);
+       self.literal_lut1 = get_lut1(new_mode);
+       DivansOpResult::Success
+    }
+    pub fn push_literal_byte(&mut self, b: u8) {
+        //self.num_literals_coded += 1;
+        self.last_8_literals >>= 0x8;
+        self.last_8_literals |= u64::from(b) << 0x38;
+    }
+    pub fn push_literal_nibble(&mut self, nibble: u8) {
+        self.last_8_literals >>= 0x4;
+        self.last_8_literals |= u64::from(nibble) << 0x3c;
+    }
+    pub fn obs_literal_block_switch(&mut self, btype:LiteralBlockSwitch) {
+        self.btype_last = btype.block_type();
+        self.stride = btype.stride();
+    }
+    pub fn obs_prediction_mode_context_map<ISlice:SliceWrapper<u8>>(&mut self,
+                                                                    pm: &PredictionModeContextMap<ISlice>) -> DivansOpResult {
+        self.reset_literal_context_map();
+        match self.obs_pred_mode(pm.literal_prediction_mode()) {
+            DivansOpResult::Success => {},
+            fail => return fail,
+        }
+        for (out_item, in_item) in self.literal_adaptation[..2].iter_mut().zip(pm.stride_context_speed_f8().iter()) {
+            *out_item = Speed::from_f8_tuple(*in_item);
+        }
+        for (out_item, in_item) in self.literal_adaptation[2..].iter_mut().zip(pm.context_map_speed_f8().iter()) {
+            *out_item = Speed::from_f8_tuple(*in_item);
+        }
+        self.literal_context_map.slice_mut().clone_from_slice(pm.literal_context_map.slice());
+        // self.distance_context_map.slice_mut().clone_from_slice(pm.distance_context_map()); // FIXME: this was done during parsing of the pm
+        for item in self.literal_context_map.slice().iter() {
+            if *item != 0 {
+                self.materialized_context_map = true;
+                break;
+            }
+        }
+        if pm.get_mixing_values().len() != self.mixing_mask.len() {
+            self.clear_mixing_values();
+        }
+        self.mixing_mask.clone_from_slice(pm.get_mixing_values());
+        DivansOpResult::Success
+    }
+    pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8, mcdf16: &mut AllocCDF16) {
+        self.combine_literal_predictions = (context_mixing != 0) as bool;
+        if context_mixing >= 2 && self.lit_cm_priors.priors.slice().len() == 0 {
+            self.lit_cm_priors.priors = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        }
+        self.model_weights[0].set_mixing_param(context_mixing);
+        self.model_weights[1].set_mixing_param(context_mixing);
+    }
+    pub fn clear_mixing_values(&mut self) {
+        for item in self.mixing_mask.iter_mut()  {
+            *item = 0;
+        }
+    }
+    pub fn reset_literal_context_map(&mut self) {
+        for (index, item) in self.literal_context_map.slice_mut().iter_mut().enumerate() {
+            *item = index as u8 & 0x3f;
+        }
+    }
+}
+impl<                                   
+     Cdf16:CDF16,
      AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>,
      AllocU8:Allocator<u8>> CrossCommandBookKeeping<
@@ -230,12 +342,12 @@ impl<
                                                     AllocU8,
                                                     AllocCDF2,
                                                     AllocCDF16> {
-    fn new(cc_prior: AllocCDF16::AllocatedMemory,
+    fn new(lit_len_prior:AllocCDF16::AllocatedMemory,
+           cc_prior: AllocCDF16::AllocatedMemory,
            copy_prior: AllocCDF16::AllocatedMemory,
            dict_prior: AllocCDF16::AllocatedMemory,
            pred_prior: AllocCDF16::AllocatedMemory,
            btype_prior: AllocCDF16::AllocatedMemory,
-           literal_context_map: AllocU8::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
            mut dynamic_context_mixing: u8,
            prior_depth: u8,
@@ -250,41 +362,28 @@ impl<
             },
         }
         let mut ret = CrossCommandBookKeeping{
-            model_weights:[super::weights::Weights::default(),
-                           super::weights::Weights::default()],
-            cm_prior_depth_mask:0xff,
-            prior_bytes_depth_mask:0x0,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
-            literal_adaptation: [default_literal_speed(); 4],
             decode_byte_count:0,
-            command_count:0,
-            num_literals_coded:0,
             distance_cache:[
                 [
                     DistanceCacheEntry{
                         distance:1,
                         decode_byte_count:0,
                     };3];32],
-            stride: 0,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
             materialized_context_map: false,
-            combine_literal_predictions: false,
+            // FIXME combine_literal_predictions: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
-            last_8_literals: 0,
-            literal_prediction_mode: LiteralPredictionModeNibble::default(),
-            literal_lut0: get_lut0(LiteralPredictionModeNibble::default()),
-            literal_lut1: get_lut1(LiteralPredictionModeNibble::default()),
-            mixing_mask: [0;8192],
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
+            lit_len_priors: LiteralCommandPriors {
+                priors: lit_len_prior,
+            },
             prediction_priors: PredictionModePriors {
                 priors: pred_prior,
-            },
-            lit_cm_priors: LiteralCommandPriorsCM {
-                priors: AllocCDF16::AllocatedMemory::default()
             },
             cc_priors: CrossCommandPriors::<Cdf16, AllocCDF16> {
                 priors: cc_prior
@@ -295,7 +394,6 @@ impl<
             dict_priors: DictCommandPriors {
                 priors: dict_prior
             },
-            literal_context_map:literal_context_map,
             distance_context_map:distance_context_map,
             btype_priors: BlockTypePriors {
                 priors: btype_prior
@@ -331,37 +429,27 @@ impl<
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map
     }
+    /* DEPRECATED
     pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> DivansOpResult {
         //if index >= self.mixing_mask.len() {
         //return DivansResult::Failure;
         //}
         self.mixing_mask[index] = value;
         DivansOpResult::Success
-    }
-    pub fn clear_mixing_values(&mut self) {
-        for item in self.mixing_mask.iter_mut()  {
-            *item = 0;
-        }
-    }
+}*/
+    /* DEPRECATED
     pub fn obs_literal_adaptation_rate(&mut self, index: u32, ladaptation_rate: Speed) {
         if index < self.literal_adaptation.len() as u32 {
             self.literal_adaptation[index as usize
             ] = ladaptation_rate;
         }
-    }
+    }*/
     pub fn obs_prior_depth(&mut self, prior_depth: u8) {
-        //self.prior_depth = prior_depth;
+        /*
         self.cm_prior_depth_mask = ((1u32 << core::cmp::min(prior_depth, 8)) - 1) as u8;
         self.prior_bytes_depth_mask = ((1u32 << (7 - core::cmp::min(prior_depth, 8))) - 1) as u8;
         self.prior_bytes_depth_mask = !self.prior_bytes_depth_mask; //bitwise not to grab upper bit
-    }
-    pub fn obs_dynamic_context_mixing(&mut self, context_mixing: u8, mcdf16: &mut AllocCDF16) {
-        self.combine_literal_predictions = (context_mixing != 0) as bool;
-        if context_mixing >= 2 && self.lit_cm_priors.priors.slice().len() == 0 {
-            self.lit_cm_priors.priors = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        }
-        self.model_weights[0].set_mixing_param(context_mixing);
-        self.model_weights[1].set_mixing_param(context_mixing);
+         */
     }
 
     pub fn get_distance_prior(&mut self, copy_len: u32) -> usize {
@@ -372,15 +460,12 @@ impl<
     pub fn reset_context_map_lru(&mut self) {
         self.cmap_lru = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     }
-    pub fn reset_context_map(&mut self) {
-        for (index, item) in self.literal_context_map.slice_mut().iter_mut().enumerate() {
-            *item = index as u8 & 0x3f;
-        }
+    pub fn reset_distance_context_map(&mut self) {
         for (index, item) in self.distance_context_map.slice_mut().iter_mut().enumerate() {
             *item = index as u8 & 0x3;
         }
     }
-    pub fn obs_context_map_for_lru(&mut self, _context_map_type: ContextMapType, _index : u32, val: u8) -> DivansOpResult {
+    pub fn obs_context_map_for_lru(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> DivansOpResult {
         if val != 0 {
             self.materialized_context_map = true;
         }
@@ -398,6 +483,16 @@ impl<
             },
         }
         self.cmap_lru[0] = val;
+        match context_map_type {
+            ContextMapType::Distance => {
+                if (index as usize) < self.distance_context_map.slice().len() {
+                    self.distance_context_map.slice_mut()[index as usize] = val;
+                } else {
+                    return DivansOpResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8 & 0xff,
+                                                                                     (index >> 8) as u8 & 0xff));
+                }
+            }
+        }
         DivansOpResult::Success
     }
     pub fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
@@ -482,63 +577,16 @@ impl<
     pub fn get_literal_block_type(&self) -> usize {
         self.btype_lru[BLOCK_TYPE_LITERAL_SWITCH][0] as usize
     }
-    pub fn push_literal_nibble(&mut self, nibble: u8) {
-        self.last_8_literals >>= 0x4;
-        self.last_8_literals |= u64::from(nibble) << 0x3c;
-    }
-    pub fn push_literal_byte(&mut self, b: u8) {
-        self.num_literals_coded += 1;
-        self.last_8_literals >>= 0x8;
-        self.last_8_literals |= u64::from(b) << 0x38;
-    }
     pub fn get_command_type_prob(&mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
         self.cc_priors.get(CrossCommandBilling::FullSelection,
                            ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
-                           ((self.last_8_literals>>0x3e) as usize &0xf)))
+                           0)) // FIXME <-- improve this prior now that we are missing literals
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;
     }
-    pub fn obs_prediction_mode_context_map<ISlice:SliceWrapper<u8>>(&mut self,
-                                                                    pm: &PredictionModeContextMap<ISlice>) -> DivansOpResult {
-        match self.obs_pred_mode(pm.literal_prediction_mode()) {
-            DivansOpResult::Success => {},
-            fail => return fail,
-        }
-        for (out_item, in_item) in self.literal_adaptation[..2].iter_mut().zip(pm.stride_context_speed_f8().iter()) {
-            *out_item = Speed::from_f8_tuple(*in_item);
-        }
-        for (out_item, in_item) in self.literal_adaptation[2..].iter_mut().zip(pm.context_map_speed_f8().iter()) {
-            *out_item = Speed::from_f8_tuple(*in_item);
-        }
-        self.literal_context_map.slice_mut().clone_from_slice(pm.literal_context_map.slice());
-        self.distance_context_map.slice_mut().clone_from_slice(pm.distance_context_map());
-        for item in self.literal_context_map.slice().iter() {
-            if *item != 0 {
-                self.materialized_context_map = true;
-                break;
-            }
-        }
-        if pm.get_mixing_values().len() != self.mixing_mask.len() {
-            self.clear_mixing_values();
-        }
-        self.mixing_mask.clone_from_slice(pm.get_mixing_values());
-        DivansOpResult::Success
-    }
 
-    pub fn obs_pred_mode(&mut self, new_mode: LiteralPredictionModeNibble) -> DivansOpResult {
-       self.next_state();
-       match new_mode.0 {
-           LITERAL_PREDICTION_MODE_SIGN | LITERAL_PREDICTION_MODE_UTF8 | LITERAL_PREDICTION_MODE_MSB6 | LITERAL_PREDICTION_MODE_LSB6 => {
-           },
-           _ => return DivansOpResult::Failure(ErrMsg::PredictionModeOutOfBounds(new_mode.0)),
-       }
-       self.literal_prediction_mode = new_mode;
-       self.literal_lut0 = get_lut0(new_mode);
-       self.literal_lut1 = get_lut1(new_mode);
-       DivansOpResult::Success
-    }
     pub fn obs_dict_state(&mut self) {
         self.next_state();
         self.last_4_states |= 192;
@@ -592,10 +640,6 @@ impl<
     }
     pub fn obs_btypel(&mut self, btype:LiteralBlockSwitch) {
         self._obs_btype_helper(BLOCK_TYPE_LITERAL_SWITCH, btype.block_type());
-        self.stride = btype.stride();
-        if self.stride != 0 && self.materialized_context_map {
-            debug_assert!(self.combine_literal_predictions);
-        }
     }
     pub fn obs_btypec(&mut self, btype:u8) {
         self._obs_btype_helper(BLOCK_TYPE_COMMAND_SWITCH, btype);
@@ -621,9 +665,10 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub m8: RepurposingAlloc<u8, AllocU8>,
     mcdf2: AllocCDF2,
     pub mcdf16: AllocCDF16,
-    pub lit_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
-    pub lit_low_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
+    pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
+    pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
+    pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
 }
@@ -680,14 +725,15 @@ impl <AllocU8:Allocator<u8>,
                force_stride: StrideSelection) -> Self {
         let ring_buffer = m8.alloc_cell(1 << ring_buffer_size);
         let lit_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        let lit_low_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        //let cm_lit_prior = mcdf16.alloc_cell(LiteralCommandPriorsCM::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let lit_low_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let lit_high_priors = mcdf16.alloc_cell(LiteralNibblePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
+        let lit_len_priors = mcdf16.alloc_cell(LiteralCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let copy_priors = mcdf16.alloc_cell(CopyCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let dict_priors = mcdf16.alloc_cell(DictCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        let literal_context_map = m8.alloc_cell(64 * NUM_BLOCK_TYPES);
+        let literal_context_map = m8.alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
@@ -706,17 +752,18 @@ impl <AllocU8:Allocator<u8>,
             m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
             mcdf2:mcdf2,
             mcdf16:mcdf16,
-            lit_priors: LiteralCommandPriors {
-                priors: lit_priors
+            lit_high_priors: LiteralNibblePriors {
+                priors: lit_high_priors
             },
-            lit_low_priors: LiteralCommandPriors {
+            lit_low_priors: LiteralNibblePriors {
                 priors: lit_low_priors
             },
             demuxer:LinearInputBytes::default(),
             muxer:LinearOutputBytes::default(),
-            bk:CrossCommandBookKeeping::new(cc_priors, copy_priors,
+            lbk:LiteralBookKeeping::new(literal_context_map),
+            bk:CrossCommandBookKeeping::new(lit_len_priors, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
-                                            literal_context_map, distance_context_map,
+                                            distance_context_map,
                                             dynamic_context_mixing,
                                             prior_depth,
                                             literal_adaptation_rate,
@@ -733,22 +780,24 @@ impl <AllocU8:Allocator<u8>,
         self.bk.cc_priors.summarize_speed_costs();
         self.bk.copy_priors.summarize_speed_costs();
         self.bk.dict_priors.summarize_speed_costs();
-        self.lit_priors.summarize_speed_costs();
+        self.lit_high_priors.summarize_speed_costs();
         self.lit_low_priors.summarize_speed_costs();
-        self.bk.lit_cm_priors.summarize_speed_costs();
+        self.bk.lit_len_priors.summarize_speed_costs();
+        self.lbk.lit_cm_priors.summarize_speed_costs();
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16d = core::mem::replace(&mut self.lit_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16d = core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16f = core::mem::replace(&mut self.bk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16f = core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16g = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16h = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16i = core::mem::replace(&mut self.bk.lit_len_priors.priors, AllocCDF16::AllocatedMemory::default());
         for coder in self.coder.iter_mut() {
             coder.free(self.m8.get_base_alloc());
         }
-        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.literal_context_map,
+        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.lbk.literal_context_map,
                                                               AllocU8::AllocatedMemory::default()));
         self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
@@ -761,6 +810,7 @@ impl <AllocU8:Allocator<u8>,
         self.mcdf16.free_cell(cdf16f);
         self.mcdf16.free_cell(cdf16g);
         self.mcdf16.free_cell(cdf16h);
+        self.mcdf16.free_cell(cdf16i);
     }
     pub fn free_ref(&mut self) {
         self.free_internal();

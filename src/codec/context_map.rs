@@ -168,7 +168,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
             match self.state {
                PredictionModeSubstate::Begin => {
                    superstate.bk.reset_context_map_lru();
-                   superstate.bk.reset_context_map();
+                   superstate.bk.reset_distance_context_map();
                    let mut beg_nib = in_cmd.literal_prediction_mode().prediction_mode();
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
