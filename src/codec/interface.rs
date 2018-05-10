@@ -381,6 +381,9 @@ impl<
         }
     }
     pub fn obs_context_map_for_lru(&mut self, _context_map_type: ContextMapType, _index : u32, val: u8) -> DivansOpResult {
+        if val != 0 {
+            self.materialized_context_map = true;
+        }
         match self.cmap_lru.iter().enumerate().find(|x| *x.1 == val) {
             Some((index, _)) => {
                 if index != 0 {
