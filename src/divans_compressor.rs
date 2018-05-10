@@ -92,7 +92,8 @@ impl<AllocU8:Allocator<u8>,
          let ring_buffer = m8.alloc_cell(1<<window_size);
          let prediction_mode_backing = m8.alloc_cell(interface::MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE);
          let literal_context_map = m8.alloc_cell(interface::MAX_LITERAL_CONTEXT_MAP_SIZE);
-         let enc = Self::DefaultEncoder::new(&mut m8);
+         let cmd_enc = Self::DefaultEncoder::new(&mut m8);
+         let lit_enc = Self::DefaultEncoder::new(&mut m8);
          let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
          DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
             m32 :m32,
@@ -100,7 +101,8 @@ impl<AllocU8:Allocator<u8>,
                 m8,
                 mcdf2,
                 mcdf16,
-                enc,
+                cmd_enc,
+                lit_enc,
                 EncoderSpecialization::new(),
                 window_size as usize,
                 opts.dynamic_context_mixing.unwrap_or(0),

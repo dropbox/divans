@@ -37,9 +37,9 @@ const LOG_NUM_DICT_TYPE_PRIORS: usize = 2;
 pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
-pub const NUM_ARITHMETIC_CODERS:usize = 1;
+pub const NUM_ARITHMETIC_CODERS:usize = 2;
 pub const CMD_CODER: usize = 0;
-pub const LIT_CODER: usize = 0; // FIXME: 1
+pub const LIT_CODER: usize = 1;
 #[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum StrideSelection {
@@ -648,7 +648,8 @@ impl <AllocU8:Allocator<u8>,
                mut mcdf16:AllocCDF16,
                //cmd_coder: ArithmeticCoder,
                //lit_coder: ArithmeticCoder,
-               coder: ArithmeticCoder,
+               cmd_coder: ArithmeticCoder,
+               lit_coder: ArithmeticCoder,
                spc: Specialization,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
@@ -676,7 +677,7 @@ impl <AllocU8:Allocator<u8>,
                             AllocCDF2,
                             AllocCDF16> {
             //cmd_coder: cmd_coder,
-            coder: [coder],
+            coder: [cmd_coder, lit_coder],
             //lit_coder: lit_coder,
             specialization: spc,
             recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(

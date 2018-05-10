@@ -459,7 +459,8 @@ impl<AllocU8:Allocator<u8>,
                opt: super::interface::DivansCompressorOptions,
                additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         let window_size = min(24, max(10, opt.window_size.unwrap_or(22)));
-        let enc = Self::DefaultEncoder::new(&mut m8);
+        let cmd_enc = Self::DefaultEncoder::new(&mut m8);
+        let lit_enc = Self::DefaultEncoder::new(&mut m8);
         let mut ret = Self::ConstructedCompressor {
              m64: additional_args.4,
              mf64: additional_args.5,
@@ -483,7 +484,8 @@ impl<AllocU8:Allocator<u8>,
                 m8,
                 mcdf2,
                 mcdf16,
-                enc,
+                cmd_enc,
+                lit_enc,
                 EncoderSpecialization::new(),
                 window_size as usize,
                 opt.dynamic_context_mixing.unwrap_or(0),

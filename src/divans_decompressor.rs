@@ -121,7 +121,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
         }
         //update this if you change the SelectedArithmeticDecoder macro
-        let decoder = DefaultDecoder::new(&mut m8);
+        let cmd_decoder = DefaultDecoder::new(&mut m8);
+        let lit_decoder = DefaultDecoder::new(&mut m8);
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
                                              Mux<AllocU8>,
@@ -132,7 +133,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                              AllocCDF16>::new(m8,
                                                               mcdf2,
                                                               mcdf16,
-                                                              decoder,
+                                                              cmd_decoder,
+                                                              lit_decoder,
                                                               DecoderSpecialization::new(),
                                                               window_size,
                                                               0,
