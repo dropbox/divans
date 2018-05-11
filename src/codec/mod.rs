@@ -197,8 +197,8 @@ impl<AllocU8: Allocator<u8>,
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
-        self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
-        self.cross_command_state.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+        self.state_prediction_mode.reset(self.cross_command_state.m8.as_mut().unwrap());
+        self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<UninitializedOnAlloc>().free_cell(
             core::mem::replace(&mut self.state_lit.lc,
                                LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
 
@@ -262,6 +262,7 @@ impl<AllocU8: Allocator<u8>,
     }
     #[inline(always)]
     fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> DivansResult{
+        self.cross_command_state.bk.command_count += 1;
         match command_type_code {
             1 => {
                 self.state_copy = copy::CopyState::begin();
@@ -293,7 +294,7 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
             },
             7 => {
-                self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
+                self.state_prediction_mode.reset(self.cross_command_state.m8.as_mut().unwrap()); // FIXME(threading) use trait to allocate
                 self.state = EncodeOrDecodeState::PredictionMode;
             },
             0xf => if is_end {
@@ -310,8 +311,8 @@ impl<AllocU8: Allocator<u8>,
         &self.cross_command_state.coder[usize::from(index)]
     }
     #[inline(always)]
-    pub fn get_m8(&mut self) -> &mut RepurposingAlloc<u8, AllocU8> {
-        &mut self.cross_command_state.m8
+    pub fn get_m8(&mut self) -> &mut Option<RepurposingAlloc<u8, AllocU8>> {
+        &mut self.cross_command_state.m8 // FIXME(threading) usage of this shall be limited
     }
     #[inline(always)]
     pub fn specialization(&mut self) -> &mut Specialization{
@@ -476,11 +477,11 @@ impl<AllocU8: Allocator<u8>,
                                                           input_command_offset: &mut usize) -> DivansResult {
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
-        {
+        if let Some(ref mut m8) = self.cross_command_state.m8 {
             let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
             let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
                 adjusted_input_bytes,
-                self.cross_command_state.m8.get_base_alloc());
+                m8.get_base_alloc());
             if Specialization::IS_DECODING_FILE && !self.skip_checksum {
                 self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
             }
@@ -670,13 +671,13 @@ impl<AllocU8: Allocator<u8>,
                          DivansResult::Success => {
                              let ret;
                              match self.cross_command_state.lbk {
-                                 Some(ref mut book_keeping) =>  // FIXME(threading): do this
+                                 Some(ref mut book_keeping) =>  // FIXME(threading): push for our populateRingBuffer
                                      ret = book_keeping.obs_prediction_mode_context_map(
                                          &self.state_prediction_mode.pm,
                                          &mut self.cross_command_state.mcdf16),
                                  None => ret = DivansOpResult::Success,
                              }
-                             self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
+                             self.state_prediction_mode.reset(&mut self.cross_command_state.m8.as_mut().unwrap()); // FIXME(threading) push to populate
                              self.state = EncodeOrDecodeState::Begin;
                              match ret {
                                  DivansOpResult::Success => {}
@@ -839,24 +840,21 @@ impl<AllocU8: Allocator<u8>,
                     let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
                         output_bytes_offset,
                         &mut tmp_output_offset_bytes_backing);
-                    match self.cross_command_state.recoder.encode_cmd(&mut self.state_populate_ring_buffer,
+                    match self.cross_command_state.recoder.as_mut().unwrap().encode_cmd(&mut self.state_populate_ring_buffer,
                                                                   self.cross_command_state.
                                                                   specialization.get_recoder_output(output_bytes),
                                                                   tmp_output_offset_bytes) {
                         DivansOutputResult::NeedsMoreOutput => {
-                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                             }
                         },
                         DivansOutputResult::Failure(m) => {
-                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
                         },
                         DivansOutputResult::Success => {
-                            self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
-                            let last_8 = self.cross_command_state.recoder.last_8_literals();
+                            let last_8 = self.cross_command_state.recoder.as_ref().unwrap().last_8_literals();
                             self.cross_command_state.lbk.as_mut().unwrap().last_8_literals = //FIXME(threading) only should be run in the main thread
                                 u64::from(last_8[0])
                                 | (u64::from(last_8[1])<<0x8)
@@ -872,7 +870,7 @@ impl<AllocU8: Allocator<u8>,
                                     let mfd = core::mem::replace(
                                         &mut l.data,
                                         AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.use_cached_allocation::<
+                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
                                             UninitializedOnAlloc>().free_cell(mfd);
                                     //FIXME: what about prob array: should that be freed
                                 },
@@ -886,12 +884,12 @@ impl<AllocU8: Allocator<u8>,
                                     let mfd = core::mem::replace(
                                         &mut pm.literal_context_map,
                                         AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.use_cached_allocation::<
+                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
                                             UninitializedOnAlloc>().free_cell(mfd);
                                     let mfd = core::mem::replace(
                                         &mut pm.predmode_speed_and_distance_context_map,
                                         AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.use_cached_allocation::<
+                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
                                             UninitializedOnAlloc>().free_cell(mfd);
                                 },
                             }

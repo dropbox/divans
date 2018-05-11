@@ -24,7 +24,6 @@ pub enum CopySubstate {
     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
     CountDecoded,
     DistanceLengthMnemonic, // references a recent distance cached value
-    DistanceLengthMnemonicTwo, // references a recent distance cached value
     DistanceLengthFirst,
     DistanceLengthGreater15Less25, // length not between 1 and 15, inclusive.. second nibble results in 15-24
     DistanceMantissaNibbles(u8, u8, u32), // nibble count (up to 6), intermediate result
@@ -184,26 +183,6 @@ impl CopyState {
                         if !ok {
                             return DivansResult::Failure(ErrMsg::CopyDistanceMnemonicCodeBad(dist as u8, (dist >> 8) as u8));
                         }
-                        self.state = CopySubstate::FullyDecoded;
-                    }
-                },
-                CopySubstate::DistanceLengthMnemonicTwo => {
-                    //UNUSED : haven't made this pay for itself
-                    let mut beg_nib = superstate.bk.distance_mnemonic_code_two(in_cmd.distance, in_cmd.num_bytes);
-                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
-                    {
-                        let mut nibble_prob = superstate.bk.copy_priors.get(
-                            CopyCommandNibblePriorType::DistanceMnemonicTwo, (actual_prior as usize,));
-                        superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                        nibble_prob.blend(beg_nib, Speed::MED);
-                    }
-                    if beg_nib == 15 {
-                        self.state = CopySubstate::DistanceLengthFirst;
-                    } else {
-                        self.cc.distance = superstate.bk.get_distance_from_mnemonic_code_two(beg_nib,
-                                                                                             self.cc.num_bytes);
-                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
-                                                   - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
                     }
                 },

@@ -112,7 +112,7 @@ impl<SelectedCDF:CDF16,
                                     AllocHT,
                                     AllocZN> {
     pub fn get_m8(&mut self) -> &mut AllocU8 {
-       self.codec.get_m8().get_base_alloc()
+       self.codec.get_m8().as_mut().unwrap().get_base_alloc()
     }
     #[cfg(feature="no-stdlib")]
     fn do_panic(_m:ErrMsg) {
@@ -139,7 +139,7 @@ impl<SelectedCDF:CDF16,
             let ret: DivansResult;
             let mut output_offset = 0usize;
             {
-                let output = data.checkout_next_buffer(codec.get_m8().get_base_alloc(),
+                let output = data.checkout_next_buffer(codec.get_m8().as_mut().unwrap().get_base_alloc(),
                                                            Some(interface::HEADER_LENGTH + 256));
                 if *header_progress != interface::HEADER_LENGTH {
                     match write_header(header_progress, window_size, output, &mut output_offset, codec.get_crc()) {
@@ -233,7 +233,7 @@ impl<SelectedCDF:CDF16,
                 let ret;
                 let mut output_offset = 0usize;
                 {
-                    let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8().get_base_alloc(),
+                    let mut output = self.divans_data.checkout_next_buffer(self.codec.get_m8().as_mut().unwrap().get_base_alloc(),
                                                                            Some(interface::HEADER_LENGTH + 256));
                     ret = self.codec.flush(&mut output, &mut output_offset);
                 }
@@ -249,7 +249,7 @@ impl<SelectedCDF:CDF16,
     }
     fn free_internal(&mut self) {
         self.brotli_data.free(&mut self.brotli_encoder.m8);
-        self.divans_data.free(&mut self.codec.get_m8().get_base_alloc());
+        self.divans_data.free(&mut self.codec.get_m8().as_mut().unwrap().get_base_alloc());
         brotli::enc::encode::BrotliEncoderDestroyInstance(&mut self.brotli_encoder);
     }
     pub fn free_ref(&mut self) {

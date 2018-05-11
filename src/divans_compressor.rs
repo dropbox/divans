@@ -251,13 +251,13 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             };
         }
     }
-    pub fn get_m8(&mut self) -> &mut RepurposingAlloc<u8, AllocU8> {
+    pub fn get_m8(&mut self) -> &mut Option<RepurposingAlloc<u8, AllocU8>> {
        self.codec.get_m8()
     }
     pub fn free_ref(&mut self) {
         self.cmd_assembler.free(&mut self.m32);
-        self.codec.get_m8().free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
-        self.codec.get_m8().free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
+        self.codec.get_m8().as_mut().unwrap().free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
+        self.codec.get_m8().as_mut().unwrap().free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         self.codec.free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {

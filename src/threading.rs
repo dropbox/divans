@@ -1,10 +1,11 @@
 use core;
 #[allow(unused_imports)]
 use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
-
+use ::interface::DivansOutputResult;
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 use alloc::{SliceWrapper, Allocator};
-
+use alloc_util::RepurposingAlloc;
+use cmd_to_raw::DivansRecodeState;
 pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
     Eof,
@@ -22,8 +23,13 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
-    fn pull_context_map(&mut self) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
-    fn push_command(&mut self, CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>);
+    fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
+    fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
+    fn push_command(&mut self,
+                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+                    m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+                    recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+    ) -> DivansOutputResult;
 }
 
 pub struct SerialWorker<AllocU8:Allocator<u8>> {
@@ -119,7 +125,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.slice.1.start += count;
         if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
             self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())));
+                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None); //FIXME(threading): I think passing None here is fine since the receiver will free it
         }
     }
     #[inline(always)]
@@ -130,24 +136,30 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
     fn free_demux(&mut self, _m8: &mut AllocU8){
         if self.slice.0.slice().len() != 0 {
             self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())));
+                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None);
         }
     }
-
-
 }
+
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         self.worker.pull_data()
     }
     #[inline(always)]
-    fn pull_context_map(&mut self) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
-        self.worker.pull_context_map()
+    fn pull_context_map(&mut self,
+                        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+        self.worker.pull_context_map(m8)
+    }
+    fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
+        self.worker.alloc_literal(len, m8)
     }
     #[inline(always)]
-    fn push_command(&mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>) {
-        self.worker.push_command(cmd)
+    fn push_command(&mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+                    m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+                    recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+    ) -> DivansOutputResult {
+        self.worker.push_command(cmd, m8, recoder)
     }
 }
 
@@ -158,7 +170,13 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.data_len -= 1;
         ret
     }
-    fn pull_context_map(&mut self) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+    fn alloc_literal(&mut self, len: usize, _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
+        let mut ret = LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop();
+        ret.data.1 = len;
+        ret
+    }
+    fn pull_context_map(&mut self,
+                        _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
         assert!(self.cm_len != 0);
         let ret = core::mem::replace(&mut self.cm[self.cm_len - 1], PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
             literal_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
@@ -167,9 +185,16 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len -= 1;
         ret
     }
-    fn push_command(&mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>) {
-        assert!(self.result_len != self.result.len());
+    fn push_command(&mut self,
+                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+                    _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+                    _recoder:Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+    ) -> DivansOutputResult {
+        if self.result_len == self.result.len() {
+            return DivansOutputResult::NeedsMoreOutput;
+        }
         self.result[self.result_len] = cmd;
         self.result_len += 1;
+        DivansOutputResult::Success
     }
 }

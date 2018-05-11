@@ -104,7 +104,7 @@ pub enum ContextMapType {
 #[derive(Copy,Clone)]
 pub struct DistanceCacheEntry {
     pub distance:u32,
-    pub decode_byte_count:u32,
+    pub command_count:u64,
 }
 
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
@@ -131,7 +131,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    pub decode_byte_count: u32,
     //pub command_count:u32,
     //pub num_literals_coded: u32,
     pub lit_len_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
@@ -158,6 +157,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub desired_context_mixing: u8,
+    pub command_count: u64,
     _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
@@ -369,12 +369,12 @@ impl<
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
-            decode_byte_count:0,
+            command_count: 0,
             distance_cache:[
                 [
                     DistanceCacheEntry{
                         distance:1,
-                        decode_byte_count:0,
+                        command_count:0,
                     };3];32],
             last_dlen: 1,
             last_llen: 1,
@@ -481,39 +481,6 @@ impl<
         }
         DivansOpResult::Success
     }
-    pub fn read_distance_cache(&self, len:u32, index:u32) -> u32 {
-        let len_index = core::cmp::min(len as usize, self.distance_cache.len() - 1);
-        self.distance_cache[len_index][index as usize].distance + (
-            self.decode_byte_count - self.distance_cache[len_index][index as usize].decode_byte_count)
-    }
-    pub fn get_distance_from_mnemonic_code_two(&self, code:u8, len:u32,) -> u32 {
-        match code {
-            0 => sub_or_add(self.distance_lru[2], 1, 3),
-            1 => self.read_distance_cache(len, 0),
-            2 => self.read_distance_cache(len, 1),
-            3 => self.read_distance_cache(len, 2),
-            4 => self.read_distance_cache(len + 1, 0),
-            5 => self.read_distance_cache(len + 1, 1),
-            6 => self.read_distance_cache(len + 1, 2),
-            7 => self.read_distance_cache(len + 1, 0) - 1,
-            8 => self.read_distance_cache(len + 1, 1) - 1,
-            9 => self.read_distance_cache(len + 1, 2) - 1,
-            10 => self.read_distance_cache(len + 2, 0),
-            11 => self.read_distance_cache(len + 2, 1),
-            12 => self.read_distance_cache(len + 2, 2),
-            13 => self.read_distance_cache(len + 2, 0) - 1,
-            14 => self.read_distance_cache(len + 2, 1) - 1,
-            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
-        }
-    }
-    pub fn distance_mnemonic_code_two(&self, d: u32, len:u32) -> u8 {
-        for i in 0..15 {
-            if self.get_distance_from_mnemonic_code_two(i as u8, len) == d {
-                return i as u8;
-            }
-        }
-        15
-    }
     #[inline(always)]
     pub fn get_distance_from_mnemonic_code(&self, code:u8) -> (u32, bool) {
         /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
@@ -588,17 +555,17 @@ impl<
     pub fn obs_distance(&mut self, cc:&CopyCommand) {
         if cc.num_bytes < self.distance_cache.len() as u32{
             let nb = cc.num_bytes as usize;
-            let mut sub_index = if self.distance_cache[nb][1].decode_byte_count < self.distance_cache[nb][0].decode_byte_count {
+            let mut sub_index = if self.distance_cache[nb][1].command_count < self.distance_cache[nb][0].command_count {
                 1
             } else {
                 0
             };
-            if self.distance_cache[nb][2].decode_byte_count < self.distance_cache[nb][sub_index].decode_byte_count {
+            if self.distance_cache[nb][2].command_count < self.distance_cache[nb][sub_index].command_count {
                 sub_index = 2;
             }
             self.distance_cache[nb][sub_index] = DistanceCacheEntry{
                 distance: 0,//cc.distance, we're copying it to here (ha!)
-                decode_byte_count:self.decode_byte_count,
+                command_count:self.command_count,
             };
         }
         let distance = cc.distance;
@@ -647,8 +614,8 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     //pub lit_coder: ArithmeticCoder,
     pub coder: [ArithmeticCoder;NUM_ARITHMETIC_CODERS],
     pub specialization: Specialization,
-    pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
-    pub m8: RepurposingAlloc<u8, AllocU8>,
+    pub recoder: Option<DivansRecodeState<AllocU8::AllocatedMemory>>,
+    pub m8: Option<RepurposingAlloc<u8, AllocU8>>,
     mcdf2: AllocCDF2,
     pub mcdf16: AllocCDF16,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
@@ -676,7 +643,8 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     AllocCDF16>{
     #[inline(always)]
     pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
-        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset, self.m8.get_base_alloc())
+        // FIXME(threading): do not call this
+        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset, self.m8.as_mut().unwrap().get_base_alloc())
     }
 }
 impl <AllocU8:Allocator<u8>,
@@ -732,9 +700,9 @@ impl <AllocU8:Allocator<u8>,
             coder: [cmd_coder, lit_coder],
             //lit_coder: lit_coder,
             specialization: spc,
-            recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
-                ring_buffer),
-            m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
+            recoder: Some(DivansRecodeState::<AllocU8::AllocatedMemory>::new(
+                ring_buffer)),
+            m8: Some(RepurposingAlloc::<u8, AllocU8>::new(m8)),
             mcdf2:mcdf2,
             mcdf16:mcdf16,
             lit_high_priors: LiteralNibblePriors {
@@ -758,8 +726,8 @@ impl <AllocU8:Allocator<u8>,
         }
     }
     fn free_internal(&mut self) {
-        self.muxer.free_mux(self.m8.get_base_alloc());
-        self.demuxer.free_demux(self.m8.get_base_alloc());
+        self.muxer.free_mux(self.m8.as_mut().unwrap().get_base_alloc());
+        self.demuxer.free_demux(self.m8.as_mut().unwrap().get_base_alloc());
         self.bk.prediction_priors.summarize_speed_costs();
         self.bk.btype_priors.summarize_speed_costs();
         self.bk.cc_priors.summarize_speed_costs();
@@ -772,7 +740,13 @@ impl <AllocU8:Allocator<u8>,
             Some(ref book_keeping) => book_keeping.lit_cm_priors.summarize_speed_costs(),
             None => {},
         }
-        let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
+        match self.recoder {
+            Some(ref mut recoder) => {
+                let rb = core::mem::replace(&mut recoder.ring_buffer, AllocU8::AllocatedMemory::default());
+                self.m8.as_mut().unwrap().free_cell(rb);
+            }
+            None => unimplemented!(),
+        }
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
@@ -786,15 +760,14 @@ impl <AllocU8:Allocator<u8>,
         let cdf16h = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16i = core::mem::replace(&mut self.bk.lit_len_priors.priors, AllocCDF16::AllocatedMemory::default());
         for coder in self.coder.iter_mut() {
-            coder.free(self.m8.get_base_alloc());
+            coder.free(self.m8.as_mut().unwrap().get_base_alloc());
         }
         if let Some(ref mut book_keeping) = self.lbk {
-            self.m8.get_base_alloc().free_cell(core::mem::replace(&mut book_keeping.literal_context_map,
+            self.m8.as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut book_keeping.literal_context_map,
                                                                   AllocU8::AllocatedMemory::default()));
         }
-        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
+        self.m8.as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
-        self.m8.free_cell(rb);
         self.mcdf16.free_cell(cdf16a);
         self.mcdf16.free_cell(cdf16b);
         self.mcdf16.free_cell(cdf16c);
@@ -807,11 +780,11 @@ impl <AllocU8:Allocator<u8>,
     }
     pub fn free_ref(&mut self) {
         self.free_internal();
-        self.m8.free_ref();
+        self.m8.as_mut().unwrap().free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
         self.free_internal();
-        (self.m8.free(), self.mcdf2, self.mcdf16)
+        (self.m8.unwrap().free(), self.mcdf2, self.mcdf16)
     }
 }
 
