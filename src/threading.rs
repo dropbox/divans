@@ -1,6 +1,6 @@
 use core;
 #[allow(unused_imports)]
-use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
+use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS, EncoderOrDecoderRecoderSpecialization};
 use ::interface::DivansOutputResult;
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 use alloc::{SliceWrapper, Allocator};
@@ -25,10 +25,12 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
     fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
-    fn push_command(&mut self,
-                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
-                    m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-                    recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
+        &mut self,
+        cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+        recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+        specialization: &mut Specialization,
     ) -> DivansOutputResult;
 }
 
@@ -155,11 +157,13 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         self.worker.alloc_literal(len, m8)
     }
     #[inline(always)]
-    fn push_command(&mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
-                    m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-                    recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
+        &mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+        recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+        specialization:&mut Specialization,
     ) -> DivansOutputResult {
-        self.worker.push_command(cmd, m8, recoder)
+        self.worker.push_command(cmd, m8, recoder, specialization)
     }
 }
 
@@ -185,10 +189,11 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len -= 1;
         ret
     }
-    fn push_command(&mut self,
+    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(&mut self,
                     cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
                     _recoder:Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+                    _specialization:&mut Specialization,
     ) -> DivansOutputResult {
         if self.result_len == self.result.len() {
             return DivansOutputResult::NeedsMoreOutput;

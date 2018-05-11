@@ -345,6 +345,14 @@ pub trait BillingCapability { // maybe we should have called it capa-bill-ity
     }
 }
 
+pub trait EncoderOrDecoderRecoderSpecialization {
+    fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8];
+    fn get_recoder_output_offset<'a>(&self,
+                                     passed_in_output_bytes: &'a mut usize,
+                                     backing: &'a mut usize) -> &'a mut usize;
+    
+}
+
 pub trait ArithmeticEncoderOrDecoder : Sized {
     #[inline(always)]
     fn mov(&mut self) -> Self;

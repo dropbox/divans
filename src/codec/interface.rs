@@ -22,6 +22,7 @@ use ::interface::{
     LITERAL_PREDICTION_MODE_LSB6,
     MAX_LITERAL_CONTEXT_MAP_SIZE,
     NewWithAllocator,
+    EncoderOrDecoderRecoderSpecialization,
 };
 use super::priors::{
     LiteralNibblePriors,
@@ -88,6 +89,16 @@ pub trait EncoderOrDecoderSpecialization {
                                      backing: &'a mut usize) -> &'a mut usize;
 }
 
+impl <T:EncoderOrDecoderSpecialization> EncoderOrDecoderRecoderSpecialization for T {
+    fn get_recoder_output<'a>(&'a mut self, passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
+        <Self as EncoderOrDecoderSpecialization>::get_recoder_output(self, passed_in_output_bytes)
+    }
+    fn get_recoder_output_offset<'a>(&self,
+                                     passed_in_output_bytes: &'a mut usize,
+                                     backing: &'a mut usize) -> &'a mut usize {
+        <Self as EncoderOrDecoderSpecialization>::get_recoder_output_offset(self,passed_in_output_bytes, backing)
+    }
+}
 
 
 

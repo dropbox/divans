@@ -40,6 +40,7 @@ use self::specializations::{
     CodecTraits,
 };
 mod interface;
+use threading::{CommandResult, ThreadToMain};
 use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
     StrideSelection,
@@ -146,7 +147,7 @@ pub fn command_type_to_nibble<SliceType:SliceWrapper<u8>>(cmd:&Command<SliceType
 
 pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Specialization:EncoderOrDecoderSpecialization,
-                       LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                       LinearInputBytes:StreamDemuxer<AllocU8>+ThreadToMain<AllocU8>+Default,
                        LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
@@ -188,7 +189,7 @@ enum CodecTraitResult {
 impl<AllocU8: Allocator<u8>,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
      Specialization: EncoderOrDecoderSpecialization,
-     LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+     LinearInputBytes:StreamDemuxer<AllocU8>+ThreadToMain<AllocU8>+Default,
      LinearOutputBytes:StreamMuxer<AllocU8>+Default,
      Cdf16:CDF16,
      AllocCDF2: Allocator<CDF2>,
@@ -836,14 +837,13 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
-                    let mut tmp_output_offset_bytes_backing: usize = 0;
-                    let mut tmp_output_offset_bytes = self.cross_command_state.specialization.get_recoder_output_offset(
-                        output_bytes_offset,
-                        &mut tmp_output_offset_bytes_backing);
-                    match self.cross_command_state.recoder.as_mut().unwrap().encode_cmd(&mut self.state_populate_ring_buffer,
-                                                                  self.cross_command_state.
-                                                                  specialization.get_recoder_output(output_bytes),
-                                                                  tmp_output_offset_bytes) {
+                    match self.cross_command_state.demuxer.push_command(
+                        CommandResult::Cmd(core::mem::replace(self.state_populate_ring_buffer,
+                                                              Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())),
+                        &mut self.cross_command_state.m8,
+                        &mut self.cross_command_state.recoder,
+                        &mut self.cross_command_state.specialization,
+                    ) {
                         DivansOutputResult::NeedsMoreOutput => {
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
@@ -865,34 +865,6 @@ impl<AllocU8: Allocator<u8>,
                                 | (u64::from(last_8[6])<<0x30)
                                 | (u64::from(last_8[7])<<0x38);
                             self.state = EncodeOrDecodeState::Begin;
-                            match &mut self.state_populate_ring_buffer {
-                                &mut Command::Literal(ref mut l) => {
-                                    let mfd = core::mem::replace(
-                                        &mut l.data,
-                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
-                                            UninitializedOnAlloc>().free_cell(mfd);
-                                    //FIXME: what about prob array: should that be freed
-                                },
-                                &mut Command::Dict(_) |
-                                &mut Command::Copy(_) |
-                                &mut Command::BlockSwitchCommand(_) |
-                                &mut Command::BlockSwitchLiteral(_) |
-                                &mut Command::BlockSwitchDistance(_) => {
-                                },
-                                &mut Command::PredictionMode(ref mut pm) => {
-                                    let mfd = core::mem::replace(
-                                        &mut pm.literal_context_map,
-                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
-                                            UninitializedOnAlloc>().free_cell(mfd);
-                                    let mfd = core::mem::replace(
-                                        &mut pm.predmode_speed_and_distance_context_map,
-                                        AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                                    self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<
-                                            UninitializedOnAlloc>().free_cell(mfd);
-                                },
-                            }
                             return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                     }
