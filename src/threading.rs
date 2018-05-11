@@ -94,7 +94,18 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         }
     }
 }
-    
+struct NopEncoderOrDecoderRecoderSpecialization {}
+impl EncoderOrDecoderRecoderSpecialization for NopEncoderOrDecoderRecoderSpecialization {
+    fn get_recoder_output<'a>(&'a mut self, _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
+        &mut []
+    }
+    fn get_recoder_output_offset<'a>(&self,
+                                     _passed_in_output_bytes: &'a mut usize,
+                                     backing: &'a mut usize) -> &'a mut usize {
+        backing
+    }
+
+}
 impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
     fn write_linear(&mut self, _data:&[u8], _m8: &mut AllocU8) -> usize {
         unimplemented!();
@@ -128,8 +139,9 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         assert_eq!(stream_id, 0);
         self.slice.1.start += count;
         if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
+            let mut unused = 0usize;
             self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None); //FIXME(threading): I think passing None here is fine since the receiver will free it
+                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused); //FIXME(threading): I think passing None here is fine since the receiver will free it
         }
     }
     #[inline(always)]
@@ -139,8 +151,9 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
     #[inline(always)]
     fn free_demux(&mut self, _m8: &mut AllocU8){
         if self.slice.0.slice().len() != 0 {
+            let mut unused = 0usize;
             self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None);
+                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused);
         }
     }
 }

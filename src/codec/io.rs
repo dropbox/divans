@@ -1,5 +1,5 @@
 use core;
-use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
+use interface::{LiteralCommand, PredictionModeContextMap, free_cmd,FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
 use ::interface::{
     DivansOutputResult,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
@@ -9,7 +9,7 @@ use ::interface::{
 use codec::interface::CMD_CODER;
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 
-use alloc::{SliceWrapper, Allocator};
+use alloc::{Allocator};
 use alloc_util::{RepurposingAlloc, UninitializedOnAlloc};
 use cmd_to_raw::DivansRecodeState;
 
@@ -71,33 +71,45 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         ThreadData::Data(self.0.pop(CMD_CODER as StreamID))
     }
-    fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
-        let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
-        PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
-            literal_context_map:lit,
-            predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
-                MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
+    fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+        match m8 {
+            Some(ref mut m) => {
+                let lit = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
+                PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+                    literal_context_map:lit,
+                    predmode_speed_and_distance_context_map:m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                        MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
+                }
+            },
+            None => {
+                panic!("Pull context map in Demuxer+RingBuffer without an allocator");
+            },
         }
     }
     fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
-        let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(len);
+        let lit = m8.unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(len);
         LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>> {
             data:lit,
+            prob:FeatureFlagSliceType::default(),
+            high_entropy:false,
         }
     }
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
                     &mut self,
-                    mut cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
-                    m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-                    recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+                    mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+                    mut recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
                     specialization:&mut Specialization,
                     output:&mut [u8],
                     output_offset: &mut usize,
     ) -> DivansOutputResult {
         match cmd {
-            CommandResult::Eof => return DivansOutputResult::ResultSuccess,
-            CommandResult::ProcessedData(data) => m8.as_mut().unwrap().free_cell(data.0),
-            CommandResult::Cmd(cmd) => {
+            CommandResult::Eof => return DivansOutputResult::Success,
+            CommandResult::ProcessedData(data) => {
+                m8.as_mut().unwrap().free_cell(data.0);
+                return DivansOutputResult::Success;
+            },
+            CommandResult::Cmd(mut cmd) => {
                 let mut tmp_output_offset_bytes_backing: usize = 0;
                 let mut tmp_output_offset_bytes = specialization.get_recoder_output_offset(
                     output_offset,
@@ -105,6 +117,9 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                 let ret = recoder.as_mut().unwrap().encode_cmd(&mut cmd,
                                                                specialization.get_recoder_output(output),
                                                                tmp_output_offset_bytes);
+                free_cmd(&mut cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
+                        UninitializedOnAlloc>());
+                /*
                 match &mut cmd {
                     &mut Command::Literal(ref mut l) => {
                         let mfd = core::mem::replace(
@@ -132,8 +147,8 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                         m8.as_mut().unwrap().use_cached_allocation::<
                                 UninitializedOnAlloc>().free_cell(mfd);
                     },
-                }
-                return ret
+                }*/
+                return ret;
             },
         }
     }

@@ -839,11 +839,13 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
                     match self.cross_command_state.demuxer.push_command(
-                        CommandResult::Cmd(core::mem::replace(self.state_populate_ring_buffer,
+                        CommandResult::Cmd(core::mem::replace(&mut self.state_populate_ring_buffer,
                                                               Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())),
-                        &mut self.cross_command_state.m8,
-                        &mut self.cross_command_state.recoder,
+                        self.cross_command_state.m8.as_mut(),
+                        self.cross_command_state.recoder.as_mut(),
                         &mut self.cross_command_state.specialization,
+                        output_bytes,
+                        output_bytes_offset,
                     ) {
                         DivansOutputResult::NeedsMoreOutput => {
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
