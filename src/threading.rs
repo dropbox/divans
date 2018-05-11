@@ -84,7 +84,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         }
     }
 }
-
+    
 impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
     fn write_linear(&mut self, _data:&[u8], _m8: &mut AllocU8) -> usize {
         unimplemented!();
@@ -136,6 +136,21 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
 
 
 }
+impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
+    fn pull_data(&mut self) -> ThreadData<AllocU8> {
+        self.worker.pull_data()
+    }
+    #[inline(always)]
+    fn pull_context_map(&mut self) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+        self.worker.pull_context_map()
+    }
+    #[inline(always)]
+    fn push_command(&mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>) {
+        self.worker.push_command(cmd)
+    }
+}
+
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         assert!(self.data_len != 0);
