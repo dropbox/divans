@@ -10,7 +10,6 @@ use super::interface::{
     CrossCommandState,
     ByteContext,
     round_up_mod_4,
-    CrossCommandBookKeeping,
     LiteralBookKeeping,
     LIT_CODER,
     CMD_CODER,
@@ -23,7 +22,7 @@ use ::interface::{
     BillingDesignation,
     LiteralCommand,
 };
-use super::priors::{LiteralCommandPriors, LiteralNibblePriors, LiteralCommandPriorsCM};
+use super::priors::LiteralNibblePriors;
 use ::priors::PriorCollection;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralSubstate {

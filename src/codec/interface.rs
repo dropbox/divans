@@ -238,7 +238,7 @@ impl<
                                                AllocU8,
                                                AllocCDF16> {
     fn new(literal_context_map:AllocU8::AllocatedMemory) -> Self {
-        let mut ret = LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
+        LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
             //materialized_context_map: false,
             combine_literal_predictions: false,
             last_8_literals: 0,
@@ -256,8 +256,7 @@ impl<
             lit_cm_priors: LiteralCommandPriorsCM {
                 priors: AllocCDF16::AllocatedMemory::default()
             },
-        };
-        ret
+        }
     }
     pub fn get_literal_block_type(&self) -> u8 {
         self.btype_last
@@ -366,7 +365,7 @@ impl<
                 dynamic_context_mixing = 1; // make sure to mix if user requested both context map and stride
             },
         }
-        let mut ret = CrossCommandBookKeeping{
+        CrossCommandBookKeeping{
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
@@ -409,8 +408,7 @@ impl<
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
             _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
-        };
-        ret
+        }
     }
     pub fn materialized_prediction_mode(&self) -> bool {
         self.materialized_context_map
@@ -430,7 +428,7 @@ impl<
             ] = ladaptation_rate;
         }
     }*/
-    pub fn obs_prior_depth(&mut self, prior_depth: u8) {
+    pub fn obs_prior_depth(&mut self, _prior_depth: u8) {
         /*
         self.cm_prior_depth_mask = ((1u32 << core::cmp::min(prior_depth, 8)) - 1) as u8;
         self.prior_bytes_depth_mask = ((1u32 << (7 - core::cmp::min(prior_depth, 8))) - 1) as u8;

@@ -941,6 +941,7 @@ fn compress_ir<Reader:std::io::BufRead,
     compress_inner(state, r, w)
 }
 
+#[allow(unused_assignments)]
 fn decompress<Reader:std::io::Read,
               Writer:std::io::Write> (r:&mut Reader,
                                       w:&mut Writer,
