@@ -654,7 +654,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
-    pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+    pub lbk: Option<LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
 }
@@ -745,7 +745,7 @@ impl <AllocU8:Allocator<u8>,
             },
             demuxer:LinearInputBytes::default(),
             muxer:LinearOutputBytes::default(),
-            lbk:LiteralBookKeeping::new(literal_context_map),
+            lbk:Some(LiteralBookKeeping::new(literal_context_map)),
             bk:CrossCommandBookKeeping::new(lit_len_priors, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             distance_context_map,
@@ -768,22 +768,30 @@ impl <AllocU8:Allocator<u8>,
         self.lit_high_priors.summarize_speed_costs();
         self.lit_low_priors.summarize_speed_costs();
         self.bk.lit_len_priors.summarize_speed_costs();
-        self.lbk.lit_cm_priors.summarize_speed_costs();
+        match self.lbk {
+            Some(ref book_keeping) => book_keeping.lit_cm_priors.summarize_speed_costs(),
+            None => {},
+        }
         let rb = core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default());
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16d = core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16f = core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default());
+        let cdf16f = match self.lbk {
+            Some(ref mut book_keeping) => core::mem::replace(&mut book_keeping.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()),
+            None => AllocCDF16::AllocatedMemory::default(),
+        };
         let cdf16g = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16h = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16i = core::mem::replace(&mut self.bk.lit_len_priors.priors, AllocCDF16::AllocatedMemory::default());
         for coder in self.coder.iter_mut() {
             coder.free(self.m8.get_base_alloc());
         }
-        self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.lbk.literal_context_map,
-                                                              AllocU8::AllocatedMemory::default()));
+        if let Some(ref mut book_keeping) = self.lbk {
+            self.m8.get_base_alloc().free_cell(core::mem::replace(&mut book_keeping.literal_context_map,
+                                                                  AllocU8::AllocatedMemory::default()));
+        }
         self.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(rb);

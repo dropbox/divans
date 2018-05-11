@@ -538,7 +538,7 @@ impl<AllocU8:Allocator<u8>,
                             *cur_byte = cur_nibble << shift;
                         }
                         if !high_nibble {
-                            superstate.lbk.push_literal_byte(*cur_byte);
+                            superstate.lbk.as_mut().unwrap().push_literal_byte(*cur_byte);
                         }
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
@@ -554,7 +554,7 @@ impl<AllocU8:Allocator<u8>,
                                                              in_cmd, nibble_index,
                                                              lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             &mut superstate.lbk, &mut superstate.specialization, NibbleArraySecond{}, ctraits);
+                                                             &mut superstate.lbk.as_mut().unwrap(), &mut superstate.specialization, NibbleArraySecond{}, ctraits);
                     match code_result {
                       DivansResult::Success => {
                          self.state = LiteralSubstate::FullyDecoded;
@@ -568,7 +568,7 @@ impl<AllocU8:Allocator<u8>,
                                                              in_cmd, nibble_index,
                                                              lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             &mut superstate.lbk, &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
+                                                             &mut superstate.lbk.as_mut().unwrap(), &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
                     match code_result {
                       DivansResult::Success => {
                          self.state = LiteralSubstate::FullyDecoded;
@@ -582,7 +582,7 @@ impl<AllocU8:Allocator<u8>,
                                                  in_cmd, start_nibble_index,
                                                  lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                  &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                           &mut superstate.lbk, &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
+                                           superstate.lbk.as_mut().unwrap(), &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
                       DivansResult::NeedsMoreInput => {
                          continue;
                       }

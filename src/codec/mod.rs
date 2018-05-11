@@ -254,7 +254,10 @@ impl<AllocU8: Allocator<u8>,
             frozen_checksum: None,
             skip_checksum:skip_checksum,
         };
-        ret.codec_traits = construct_codec_trait_from_bookkeeping(&ret.cross_command_state.lbk,&ret.cross_command_state.bk);
+        match ret.cross_command_state.lbk {
+            Some(ref book_keeping) => ret.codec_traits = construct_codec_trait_from_bookkeeping(book_keeping),
+            None => {}, // FIXME(threading) don't need traits if we aren't processing literals
+        }
         ret
     }
     #[inline(always)]
@@ -666,11 +669,12 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
                              let ret;
-                             {
-                                 ret = self.cross_command_state.lbk.obs_prediction_mode_context_map(
-                                     &self.state_prediction_mode.pm,
-                                     &mut self.cross_command_state.mcdf16);
-                                 
+                             match self.cross_command_state.lbk {
+                                 Some(ref mut book_keeping) =>  // FIXME(threading): do this
+                                     ret = book_keeping.obs_prediction_mode_context_map(
+                                         &self.state_prediction_mode.pm,
+                                         &mut self.cross_command_state.mcdf16),
+                                 None => ret = DivansOpResult::Success,
                              }
                              self.state_prediction_mode.reset(&mut self.cross_command_state.m8);
                              self.state = EncodeOrDecodeState::Begin;
@@ -678,8 +682,11 @@ impl<AllocU8: Allocator<u8>,
                                  DivansOpResult::Success => {}
                                  DivansOpResult::Failure(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret))),
                              }
-                             return CodecTraitResult::UpdateCodecTraitAndAdvance(
-                                 construct_codec_trait_from_bookkeeping(&self.cross_command_state.lbk, &self.cross_command_state.bk));
+                             match self.cross_command_state.lbk {
+                                 Some(ref book_keeping) => return CodecTraitResult::UpdateCodecTraitAndAdvance( // FIXME(threading): do this
+                                     construct_codec_trait_from_bookkeeping(book_keeping)),
+                                 None => {}, // don't need traits if we aren't processing literals
+                             }
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors
                          retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
@@ -701,7 +708,10 @@ impl<AllocU8: Allocator<u8>,
                                     DivansResult::Failure(ErrMsg::UnintendedCodecState(0)))),
                             };
                             self.cross_command_state.bk.obs_btypel(new_block_type);
-                            self.cross_command_state.lbk.obs_literal_block_switch(new_block_type);
+                            match self.cross_command_state.lbk {
+                                Some(ref mut book_keeping) => book_keeping.obs_literal_block_switch(new_block_type),
+                                None => {}, // FIXME(threading): do this in both cases
+                            }
                             self.state = EncodeOrDecodeState::Begin;
                             return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
@@ -847,7 +857,7 @@ impl<AllocU8: Allocator<u8>,
                             self.cross_command_state.bk.decode_byte_count = self.cross_command_state.recoder.num_bytes_encoded() as u32;
                             // clobber bk.last_8_literals with the last 8 literals
                             let last_8 = self.cross_command_state.recoder.last_8_literals();
-                            self.cross_command_state.lbk.last_8_literals =
+                            self.cross_command_state.lbk.as_mut().unwrap().last_8_literals = //FIXME(threading) only should be run in the main thread
                                 u64::from(last_8[0])
                                 | (u64::from(last_8[1])<<0x8)
                                 | (u64::from(last_8[2])<<0x10)
