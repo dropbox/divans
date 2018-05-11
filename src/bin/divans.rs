@@ -1002,10 +1002,14 @@ fn decompress<Reader:std::io::Read,
                     input_offset = 0;
                     input_end = 0;
                 }
+                let mut any_read = false;
                 loop {
+                    if ibuffer.slice_mut().split_at_mut(input_end).1.len() == 0 {
+                        break;
+                    }
                     match r.read(ibuffer.slice_mut().split_at_mut(input_end).1) {
                         Ok(size) => {
-                            if size == 0 {
+                            if size == 0 && ! any_read {
                                 //println_stderr!("End of file.  Feeding zero's.\n");
                                 return Err(io::Error::new(
                                     io::ErrorKind::UnexpectedEof,
@@ -1013,7 +1017,12 @@ fn decompress<Reader:std::io::Read,
                             } else {
                                 input_end += size;
                             }
-                            break
+                            if size == 0 {
+                                break;
+                            } else {
+                                any_read = true;
+                            }
+                            break;
                         },
                         Err(e) => {
                             if e.kind() == io::ErrorKind::Interrupted {

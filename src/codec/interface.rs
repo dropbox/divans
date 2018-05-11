@@ -292,7 +292,8 @@ impl<
                                                                     mcdf16: &mut AllocCDF16) -> DivansOpResult {
         self.reset_literal_context_map();
         let mut combined_prediction_mode = pm.literal_prediction_mode();
-        self.obs_dynamic_context_mixing(combined_prediction_mode.0 >> 6, mcdf16);
+        let context_mixing = combined_prediction_mode.0 >> 6;
+        self.obs_dynamic_context_mixing(if context_mixing != 0 {context_mixing -1} else {0}, mcdf16);
         combined_prediction_mode.0 &= 0xf;
         match self.obs_pred_mode(combined_prediction_mode) {
             DivansOpResult::Success => {},

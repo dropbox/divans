@@ -240,6 +240,8 @@ impl ANSDecoder {
         self.buffer_b_bytes_required = (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
         self.state_a = self.state_b;
         self.state_b = x;
+        //eprint!("{}: Putting {}, {}\n",  unsafe{gcount}, start, freq);
+        //safe{gcount += 1};
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
     #[inline(always)]
@@ -251,7 +253,7 @@ impl ANSDecoder {
         (sym_start_freq.sym, sym_start_freq.range)
     }
 }
-
+//static mut gcount: u64 = 0;
 pub struct ANSEncoder<AllocU8:Allocator<u8>> {
     q: ByteStack<AllocU8>,
     start_freq: ByteStack<AllocU8>,
@@ -294,7 +296,9 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
         assert!(mem::size_of::<StartFreqType>() == mem::size_of::<u16>()); // so we can use stack_u16 helper
         self.start_freq.stack_u16(freq as u16);
         self.start_freq.stack_u16(start as u16);
-        //perror!("Putting {}, {}\n",  start, freq);
+        //eprint!("{}: Putting {}, {}\n",  unsafe{gcount}, start, freq);
+        //safe{gcount += 1};
+
         if self.start_freq.bytes().len() == ((NUM_SYMBOLS_BEFORE_FLUSH as usize) << 2) {
             //perror!("Flushing at {}\n",  self.start_freq.bytes().len());
             self.flush_chunk()
