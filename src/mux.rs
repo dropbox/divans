@@ -245,7 +245,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
           return (buf, write_cursor)
       }
       // if there's too much room at the beginning and the new data fits, then move everything to the beginning and write in the new data
-      if buf.slice().len() + (*write_cursor - *read_cursor) >= data_len && (*read_cursor == *write_cursor
+      if buf.slice().len() >= (*write_cursor - *read_cursor) + data_len + MAX_HEADER_SIZE && (*read_cursor == *write_cursor
                                                                               || (*read_cursor >= 16384 && *read_cursor > *write_cursor - *read_cursor + MAX_HEADER_SIZE)) {
 
           {
