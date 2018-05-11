@@ -16,6 +16,7 @@ use core::cmp::{min, max};
 use super::probability::{CDF2,CDF16};
 use super::brotli;
 use super::mux::{Mux,DevNull};
+use codec::io::DemuxerAndRingBuffer;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
@@ -53,7 +54,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocZN: Allocator<brotli::enc::ZopfliNode>
      > {
     brotli_encoder: BrotliEncoderStateStruct<AllocU8, AllocU16, AllocU32, AllocI32, AllocCommand>,
-    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, DevNull<AllocU8>, Mux<AllocU8>, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, DemuxerAndRingBuffer<DevNull<AllocU8>, EncoderSpecialization>, Mux<AllocU8>, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     m64: AllocU64,
@@ -127,7 +128,7 @@ impl<SelectedCDF:CDF16,
                                                           data:&mut ResizableByteBuffer<u8, AllocU8>,
                                                           codec: &mut DivansCodec<ChosenEncoder,
                                                                                   EncoderSpecialization,
-                                                                                  DevNull<AllocU8>,
+                                                                                  DemuxerAndRingBuffer<DevNull<AllocU8>, EncoderSpecialization>,
                                                                                   Mux<AllocU8>,
                                                                                   SelectedCDF,
                                                                                   AllocU8,

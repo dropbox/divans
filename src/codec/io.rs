@@ -1,22 +1,33 @@
+use core;
 use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
 use ::interface::{
     DivansOutputResult,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
     MAX_LITERAL_CONTEXT_MAP_SIZE,
-}
+    EncoderOrDecoderRecoderSpecialization,
+};
+use codec::interface::CMD_CODER;
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 
 use alloc::{SliceWrapper, Allocator};
-use alloc_util::RepurposingAlloc;
+use alloc_util::{RepurposingAlloc, UninitializedOnAlloc};
 use cmd_to_raw::DivansRecodeState;
 
 use threading::{ThreadToMain,ThreadData,CommandResult};
 
 
-struct DemuxerAndRingBuffer<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>>(LinearInputBytes);
+pub struct DemuxerAndRingBuffer<AllocU8:Allocator<u8>,
+                                LinearInputBytes:StreamDemuxer<AllocU8>>(
+    LinearInputBytes, core::marker::PhantomData<AllocU8>);
+
+impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>+Default> Default for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
+  fn default() ->Self {
+     DemuxerAndRingBuffer::<AllocU8, LinearInputBytes>::new(LinearInputBytes::default())
+  }
+}
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     fn new(demuxer: LinearInputBytes) -> Self {
-        Self(demuxer)
+        DemuxerAndRingBuffer::<AllocU8, LinearInputBytes>(demuxer, core::marker::PhantomData::<AllocU8>::default())
     }
 }
 
@@ -38,7 +49,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
         self.0.peek(stream_id)
     }
     #[inline(always)]
-    fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8> {
+    fn pop(&mut self, stream_id: StreamID) -> AllocatedMemoryRange<u8, AllocU8> {
         self.0.pop(stream_id)
     }
     #[inline(always)]
@@ -56,7 +67,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
 }
 
 // this is an implementation of simply printing to the ring buffer that masquerades as communicating with a 'main thread'
-impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMain for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
+impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMain<AllocU8> for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         ThreadData::Data(self.0.pop(CMD_CODER as StreamID))
     }
@@ -74,24 +85,25 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             data:lit,
         }
     }
-    fn push_command<Specialization:EncoderOrDecoderSpecialization(&mut self,
+    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
+                    &mut self,
                     mut cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
                     m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
                     recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
                     specialization:&mut Specialization,
+                    output:&mut [u8],
+                    output_offset: &mut usize,
     ) -> DivansOutputResult {
         match cmd {
             CommandResult::Eof => return DivansOutputResult::ResultSuccess,
-            CommandResult::ProcessedData(data) {
-                m8.as_mut().unwrap().free_cell(data.0);
-            },
-            CommandResult::Cmd(cmd) {
+            CommandResult::ProcessedData(data) => m8.as_mut().unwrap().free_cell(data.0),
+            CommandResult::Cmd(cmd) => {
                 let mut tmp_output_offset_bytes_backing: usize = 0;
                 let mut tmp_output_offset_bytes = specialization.get_recoder_output_offset(
-                    output_bytes_offset,
+                    output_offset,
                     &mut tmp_output_offset_bytes_backing);
                 let ret = recoder.as_mut().unwrap().encode_cmd(&mut cmd,
-                                                               specialization.get_recoder_output(output_bytes),
+                                                               specialization.get_recoder_output(output),
                                                                tmp_output_offset_bytes);
                 match &mut cmd {
                     &mut Command::Literal(ref mut l) => {

@@ -7,6 +7,8 @@ use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
 use super::mux::{Mux,DevNull};
+use codec::io::DemuxerAndRingBuffer;
+
 use ::interface::DivansResult;
 use ::interface::ErrMsg;
 use ::ArithmeticEncoderOrDecoder;
@@ -51,7 +53,7 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
     Decode(codec::DivansCodec<DefaultDecoder,
                               DecoderSpecialization,
                               Mux<AllocU8>,
-                              DevNull<AllocU8>,
+                              DemuxerAndRingBuffer<DevNull<AllocU8>, DecoderSpecialization>,
                               interface::DefaultCDF16,
                               AllocU8,
                               AllocCDF2,
@@ -126,7 +128,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
                                              Mux<AllocU8>,
-                                             DevNull<AllocU8>,
+                                             DemuxerAndRingBuffer<DevNull<AllocU8>, DecoderSpecialization>,
                                              interface::DefaultCDF16,
                                              AllocU8,
                                              AllocCDF2,

@@ -58,6 +58,7 @@ use super::interface::{
     LiteralCommand,
     PredictionModeContextMap,
 };
+pub mod io;
 pub mod copy;
 pub mod dict;
 pub mod literal;
