@@ -838,7 +838,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
-                    match self.cross_command_state.demuxer.push_command(
+                    let (ret, cmd) = self.cross_command_state.demuxer.push_command(
                         CommandResult::Cmd(core::mem::replace(&mut self.state_populate_ring_buffer,
                                                               Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())),
                         self.cross_command_state.m8.as_mut(),
@@ -846,7 +846,11 @@ impl<AllocU8: Allocator<u8>,
                         &mut self.cross_command_state.specialization,
                         output_bytes,
                         output_bytes_offset,
-                    ) {
+                    );
+                    if let Some(command) = cmd {
+                        self.state_populate_ring_buffer = command;
+                    }
+                    match ret {
                         DivansOutputResult::NeedsMoreOutput => {
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer

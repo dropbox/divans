@@ -33,7 +33,7 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
         specialization: &mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> DivansOutputResult;
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>);
 }
 
 pub struct SerialWorker<AllocU8:Allocator<u8>> {
@@ -179,7 +179,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         specialization:&mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> DivansOutputResult {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         self.worker.push_command(cmd, m8, recoder, specialization, output, output_offset)
     }
 }
@@ -213,12 +213,16 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
                     _specialization:&mut Specialization,
                     _output:&mut [u8],
                     _output_offset: &mut usize,
-    ) -> DivansOutputResult {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         if self.result_len == self.result.len() {
-            return DivansOutputResult::NeedsMoreOutput;
+            if let CommandResult::Cmd(command) = cmd {
+                return (DivansOutputResult::NeedsMoreOutput, Some(command));
+            } else {
+                return (DivansOutputResult::NeedsMoreOutput, None);
+            }
         }
         self.result[self.result_len] = cmd;
         self.result_len += 1;
-        DivansOutputResult::Success
+        (DivansOutputResult::Success, None)
     }
 }

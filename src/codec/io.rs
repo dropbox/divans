@@ -1,5 +1,5 @@
 use core;
-use interface::{LiteralCommand, PredictionModeContextMap, free_cmd,FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
+use interface::{Command, LiteralCommand, PredictionModeContextMap, free_cmd,FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
 use ::interface::{
     DivansOutputResult,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
@@ -102,12 +102,12 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                     specialization:&mut Specialization,
                     output:&mut [u8],
                     output_offset: &mut usize,
-    ) -> DivansOutputResult {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         match cmd {
-            CommandResult::Eof => return DivansOutputResult::Success,
+            CommandResult::Eof => return (DivansOutputResult::Success, None),
             CommandResult::ProcessedData(data) => {
                 m8.as_mut().unwrap().free_cell(data.0);
-                return DivansOutputResult::Success;
+                return (DivansOutputResult::Success, None);
             },
             CommandResult::Cmd(mut cmd) => {
                 let mut tmp_output_offset_bytes_backing: usize = 0;
@@ -117,8 +117,13 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                 let ret = recoder.as_mut().unwrap().encode_cmd(&mut cmd,
                                                                specialization.get_recoder_output(output),
                                                                tmp_output_offset_bytes);
-                free_cmd(&mut cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
-                        UninitializedOnAlloc>());
+                match ret {
+                    DivansOutputResult::Success | DivansOutputResult::Failure(_) =>
+                        
+                        free_cmd(&mut cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
+                                UninitializedOnAlloc>()),
+                    need_something => return (need_something, Some(cmd))
+                }
                 /*
                 match &mut cmd {
                     &mut Command::Literal(ref mut l) => {
@@ -148,7 +153,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                                 UninitializedOnAlloc>().free_cell(mfd);
                     },
                 }*/
-                return ret;
+                return (ret, None);
             },
         }
     }
