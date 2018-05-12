@@ -215,8 +215,7 @@ impl<AllocU8: Allocator<u8>,
                do_context_map: bool,
                force_stride: interface::StrideSelection,
                skip_checksum: bool) -> Self {
-        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
-            cross_command_state:CrossCommandState::<ArithmeticCoder,
+        let mut cross_command_state = CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
                                                     LinearInputBytes,
                                                     LinearOutputBytes,
@@ -233,7 +232,12 @@ impl<AllocU8: Allocator<u8>,
                                                                      literal_adaptation_rate,
                                                                      do_context_map,
                                                                      force_stride,
-            ),
+        );
+
+        let pm = context_map::PredictionModeState::begin(cross_command_state.thread_ctx.m8().unwrap());
+
+        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
+            cross_command_state:cross_command_state,
             state:EncodeOrDecodeState::Begin,
             codec_traits: CodecTraitSelector::DefaultTrait(&specializations::DEFAULT_TRAIT),
             state_copy: copy::CopyState::begin(),
@@ -244,7 +248,7 @@ impl<AllocU8: Allocator<u8>,
             },
             state_lit_block_switch: block_type::LiteralBlockTypeState::begin(),
             state_block_switch: block_type::BlockTypeState::begin(),
-            state_prediction_mode: context_map::PredictionModeState::nop(),
+            state_prediction_mode: pm,
             state_populate_ring_buffer: Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             crc: default_crc(),
             frozen_checksum: None,
@@ -665,17 +669,22 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
-                             self.state = EncodeOrDecodeState::Begin;
                              if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
+                                 self.state = EncodeOrDecodeState::Begin;
                                  let ret = ctx.lbk.obs_prediction_mode_context_map(
                                      &self.state_prediction_mode.pm,
                                      &mut ctx.mcdf16);
-                                 self.state_prediction_mode.reset(&mut ctx.m8); // FIXME(threading) push to populate
+                                 self.state_prediction_mode.reset(&mut ctx.m8);
                                  if let DivansOpResult::Failure(_) = ret {
                                      return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret)));
                                  }
                                  return CodecTraitResult::UpdateCodecTraitAndAdvance(
                                      construct_codec_trait_from_bookkeeping(&mut ctx.lbk));
+                             } else {
+                                 let pm = core::mem::replace(&mut self.state_prediction_mode,
+                                                             context_map::PredictionModeState::<AllocU8>::nop());
+                                 self.state_populate_ring_buffer = Command::PredictionMode(pm.pm);
+                                 self.state = EncodeOrDecodeState::PopulateRingBuffer;
                              }
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors

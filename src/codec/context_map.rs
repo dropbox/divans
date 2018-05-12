@@ -83,12 +83,14 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                                AllocatedMemoryPrefix::<u8, AllocU8>::default()));
     }
     pub fn reset(&mut self, m8:&mut RepurposingAlloc<u8, AllocU8>) {
-        let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
-        self.pm = PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
-            literal_context_map:lit,
-            predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
-                MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
-        };
+        if self.pm.literal_context_map.0.slice().len() == 0 {
+            let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
+            self.pm = PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+                literal_context_map:lit,
+                predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                    MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
+            };
+        }
         self.state = PredictionModeSubstate::Begin;
     }
     pub fn nop() -> Self {
