@@ -311,10 +311,10 @@ impl<AllocU8: Allocator<u8>,
         if index == CMD_CODER as StreamID {
             &self.cross_command_state.coder
         } else {
-            if let ThreadContext::MainThread(ref ctx) = self.cross_command_state.thread_ctx {
+            match self.cross_command_state.thread_ctx {
+                ThreadContext::MainThread(ref ctx) => {
                 &ctx.lit_coder
-            } else {
-                unreachable!();
+                }
             }
         }
     }
@@ -691,7 +691,8 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
-                             if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
+                             match self.cross_command_state.thread_ctx {
+                                 ThreadContext::MainThread(ref mut ctx) =>  {
                                  self.state = EncodeOrDecodeState::Begin;
                                  let ret = ctx.lbk.obs_prediction_mode_context_map(
                                      &self.state_prediction_mode.pm,
@@ -702,11 +703,7 @@ impl<AllocU8: Allocator<u8>,
                                  }
                                  return CodecTraitResult::UpdateCodecTraitAndAdvance(
                                      construct_codec_trait_from_bookkeeping(&mut ctx.lbk));
-                             } else {
-                                 let pm = core::mem::replace(&mut self.state_prediction_mode,
-                                                             context_map::PredictionModeState::<AllocU8>::nop());
-                                 self.state_populate_ring_buffer = Command::PredictionMode(pm.pm);
-                                 self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                                 }
                              }
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors
@@ -859,7 +856,7 @@ impl<AllocU8: Allocator<u8>,
                     let (ret, cmd) = {
                         let (m8, recoder) = match self.cross_command_state.thread_ctx {
                             ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
-                            ThreadContext::Worker => (None, None),
+//                            ThreadContext::Worker => (None, None),
                         };
                         self.cross_command_state.demuxer.push_command(
                             CommandResult::Cmd(core::mem::replace(&mut self.state_populate_ring_buffer,

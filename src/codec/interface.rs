@@ -621,7 +621,7 @@ pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allo
 
 pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>),
-    Worker,
+//    Worker,
 }
 impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
     pub fn free(&mut self) {
@@ -636,49 +636,49 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Arithmeti
     pub fn free(&mut self) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => ctx.free(),
-            ThreadContext::Worker => {},
+//            ThreadContext::Worker => {},
         }
     }
     pub fn lit_coder(&mut self) -> Option<&mut ArithmeticCoder> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.lit_coder),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }        
     }
     pub fn main_thread_mut(&mut self) -> Option<&mut MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(ctx),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }
     }
     pub fn m8(&mut self) ->Option<&mut RepurposingAlloc<u8, AllocU8>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.m8),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }
     }
     pub fn recoder(&mut self) -> Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.recoder),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }
     }
     pub fn mcdf16(&mut self) -> Option<&mut AllocCDF16> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.mcdf16),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }
     }
     pub fn m8lbk(&mut self) ->(Option<&mut RepurposingAlloc<u8, AllocU8>>, Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>>) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.m8), Some(&mut ctx.lbk)),
-            ThreadContext::Worker => (None, None),
+//            ThreadContext::Worker => (None, None),
         }
     }
     pub fn lbk(&mut self) -> Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.lbk),
-            ThreadContext::Worker => None,
+//            ThreadContext::Worker => None,
         }
     }
 }
@@ -812,10 +812,12 @@ impl <AllocU8:Allocator<u8>,
         self.bk.cc_priors.summarize_speed_costs();
         self.bk.copy_priors.summarize_speed_costs();
         self.bk.dict_priors.summarize_speed_costs();
-        if let ThreadContext::MainThread(ref mut ctx) = self.thread_ctx {
-            ctx.lit_high_priors.summarize_speed_costs();
-            ctx.lit_low_priors.summarize_speed_costs();
-            ctx.lbk.lit_cm_priors.summarize_speed_costs();
+        match self.thread_ctx {
+            ThreadContext::MainThread(ref mut ctx) =>{
+                ctx.lit_high_priors.summarize_speed_costs();
+                ctx.lit_low_priors.summarize_speed_costs();
+                ctx.lbk.lit_cm_priors.summarize_speed_costs();
+            }
         }
         let cdf16a = core::mem::replace(&mut self.bk.cc_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16b = core::mem::replace(&mut self.bk.copy_priors.priors, AllocCDF16::AllocatedMemory::default());
@@ -839,7 +841,7 @@ impl <AllocU8:Allocator<u8>,
                 ctx.lit_coder.free(ctx.m8.get_base_alloc());
                 ctx.free()
             },
-            ThreadContext::Worker => {},
+//            ThreadContext::Worker => {},
         }
     }
     pub fn free_ref(&mut self) {
@@ -850,7 +852,7 @@ impl <AllocU8:Allocator<u8>,
         self.free_internal();
         let mt = match self.thread_ctx {
             ThreadContext::MainThread(x) => x,
-            ThreadContext::Worker => unreachable!(),
+//            ThreadContext::Worker => unreachable!(),
         };
         (mt.m8.free(), mt.mcdf16)
     }

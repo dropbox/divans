@@ -407,7 +407,7 @@ impl<AllocU8:Allocator<u8>,
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
         let (mut lit_coder, mut m8, mut lbk, mut lit_high_priors, mut lit_low_priors) = match superstate.thread_ctx {
-            ThreadContext::Worker => (None, None, None, None, None),
+//            ThreadContext::Worker => (None, None, None, None, None),
             ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.lit_coder),
                                                        Some(&mut ctx.m8),
                                                        Some(&mut ctx.lbk),
