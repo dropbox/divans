@@ -57,6 +57,7 @@ use super::interface::{
     DictCommand,
     LiteralCommand,
     PredictionModeContextMap,
+    free_cmd,
 };
 pub mod io;
 pub mod copy;
@@ -254,6 +255,27 @@ impl<AllocU8: Allocator<u8>,
         }
         ret
     }
+    pub fn join<Worker:MainToThread<AllocU8>>(&mut self,
+                                              mut decoder: DivansDecoderCodec<Cdf16,
+                                                                              AllocU8,
+                                                                              AllocCDF16,
+                                                                              ArithmeticCoder,
+                                                                              Worker,
+                                                                              Mux<AllocU8>>) -> Worker {
+        free_cmd(&mut decoder.state_populate_ring_buffer, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
+        self.crc = decoder.crc;
+        decoder.ctx.m8.use_cached_allocation::<
+                UninitializedOnAlloc>().free_cell(core::mem::replace(&mut self.state_lit.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default()));
+        self.skip_checksum = decoder.skip_checksum;
+        self.frozen_checksum = decoder.frozen_checksum;
+        decoder.demuxer.free(&mut decoder.ctx.m8.get_base_alloc());
+        let old_thread_context = core::mem::replace(&mut self.cross_command_state.thread_ctx, ThreadContext::MainThread(decoder.ctx));
+        match old_thread_context {
+            ThreadContext::MainThread(_) => panic!("Tried to join the main thread"),
+            ThreadContext::Worker => {},
+        };
+        decoder.worker
+    }
     pub fn fork<Worker:MainToThread<AllocU8>>(&mut self, worker:Worker) -> DivansDecoderCodec<Cdf16,
                                                                                               AllocU8,
                                                                                               AllocCDF16,
@@ -268,7 +290,7 @@ impl<AllocU8: Allocator<u8>,
         let old_thread_context = core::mem::replace(&mut self.cross_command_state.thread_ctx, ThreadContext::Worker);
         let main_thread_context = match old_thread_context {
             ThreadContext::MainThread(mt) => mt,
-            ThreadContext::Worker => unreachable!(),
+            ThreadContext::Worker => panic!("Tried to fork from a Worker"),
         };
         DivansDecoderCodec::<Cdf16,
                              AllocU8,

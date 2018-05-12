@@ -15,8 +15,6 @@ use super::interface::{
     ByteContext,
     round_up_mod_4,
     LiteralBookKeeping,
-    LIT_CODER,
-    CMD_CODER,
     drain_or_fill_static_buffer,
     MainThreadContext,
 };
@@ -36,7 +34,7 @@ use ::interface::{
     Command,
 };
 
-use threading::{MainToThread, ThreadToMain};
+use threading::{MainToThread};
 use super::priors::LiteralNibblePriors;
 use ::priors::PriorCollection;
 
@@ -46,16 +44,16 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
                           ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
                           Worker: MainToThread<AllocU8>,
                           LinearInputBytes: StreamDemuxer<AllocU8>> {
-    ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
-    worker: Worker,
-    demuxer: LinearInputBytes,
-    codec_traits: CodecTraitSelector,
-    crc: SubDigest,
-    frozen_checksum: Option<u64>,
-    skip_checksum: bool,
-    state_lit: LiteralState<AllocU8>,
-    state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
-    specialization: DecoderSpecialization,
+    pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
+    pub worker: Worker,
+    pub demuxer: LinearInputBytes,
+    pub codec_traits: CodecTraitSelector,
+    pub crc: SubDigest,
+    pub frozen_checksum: Option<u64>,
+    pub skip_checksum: bool,
+    pub state_lit: LiteralState<AllocU8>,
+    pub state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+    pub specialization: DecoderSpecialization,
 }
 
 
