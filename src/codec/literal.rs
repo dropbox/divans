@@ -416,7 +416,7 @@ impl<AllocU8:Allocator<u8>,
         };
         
         loop {
-            match m8 {
+            match m8 {//FIXME(threading): this construct is not very pretty: maybe get rid of extra mut or make it accept a suballoc
                 Some(ref mut m) => {
                     match drain_or_fill_static_buffer(CMD_CODER,
                                                       &mut superstate.coder,
