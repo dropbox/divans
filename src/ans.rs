@@ -385,9 +385,11 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
 
 impl<AllocU8: Allocator<u8>> EntropyEncoder for ANSEncoder<AllocU8> {
     type Queue = ByteStack<AllocU8>;
+    #[inline(always)]
     fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue {
         &mut self.q
     }
+    #[inline(always)]
     fn get_internal_buffer(&self) -> &Self::Queue {
         &self.q
     }
@@ -454,6 +456,7 @@ impl EntropyDecoder for ANSDecoder {
     fn get_internal_buffer_mut(&mut self) -> &mut Self::Queue {
         self
     }
+    #[inline(always)]
     fn get_internal_buffer(&self) -> &Self::Queue {
         self
     }

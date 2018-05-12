@@ -552,7 +552,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
                     match superstate.thread_ctx {
-                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(0)),
+                        ThreadContext::Worker => unreachable!(),
                         ThreadContext::MainThread(ref mut ctx) => {
                             let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
                                                                      in_cmd, nibble_index,
@@ -572,7 +572,7 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
                     match superstate.thread_ctx {
-                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(1)),
+                        ThreadContext::Worker => unreachable!(),
                         ThreadContext::MainThread(ref mut ctx) => {
                             let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
                                                                      in_cmd, nibble_index,
@@ -592,7 +592,7 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
                     match superstate.thread_ctx {
-                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(2)),
+                        ThreadContext::Worker => unreachable!(),
                         ThreadContext::MainThread(ref mut ctx) => {
                             
                             match self.code_nibble_array(ctx.m8.get_base_alloc(), output_bytes, output_offset,
