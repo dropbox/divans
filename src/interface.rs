@@ -58,6 +58,7 @@ pub enum ErrMsg {
     WrongInternalDecoderState,
     WrongInternalEncoderState(u8),
     UnintendedCodecState(u8),
+    MainFunctionCalledFromThread(u8),
 }
 
 

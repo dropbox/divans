@@ -1,5 +1,5 @@
 use core;
-use interface::{DivansResult, StreamMuxer, StreamDemuxer};
+use interface::{DivansResult, StreamMuxer, StreamDemuxer, ErrMsg};
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -14,6 +14,7 @@ use super::interface::{
     LIT_CODER,
     CMD_CODER,
     drain_or_fill_static_buffer,
+    ThreadContext,
 };
 
 use super::specializations::{CodecTraits};
@@ -550,55 +551,68 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
-                    let code_result = self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
-                                                             in_cmd, nibble_index,
-                                                             lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                             &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             &mut lbk.unwrap(),
-                                                             &mut superstate.specialization, NibbleArraySecond{}, ctraits);
-                    match code_result {
-                      DivansResult::Success => {
-                         self.state = LiteralSubstate::FullyDecoded;
-                         return DivansResult::Success;
-                      },
-                       _ => return code_result,
+                    match superstate.thread_ctx {
+                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(0)),
+                        ThreadContext::MainThread(ref mut ctx) => {
+                            let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
+                                                                     in_cmd, nibble_index,
+                                                                     lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                                     &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
+                                                                     &mut ctx.lbk,
+                                                                     &mut superstate.specialization, NibbleArraySecond{}, ctraits);
+                            match code_result {
+                                DivansResult::Success => {
+                                    self.state = LiteralSubstate::FullyDecoded;
+                                    return DivansResult::Success;
+                                },
+                                _ => return code_result,
+                            }
+                        }
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
-                    let code_result = self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
-                                                             in_cmd, nibble_index,
-                                                             lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                             &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             lbk.unwrap(),
-                                                             &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
-                    match code_result {
-                      DivansResult::Success => {
-                         self.state = LiteralSubstate::FullyDecoded;
-                         return DivansResult::Success;
-                      },
-                       _ => return code_result,
+                    match superstate.thread_ctx {
+                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(1)),
+                        ThreadContext::MainThread(ref mut ctx) => {
+                            let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
+                                                                     in_cmd, nibble_index,
+                                                                     lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                                     &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
+                                                                     &mut ctx.lbk,
+                                                                     &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
+                            match code_result {
+                                DivansResult::Success => {
+                                    self.state = LiteralSubstate::FullyDecoded;
+                                    return DivansResult::Success;
+                                },
+                                _ => return code_result,
+                            }
+                        }
                     }
                 },
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
-                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
-                    match self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
-                                                 in_cmd, start_nibble_index,
-                                                 lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                 &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                 lbk.unwrap(),
-                                                 &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
-                      DivansResult::NeedsMoreInput => {
-                         continue;
-                      }
-                      DivansResult::Failure(m) => {
-                         return DivansResult::Failure(m);
-                      }
-                      _ => {},
+                    match superstate.thread_ctx {
+                        ThreadContext::Worker => return DivansResult::Failure(ErrMsg::MainFunctionCalledFromThread(2)),
+                        ThreadContext::MainThread(ref mut ctx) => {
+                            
+                            match self.code_nibble_array(ctx.m8.get_base_alloc(), output_bytes, output_offset,
+                                                         in_cmd, start_nibble_index,
+                                                         lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
+                                                         &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
+                                                         &mut ctx.lbk,
+                                                         &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
+                                DivansResult::NeedsMoreInput => {
+                                    continue;
+                                }
+                                DivansResult::Failure(m) => {
+                                    return DivansResult::Failure(m);
+                                }
+                                _ => {},
+                            }
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        }
                     }
-                    self.state = LiteralSubstate::FullyDecoded;
-                    return DivansResult::Success;
                 },
                 LiteralSubstate::FullyDecoded => {
                     return DivansResult::Success;
