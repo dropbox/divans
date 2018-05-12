@@ -15,12 +15,10 @@
 #![allow(dead_code)]
 use core;
 use core::hash::Hasher;
-mod crc32;
-mod crc32_table;
-use self::crc32::{crc32c_init,crc32c_update};
 use alloc::{SliceWrapper, Allocator};
 use interface::{DivansResult, DivansOutputResult, DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
 use ::alloc_util::UninitializedOnAlloc;
+use mux::Mux;
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
 use super::interface::{
@@ -33,13 +31,15 @@ use super::interface::{
 };
 pub mod weights;
 pub mod specializations;
+pub mod crc32;
+pub mod crc32_table;
 use self::specializations::{
     construct_codec_trait_from_bookkeeping,
     CodecTraitSelector,
     CodecTraits,
 };
 mod interface;
-use threading::{CommandResult, ThreadToMain};
+use threading::{CommandResult, ThreadToMain, MainToThread};
 use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
     ThreadContext,
@@ -65,7 +65,12 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
-//pub mod decoder;
+pub mod decoder;
+pub use self::decoder::{
+    DivansDecoderCodec,
+    SubDigest,
+    default_crc,
+};
 
 
 /*
@@ -192,17 +197,6 @@ impl<AllocU8: Allocator<u8>,
      LinearOutputBytes:StreamMuxer<AllocU8>+Default,
      Cdf16:CDF16,
      AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
-    pub fn free(self) -> (AllocU8, AllocCDF16) {
-        self.cross_command_state.free()
-    }
-    pub fn free_ref(&mut self) {
-        self.state_prediction_mode.reset(self.cross_command_state.thread_ctx.m8().unwrap());
-        self.cross_command_state.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().free_cell(
-            core::mem::replace(&mut self.state_lit.lc,
-                               LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
-
-        self.cross_command_state.free_ref()
-    }
     pub fn new(m8:AllocU8,
                mcdf16:AllocCDF16,
                cmd_coder: ArithmeticCoder,
@@ -259,6 +253,40 @@ impl<AllocU8: Allocator<u8>,
             None => {}, // FIXME(threading) don't need traits if we aren't processing literals
         }
         ret
+    }
+    pub fn fork<Worker:MainToThread<AllocU8>>(&mut self, worker:Worker) -> DivansDecoderCodec<Cdf16,
+                                                                                              AllocU8,
+                                                                                              AllocCDF16,
+                                                                                              ArithmeticCoder,
+                                                                                              Worker,
+                                                                                              Mux<AllocU8>> {
+        let skip_checksum = self.skip_checksum;
+        if let Some(_) = self.frozen_checksum {
+            panic!("Tried to fork() when checksum was already computed");
+        }
+        self.skip_checksum = true;
+        let old_thread_context = core::mem::replace(&mut self.cross_command_state.thread_ctx, ThreadContext::Worker);
+        let main_thread_context = match old_thread_context {
+            ThreadContext::MainThread(mt) => mt,
+            ThreadContext::Worker => unreachable!(),
+        };
+        DivansDecoderCodec::<Cdf16,
+                             AllocU8,
+                             AllocCDF16,
+                             ArithmeticCoder,
+                             Worker,
+                             Mux<AllocU8>>::new(main_thread_context, worker, self.crc.clone(), skip_checksum)
+    }
+    pub fn free(self) -> (AllocU8, AllocCDF16) {
+        self.cross_command_state.free()
+    }
+    pub fn free_ref(&mut self) {
+        self.state_prediction_mode.reset(self.cross_command_state.thread_ctx.m8().unwrap());
+        self.cross_command_state.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+            core::mem::replace(&mut self.state_lit.lc,
+                               LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
+
+        self.cross_command_state.free_ref()
     }
     #[inline(always)]
     fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> DivansResult{
@@ -905,35 +933,3 @@ impl<AllocU8: Allocator<u8>,
     }
 }
 
-pub struct SubDigest(u32);
-impl core::hash::Hasher for SubDigest {
-    #[inline(always)]
-    fn write(&mut self, data:&[u8]) {
-        self.0 = crc32c_update(self.0, data)
-    }
-    #[inline(always)]
-    fn finish(&self) -> u64 {
-        u64::from(self.0)
-    }
-}
-pub fn default_crc() -> SubDigest {
-    SubDigest(crc32c_init())
-}
-/*
-pub struct SubDigest(crc::crc64::Digest);
-impl core::hash::Hasher for SubDigest {
-    #[inline(always)]
-    fn write(&mut self, data:&[u8]) {
-        self.0.write(data)
-            
-    }
-    #[inline(always)]
-    fn finish(&self) -> u64 {
-        self.0.finish()
-    }
-}
-pub fn default_crc() -> SubDigest {
-    SubDigest(crc::crc64::Digest::new(crc::crc64::ECMA))
-}
-
-*/
