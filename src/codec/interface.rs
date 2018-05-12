@@ -621,7 +621,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub specialization: Specialization,
     pub recoder: Option<DivansRecodeState<AllocU8::AllocatedMemory>>,
     pub m8: Option<RepurposingAlloc<u8, AllocU8>>,
-    pub mcdf16: AllocCDF16,
+    pub mcdf16: Option<AllocCDF16>,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF16>,
@@ -701,7 +701,7 @@ impl <AllocU8:Allocator<u8>,
             recoder: Some(DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer)),
             m8: Some(RepurposingAlloc::<u8, AllocU8>::new(m8)),
-            mcdf16:mcdf16,
+            mcdf16:Some(mcdf16),
             lit_high_priors: LiteralNibblePriors {
                 priors: lit_high_priors
             },
@@ -765,15 +765,17 @@ impl <AllocU8:Allocator<u8>,
         }
         self.m8.as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
-        self.mcdf16.free_cell(cdf16a);
-        self.mcdf16.free_cell(cdf16b);
-        self.mcdf16.free_cell(cdf16c);
-        self.mcdf16.free_cell(cdf16d);
-        self.mcdf16.free_cell(cdf16e);
-        self.mcdf16.free_cell(cdf16f);
-        self.mcdf16.free_cell(cdf16g);
-        self.mcdf16.free_cell(cdf16h);
-        self.mcdf16.free_cell(cdf16i);
+        if let Some(ref mut mcdf16) = self.mcdf16 {
+            mcdf16.free_cell(cdf16a);
+            mcdf16.free_cell(cdf16b);
+            mcdf16.free_cell(cdf16c);
+            mcdf16.free_cell(cdf16d);
+            mcdf16.free_cell(cdf16e);
+            mcdf16.free_cell(cdf16f);
+            mcdf16.free_cell(cdf16g);
+            mcdf16.free_cell(cdf16h);
+            mcdf16.free_cell(cdf16i);
+        }
     }
     pub fn free_ref(&mut self) {
         self.free_internal();
@@ -781,7 +783,7 @@ impl <AllocU8:Allocator<u8>,
     }
     pub fn free(mut self) -> (AllocU8, AllocCDF16) {
         self.free_internal();
-        (self.m8.unwrap().free(), self.mcdf16)
+        (self.m8.unwrap().free(), self.mcdf16.unwrap())
     }
 }
 

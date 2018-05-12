@@ -670,7 +670,7 @@ impl<AllocU8: Allocator<u8>,
                                  Some(ref mut book_keeping) =>  // FIXME(threading): push for our populateRingBuffer
                                      ret = book_keeping.obs_prediction_mode_context_map(
                                          &self.state_prediction_mode.pm,
-                                         &mut self.cross_command_state.mcdf16),
+                                         &mut self.cross_command_state.mcdf16.as_mut().unwrap()),
                                  None => ret = DivansOpResult::Success,
                              }
                              self.state_prediction_mode.reset(&mut self.cross_command_state.m8.as_mut().unwrap()); // FIXME(threading) push to populate
