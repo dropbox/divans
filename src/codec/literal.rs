@@ -300,7 +300,7 @@ impl<AllocU8:Allocator<u8>,
                                                                   muxer,
                                                                   output_bytes,
                                                                   output_offset,
-                                                                  m8);
+                                                                  &mut Some(m8));
                low_buffer_warning = demuxer.data_ready(LIT_CODER as u8) < 16;
                h_nibble = cur_nibble;
                if let Some(prob) = cur_prob {
@@ -354,7 +354,7 @@ impl<AllocU8:Allocator<u8>,
                                                                muxer,
                                                                output_bytes,
                                                                output_offset,
-                                                               m8);
+                                                               &mut Some(m8));
             if NibbleArrayType::FULLY_SAFE {
                 debug_assert!(match byte_pull_status {DivansResult::Success => true, _ => false,});
             } else {
@@ -416,21 +416,43 @@ impl<AllocU8:Allocator<u8>,
         };
         
         loop {
-            match drain_or_fill_static_buffer(CMD_CODER,
-                                              &mut superstate.coder,
+            match m8 {
+                Some(ref mut m) => {
+                    match drain_or_fill_static_buffer(CMD_CODER,
+                                                      &mut superstate.coder,
+                                                      &mut superstate.demuxer, &mut superstate.muxer,
+                                                      output_bytes, output_offset,
+                                                      &mut Some(m.get_base_alloc())) {
+                        DivansResult::Success => {},
+                        needs_something => return needs_something,
+                    }
+                    match drain_or_fill_static_buffer(LIT_CODER,
+                                                      *unwrap_ref!(lit_coder),
                                               &mut superstate.demuxer, &mut superstate.muxer,
-                                              output_bytes, output_offset,
-                                              unwrap_ref!(m8).get_base_alloc()) {
-                DivansResult::Success => {},
-                needs_something => return needs_something,
-            }
-            match drain_or_fill_static_buffer(LIT_CODER,
-                                              *unwrap_ref!(lit_coder),
+                                                      output_bytes, output_offset,
+                                                      &mut Some(m.get_base_alloc())) {
+                        DivansResult::Success => {},
+                        needs_something => return needs_something,
+                    }
+                },
+                None => {
+                    match drain_or_fill_static_buffer(CMD_CODER,
+                                                      &mut superstate.coder,
+                                                      &mut superstate.demuxer, &mut superstate.muxer,
+                                                      output_bytes, output_offset,
+                                                      &mut None) {
+                        DivansResult::Success => {},
+                        needs_something => return needs_something,
+                    }
+                    match drain_or_fill_static_buffer(LIT_CODER,
+                                                      *unwrap_ref!(lit_coder),
                                               &mut superstate.demuxer, &mut superstate.muxer,
-                                              output_bytes, output_offset,
-                                              unwrap_ref!(m8).get_base_alloc()) {
-                DivansResult::Success => {},
-                needs_something => return needs_something,
+                                                      output_bytes, output_offset,
+                                                      &mut None) {
+                        DivansResult::Success => {},
+                        needs_something => return needs_something,
+                    }
+                }
             }
             let billing = BillingDesignation::LiteralCommand(match self.state {
                 LiteralSubstate::LiteralCountMantissaNibbles(_, _) => LiteralSubstate::LiteralCountMantissaNibbles(0, 0),
