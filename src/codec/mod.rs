@@ -196,8 +196,8 @@ impl<AllocU8: Allocator<u8>,
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
-        self.state_prediction_mode.reset(self.cross_command_state.m8.as_mut().unwrap());
-        self.cross_command_state.m8.as_mut().unwrap().use_cached_allocation::<UninitializedOnAlloc>().free_cell(
+        self.state_prediction_mode.reset(self.cross_command_state.m8().unwrap());
+        self.cross_command_state.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().free_cell(
             core::mem::replace(&mut self.state_lit.lc,
                                LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
 
@@ -250,7 +250,7 @@ impl<AllocU8: Allocator<u8>,
             frozen_checksum: None,
             skip_checksum:skip_checksum,
         };
-        match ret.cross_command_state.lbk {
+        match ret.cross_command_state.lbk() {
             Some(ref book_keeping) => ret.codec_traits = construct_codec_trait_from_bookkeeping(book_keeping),
             None => {}, // FIXME(threading) don't need traits if we aren't processing literals
         }
@@ -290,7 +290,7 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
             },
             7 => {
-                self.state_prediction_mode.reset(self.cross_command_state.m8.as_mut().unwrap()); // FIXME(threading) use trait to allocate
+                self.state_prediction_mode.reset(self.cross_command_state.m8().unwrap()); // FIXME(threading) use trait to allocate
                 self.state = EncodeOrDecodeState::PredictionMode;
             },
             0xf => if is_end {
@@ -307,8 +307,8 @@ impl<AllocU8: Allocator<u8>,
         &self.cross_command_state.coder[usize::from(index)]
     }
     #[inline(always)]
-    pub fn get_m8(&mut self) -> &mut Option<RepurposingAlloc<u8, AllocU8>> {
-        &mut self.cross_command_state.m8 // FIXME(threading) usage of this shall be limited
+    pub fn get_m8(&mut self) -> Option<&mut RepurposingAlloc<u8, AllocU8>> {
+        self.cross_command_state.m8() // FIXME(threading) usage of this shall be limited
     }
     #[inline(always)]
     pub fn specialization(&mut self) -> &mut Specialization{
@@ -473,7 +473,7 @@ impl<AllocU8: Allocator<u8>,
                                                           input_command_offset: &mut usize) -> DivansResult {
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
-        if let Some(ref mut m8) = self.cross_command_state.m8 {
+        if let Some(ref mut m8) = self.cross_command_state.m8() {
             let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
             let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
                 adjusted_input_bytes,
@@ -665,24 +665,17 @@ impl<AllocU8: Allocator<u8>,
                                                                   output_bytes,
                                                                   output_bytes_offset) {
                          DivansResult::Success => {
-                             let ret;
-                             match self.cross_command_state.lbk {
-                                 Some(ref mut book_keeping) =>  // FIXME(threading): push for our populateRingBuffer
-                                     ret = book_keeping.obs_prediction_mode_context_map(
-                                         &self.state_prediction_mode.pm,
-                                         &mut self.cross_command_state.mcdf16.as_mut().unwrap()),
-                                 None => ret = DivansOpResult::Success,
-                             }
-                             self.state_prediction_mode.reset(&mut self.cross_command_state.m8.as_mut().unwrap()); // FIXME(threading) push to populate
                              self.state = EncodeOrDecodeState::Begin;
-                             match ret {
-                                 DivansOpResult::Success => {}
-                                 DivansOpResult::Failure(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret))),
-                             }
-                             match self.cross_command_state.lbk {
-                                 Some(ref book_keeping) => return CodecTraitResult::UpdateCodecTraitAndAdvance( // FIXME(threading): do this
-                                     construct_codec_trait_from_bookkeeping(book_keeping)),
-                                 None => {}, // don't need traits if we aren't processing literals
+                             if let Some(ref mut ctx) = self.cross_command_state.main_thread_ctx {
+                                 let ret = ctx.lbk.obs_prediction_mode_context_map(
+                                     &self.state_prediction_mode.pm,
+                                     &mut ctx.mcdf16);
+                                 self.state_prediction_mode.reset(&mut ctx.m8); // FIXME(threading) push to populate
+                                 if let DivansOpResult::Failure(_) = ret {
+                                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret)));
+                                 }
+                                 return CodecTraitResult::UpdateCodecTraitAndAdvance(
+                                     construct_codec_trait_from_bookkeeping(&mut ctx.lbk));
                              }
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors
@@ -705,8 +698,8 @@ impl<AllocU8: Allocator<u8>,
                                     DivansResult::Failure(ErrMsg::UnintendedCodecState(0)))),
                             };
                             self.cross_command_state.bk.obs_btypel(new_block_type);
-                            match self.cross_command_state.lbk {
-                                Some(ref mut book_keeping) => book_keeping.obs_literal_block_switch(new_block_type),
+                            match self.cross_command_state.lbk() {
+                                Some(book_keeping) => book_keeping.obs_literal_block_switch(new_block_type),
                                 None => {}, // FIXME(threading): do this in both cases
                             }
                             self.state = EncodeOrDecodeState::Begin;
@@ -835,8 +828,8 @@ impl<AllocU8: Allocator<u8>,
                     let (ret, cmd) = self.cross_command_state.demuxer.push_command(
                         CommandResult::Cmd(core::mem::replace(&mut self.state_populate_ring_buffer,
                                                               Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())),
-                        self.cross_command_state.m8.as_mut(),
-                        self.cross_command_state.recoder.as_mut(),
+                        self.cross_command_state.m8(),
+                        self.cross_command_state.recoder(),
                         &mut self.cross_command_state.specialization,
                         output_bytes,
                         output_bytes_offset,
@@ -855,8 +848,8 @@ impl<AllocU8: Allocator<u8>,
                         },
                         DivansOutputResult::Success => {
                             // clobber bk.last_8_literals with the last 8 literals
-                            let last_8 = self.cross_command_state.recoder.as_ref().unwrap().last_8_literals();
-                            self.cross_command_state.lbk.as_mut().unwrap().last_8_literals = //FIXME(threading) only should be run in the main thread
+                            let last_8 = self.cross_command_state.recoder().unwrap().last_8_literals();
+                            self.cross_command_state.lbk().unwrap().last_8_literals = //FIXME(threading) only should be run in the main thread
                                 u64::from(last_8[0])
                                 | (u64::from(last_8[1])<<0x8)
                                 | (u64::from(last_8[2])<<0x10)

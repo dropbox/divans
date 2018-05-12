@@ -608,6 +608,14 @@ impl<
     }
 }
 
+
+pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>> {
+    pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
+    pub m8: RepurposingAlloc<u8, AllocU8>,
+    pub mcdf16: AllocCDF16,
+    pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+}
+
 pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Specialization:EncoderOrDecoderSpecialization,
                              LinearInputBytes:StreamDemuxer<AllocU8>+Default,
@@ -619,13 +627,10 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     //pub lit_coder: ArithmeticCoder,
     pub coder: [ArithmeticCoder;NUM_ARITHMETIC_CODERS],
     pub specialization: Specialization,
-    pub recoder: Option<DivansRecodeState<AllocU8::AllocatedMemory>>,
-    pub m8: Option<RepurposingAlloc<u8, AllocU8>>,
-    pub mcdf16: Option<AllocCDF16>,
+    pub main_thread_ctx: Option<MainThreadContext<Cdf16, AllocU8, AllocCDF16>>,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF16>,
-    pub lbk: Option<LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
 }
@@ -643,10 +648,36 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     Cdf16,
                                                     AllocU8,
                                                     AllocCDF16>{
+    
     #[inline(always)]
     pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
         // FIXME(threading): do not call this
-        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset, self.m8.as_mut().unwrap().get_base_alloc())
+        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset,
+                                    self.main_thread_ctx.as_mut().unwrap().m8.get_base_alloc())
+    }
+    pub fn recoder(&mut self) -> Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>> {
+        match self.main_thread_ctx {
+            Some(ref mut ctx) => Some(&mut ctx.recoder),
+            None => None,
+        }
+    }
+    pub fn m8(&mut self) -> Option<&mut RepurposingAlloc<u8, AllocU8>> {
+        match self.main_thread_ctx {
+            Some(ref mut ctx) => Some(&mut ctx.m8),
+            None => None,
+        }
+    }
+    pub fn mcdf16(&mut self) -> Option<&mut AllocCDF16> {
+        match self.main_thread_ctx {
+            Some(ref mut ctx) => Some(&mut ctx.mcdf16),
+            None => None,
+        }
+    }
+    pub fn lbk(&mut self) -> Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>> {
+        match self.main_thread_ctx {
+            Some(ref mut ctx) => Some(&mut ctx.lbk),
+            None => None,
+        }
     }
 }
 impl <AllocU8:Allocator<u8>,
@@ -698,10 +729,14 @@ impl <AllocU8:Allocator<u8>,
             coder: [cmd_coder, lit_coder],
             //lit_coder: lit_coder,
             specialization: spc,
-            recoder: Some(DivansRecodeState::<AllocU8::AllocatedMemory>::new(
-                ring_buffer)),
-            m8: Some(RepurposingAlloc::<u8, AllocU8>::new(m8)),
-            mcdf16:Some(mcdf16),
+            main_thread_ctx: Some(MainThreadContext::<Cdf16, AllocU8, AllocCDF16>{
+                
+                recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
+                ring_buffer),
+                m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
+                mcdf16:mcdf16,
+                lbk: LiteralBookKeeping::new(literal_context_map),
+            }),
             lit_high_priors: LiteralNibblePriors {
                 priors: lit_high_priors
             },
@@ -710,7 +745,6 @@ impl <AllocU8:Allocator<u8>,
             },
             demuxer:LinearInputBytes::default(),
             muxer:LinearOutputBytes::default(),
-            lbk:Some(LiteralBookKeeping::new(literal_context_map)),
             bk:CrossCommandBookKeeping::new(lit_len_priors, cc_priors, copy_priors,
                                             dict_priors, pred_priors, btype_priors,
                                             distance_context_map,
@@ -723,8 +757,8 @@ impl <AllocU8:Allocator<u8>,
         }
     }
     fn free_internal(&mut self) {
-        self.muxer.free_mux(self.m8.as_mut().unwrap().get_base_alloc());
-        self.demuxer.free_demux(self.m8.as_mut().unwrap().get_base_alloc());
+        self.muxer.free_mux(self.m8().unwrap().get_base_alloc());
+        self.demuxer.free_demux(self.m8().unwrap().get_base_alloc());
         self.bk.prediction_priors.summarize_speed_costs();
         self.bk.btype_priors.summarize_speed_costs();
         self.bk.cc_priors.summarize_speed_costs();
@@ -733,14 +767,14 @@ impl <AllocU8:Allocator<u8>,
         self.lit_high_priors.summarize_speed_costs();
         self.lit_low_priors.summarize_speed_costs();
         self.bk.lit_len_priors.summarize_speed_costs();
-        match self.lbk {
-            Some(ref book_keeping) => book_keeping.lit_cm_priors.summarize_speed_costs(),
+        match self.lbk() {
+            Some(book_keeping) => book_keeping.lit_cm_priors.summarize_speed_costs(),
             None => {},
         }
-        match self.recoder {
-            Some(ref mut recoder) => {
+        match self.recoder() {
+            Some(recoder) => {
                 let rb = core::mem::replace(&mut recoder.ring_buffer, AllocU8::AllocatedMemory::default());
-                self.m8.as_mut().unwrap().free_cell(rb);
+                self.m8().unwrap().free_cell(rb);
             }
             None => unimplemented!(),
         }
@@ -749,23 +783,23 @@ impl <AllocU8:Allocator<u8>,
         let cdf16c = core::mem::replace(&mut self.bk.dict_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16d = core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default());
-        let cdf16f = match self.lbk {
-            Some(ref mut book_keeping) => core::mem::replace(&mut book_keeping.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()),
+        let cdf16f = match self.lbk() {
+            Some(book_keeping) => core::mem::replace(&mut book_keeping.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()),
             None => AllocCDF16::AllocatedMemory::default(),
         };
         let cdf16g = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16h = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16i = core::mem::replace(&mut self.bk.lit_len_priors.priors, AllocCDF16::AllocatedMemory::default());
         for coder in self.coder.iter_mut() {
-            coder.free(self.m8.as_mut().unwrap().get_base_alloc());
+            coder.free(self.m8().unwrap().get_base_alloc());
         }
-        if let Some(ref mut book_keeping) = self.lbk {
-            self.m8.as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut book_keeping.literal_context_map,
+        if let Some(book_keeping) = self.lbk() {
+            self.m8().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut book_keeping.literal_context_map,
                                                                   AllocU8::AllocatedMemory::default()));
         }
-        self.m8.as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
+        self.m8().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
-        if let Some(ref mut mcdf16) = self.mcdf16 {
+        if let Some(mcdf16) = self.mcdf16() {
             mcdf16.free_cell(cdf16a);
             mcdf16.free_cell(cdf16b);
             mcdf16.free_cell(cdf16c);
@@ -779,11 +813,12 @@ impl <AllocU8:Allocator<u8>,
     }
     pub fn free_ref(&mut self) {
         self.free_internal();
-        self.m8.as_mut().unwrap().free_ref();
+        self.m8().unwrap().free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocCDF16) {
         self.free_internal();
-        (self.m8.unwrap().free(), self.mcdf16.unwrap())
+        let mt = self.main_thread_ctx.unwrap();
+        (mt.m8.free(), mt.mcdf16)
     }
 }
 

@@ -247,7 +247,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             };
         }
     }
-    pub fn get_m8(&mut self) -> &mut Option<RepurposingAlloc<u8, AllocU8>> {
+    pub fn get_m8(&mut self) -> Option<&mut RepurposingAlloc<u8, AllocU8>> {
        self.codec.get_m8()
     }
     pub fn free_ref(&mut self) {

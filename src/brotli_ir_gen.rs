@@ -110,7 +110,7 @@ impl<SelectedCDF:CDF16,
                                     AllocHT,
                                     AllocZN> {
     pub fn get_m8(&mut self) -> &mut AllocU8 {
-       self.codec.get_m8().as_mut().unwrap().get_base_alloc()
+       self.codec.get_m8().unwrap().get_base_alloc()
     }
     #[cfg(feature="no-stdlib")]
     fn do_panic(_m:ErrMsg) {
