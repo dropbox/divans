@@ -409,7 +409,7 @@ impl<AllocU8:Allocator<u8>,
                                               cmd_coder,
                                               &mut superstate.demuxer, &mut superstate.muxer,
                                               output_bytes, output_offset,
-                                              superstate.m8().unwrap().get_base_alloc()) {
+                                              superstate.thread_ctx.m8().unwrap().get_base_alloc()) {
                 DivansResult::Success => {},
                 needs_something => return needs_something,
             }
@@ -417,7 +417,7 @@ impl<AllocU8:Allocator<u8>,
                                               lit_coder,
                                               &mut superstate.demuxer, &mut superstate.muxer,
                                               output_bytes, output_offset,
-                                              superstate.m8().unwrap().get_base_alloc()) {
+                                              superstate.thread_ctx.m8().unwrap().get_base_alloc()) {
                 DivansResult::Success => {},
                 needs_something => return needs_something,
             }
@@ -453,7 +453,7 @@ impl<AllocU8:Allocator<u8>,
                         let num_bytes = shortcut_nib as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
                         //FIXME(threading): actually use the trait to get a new literal
-                        self.lc.data = superstate.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                     }
@@ -468,7 +468,7 @@ impl<AllocU8:Allocator<u8>,
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = superstate.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             NUM_LITERAL_LENGTH_MNEMONIC as usize + 1 + beg_nib as usize);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
@@ -502,7 +502,7 @@ impl<AllocU8:Allocator<u8>,
                         let num_bytes = next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
                         //FIXME(threading): actually use the trait to alloc
-                        self.lc.data = superstate.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             num_bytes);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
@@ -538,7 +538,7 @@ impl<AllocU8:Allocator<u8>,
                             *cur_byte = cur_nibble << shift;
                         }
                         if !high_nibble {
-                            superstate.lbk().unwrap().push_literal_byte(*cur_byte);
+                            superstate.thread_ctx.lbk().unwrap().push_literal_byte(*cur_byte);
                         }
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
@@ -550,11 +550,13 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    let code_result = self.code_nibble_array(superstate.m8().unwrap().get_base_alloc(), output_bytes, output_offset,
+                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
+                    let code_result = self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
                                                              in_cmd, nibble_index,
                                                              lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             &mut superstate.lbk().unwrap(), &mut superstate.specialization, NibbleArraySecond{}, ctraits);
+                                                             &mut lbk.unwrap(),
+                                                             &mut superstate.specialization, NibbleArraySecond{}, ctraits);
                     match code_result {
                       DivansResult::Success => {
                          self.state = LiteralSubstate::FullyDecoded;
@@ -564,11 +566,13 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    let code_result = self.code_nibble_array(superstate.m8().unwrap().get_base_alloc(), output_bytes, output_offset,
+                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
+                    let code_result = self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
                                                              in_cmd, nibble_index,
                                                              lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                              &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                                             &mut superstate.lbk().unwrap(), &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
+                                                             lbk.unwrap(),
+                                                             &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
                     match code_result {
                       DivansResult::Success => {
                          self.state = LiteralSubstate::FullyDecoded;
@@ -578,11 +582,13 @@ impl<AllocU8:Allocator<u8>,
                     }
                 },
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
-                    match self.code_nibble_array(superstate.m8().unwrap().get_base_alloc(), output_bytes, output_offset,
+                    let (m8, lbk) = superstate.thread_ctx.m8lbk();
+                    match self.code_nibble_array(m8.unwrap().get_base_alloc(), output_bytes, output_offset,
                                                  in_cmd, start_nibble_index,
                                                  lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
                                                  &mut superstate.lit_high_priors, &mut superstate.lit_low_priors,
-                                           superstate.lbk().unwrap(), &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
+                                                 lbk.unwrap(),
+                                                 &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
                       DivansResult::NeedsMoreInput => {
                          continue;
                       }
