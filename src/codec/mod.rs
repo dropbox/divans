@@ -65,7 +65,7 @@ pub mod literal;
 pub mod context_map;
 pub mod block_type;
 pub mod priors;
-
+//pub mod decoder;
 
 
 /*
@@ -308,7 +308,23 @@ impl<AllocU8: Allocator<u8>,
     }
     #[inline(always)]
     pub fn get_coder(&self, index: StreamID) -> &ArithmeticCoder {
-        &self.cross_command_state.coder[usize::from(index)]
+        if index == CMD_CODER as StreamID {
+            &self.cross_command_state.coder
+        } else {
+            if let ThreadContext::MainThread(ref ctx) = self.cross_command_state.thread_ctx {
+                &ctx.lit_coder
+            } else {
+                unreachable!();
+            }
+        }
+    }
+    #[inline(always)]
+    pub fn coder_mut(&mut self, index: StreamID) -> &mut ArithmeticCoder {
+        if index == CMD_CODER as StreamID {
+            &mut self.cross_command_state.coder
+        } else {
+            &mut self.cross_command_state.thread_ctx.main_thread_mut().unwrap().lit_coder
+        }
     }
     #[inline(always)]
     pub fn get_m8(&mut self) -> Option<&mut RepurposingAlloc<u8, AllocU8>> {
@@ -319,9 +335,6 @@ impl<AllocU8: Allocator<u8>,
         &mut self.cross_command_state.specialization
     }
     #[inline(always)]
-    pub fn coder(&mut self, index: StreamID) -> &mut ArithmeticCoder {
-        &mut self.cross_command_state.coder[usize::from(index)]
-    }
     pub fn get_crc(&mut self) -> &mut SubDigest {
         &mut self.crc
     }
@@ -375,7 +388,12 @@ impl<AllocU8: Allocator<u8>,
                 EncodeOrDecodeState::EncodedShutdownNode => {
 
                     for index in 0..NUM_ARITHMETIC_CODERS {
-                        match self.cross_command_state.drain_or_fill_internal_buffer(index, output_bytes, output_bytes_offset) {
+                        let ret = if index == CMD_CODER {
+                            self.cross_command_state.drain_or_fill_internal_buffer_cmd(output_bytes, output_bytes_offset)
+                        } else {
+                            self.cross_command_state.drain_or_fill_internal_buffer_lit(output_bytes, output_bytes_offset)
+                        };
+                        match ret {
                             DivansResult::Success => if index + 1 == NUM_ARITHMETIC_CODERS {
                                 self.state = EncodeOrDecodeState::ShutdownCoder(0);
                             },
@@ -386,7 +404,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::ShutdownCoder(index) => {
-                    match self.cross_command_state.coder[usize::from(index)].close() {
+                    match self.coder_mut(index as StreamID).close() {
                         DivansResult::Success => if index + 1 == NUM_ARITHMETIC_CODERS as u8 {
                             self.state = EncodeOrDecodeState::CoderBufferDrain;
                         } else {
@@ -399,9 +417,13 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::CoderBufferDrain => {
                     for index in 0..NUM_ARITHMETIC_CODERS {
-                        match self.cross_command_state.drain_or_fill_internal_buffer(index,
-                                                                                     output_bytes,
-                                                                                     output_bytes_offset) {
+                        let ret = if index == CMD_CODER {
+                            self.cross_command_state.drain_or_fill_internal_buffer_cmd(output_bytes, output_bytes_offset)
+                        } else {
+                            self.cross_command_state.drain_or_fill_internal_buffer_lit(output_bytes, output_bytes_offset)
+                        };
+                        
+                        match ret {
                             DivansResult::Success => if index + 1 == NUM_ARITHMETIC_CODERS {
                                 self.state = EncodeOrDecodeState::MuxDrain;
                             },
@@ -631,14 +653,14 @@ impl<AllocU8: Allocator<u8>,
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
                 },
                 EncodeOrDecodeState::Begin => {
-                    match self.cross_command_state.drain_or_fill_internal_buffer(CMD_CODER, output_bytes, output_bytes_offset) {
+                    match self.cross_command_state.drain_or_fill_internal_buffer_cmd(output_bytes, output_bytes_offset) {
                         DivansResult::Success => {},
                         need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {
                         let command_type_prob = self.cross_command_state.bk.get_command_type_prob();
-                        self.cross_command_state.coder[CMD_CODER].get_or_put_nibble(
+                        self.cross_command_state.coder.get_or_put_nibble(
                             &mut command_type_code,
                             command_type_prob,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));

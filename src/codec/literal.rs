@@ -1,5 +1,5 @@
 use core;
-use interface::{DivansResult, StreamMuxer, StreamDemuxer, ErrMsg};
+use interface::{DivansResult, StreamMuxer, StreamDemuxer};
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -37,6 +37,10 @@ pub enum LiteralSubstate {
     LiteralNibbleLowerHalf(u32),
     LiteralNibbleIndexWithECDF(u32),
     FullyDecoded,
+}
+
+macro_rules! unwrap_ref {
+    ($x: expr) => (match $x { Some(ref mut y) => y, None => unreachable!()});
 }
 
 const NUM_LITERAL_LENGTH_MNEMONIC: u32 = 14;
@@ -402,23 +406,29 @@ impl<AllocU8:Allocator<u8>,
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
-        let (cmd_coder_0, lit_coder_0) = superstate.coder.split_at_mut(1); // FIXME: should this be lit coder?
-        let cmd_coder = &mut cmd_coder_0[0];
-        let lit_coder = &mut lit_coder_0[0];
+        let (mut lit_coder, mut m8, mut lbk, mut lit_high_priors, mut lit_low_priors) = match superstate.thread_ctx {
+            ThreadContext::Worker => (None, None, None, None, None),
+            ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.lit_coder),
+                                                       Some(&mut ctx.m8),
+                                                       Some(&mut ctx.lbk),
+                                                       Some(&mut ctx.lit_high_priors),
+                                                       Some(&mut ctx.lit_low_priors)),
+        };
+        
         loop {
             match drain_or_fill_static_buffer(CMD_CODER,
-                                              cmd_coder,
+                                              &mut superstate.coder,
                                               &mut superstate.demuxer, &mut superstate.muxer,
                                               output_bytes, output_offset,
-                                              superstate.thread_ctx.m8().unwrap().get_base_alloc()) {
+                                              unwrap_ref!(m8).get_base_alloc()) {
                 DivansResult::Success => {},
                 needs_something => return needs_something,
             }
             match drain_or_fill_static_buffer(LIT_CODER,
-                                              lit_coder,
+                                              *unwrap_ref!(lit_coder),
                                               &mut superstate.demuxer, &mut superstate.muxer,
                                               output_bytes, output_offset,
-                                              superstate.thread_ctx.m8().unwrap().get_base_alloc()) {
+                                              unwrap_ref!(m8).get_base_alloc()) {
                 DivansResult::Success => {},
                 needs_something => return needs_something,
             }
@@ -442,7 +452,7 @@ impl<AllocU8:Allocator<u8>,
                     }
                     let mut nibble_prob = superstate.bk.lit_len_priors.get(
                         LiteralCommandPriorType::CountSmall, (ctype, index));
-                    cmd_coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
 
                     if shortcut_nib as u32 == NUM_LITERAL_LENGTH_MNEMONIC {
@@ -454,7 +464,7 @@ impl<AllocU8:Allocator<u8>,
                         let num_bytes = shortcut_nib as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
                         //FIXME(threading): actually use the trait to get a new literal
-                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                        self.lc.data = unwrap_ref!(m8).use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                     }
@@ -463,13 +473,13 @@ impl<AllocU8:Allocator<u8>,
                     let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeBegNib, (ctype,));
-                    cmd_coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
                     if beg_nib == 15 {
                         self.state = LiteralSubstate::LiteralCountLengthGreater14Less25;
                     } else if beg_nib <= 1 {
-                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                        self.lc.data = unwrap_ref!(m8).use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             NUM_LITERAL_LENGTH_MNEMONIC as usize + 1 + beg_nib as usize);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
@@ -482,7 +492,7 @@ impl<AllocU8:Allocator<u8>,
                     let mut last_nib = lllen.wrapping_sub(15);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeLastNib, (ctype,));
-                    cmd_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
                     self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(last_nib + 14),
@@ -495,7 +505,7 @@ impl<AllocU8:Allocator<u8>,
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeMantissaNib, (ctype,));
-                    cmd_coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
 
@@ -503,7 +513,7 @@ impl<AllocU8:Allocator<u8>,
                         let num_bytes = next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
                         //FIXME(threading): actually use the trait to alloc
-                        self.lc.data = superstate.thread_ctx.m8().unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
+                        self.lc.data = unwrap_ref!(m8).use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             num_bytes);
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.read_buffer()[LIT_CODER].bytes_avail());
@@ -528,7 +538,7 @@ impl<AllocU8:Allocator<u8>,
                         cur_nibble = self.ecdf_write_nibble(nibble_index,
                                                             cur_nibble,
                                                             prior_nibble >> 4,
-                                                            lit_coder,
+                                                            *unwrap_ref!(lit_coder),
                                                             Cdf16::default(),
                                                             in_cmd.prob.slice());
                                          
@@ -539,7 +549,7 @@ impl<AllocU8:Allocator<u8>,
                             *cur_byte = cur_nibble << shift;
                         }
                         if !high_nibble {
-                            superstate.thread_ctx.lbk().unwrap().push_literal_byte(*cur_byte);
+                            unwrap_ref!(lbk).push_literal_byte(*cur_byte);
                         }
                     }
                     if nibble_index + 1 == (self.lc.data.slice().len() << 1) as u32 {
@@ -551,68 +561,52 @@ impl<AllocU8:Allocator<u8>,
                 },
                 LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
                     assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    match superstate.thread_ctx {
-                        ThreadContext::Worker => unreachable!(),
-                        ThreadContext::MainThread(ref mut ctx) => {
-                            let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
-                                                                     in_cmd, nibble_index,
-                                                                     lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                                     &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
-                                                                     &mut ctx.lbk,
-                                                                     &mut superstate.specialization, NibbleArraySecond{}, ctraits);
-                            match code_result {
-                                DivansResult::Success => {
-                                    self.state = LiteralSubstate::FullyDecoded;
-                                    return DivansResult::Success;
-                                },
-                                _ => return code_result,
-                            }
-                        }
+                    let code_result = self.code_nibble_array(unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
+                                                             in_cmd, nibble_index,
+                                                             *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
+                                                             unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
+                                                             unwrap_ref!(lbk),
+                                                             &mut superstate.specialization, NibbleArraySecond{}, ctraits);
+                    match code_result {
+                        DivansResult::Success => {
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        _ => return code_result,
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    match superstate.thread_ctx {
-                        ThreadContext::Worker => unreachable!(),
-                        ThreadContext::MainThread(ref mut ctx) => {
-                            let code_result = self.code_nibble_array(&mut ctx.m8.get_base_alloc(), output_bytes, output_offset,
-                                                                     in_cmd, nibble_index,
-                                                                     lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                                     &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
-                                                                     &mut ctx.lbk,
-                                                                     &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
-                            match code_result {
-                                DivansResult::Success => {
-                                    self.state = LiteralSubstate::FullyDecoded;
-                                    return DivansResult::Success;
-                                },
-                                _ => return code_result,
-                            }
-                        }
+                    let code_result = self.code_nibble_array(&mut unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
+                                                             in_cmd, nibble_index,
+                                                             *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
+                                                             unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
+                                                             unwrap_ref!(lbk),
+                                                             &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
+                    match code_result {
+                        DivansResult::Success => {
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        _ => return code_result,
                     }
                 },
                 LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
-                    match superstate.thread_ctx {
-                        ThreadContext::Worker => unreachable!(),
-                        ThreadContext::MainThread(ref mut ctx) => {
-                            
-                            match self.code_nibble_array(ctx.m8.get_base_alloc(), output_bytes, output_offset,
-                                                         in_cmd, start_nibble_index,
-                                                         lit_coder, &mut superstate.demuxer, &mut superstate.muxer,
-                                                         &mut ctx.lit_high_priors, &mut ctx.lit_low_priors,
-                                                         &mut ctx.lbk,
-                                                         &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
-                                DivansResult::NeedsMoreInput => {
-                                    continue;
-                                }
-                                DivansResult::Failure(m) => {
-                                    return DivansResult::Failure(m);
-                                }
-                                _ => {},
-                            }
-                            self.state = LiteralSubstate::FullyDecoded;
-                            return DivansResult::Success;
+                    match self.code_nibble_array(unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
+                                                 in_cmd, start_nibble_index,
+                                                 *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
+                                                 unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
+                                                 unwrap_ref!(lbk),
+                                                 &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
+                        DivansResult::NeedsMoreInput => {
+                            continue;
                         }
+                        DivansResult::Failure(m) => {
+                            return DivansResult::Failure(m);
+                        }
+                        _ => {},
                     }
+                    self.state = LiteralSubstate::FullyDecoded;
+                    return DivansResult::Success;
                 },
                 LiteralSubstate::FullyDecoded => {
                     return DivansResult::Success;

@@ -609,36 +609,43 @@ impl<
 }
 
 
-pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>> {
+pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
     pub m8: RepurposingAlloc<u8, AllocU8>,
     pub mcdf16: AllocCDF16,
     pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
+    pub lit_coder: ArithmeticCoder,
 }
 
-pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>> {
-    MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16>),
+pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
+    MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>),
     Worker,
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>> MainThreadContext<Cdf16, AllocU8, AllocCDF16> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
     pub fn free(&mut self) {
         self.m8.free_cell(core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(core::mem::replace(&mut self.lbk.literal_context_map, AllocU8::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default()));
-        self.mcdf16.free_cell(core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()));        
+        self.mcdf16.free_cell(core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()));
     }
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>> ThreadContext<Cdf16, AllocU8, AllocCDF16> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> ThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
     pub fn free(&mut self) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => ctx.free(),
             ThreadContext::Worker => {},
         }
     }
-    pub fn main_thread_mut(&mut self) -> Option<&mut MainThreadContext<Cdf16, AllocU8, AllocCDF16>> {
+    pub fn lit_coder(&mut self) -> Option<&mut ArithmeticCoder> {
+        match *self {
+            ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.lit_coder),
+            ThreadContext::Worker => None,
+        }        
+    }
+    pub fn main_thread_mut(&mut self) -> Option<&mut MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(ctx),
             ThreadContext::Worker => None,
@@ -684,9 +691,9 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              AllocCDF16:Allocator<Cdf16>> {
     //pub cmd_coder: ArithmeticCoder,
     //pub lit_coder: ArithmeticCoder,
-    pub coder: [ArithmeticCoder;NUM_ARITHMETIC_CODERS],
+    pub coder: ArithmeticCoder,
     pub specialization: Specialization,
-    pub thread_ctx: ThreadContext<Cdf16, AllocU8, AllocCDF16>,
+    pub thread_ctx: ThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF16>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
@@ -707,10 +714,18 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                                     AllocCDF16>{
     
     #[inline(always)]
-    pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
+    pub fn drain_or_fill_internal_buffer_lit(&mut self, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
+        let main = self.thread_ctx.main_thread_mut().unwrap();
         // FIXME(threading): do not call this
-        drain_or_fill_static_buffer(index, &mut self.coder[index], &mut self.demuxer, &mut self.muxer, output, output_offset,
-                                    self.thread_ctx.main_thread_mut().unwrap().m8.get_base_alloc())
+        drain_or_fill_static_buffer(LIT_CODER, &mut main.lit_coder, &mut self.demuxer, &mut self.muxer, output, output_offset,
+                                    main.m8.get_base_alloc())
+    }
+    #[inline(always)]
+    pub fn drain_or_fill_internal_buffer_cmd(&mut self, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
+        let main = self.thread_ctx.main_thread_mut().unwrap();
+        // FIXME(threading): do not call this
+        drain_or_fill_static_buffer(CMD_CODER, &mut self.coder, &mut self.demuxer, &mut self.muxer, output, output_offset,
+                                    main.m8.get_base_alloc())
     }
 }
 impl <AllocU8:Allocator<u8>,
@@ -759,10 +774,10 @@ impl <AllocU8:Allocator<u8>,
                             AllocU8,
                             AllocCDF16> {
             //cmd_coder: cmd_coder,
-            coder: [cmd_coder, lit_coder],
+            coder: cmd_coder,
             //lit_coder: lit_coder,
             specialization: spc,
-            thread_ctx: ThreadContext::MainThread(MainThreadContext::<Cdf16, AllocU8, AllocCDF16>{
+            thread_ctx: ThreadContext::MainThread(MainThreadContext::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>{
                 recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
                 m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
@@ -774,6 +789,7 @@ impl <AllocU8:Allocator<u8>,
                 lit_low_priors: LiteralNibblePriors {
                     priors: lit_low_priors
                 },
+                lit_coder: lit_coder,
             }),
             demuxer:LinearInputBytes::default(),
             muxer:LinearOutputBytes::default(),
@@ -807,9 +823,7 @@ impl <AllocU8:Allocator<u8>,
         let cdf16d = core::mem::replace(&mut self.bk.btype_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16e = core::mem::replace(&mut self.bk.prediction_priors.priors, AllocCDF16::AllocatedMemory::default());
         let cdf16f = core::mem::replace(&mut self.bk.lit_len_priors.priors, AllocCDF16::AllocatedMemory::default());
-        for coder in self.coder.iter_mut() {
-            coder.free(self.thread_ctx.m8().unwrap().get_base_alloc());
-        }
+        self.coder.free(self.thread_ctx.m8().unwrap().get_base_alloc());
         self.thread_ctx.m8().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.bk.distance_context_map,
                                                               AllocU8::AllocatedMemory::default()));
         if let Some(mcdf16) = self.thread_ctx.mcdf16() {
@@ -822,6 +836,7 @@ impl <AllocU8:Allocator<u8>,
         }
         match self.thread_ctx {
             ThreadContext::MainThread(ref mut ctx) => {
+                ctx.lit_coder.free(ctx.m8.get_base_alloc());
                 ctx.free()
             },
             ThreadContext::Worker => {},

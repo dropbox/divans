@@ -10,7 +10,6 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     round_up_mod_4,
-    CMD_CODER,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -66,7 +65,7 @@ impl DictState {
                                                output_offset: &mut usize) -> DivansResult {
 
         loop {
-            match superstate.drain_or_fill_internal_buffer(CMD_CODER, output_bytes, output_offset) {
+            match superstate.drain_or_fill_internal_buffer_cmd(output_bytes, output_offset) {
                 DivansResult::Success => {},
                 need_something => return need_something,
             }
@@ -83,7 +82,7 @@ impl DictState {
                     let mut beg_nib = core::cmp::min(15, in_cmd.word_size.wrapping_sub(4));
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::SizeBegNib, (ctype,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
                     if beg_nib == 15 {
@@ -97,7 +96,7 @@ impl DictState {
                     let mut beg_nib = in_cmd.word_size.wrapping_sub(19);
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::SizeLastNib, (ctype,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
                     self.dc.word_size = beg_nib + 19;
@@ -115,7 +114,7 @@ impl DictState {
                     let actual_prior = superstate.bk.get_distance_prior(u32::from(self.dc.word_size));
                     let mut nibble_prob = superstate.bk.dict_priors.get(
                         DictCommandNibblePriorType::Index, (actual_prior, index));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut last_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
@@ -133,7 +132,7 @@ impl DictState {
                     let mut high_nib = in_cmd.transform >> 4;
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
                                                                         (0, self.dc.word_size as usize >> 1));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut high_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut high_nib, nibble_prob, billing);
                     nibble_prob.blend(high_nib, Speed::FAST);
                     self.dc.transform = high_nib << 4;
                     self.state = DictSubstate::TransformLow;
@@ -142,7 +141,7 @@ impl DictState {
                     let mut low_nib = in_cmd.transform & 0xf;
                     let mut nibble_prob = superstate.bk.dict_priors.get(DictCommandNibblePriorType::Transform,
                                                                         (1, self.dc.transform as usize >> 4));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut low_nib, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut low_nib, nibble_prob, billing);
                     nibble_prob.blend(low_nib, Speed::FAST);
                     self.dc.transform |= low_nib;
                     let dict = &kBrotliDictionary;

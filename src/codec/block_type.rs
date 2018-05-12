@@ -4,7 +4,6 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     BLOCK_TYPE_LITERAL_SWITCH,
-    CMD_CODER,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -61,7 +60,7 @@ impl BlockTypeState {
         let mut first_nibble:u8 = input_bs.block_type() & 0xf;
         let mut second_nibble:u8 = input_bs.block_type() >> 4;
         loop {
-            match superstate.drain_or_fill_internal_buffer(CMD_CODER,
+            match superstate.drain_or_fill_internal_buffer_cmd(
                                                            output_bytes,
                                                            output_offset) {
                 DivansResult::Success => {},
@@ -72,7 +71,7 @@ impl BlockTypeState {
                 BlockTypeState::Begin => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::Mnemonic,
                                                                          (block_type_switch_index,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut varint_nibble, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut varint_nibble, nibble_prob, billing);
                     nibble_prob.blend(varint_nibble, Speed::SLOW);
                     match varint_nibble {
                         0 => *self = BlockTypeState::FullyDecoded(
@@ -86,14 +85,14 @@ impl BlockTypeState {
                 BlockTypeState::TwoNibbleType => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::FirstNibble,
                                                                          (block_type_switch_index,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut first_nibble, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut first_nibble, nibble_prob, billing);
                     nibble_prob.blend(first_nibble, Speed::SLOW);
                     *self = BlockTypeState::FinalNibble(first_nibble);
                 },
                 BlockTypeState::FinalNibble(first_nibble) => {
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::SecondNibble,
                                                                          (block_type_switch_index,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut second_nibble, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut second_nibble, nibble_prob, billing);
                     nibble_prob.blend(second_nibble, Speed::SLOW);
                     *self = BlockTypeState::FullyDecoded((second_nibble << 4) | first_nibble);
                 }
@@ -164,9 +163,8 @@ impl LiteralBlockTypeState {
                     }
                 },
                 LiteralBlockTypeState::StrideNibble(ltype) =>   {
-                    match superstate.drain_or_fill_internal_buffer(CMD_CODER,
-                                                                 output_bytes,
-                                                                 output_offset) {
+                    match superstate.drain_or_fill_internal_buffer_cmd(output_bytes,
+                                                                       output_offset) {
                          DivansResult::Success => {},
                          need_something => return need_something,
                     }
@@ -176,7 +174,7 @@ impl LiteralBlockTypeState {
                     };
                     let mut nibble_prob = superstate.bk.btype_priors.get(BlockTypePriorType::StrideNibble,
                                                                          (0,));
-                    superstate.coder[CMD_CODER].get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);
+                    superstate.coder.get_or_put_nibble(&mut stride_nibble, nibble_prob, billing);
                     nibble_prob.blend(stride_nibble, Speed::SLOW);
                     *self = LiteralBlockTypeState::FullyDecoded(ltype, stride_nibble);
                 },
