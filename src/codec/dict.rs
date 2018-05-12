@@ -5,7 +5,7 @@ use brotli::transform::TransformDictionaryWord;
 use brotli::interface::Nop;
 use ::priors::PriorCollection;
 use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
-use ::probability::{CDF2, CDF16, Speed};
+use ::probability::{CDF16, Speed};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
@@ -53,7 +53,6 @@ impl DictState {
                         LinearInputBytes:StreamDemuxer<AllocU8>+Default,
                         LinearOutputBytes:StreamMuxer<AllocU8>+Default,                             
                         AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
@@ -61,7 +60,6 @@ impl DictState {
                                                                                   LinearOutputBytes,
                                                                                   Cdf16,
                                                                                   AllocU8,
-                                                                                  AllocCDF2,
                                                                                   AllocCDF16>,
                                                in_cmd: &DictCommand,
                                                output_bytes:&mut [u8],

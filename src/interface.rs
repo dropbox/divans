@@ -14,7 +14,7 @@
 
 use alloc::{SliceWrapper, Allocator};
 use super::slice_util;
-use super::probability::interface::{CDF2, CDF16, ProbRange};
+use super::probability::interface::{CDF16, ProbRange};
 use super::probability;
 use super::codec::copy::CopySubstate;
 use super::codec::dict::DictSubstate;
@@ -407,12 +407,11 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
 pub trait DivansCompressorFactory<
      AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<DefaultCDF16>> {
      type DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
      type ConstructedCompressor: Compressor;
      type AdditionalArgs;
-    fn new(m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+    fn new(m8: AllocU8, m32: AllocU32, mcdf16:AllocCDF16,
            opts: DivansCompressorOptions,
            additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor;
 }

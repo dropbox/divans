@@ -346,11 +346,9 @@ fn bench_no_ir<Run: Runner,
         if compress {
             dv_buffer.reset();
             let mut encode_state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                                                  ItemVecAllocator<divans::CDF2>,
                                                                   ItemVecAllocator<divans::DefaultCDF16>>::new(
                 ItemVecAllocator::<u8>::default(),
                 ItemVecAllocator::<u32>::default(),
-                ItemVecAllocator::<divans::CDF2>::default(),
                 ItemVecAllocator::<divans::DefaultCDF16>::default(),
                 opts,
                 (),

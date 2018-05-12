@@ -13,7 +13,7 @@ use ::interface::{
     CopyCommand,
 };
 use ::priors::PriorCollection;
-use ::probability::{Speed, CDF16, CDF2};
+use ::probability::{Speed, CDF16};
 use super::priors::CopyCommandNibblePriorType;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CopySubstate {
@@ -54,7 +54,6 @@ impl CopyState {
                              
                         Cdf16:CDF16,
                         AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,
                                                      superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                         Specialization,
@@ -62,7 +61,6 @@ impl CopyState {
                                                                                         LinearOutputBytes,
                                                                                         Cdf16,
                                                                                         AllocU8,
-                                                                                        AllocCDF2,
                                                                                         AllocCDF16>,
                                                      in_cmd: &CopyCommand,
                                                      output_bytes:&mut [u8],

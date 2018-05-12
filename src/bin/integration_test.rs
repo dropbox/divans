@@ -188,7 +188,6 @@ fn test_e2e_empty_just_flush() {
     let mut state =super::BrotliFactory::new(
         m8,
         ItemVecAllocator::<u32>::default(),
-        ItemVecAllocator::<divans::CDF2>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         opts,
         (ItemVecAllocator::<u8>::default(),

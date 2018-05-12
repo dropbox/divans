@@ -13,7 +13,7 @@
 //   limitations under the License.
 use core::marker::PhantomData;
 use core::cmp::{min, max};
-use super::probability::{CDF2,CDF16};
+use super::probability::CDF16;
 use super::brotli;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
@@ -41,7 +41,6 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocI32:Allocator<i32>,
                             AllocU64:Allocator<u64>,
                             AllocCommand:Allocator<super::brotli::enc::command::Command>,
-                            AllocCDF2:Allocator<CDF2>,
                             AllocCDF16:Allocator<SelectedCDF>,
                             AllocF64: Allocator<brotli::enc::util::floatX>,
                             AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
@@ -54,7 +53,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocZN: Allocator<brotli::enc::ZopfliNode>
      > {
     brotli_encoder: BrotliEncoderStateStruct<AllocU8, AllocU16, AllocU32, AllocI32, AllocCommand>,
-    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, SelectedCDF, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<ChosenEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, SelectedCDF, AllocU8, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     m64: AllocU64,
@@ -82,7 +81,6 @@ impl<SelectedCDF:CDF16,
      AllocI32:Allocator<i32>,
      AllocU64:Allocator<u64>,
      AllocCommand:Allocator<super::brotli::enc::command::Command>,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<SelectedCDF>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
@@ -101,7 +99,6 @@ impl<SelectedCDF:CDF16,
                                     AllocI32,
                                     AllocU64,
                                     AllocCommand,
-                                    AllocCDF2,
                                     AllocCDF16,
                                     AllocF64,
                                     AllocFV,
@@ -132,7 +129,6 @@ impl<SelectedCDF:CDF16,
                                                                                   Mux<AllocU8>,
                                                                                   SelectedCDF,
                                                                                   AllocU8,
-                                                                                  AllocCDF2,
                                                                                   AllocCDF16>,
                                                           window_size: u8) {
         let mut cmd_offset = 0usize;
@@ -257,11 +253,11 @@ impl<SelectedCDF:CDF16,
         self.free_internal();
         self.codec.free_ref();
     }
-    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
+    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF16, AllocU8, AllocU16, AllocI32, AllocCommand,
                               AllocU64, AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN) {
         self.free_internal();
-        let (m8, mcdf2, mcdf16) = self.codec.free();
-        (m8, self.brotli_encoder.m32, mcdf2, mcdf16, self.brotli_encoder.m8, self.brotli_encoder.m16,self.brotli_encoder.mi32, self.brotli_encoder.mc,
+        let (m8, mcdf16) = self.codec.free();
+        (m8, self.brotli_encoder.m32, mcdf16, self.brotli_encoder.m8, self.brotli_encoder.m16,self.brotli_encoder.mi32, self.brotli_encoder.mc,
          self.m64, self.mf64, self.mfv, self.mhl, self.mhc, self.mhd, self.mhp, self.mct, self.mht, self.mzn)
     }
 }
@@ -274,7 +270,6 @@ impl<SelectedCDF:CDF16,
      AllocI32:Allocator<i32>,
      AllocU64:Allocator<u64>,
      AllocCommand:Allocator<super::brotli::enc::command::Command>,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<SelectedCDF>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
@@ -293,7 +288,6 @@ impl<SelectedCDF:CDF16,
                                                    AllocI32,
                                                    AllocU64,
                                                    AllocCommand,
-                                                   AllocCDF2,
                                                    AllocCDF16,
                                                    AllocF64,
                                                    AllocFV,
@@ -383,7 +377,6 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
      AllocI32:Allocator<i32>,
      AllocU64:Allocator<u64>,
      AllocCommand:Allocator<super::brotli::enc::command::Command>,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
@@ -395,7 +388,6 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
      AllocHT: Allocator<brotli::enc::entropy_encode::HuffmanTree>,
      AllocZN: Allocator<brotli::enc::ZopfliNode>> {
     p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF2>,
     p3: PhantomData<AllocCDF16>,
     p4: PhantomData<AllocU16>,
     p5: PhantomData<AllocU32>,
@@ -419,7 +411,6 @@ impl<AllocU8:Allocator<u8>,
      AllocCommand:Allocator<super::brotli::enc::command::Command>,
      AllocU32:Allocator<u32>,
      AllocU64:Allocator<u64>,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
@@ -430,8 +421,8 @@ impl<AllocU8:Allocator<u8>,
      AllocCT: Allocator<brotli::enc::histogram::ContextType>,
      AllocHT: Allocator<brotli::enc::entropy_encode::HuffmanTree>,
      AllocZN: Allocator<brotli::enc::ZopfliNode>,
-     > interface::DivansCompressorFactory<AllocU8, AllocU32, AllocCDF2, AllocCDF16>
-    for BrotliDivansHybridCompressorFactory<AllocU8, AllocU16, AllocU32, AllocI32, AllocU64, AllocCommand, AllocCDF2, AllocCDF16,
+     > interface::DivansCompressorFactory<AllocU8, AllocU32, AllocCDF16>
+    for BrotliDivansHybridCompressorFactory<AllocU8, AllocU16, AllocU32, AllocI32, AllocU64, AllocCommand, AllocCDF16,
                                             AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN> {
      type DefaultEncoder = DefaultEncoderType!();
      type ConstructedCompressor = BrotliDivansHybridCompressor<interface::DefaultCDF16,
@@ -442,7 +433,6 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocI32,
                                                                AllocU64,
                                                                AllocCommand,
-                                                               AllocCDF2,
                                                                AllocCDF16,
                                                                AllocF64,
                                                                AllocFV,
@@ -456,7 +446,7 @@ impl<AllocU8:Allocator<u8>,
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocU64, AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN,
                              );
-        fn new(mut m8: AllocU8, m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+        fn new(mut m8: AllocU8, m32: AllocU32, mcdf16:AllocCDF16,
                opt: super::interface::DivansCompressorOptions,
                additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         let window_size = min(24, max(10, opt.window_size.unwrap_or(22)));
@@ -481,9 +471,8 @@ impl<AllocU8:Allocator<u8>,
                                                                               additional_args.2,
                                                                               m32,
                                                                               additional_args.3),
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16>::new(
                 m8,
-                mcdf2,
                 mcdf16,
                 cmd_enc,
                 lit_enc,

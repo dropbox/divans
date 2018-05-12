@@ -76,7 +76,7 @@ macro_rules! println_stderr(
     } }
 );
 */
-use super::probability::{CDF2, CDF16, Speed};
+use super::probability::{CDF16, Speed};
 
 //#[cfg(feature="billing")]
 //use std::io::Write;
@@ -152,7 +152,6 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
-                       AllocCDF2:Allocator<CDF2>,
                        AllocCDF16:Allocator<Cdf16>> {
     cross_command_state: CrossCommandState<ArithmeticCoder,
                                            Specialization,
@@ -160,7 +159,6 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                                            LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
-                                           AllocCDF2,
                                            AllocCDF16>,
     state: EncodeOrDecodeState,
     state_lit: literal::LiteralState<AllocU8>,
@@ -193,9 +191,8 @@ impl<AllocU8: Allocator<u8>,
      LinearInputBytes:StreamDemuxer<AllocU8>+ThreadToMain<AllocU8>+Default,
      LinearOutputBytes:StreamMuxer<AllocU8>+Default,
      Cdf16:CDF16,
-     AllocCDF2: Allocator<CDF2>,
-     AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
-    pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+     AllocCDF16:Allocator<Cdf16>> DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
+    pub fn free(self) -> (AllocU8, AllocCDF16) {
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
@@ -207,7 +204,6 @@ impl<AllocU8: Allocator<u8>,
         self.cross_command_state.free_ref()
     }
     pub fn new(m8:AllocU8,
-               mcdf2:AllocCDF2,
                mcdf16:AllocCDF16,
                cmd_coder: ArithmeticCoder,
                lit_coder: ArithmeticCoder,
@@ -219,16 +215,14 @@ impl<AllocU8: Allocator<u8>,
                do_context_map: bool,
                force_stride: interface::StrideSelection,
                skip_checksum: bool) -> Self {
-        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF2, AllocCDF16> {
+        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
             cross_command_state:CrossCommandState::<ArithmeticCoder,
                                                     Specialization,
                                                     LinearInputBytes,
                                                     LinearOutputBytes,
                                                     Cdf16,
                                                     AllocU8,
-                                                    AllocCDF2,
                                                     AllocCDF16>::new(m8,
-                                                                     mcdf2,
                                                                      mcdf16,
                                                                      cmd_coder,
                                                                      lit_coder,

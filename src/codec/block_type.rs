@@ -13,7 +13,7 @@ use ::interface::{
     BlockSwitch,
     LiteralBlockSwitch,
 };
-use ::probability::{Speed, CDF2, CDF16};
+use ::probability::{Speed, CDF16};
 use ::priors::PriorCollection;
 use super::priors::{BlockTypePriorType};
 #[derive(Clone,Copy,PartialEq,Eq, Hash, Debug)]
@@ -35,7 +35,6 @@ impl BlockTypeState {
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,
-                            AllocCDF2:Allocator<CDF2>,
                             AllocCDF16:Allocator<Cdf16>>(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,
@@ -44,7 +43,6 @@ impl BlockTypeState {
                                            LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
-                                           AllocCDF2,
                                            AllocCDF16>,
         input_bs: BlockSwitch,
         block_type_switch_index:usize,
@@ -125,7 +123,6 @@ impl LiteralBlockTypeState {
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>>(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,
@@ -134,7 +131,6 @@ impl LiteralBlockTypeState {
                                            LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
-                                           AllocCDF2,
                                            AllocCDF16>,
         input_bs: LiteralBlockSwitch,
         output_bytes: &mut [u8],

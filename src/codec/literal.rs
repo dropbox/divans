@@ -1,6 +1,6 @@
 use core;
 use interface::{DivansResult, StreamMuxer, StreamDemuxer};
-use ::probability::{CDF2, CDF16, Speed, ExternalProbCDF16};
+use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::UninitializedOnAlloc;
@@ -383,7 +383,6 @@ impl<AllocU8:Allocator<u8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             Specialization:EncoderOrDecoderSpecialization,
-                            AllocCDF2:Allocator<CDF2>,
                             AllocCDF16:Allocator<Cdf16>,
                             CTraits:CodecTraits,
                         >(&mut self,
@@ -393,7 +392,6 @@ impl<AllocU8:Allocator<u8>,
                                                              LinearOutputBytes,
                                                              Cdf16,
                                                              AllocU8,
-                                                             AllocCDF2,
                                                              AllocCDF16>,
                           in_cmd: &LiteralCommand<ISlice>,
                           output_bytes:&mut [u8],

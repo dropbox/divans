@@ -97,7 +97,6 @@ type DivansBrotliFactory = ::BrotliDivansHybridCompressorFactory<HeapAlloc<u8>,
                                                          HeapAlloc<i32>,
                                                          HeapAlloc<u64>,
                                                          HeapAlloc<brotli::enc::command::Command>,
-                                                         HeapAlloc<::CDF2>,
                                                          HeapAlloc<::DefaultCDF16>,
                                                          HeapAlloc<brotli::enc::util::floatX>,
                                                          HeapAlloc<brotli::enc::vectorization::Mem256f>,
@@ -110,7 +109,6 @@ type DivansBrotliFactory = ::BrotliDivansHybridCompressorFactory<HeapAlloc<u8>,
                                                          HeapAlloc<brotli::enc::ZopfliNode>>;
 type DivansBrotliConstructedCompressor = <DivansBrotliFactory as ::DivansCompressorFactory<HeapAlloc<u8>,
                                                                                            HeapAlloc<u32>,
-                                                                                           HeapAlloc<::CDF2>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
 impl<T:Compressor> Processor for T {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
@@ -148,7 +146,6 @@ impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
                           DivansBrotliFactory::new(
                                            m8,
                                            HeapAlloc::<u32>::new(0),
-                                           HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
                                            opts,
                                            (
@@ -175,11 +172,9 @@ impl<W:Write> DivansBrotliHybridCompressorWriter<W> {
 
 
 type DivansCustomFactory = ::DivansCompressorFactoryStruct<HeapAlloc<u8>,
-                                                         HeapAlloc<::CDF2>,
                                                          HeapAlloc<::DefaultCDF16>>;
 type DivansCustomConstructedCompressor = <DivansCustomFactory as ::DivansCompressorFactory<HeapAlloc<u8>,
                                                                                            HeapAlloc<u32>,
-                                                                                           HeapAlloc<::CDF2>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
 pub struct DivansExperimentalCompressorWriter<W:Write>(GenWriter<W,
                                                                 DivansCustomConstructedCompressor,
@@ -208,7 +203,6 @@ impl<W:Write> DivansExperimentalCompressorWriter<W> {
                           DivansCustomFactory::new(
                                            m8,
                                            HeapAlloc::<u32>::new(0),
-                                           HeapAlloc::<::CDF2>::new(::CDF2::default()),
                                            HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
                                            opts,
                                            ()),
@@ -220,14 +214,11 @@ impl<W:Write> DivansExperimentalCompressorWriter<W> {
 
 
 type StandardDivansDecompressorFactory = ::DivansDecompressorFactoryStruct<HeapAlloc<u8>,
-                                                                     HeapAlloc<::CDF2>,
                                                                      HeapAlloc<::DefaultCDF16>>;
 type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompressorFactory as ::DivansDecompressorFactory<HeapAlloc<u8>,
-                                                                                                       HeapAlloc<::CDF2>,
                                                                                                                             HeapAlloc<::DefaultCDF16>>
                                                            >::DefaultDecoder,
                                                           HeapAlloc<u8>,
-                                                          HeapAlloc<::CDF2>,
                                                           HeapAlloc<::DefaultCDF16>>;
 impl Processor for DivansConstructedDecompressor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
@@ -270,7 +261,6 @@ impl<W:Write> DivansDecompressorWriter<W> {
                           writer,
                           StandardDivansDecompressorFactory::new(
                               m8,
-                              HeapAlloc::<::CDF2>::new(::CDF2::default()),
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
                               skip_crc,
                           ),

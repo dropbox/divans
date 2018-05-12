@@ -1,7 +1,7 @@
 use core;
 use interface::{DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, DivansResult};
 use ::cmd_to_raw::DivansRecodeState;
-use ::probability::{CDF2, CDF16, Speed};
+use ::probability::{CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::RepurposingAlloc;
@@ -140,7 +140,6 @@ pub struct LiteralBookKeeping<Cdf16:CDF16,
 
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
-                                   AllocCDF2:Allocator<CDF2>,
                                    AllocCDF16:Allocator<Cdf16>> {
     //pub command_count:u32,
     //pub num_literals_coded: u32,
@@ -169,7 +168,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_force_stride: StrideSelection,
     pub desired_context_mixing: u8,
     pub command_count: u64,
-    _legacy: core::marker::PhantomData<AllocCDF2>,
 }
 
 #[inline(always)]
@@ -350,12 +348,10 @@ impl<
 }
 impl<                                   
      Cdf16:CDF16,
-     AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>,
      AllocU8:Allocator<u8>> CrossCommandBookKeeping<
                                                     Cdf16,
                                                     AllocU8,
-                                                    AllocCDF2,
                                                     AllocCDF16> {
     fn new(lit_len_prior:AllocCDF16::AllocatedMemory,
            cc_prior: AllocCDF16::AllocatedMemory,
@@ -418,7 +414,6 @@ impl<
             btype_max_seen:[0;3],
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
-            _legacy: core::marker::PhantomData::<AllocCDF2>::default(),
         }
     }
     pub fn materialized_prediction_mode(&self) -> bool {
@@ -619,7 +614,6 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
-                             AllocCDF2:Allocator<CDF2>,
                              AllocCDF16:Allocator<Cdf16>> {
     //pub cmd_coder: ArithmeticCoder,
     //pub lit_coder: ArithmeticCoder,
@@ -627,11 +621,10 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     pub specialization: Specialization,
     pub recoder: Option<DivansRecodeState<AllocU8::AllocatedMemory>>,
     pub m8: Option<RepurposingAlloc<u8, AllocU8>>,
-    mcdf2: AllocCDF2,
     pub mcdf16: AllocCDF16,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
-    pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF2, AllocCDF16>,
+    pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF16>,
     pub lbk: Option<LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
@@ -643,14 +636,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
-                             AllocCDF2:Allocator<CDF2>,
      AllocCDF16:Allocator<Cdf16>> CrossCommandState<ArithmeticCoder,
                                                     Specialization,
                                                     LinearInputBytes,
                                                     LinearOutputBytes,
                                                     Cdf16,
                                                     AllocU8,
-                                                    AllocCDF2,
                                                     AllocCDF16>{
     #[inline(always)]
     pub fn drain_or_fill_internal_buffer(&mut self, index: usize, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
@@ -662,7 +653,6 @@ impl <AllocU8:Allocator<u8>,
       LinearInputBytes:StreamDemuxer<AllocU8>+Default,
       LinearOutputBytes:StreamMuxer<AllocU8>+Default,                                   
       Cdf16:CDF16,
-      AllocCDF2:Allocator<CDF2>,
       AllocCDF16:Allocator<Cdf16>,
       ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
       Specialization:EncoderOrDecoderSpecialization,
@@ -672,10 +662,8 @@ impl <AllocU8:Allocator<u8>,
                           LinearOutputBytes,
                           Cdf16,
                           AllocU8,
-                          AllocCDF2,
                           AllocCDF16> {
     pub fn new(mut m8: AllocU8,
-               mcdf2:AllocCDF2,
                mut mcdf16:AllocCDF16,
                //cmd_coder: ArithmeticCoder,
                //lit_coder: ArithmeticCoder,
@@ -705,7 +693,6 @@ impl <AllocU8:Allocator<u8>,
                             LinearOutputBytes,
                             Cdf16,
                             AllocU8,
-                            AllocCDF2,
                             AllocCDF16> {
             //cmd_coder: cmd_coder,
             coder: [cmd_coder, lit_coder],
@@ -714,7 +701,6 @@ impl <AllocU8:Allocator<u8>,
             recoder: Some(DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer)),
             m8: Some(RepurposingAlloc::<u8, AllocU8>::new(m8)),
-            mcdf2:mcdf2,
             mcdf16:mcdf16,
             lit_high_priors: LiteralNibblePriors {
                 priors: lit_high_priors
@@ -793,9 +779,9 @@ impl <AllocU8:Allocator<u8>,
         self.free_internal();
         self.m8.as_mut().unwrap().free_ref();
     }
-    pub fn free(mut self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+    pub fn free(mut self) -> (AllocU8, AllocCDF16) {
         self.free_internal();
-        (self.m8.unwrap().free(), self.mcdf2, self.mcdf16)
+        (self.m8.unwrap().free(), self.mcdf16)
     }
 }
 

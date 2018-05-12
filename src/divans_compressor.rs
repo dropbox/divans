@@ -18,7 +18,7 @@ use core;
 use core::marker::PhantomData;
 use core::hash::Hasher;
 use super::mux::{Mux,DevNull};
-use super::probability;
+
 
 use super::raw_to_cmd;
 use super::slice_util;
@@ -52,10 +52,9 @@ const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocU32:Allocator<u32>,
-                            AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
     m32: AllocU32,
-    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>,
+    codec: DivansCodec<DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16>,
     header_progress: usize,
     window_size: u8,
     literal_context_map_backing: AllocU8::AllocatedMemory,
@@ -69,27 +68,23 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
 
 pub struct DivansCompressorFactoryStruct
     <AllocU8:Allocator<u8>, 
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF2>,
-    p3: PhantomData<AllocCDF16>,
+    p2: PhantomData<AllocCDF16>,
 }
 
 impl<AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> interface::DivansCompressorFactory<AllocU8,
                                                                                        AllocU32,
-                                                                                       AllocCDF2,
                                                                                        AllocCDF16>
-    for DivansCompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
+    for DivansCompressorFactoryStruct<AllocU8, AllocCDF16> {
      type DefaultEncoder = DefaultEncoderType!();
-     type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16>;
+     type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF16>;
      type AdditionalArgs = ();
-     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf2:AllocCDF2, mcdf16:AllocCDF16,
+     fn new(mut m8: AllocU8, mut m32: AllocU32, mcdf16:AllocCDF16,
             opts: super::interface::DivansCompressorOptions,
-            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+            _additional_args: ()) -> DivansCompressor<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF16> {
          let window_size = core::cmp::min(24, core::cmp::max(10, opts.window_size.unwrap_or(22)));
          let ring_buffer = m8.alloc_cell(1<<window_size);
          let prediction_mode_backing = m8.alloc_cell(interface::MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE);
@@ -97,11 +92,10 @@ impl<AllocU8:Allocator<u8>,
          let cmd_enc = Self::DefaultEncoder::new(&mut m8);
          let lit_enc = Self::DefaultEncoder::new(&mut m8);
          let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
-         DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+         DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF16> {
             m32 :m32,
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF2, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16>::new(
                 m8,
-                mcdf2,
                 mcdf16,
                 cmd_enc,
                 lit_enc,
@@ -193,8 +187,8 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
 
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF2:Allocator<probability::CDF2>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
-    DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF2, AllocCDF16> {
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
+    DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansOutputResult {
         if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
             let thawed_buffer = thaw_commands(&self.freeze_dried_cmd_array[..], self.cmd_assembler.ring_buffer.slice(),
@@ -262,12 +256,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
         self.codec.get_m8().as_mut().unwrap().free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         self.codec.free_ref();
     }
-    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF2, AllocCDF16) {
-        let (mut m8, mcdf2, mcdf16) = self.codec.free();
+    pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF16) {
+        let (mut m8, mcdf16) = self.codec.free();
         self.cmd_assembler.free(&mut self.m32);
         m8.free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
         m8.free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
-        (m8, self.m32, mcdf2, mcdf16)
+        (m8, self.m32, mcdf16)
     }
 
 }
@@ -276,11 +270,9 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder,
                                                                                     AllocU8,
                                                                                     AllocU32,
-                                                                                    AllocCDF2,
                                                                                     AllocCDF16> {
     fn encode(&mut self,
               input: &[u8],

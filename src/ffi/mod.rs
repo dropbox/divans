@@ -203,7 +203,6 @@ pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAlloc
         custom_allocator:allocators.clone(),
         decompressor:decompressor::DecompressorFactory::new(
             SubclassableAllocator::<u8>::new(allocators.clone()),
-            SubclassableAllocator::<super::CDF2>::new(allocators.clone()),
             SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
             skip_crc != 0,
         ),

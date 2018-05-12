@@ -20,7 +20,7 @@ use ::interface::{
     NUM_MIXING_VALUES,
 };
 use ::priors::PriorCollection;
-use ::probability::{Speed, CDF2, CDF16, SpeedPalette};
+use ::probability::{Speed, CDF16, SpeedPalette};
 
 
 
@@ -106,7 +106,6 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                             LinearInputBytes:StreamDemuxer<AllocU8>+Default,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
-                        AllocCDF2:Allocator<CDF2>,
                         AllocCDF16:Allocator<Cdf16>,
                         SliceType:SliceWrapper<u8>+Default>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
@@ -115,7 +114,6 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                                                                                   LinearOutputBytes,
                                                                                   Cdf16,
                                                                                   AllocU8,
-                                                                                  AllocCDF2,
                                                                                   AllocCDF16>,
                                                in_cmd: &PredictionModeContextMap<SliceType>,
                                                output_bytes:&mut [u8],

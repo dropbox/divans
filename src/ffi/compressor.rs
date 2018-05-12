@@ -12,7 +12,6 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<i32>,
                                                          SubclassableAllocator<u64>,
                                                          SubclassableAllocator<brotli::enc::command::Command>,
-                                                         SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>,
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
@@ -24,14 +23,12 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
                                                          SubclassableAllocator<brotli::enc::ZopfliNode>>;
 type InternalCompressorFactory = ::DivansCompressorFactoryStruct<SubclassableAllocator<u8>,
-                                                         SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>>;
 pub enum CompressorState {
     OptionStage(DivansCompressorOptions),
     BrotliCompressor(::BrotliDivansHybridCompressor<::DefaultCDF16,
                                                          <BrotliFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
                                                                                                           SubclassableAllocator<u32>,
-                                                                                                           SubclassableAllocator<::CDF2>,
                                                                                                           SubclassableAllocator<::DefaultCDF16>>
                                                           >::DefaultEncoder,
                                                          SubclassableAllocator<u8>,
@@ -40,7 +37,6 @@ pub enum CompressorState {
                                                          SubclassableAllocator<i32>,
                                                          SubclassableAllocator<u64>,
                                                          SubclassableAllocator<brotli::enc::command::Command>,
-                                                         SubclassableAllocator<::CDF2>,
                                                          SubclassableAllocator<::DefaultCDF16>,
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
@@ -53,12 +49,10 @@ pub enum CompressorState {
                                                          SubclassableAllocator<brotli::enc::ZopfliNode>>),
     InternalCompressor(::DivansCompressor<<InternalCompressorFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
                                                                                                              SubclassableAllocator<u32>,
-                                                                                                             SubclassableAllocator<::CDF2>,
                                                                                                              SubclassableAllocator<::DefaultCDF16>>
                                                >::DefaultEncoder,
                        SubclassableAllocator<u8>,
                        SubclassableAllocator<u32>,
-                       SubclassableAllocator<::CDF2>,
                        SubclassableAllocator<::DefaultCDF16>>),
 }
 
@@ -177,7 +171,6 @@ impl CompressorState {
                                        InternalCompressorFactory::new(
                                            SubclassableAllocator::<u8>::new(allocators.clone()),
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
-                                           SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
                                            opts,
                                            ())));
@@ -188,7 +181,6 @@ impl CompressorState {
                                        BrotliFactory::new(
                                            SubclassableAllocator::<u8>::new(allocators.clone()),
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
-                                           SubclassableAllocator::<::CDF2>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
                                            opts,
                                            (

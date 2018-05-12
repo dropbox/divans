@@ -1,7 +1,6 @@
 use core;
 use core::marker::PhantomData;
 use core::hash::Hasher;
-use ::probability;
 use ::interface;
 use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
@@ -15,18 +14,15 @@ use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 
 pub struct HeaderParser<AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<probability::CDF2>,
                         AllocCDF16:Allocator<interface::DefaultCDF16>> {
     header:[u8;interface::HEADER_LENGTH],
     read_offset: usize,
     m8: Option<AllocU8>,
-    mcdf2: Option<AllocCDF2>,
     mcdf16: Option<AllocCDF16>,
     skip_crc: bool,
 }
 impl<AllocU8:Allocator<u8>,
-     AllocCDF2:Allocator<probability::CDF2>,
-     AllocCDF16:Allocator<interface::DefaultCDF16>>HeaderParser<AllocU8, AllocCDF2, AllocCDF16> {
+     AllocCDF16:Allocator<interface::DefaultCDF16>>HeaderParser<AllocU8, AllocCDF16> {
     pub fn parse_header(&mut self)->Result<usize, DivansResult>{
         if self.header[0] != interface::MAGIC_NUMBER[0] ||
             self.header[1] != interface::MAGIC_NUMBER[1] {
@@ -47,39 +43,34 @@ impl<AllocU8:Allocator<u8>,
 
 pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
-                            AllocCDF2:Allocator<probability::CDF2>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
-    Header(HeaderParser<AllocU8, AllocCDF2, AllocCDF16>),
+    Header(HeaderParser<AllocU8, AllocCDF16>),
     Decode(codec::DivansCodec<DefaultDecoder,
                               DecoderSpecialization,
                               DemuxerAndRingBuffer<AllocU8, Mux<AllocU8>>,
                               DevNull<AllocU8>,
                               interface::DefaultCDF16,
                               AllocU8,
-                              AllocCDF2,
                               AllocCDF16>,
            usize),
 }
 
 pub trait DivansDecompressorFactory<
      AllocU8:Allocator<u8>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>;
     fn new(m8: AllocU8,
-           mcdf2:AllocCDF2,
            mcdf16:AllocCDF16,
-           skip_crc:bool) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
-        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf2:Some(mcdf2), mcdf16:Some(mcdf16),
+           skip_crc:bool) -> DivansDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF16> {
+        DivansDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf16:Some(mcdf16),
                                                 skip_crc:skip_crc})
     }
 }
 
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
                         AllocU8:Allocator<u8>,
-                        AllocCDF2:Allocator<probability::CDF2>,
                         AllocCDF16:Allocator<interface::DefaultCDF16>>
-    DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF2, AllocCDF16> {
+    DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF16> {
 
     fn finish_parsing_header(&mut self, window_size: usize) -> DivansResult {
         if window_size < 10 {
@@ -89,7 +80,6 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             return DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8));
         }
         let mut m8:AllocU8;
-        let mcdf2:AllocCDF2;
         let mcdf16:AllocCDF16;
         let raw_header:[u8; interface::HEADER_LENGTH];
         let skip_crc:bool;
@@ -101,15 +91,6 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                 };
                 raw_header = header.header;
                 skip_crc = header.skip_crc;
-            },
-            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
-        }
-        match *self {
-            DivansDecompressor::Header(ref mut header) => {
-                mcdf2 = match core::mem::replace(&mut header.mcdf2, None) {
-                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(2)),
-                    Some(m) => m,
-                }
             },
             _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
         }
@@ -131,9 +112,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
-                                             AllocCDF2,
                                              AllocCDF16>::new(m8,
-                                                              mcdf2,
                                                               mcdf16,
                                                               cmd_decoder,
                                                               lit_decoder,
@@ -158,11 +137,10 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             decoder.free_ref();
         }
     }
-    pub fn free(self) -> (AllocU8, AllocCDF2, AllocCDF16) {
+    pub fn free(self) -> (AllocU8, AllocCDF16) {
         match self {
             DivansDecompressor::Header(parser) => {
                 (parser.m8.unwrap(),
-                 parser.mcdf2.unwrap(),
                  parser.mcdf16.unwrap())
             },
             DivansDecompressor::Decode(decoder, bytes_encoded) => {
@@ -178,10 +156,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
 
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> Decompressor for DivansDecompressor<DefaultDecoder,
                                                                                         AllocU8,
-                                                                                        AllocCDF2,
                                                                                         AllocCDF16> {
     fn decode(&mut self,
               input:&[u8],
@@ -235,18 +211,14 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
 
 pub struct DivansDecompressorFactoryStruct
     <AllocU8:Allocator<u8>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF2>,
-    p3: PhantomData<AllocCDF16>,
+    p2: PhantomData<AllocCDF16>,
 }
 
 impl<AllocU8:Allocator<u8>,
-     AllocCDF2:Allocator<probability::CDF2>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> DivansDecompressorFactory<AllocU8,
-                                                                              AllocCDF2,
                                                                               AllocCDF16>
-    for DivansDecompressorFactoryStruct<AllocU8, AllocCDF2, AllocCDF16> {
+    for DivansDecompressorFactoryStruct<AllocU8, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }
