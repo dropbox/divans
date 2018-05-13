@@ -8,7 +8,7 @@ use ::codec;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
 use codec::decoder::DivansDecoderCodec;
-use threading::SerialWorker;
+use threading::{ThreadToMainDemuxer, SerialWorker};
 
 
 use ::interface::DivansResult;
@@ -44,12 +44,12 @@ impl<AllocU8:Allocator<u8>,
 
 }
 
-struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                      AllocU8:Allocator<u8>,
                      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     codec: Option<codec::DivansCodec<DefaultDecoder,
                               DecoderSpecialization,
-                              DemuxerAndRingBuffer<AllocU8, Mux<AllocU8>>,
+                              ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
                               DevNull<AllocU8>,
                               interface::DefaultCDF16,
                               AllocU8,
@@ -66,14 +66,9 @@ pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWith
                             AllocU8:Allocator<u8>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
     Header(HeaderParser<AllocU8, AllocCDF16>),
-    Decode(codec::DivansCodec<DefaultDecoder,
-                              DecoderSpecialization,
-                              DemuxerAndRingBuffer<AllocU8, Mux<AllocU8>>,
-                              DevNull<AllocU8>,
-                              interface::DefaultCDF16,
+    Decode(DivansProcess<DefaultDecoder,
                               AllocU8,
-                              AllocCDF16>,
-           usize),
+                              AllocCDF16>),
 }
 
 pub trait DivansDecompressorFactory<
@@ -129,7 +124,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let lit_decoder = DefaultDecoder::new(&mut m8);
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
-                                             DemuxerAndRingBuffer<AllocU8, Mux<AllocU8>>,
+                                             ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
@@ -145,17 +140,28 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                           true,
                                                               codec::StrideSelection::UseBrotliRec,
                                                               skip_crc);
+        let main_thread_codec = codec.fork(SerialWorker::<AllocU8>::default());
         if !skip_crc {
             codec.get_crc().write(&raw_header[..]);
         }
         core::mem::replace(self,
                            DivansDecompressor::Decode(
-                               codec, 0));
+                               DivansProcess::<DefaultDecoder, AllocU8, AllocCDF16> {
+                                   codec:Some(codec),
+                                   literal_decoder:Some(main_thread_codec),
+                                   bytes_encoded:0,
+                               }));
         DivansResult::Success
     }
     pub fn free_ref(&mut self) {
-        if let DivansDecompressor::Decode(ref mut decoder, _bytes_encoded) = *self {
-            decoder.free_ref();
+        if let DivansDecompressor::Decode(ref mut process) = *self {
+            if let Some(ref mut codec) = process.codec {
+                let lit_decoder = core::mem::replace(&mut process.literal_decoder, None);
+                if let Some(ld) = lit_decoder {
+                    codec.join(ld);
+                }
+                codec.free_ref();
+            }
         }
     }
     pub fn free(self) -> (AllocU8, AllocCDF16) {
@@ -164,12 +170,20 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                 (parser.m8.unwrap(),
                  parser.mcdf16.unwrap())
             },
-            DivansDecompressor::Decode(decoder, bytes_encoded) => {
+            DivansDecompressor::Decode(mut process) => {
                 use codec::NUM_ARITHMETIC_CODERS;
-                for index in 0..NUM_ARITHMETIC_CODERS {
-                    decoder.get_coder(index as u8).debug_print(bytes_encoded);
+                if let Some(mut codec) = core::mem::replace(&mut process.codec, None) {
+                    let lit_decoder = core::mem::replace(&mut process.literal_decoder, None);
+                    if let Some(ld) = lit_decoder {
+                        codec.join(ld);
+                    }
+                    for index in 0..NUM_ARITHMETIC_CODERS {
+                        codec.get_coder(index as u8).debug_print(process.bytes_encoded);
+                    }
+                    codec.free()
+                } else {
+                    panic!("Trying to free unjoined decoder"); //FIXME: this does not seem ergonomic
                 }
-                decoder.free()
             }
         }
     }
@@ -208,17 +222,17 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                     return DivansResult::NeedsMoreInput;
                 }
             },
-            DivansDecompressor::Decode(ref mut divans_parser, ref mut bytes_encoded) => {
+            DivansDecompressor::Decode(ref mut process) => {
                 let mut unused:usize = 0;
                 let old_output_offset = *output_offset;
-                let retval = divans_parser.encode_or_decode::<AllocU8::AllocatedMemory>(
+                let retval = process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
                     input,
                     input_offset,
                     output,
                     output_offset,
                     &[],
                     &mut unused);
-                *bytes_encoded += *output_offset - old_output_offset;
+                process.bytes_encoded += *output_offset - old_output_offset;
                 return retval;
             },
         }

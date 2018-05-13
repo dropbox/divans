@@ -109,6 +109,11 @@ pub struct ThreadToMainDemuxer<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMa
     unused: NopUsize,
     eof: bool,
 }
+impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+Default> Default for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    fn default() -> Self {
+        Self::new(WorkerInterface::default())
+    }
+}
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
     pub fn new(w:WorkerInterface) -> Self {
         Self{
