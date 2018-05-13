@@ -52,7 +52,7 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub frozen_checksum: Option<u64>,
     pub skip_checksum: bool,
     pub state_lit: LiteralState<AllocU8>,
-    pub state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+    pub state_populate_ring_buffer: Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>,
     pub specialization: DecoderSpecialization,
 }
 
@@ -77,7 +77,7 @@ impl<Cdf16:CDF16,
                 lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
                 state:LiteralSubstate::Begin,
             },
-            state_populate_ring_buffer:Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+            state_populate_ring_buffer:None,
             specialization:DecoderSpecialization::default(),
         }
     }
@@ -97,7 +97,11 @@ impl<Cdf16:CDF16,
             }
             *input_offset += adjusted_input_bytes_offset;
         }
-        worker.push(self.demuxer.pop(CMD_CODER as StreamID));
+        // beginning and end??
+        worker.push(self.demuxer.edit(CMD_CODER as StreamID));
+        
+        // beginning and end??
+        worker.push(self.demuxer.edit(CMD_CODER as StreamID));
     }
 }
 

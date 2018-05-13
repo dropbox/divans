@@ -49,8 +49,8 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
         self.0.peek(stream_id)
     }
     #[inline(always)]
-    fn pop(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
-        self.0.pop(stream_id)
+    fn edit(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
+        self.0.edit(stream_id)
     }
     #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize) {
@@ -69,7 +69,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
 // this is an implementation of simply printing to the ring buffer that masquerades as communicating with a 'main thread'
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMain<AllocU8> for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
-        ThreadData::Data(core::mem::replace(self.0.pop(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
+        ThreadData::Data(core::mem::replace(self.0.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
     }
     fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
         match m8 {

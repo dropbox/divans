@@ -140,7 +140,7 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
     fn peek(&self, stream_id: StreamID) -> &[u8] {
         self.data_avail(stream_id)
     }
-    fn pop(&mut self, stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
+    fn edit(&mut self, stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
         &mut self.buf[usize::from(stream_id)]
     }
     fn consume(&mut self, stream_id: StreamID, count: usize) {
@@ -593,7 +593,7 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
     fn peek(&self, _stream_id: StreamID) -> &[u8] {
         &[]
     }
-    fn pop(&mut self, _stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
+    fn edit(&mut self, _stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
         &mut self.empty
     }
     fn consume(&mut self, _stream_id: StreamID, count: usize) {

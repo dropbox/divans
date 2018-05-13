@@ -261,7 +261,9 @@ impl<AllocU8: Allocator<u8>,
                                                 AllocCDF16,
                                                 ArithmeticCoder,
                                                 Mux<AllocU8>>) {
-        free_cmd(&mut decoder.state_populate_ring_buffer, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
+        if let Some(ref mut ring_buffer_state) = decoder.state_populate_ring_buffer {
+            free_cmd(ring_buffer_state, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
+        }
         self.crc = decoder.crc;
         decoder.ctx.m8.use_cached_allocation::<
                 UninitializedOnAlloc>().free_cell(core::mem::replace(&mut self.state_lit.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default()));

@@ -167,7 +167,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.slice.slice()
     }
     #[inline(always)]
-    fn pop(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
+    fn edit(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
         assert_eq!(stream_id, 0);
         self.pull_if_necessary();
         &mut self.slice
