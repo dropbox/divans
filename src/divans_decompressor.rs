@@ -7,6 +7,9 @@ use ::DecoderSpecialization;
 use ::codec;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
+use codec::decoder::DivansDecoderCodec;
+use threading::SerialWorker;
+
 
 use ::interface::DivansResult;
 use ::interface::ErrMsg;
@@ -41,6 +44,24 @@ impl<AllocU8:Allocator<u8>,
 
 }
 
+struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                     AllocU8:Allocator<u8>,
+                     AllocCDF16:Allocator<interface::DefaultCDF16>> {
+    codec: Option<codec::DivansCodec<DefaultDecoder,
+                              DecoderSpecialization,
+                              DemuxerAndRingBuffer<AllocU8, Mux<AllocU8>>,
+                              DevNull<AllocU8>,
+                              interface::DefaultCDF16,
+                              AllocU8,
+                                     AllocCDF16>>,
+    literal_decoder: Option<DivansDecoderCodec<interface::DefaultCDF16,
+                                               AllocU8,
+                                               AllocCDF16,
+                                               DefaultDecoder,
+                                               SerialWorker<AllocU8>,
+                                               Mux<AllocU8>>>,
+    bytes_encoded: usize,
+}
 pub enum DivansDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {

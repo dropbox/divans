@@ -10,6 +10,20 @@ pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
     Eof,
 }
+
+impl<AllocU8:Allocator<u8>> Default for ThreadData<AllocU8> {
+    fn default() -> Self {
+        ThreadData::Data(AllocatedMemoryRange::<u8, AllocU8>::default())
+    }
+}
+
+pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> PredictionModeContextMap<ISl> {
+    PredictionModeContextMap::<ISl> {
+        literal_context_map:ISl::default(),
+        predmode_speed_and_distance_context_map:ISl::default(),
+    }
+}
+
 pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
     Cmd(Command<SliceType>),
     Eof,
@@ -44,6 +58,25 @@ pub struct SerialWorker<AllocU8:Allocator<u8>> {
     result_len: usize,
     result:[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;3],
 }
+impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
+    fn default() -> Self {
+        SerialWorker::<AllocU8> {
+            data_len: 0,
+            data:[ThreadData::<AllocU8>::default(),
+                  ThreadData::<AllocU8>::default()],
+            cm_len: 0,
+            cm: [empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>(),
+                 empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>()],
+            result_len: 0,
+            result: [
+                CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),
+                ],
+        }
+    }
+}
+
 
 impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {

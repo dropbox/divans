@@ -728,10 +728,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PredictionMode => {
-                    let default_prediction_mode_context_map = PredictionModeContextMap::<ISl> {
-                        literal_context_map:ISl::default(),
-                        predmode_speed_and_distance_context_map:ISl::default(),
-                    };
+                    let default_prediction_mode_context_map = empty_prediction_mode_context_map::<ISl>();
                     let src_pred_mode = match *input_cmd {
                         Command::PredictionMode(ref pm) => pm,
                         _ => &default_prediction_mode_context_map,
@@ -955,3 +952,9 @@ impl<AllocU8: Allocator<u8>,
     }
 }
 
+pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> PredictionModeContextMap<ISl> {
+    PredictionModeContextMap::<ISl> {
+        literal_context_map:ISl::default(),
+        predmode_speed_and_distance_context_map:ISl::default(),
+    }
+}
