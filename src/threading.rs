@@ -88,7 +88,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         Ok(())
     }
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
-        if self.data_len == self.data.len() {
+        if self.data_len == self.data.len() || data.slice().len() == 0 {
             return Err(());
         }
         self.data[self.data_len] = ThreadData::Data(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
