@@ -348,7 +348,11 @@ impl<AllocU8: Allocator<u8>,
             0xf => if is_end {
                 self.state = EncodeOrDecodeState::DivansSuccess; // encoder flows through this path
             } else {
-                self.state = EncodeOrDecodeState::WriteChecksum(0);
+                match self.cross_command_state.thread_ctx {
+                    // only main thread can checksum
+                    ThreadContext::MainThread(_) => self.state = EncodeOrDecodeState::WriteChecksum(0),
+                    ThreadContext::Worker => self.state = EncodeOrDecodeState::DivansSuccess,
+                }
             },
             _ => return DivansResult::Failure(ErrMsg::CommandCodeOutOfBounds(command_type_code)),
         };

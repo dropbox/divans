@@ -1,7 +1,7 @@
 // This file contains a threaded decoder
 use core;
 use core::hash::Hasher;
-use interface::{DivansResult, DivansOutputResult, DivansInputResult, StreamMuxer, StreamDemuxer, StreamID};
+use interface::{DivansResult, DivansOutputResult, DivansInputResult, StreamMuxer, StreamDemuxer, StreamID, ErrMsg};
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -51,6 +51,8 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub codec_traits: CodecTraitSelector,
     pub crc: SubDigest,
     pub frozen_checksum: Option<u64>,
+    pub deserialized_crc:[u8;8],
+    pub deserialized_crc_count: u8,
     pub skip_checksum: bool,
     pub state_lit: LiteralState<AllocU8>,
     pub state_populate_ring_buffer: Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>,
@@ -69,8 +71,6 @@ impl<Cdf16:CDF16,
            skip_checksum: bool) -> Self {
         let codec_trait = construct_codec_trait_from_bookkeeping(&main_thread_context.lbk);
         DivansDecoderCodec::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder, LinearInputBytes> {
-            crc:crc,
-            skip_checksum:skip_checksum,
             ctx: main_thread_context,
             demuxer: LinearInputBytes::default(),
             codec_traits:codec_trait,
@@ -82,6 +82,10 @@ impl<Cdf16:CDF16,
             state_populate_ring_buffer:None,
             specialization:DecoderSpecialization::default(),
             outstanding_buffer_count: 0,
+            deserialized_crc:[0u8;8],
+            deserialized_crc_count: 0u8,
+            skip_checksum:skip_checksum,
+            crc:crc,
         }
     }
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
@@ -97,6 +101,13 @@ impl<Cdf16:CDF16,
                 self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
             }
             *input_offset += adjusted_input_bytes_offset;
+        }
+        if self.demuxer.encountered_eof() && usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
+            let crc_bytes_remaining = self.deserialized_crc.len() - usize::from(self.deserialized_crc_count);
+            let amt_to_copy = core::cmp::min(input.len() - *input_offset, crc_bytes_remaining);
+            self.deserialized_crc.split_at_mut(usize::from(self.deserialized_crc_count)).1.split_at_mut(amt_to_copy).0.clone_from_slice(
+                input.split_at(*input_offset).1.split_at(amt_to_copy).0);
+            *input_offset += amt_to_copy;
         }
         // beginning and end??
         match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
@@ -145,7 +156,29 @@ impl<Cdf16:CDF16,
                 need_something => return DivansResult::from(need_something),
             }
             match worker.pull() {
-                CommandResult::Eof => unimplemented!(),
+                CommandResult::Eof => {
+                    if usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
+                        return DivansResult::NeedsMoreInput;
+                    }
+                    let crc = self.crc.finish();
+                    let checksum = [crc as u8 & 255,
+                                    (crc >> 8) as u8 & 255,
+                                    (crc >> 16) as u8 & 255,
+                                    (crc >> 24) as u8 & 255,
+                                    b'a',
+                                    b'n',
+                                    b's',
+                                    b'~'];
+                    for (index, (chk, fil)) in checksum.iter().zip(
+                        self.deserialized_crc.iter()).enumerate() {
+                        if *chk != *fil {
+                            if index >= 4 || !self.skip_checksum {
+                                return DivansResult::Failure(ErrMsg::BadChecksum(*chk, *fil));
+                            }
+                        }
+                    }
+                    return DivansResult::Success; // DONE decoding
+                },
                 CommandResult::ProcessedData(mut dat) => {
                     self.outstanding_buffer_count -= 1;
                     let mut need_input = false;
