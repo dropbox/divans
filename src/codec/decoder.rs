@@ -19,6 +19,7 @@ use super::interface::{
     drain_or_fill_static_buffer,
     MainThreadContext,
     CMD_CODER,
+    LIT_CODER,
 };
 use super::specializations::{
     construct_codec_trait_from_bookkeeping,
@@ -78,7 +79,7 @@ impl<Cdf16:CDF16,
             frozen_checksum: None,
             state_lit: LiteralState {
                 lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
-                state:LiteralSubstate::Begin,
+                state:LiteralSubstate::FullyDecoded,
             },
             state_populate_ring_buffer:None,
             specialization:DecoderSpecialization::default(),
@@ -164,6 +165,10 @@ impl<Cdf16:CDF16,
                                                                 output: &mut [u8],
                                                                 output_offset: &mut usize) -> DivansResult{
         loop {
+            if let LiteralSubstate::FullyDecoded = self.state_lit.state {
+            } else { // we have literal to decode
+                //FIXME
+            }
             match self.populate_ring_buffer(worker, output, output_offset) {
                 Success => {},
                 need_something => return DivansResult::from(need_something),
@@ -221,7 +226,12 @@ impl<Cdf16:CDF16,
                 },
                 CommandResult::Cmd(cmd) => {
                     if let Command::Literal(lit) = cmd {
-                        unimplemented!();
+                        let num_bytes = lit.data.1;
+                        assert_eq!(self.state_lit.lc.data.0.slice().len(), 0);
+                        self.state_lit.lc = lit;
+                        self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                        let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+                        self.state_lit.state = new_state;
                     } else {
                         self.state_populate_ring_buffer=Some(cmd);
                     }
