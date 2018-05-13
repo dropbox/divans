@@ -31,7 +31,7 @@ pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()>;
-    fn push(&mut self, data: AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
+    fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;
 }
 
@@ -87,11 +87,11 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len += 1;
         Ok(())
     }
-    fn push(&mut self, data: AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
+    fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
         if self.data_len == self.data.len() {
             return Err(());
         }
-        self.data[self.data_len] = ThreadData::Data(data);
+        self.data[self.data_len] = ThreadData::Data(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
         self.data_len += 1;
         Ok(())        
     }
@@ -167,10 +167,10 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.slice.slice()
     }
     #[inline(always)]
-    fn pop(&mut self, stream_id: StreamID) -> AllocatedMemoryRange<u8, AllocU8> {
+    fn pop(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
         assert_eq!(stream_id, 0);
         self.pull_if_necessary();
-        core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())
+        &mut self.slice
     }
     #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize) {

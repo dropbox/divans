@@ -4,6 +4,7 @@
 use core;
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 use super::slice_util;
+use slice_util::AllocatedMemoryRange;
 pub use interface::{StreamID, StreamMuxer, StreamDemuxer, NUM_STREAMS, STREAM_ID_MASK, ReadableBytes, WritableBytes};
 enum BytesToDeserialize {
     None,
@@ -24,9 +25,7 @@ const MAX_FLUSH_VARIANCE: usize = 131073;
 
 
 pub struct Mux<AllocU8:Allocator<u8> > {
-   buf: [AllocU8::AllocatedMemory; NUM_STREAMS as usize],
-   read_cursor: [usize; NUM_STREAMS as usize],
-   write_cursor: [usize; NUM_STREAMS as usize],
+   buf: [AllocatedMemoryRange<u8, AllocU8>; NUM_STREAMS as usize],
    cur_stream_bytes_avail: u32,
    cur_stream:StreamID,
    last_flush:[usize; NUM_STREAMS as usize],
@@ -77,6 +76,14 @@ fn get_code(stream_id: StreamID, bytes_to_write: usize, is_lagging: bool) -> (Mu
                ((bytes_to_write - 1)>> 8) as u8 & 0xff];
     return (MuxSliceHeader::Var(ret), bytes_to_write);
 }
+impl<AllocU8:Allocator<u8> > Mux<AllocU8> {
+    pub fn read_cursor(&self, index: usize) -> usize {
+        self.buf[index].1.start
+    }
+    pub fn write_cursor(&self, index: usize) -> usize {
+        self.buf[index].1.end
+    }
+}
 impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
     fn default() -> Self {
         Mux::<AllocU8> {
@@ -85,8 +92,8 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
             cur_stream_bytes_avail: 0,
             eof:StreamState::Running,
             buf:[
-              AllocU8::AllocatedMemory::default(),
-              AllocU8::AllocatedMemory::default(),
+                AllocatedMemoryRange::<u8, AllocU8>::default(),
+                AllocatedMemoryRange::<u8, AllocU8>::default(),
 /*              AllocU8::AllocatedMemory::default(),
               AllocU8::AllocatedMemory::default(),
               AllocU8::AllocatedMemory::default(),
@@ -103,8 +110,6 @@ impl<AllocU8:Allocator<u8> > Default for Mux<AllocU8> {
               AllocU8::AllocatedMemory::default(),
               AllocU8::AllocatedMemory::default(),*/
             ],
-            read_cursor:[0;NUM_STREAMS as usize],
-            write_cursor:[0;NUM_STREAMS as usize],
             last_flush:[0;NUM_STREAMS as usize],
             bytes_flushed: 0,
         }
@@ -115,16 +120,17 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
         self.deserialize(data, m8)
     }
     fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
-        let (s0array, s1array) = self.buf.split_at(1);
-        let (s0loc, s1loc) = self.read_cursor.split_at_mut(1);
+        let (s0array, s1array) = self.buf.split_at_mut(1);
+        let s0 = &mut s0array[0];
+        let s1 = &mut s1array[0];
         [
             ReadableBytes{
-                data:s0array[0].slice().split_at(self.write_cursor[0]).0,
-                read_offset:&mut s0loc[0],
+                data:s0.0.slice().split_at(s0.1.end).0,
+                read_offset:&mut s0.1.start,
             },
             ReadableBytes{
-                data:s1array[0].slice().split_at(self.write_cursor[1]).0,
-                read_offset:&mut s1loc[0],
+                data:s1.0.slice().split_at(s1.1.end).0,
+                read_offset:&mut s1.1.start,
             },
         ]
     }
@@ -134,13 +140,8 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
     fn peek(&self, stream_id: StreamID) -> &[u8] {
         self.data_avail(stream_id)
     }
-    fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8> {
-        let ret = slice_util::AllocatedMemoryRange::<u8, AllocU8>(core::mem::replace(&mut self.buf[usize::from(stream_id)],
-                                                                                 AllocU8::AllocatedMemory::default()),
-                                                              self.read_cursor[usize::from(stream_id)]..self.write_cursor[usize::from(stream_id)]);
-        self.read_cursor[usize::from(stream_id)] = 0;
-        self.write_cursor[usize::from(stream_id)] = 0;
-        ret
+    fn pop(&mut self, stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
+        &mut self.buf[usize::from(stream_id)]
     }
     fn consume(&mut self, stream_id: StreamID, count: usize) {
         self.consume_data(stream_id, count)
@@ -165,15 +166,16 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for Mux<AllocU8> {
             self.prep_push_for_n_bytes(index as StreamID, MIN_BYTES, m8);
         }
         let (s0array, s1array) = self.buf.split_at_mut(1);
-        let (s0loc, s1loc) = self.write_cursor.split_at_mut(1);
+        let s0 = &mut s0array[0];
+        let s1 = &mut s1array[0];
         [
             WritableBytes{
-                data:s0array[0].slice_mut(),
-                write_offset:&mut s0loc[0],
+                data:s0.0.slice_mut(),
+                write_offset:&mut s0.1.end,
             },
             WritableBytes{
-                data:s1array[0].slice_mut(),
-                write_offset:&mut s1loc[0],
+                data:s1.0.slice_mut(),
+                write_offset:&mut s1.1.end,
             },
         ]
     }
@@ -193,18 +195,18 @@ impl<AllocU8:Allocator<u8> > StreamMuxer<AllocU8> for Mux<AllocU8> {
 impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    #[inline(always)]
    pub fn how_much_data_avail(&self, stream_id: StreamID) -> usize {
-       self.write_cursor[usize::from(stream_id)] - self.read_cursor[usize::from(stream_id)]
+       self.write_cursor(usize::from(stream_id)) - self.read_cursor(usize::from(stream_id))
    }
    #[inline(always)]
    pub fn data_avail(&self, stream_id: StreamID) -> &[u8] {
-      &self.buf[usize::from(stream_id)].slice()[self.read_cursor[usize::from(stream_id)]..self.write_cursor[usize::from(stream_id)]]
+      &self.buf[usize::from(stream_id)].slice()[self.read_cursor(usize::from(stream_id))..self.write_cursor(usize::from(stream_id))]
    }
    pub fn consume_data(&mut self, stream_id: StreamID, count: usize) {
-      self.read_cursor[usize::from(stream_id)] += count;
+      self.buf[usize::from(stream_id)].1.start += count;
    }
     pub fn is_eof(&self) -> bool {
         for index in 0..NUM_STREAMS as usize {
-            if self.read_cursor[index]  != self.write_cursor[index] {
+            if self.read_cursor(index)  != self.write_cursor(index) {
                 return false;
             }
         }
@@ -220,13 +222,13 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    pub fn prealloc(&mut self, m8: &mut AllocU8, amount_per_stream: usize) {
        for buf in self.buf.iter_mut() {
            assert_eq!(buf.slice().len(), 0);
-           let mfd = core::mem::replace(buf, m8.alloc_cell(amount_per_stream));
+           let mfd = core::mem::replace(&mut buf.0, m8.alloc_cell(amount_per_stream));
            m8.free_cell(mfd);
        }
    }
    pub fn free(&mut self, m8: &mut AllocU8) {
       for buf in self.buf.iter_mut() {
-          m8.free_cell(core::mem::replace(buf, AllocU8::AllocatedMemory::default()));
+          m8.free_cell(core::mem::replace(&mut buf.0, AllocU8::AllocatedMemory::default()));
       }        
    }
     pub fn push_data(&mut self, stream_id: StreamID, data: &[u8], m8: &mut AllocU8) {
@@ -236,11 +238,13 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    // this pushes data from a source into the stream buffers. This data may later be serialized through serialize()
    // or else consumed through data_avail/consume
    pub fn prep_push_for_n_bytes(&mut self, stream_id: StreamID, data_len: usize, m8: &mut AllocU8) -> (&mut AllocU8::AllocatedMemory, &mut usize) {
-      let write_cursor = &mut self.write_cursor[stream_id as usize];
-      let read_cursor = &mut self.read_cursor[stream_id as usize];
+       
       //let mut write_cursor = &mut self.write_cursor[stream_id as usize];
-      let buf = &mut self.buf[usize::from(stream_id)];
-      // if there's space in the buffer, simply copy it in
+      let buf_ent = &mut self.buf[usize::from(stream_id)];
+      let write_cursor = &mut buf_ent.1.end;
+      let read_cursor = &mut buf_ent.1.start;
+      let buf = &mut buf_ent.0;
+       // if there's space in the buffer, simply copy it in
       if buf.slice().len() - *write_cursor >= data_len {
           return (buf, write_cursor)
       }
@@ -277,15 +281,17 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    fn serialize_leftover(&mut self, output:&mut[u8]) -> usize {
        let to_copy = core::cmp::min(self.cur_stream_bytes_avail as usize, output.len());
        output.split_at_mut(to_copy).0.clone_from_slice(
-           self.buf[usize::from(self.cur_stream)].slice().split_at(self.read_cursor[usize::from(self.cur_stream)]).1.split_at(to_copy).0);
-       self.read_cursor[usize::from(self.cur_stream)] += to_copy;
+           self.buf[usize::from(self.cur_stream)].slice().split_at(self.read_cursor(usize::from(self.cur_stream))).1.split_at(to_copy).0);
+       self.buf[usize::from(self.cur_stream)].1.start += to_copy;
        self.cur_stream_bytes_avail -= to_copy as u32;
        to_copy
    }
     fn serialize_stream_id(&mut self, stream_id: StreamID, output: &mut [u8], output_offset: &mut usize, is_lagging: bool) {
-        let outputted_cursor = &mut self.read_cursor[usize::from(stream_id)];
-        let populated_cursor = &mut self.write_cursor[usize::from(stream_id)];
-        let buf = self.buf[usize::from(stream_id)].slice_mut();
+        let buf_ent = &mut self.buf[usize::from(stream_id)];
+        let populated_cursor = &mut buf_ent.1.end;
+        let outputted_cursor = &mut buf_ent.1.start;
+        let buf = &mut buf_ent.0.slice_mut();
+
         // find the header and number of bytes that should be written to it
         let (header, mut num_bytes_should_write) = get_code(stream_id, *populated_cursor - *outputted_cursor, is_lagging);
         //eprint!("{}) header {:?} bytes: {}\n", stream_id, header, num_bytes_should_write);
@@ -449,7 +455,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
            }
            for index in 0..(NUM_STREAMS as usize) {
                let mut is_lagging = max_flush  > MAX_FLUSH_VARIANCE + self.last_flush[index];
-               if self.write_cursor[index] - self.read_cursor[index] >= chunk_size(self.last_flush[index],
+               if self.write_cursor(index) - self.read_cursor(index) >= chunk_size(self.last_flush[index],
                                                              is_lagging) && self.last_flush[index] <= last_flush + MAX_FLUSH_VARIANCE {
                    flushed_any = true;
                    self.serialize_stream_id(index as u8, output, &mut output_offset, is_lagging);
@@ -513,10 +519,12 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
         while output_offset < output.len() {
             let mut flushed_any = false;
             let mut last_flush: Option<usize> = None;
-            for (lf, (rc, wc)) in self.last_flush.iter().zip(self.read_cursor.iter().zip(self.write_cursor.iter())) {
+            for (lf, buf) in self.last_flush.iter().zip(self.buf.iter()) {
+                let rc = buf.1.start;
+                let wc = buf.1.end;
                 if match last_flush {
-                    None => *rc != *wc, // only consider this item for being the last flush point if it has data to flush
-                    Some(last_flush_some) => *lf < last_flush_some && *rc != *wc,
+                    None => rc != wc, // only consider this item for being the last flush point if it has data to flush
+                    Some(last_flush_some) => *lf < last_flush_some && rc != wc,
                 } {
                     last_flush = Some(*lf);
                 }
@@ -527,7 +535,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
                     Some(last_flush_some) => self.last_flush[index] <= last_flush_some + MAX_FLUSH_VARIANCE,
                 } {
                     let mut written = output_offset;
-                    if self.read_cursor[index] != self.write_cursor[index] {
+                    if self.read_cursor(index) != self.write_cursor(index) {
                         self.serialize_stream_id(index as u8, output, &mut written, true);
                     }
                     if written != output_offset {
@@ -549,12 +557,14 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
 
 pub struct DevNull<AllocU8:Allocator<u8>> {
     cursor: [usize; NUM_STREAMS as usize],
+    empty: slice_util::AllocatedMemoryRange<u8, AllocU8>,
     _placeholder: core::marker::PhantomData<AllocU8>
 }
 impl<AllocU8: Allocator<u8> > Default for DevNull<AllocU8>{
     fn default() ->Self {
         DevNull::<AllocU8> {
             cursor:[0;NUM_STREAMS as usize],
+            empty: slice_util::AllocatedMemoryRange::<u8, AllocU8>::default(),
             _placeholder: core::marker::PhantomData::<AllocU8>::default(),
         }
     }
@@ -583,8 +593,8 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
     fn peek(&self, _stream_id: StreamID) -> &[u8] {
         &[]
     }
-    fn pop(&mut self, _stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8> {
-        slice_util::AllocatedMemoryRange::<u8, AllocU8>::default()
+    fn pop(&mut self, _stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8> {
+        &mut self.empty
     }
     fn consume(&mut self, _stream_id: StreamID, count: usize) {
         debug_assert_eq!(count, 0);

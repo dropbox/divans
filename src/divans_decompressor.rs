@@ -58,7 +58,6 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
                                                AllocU8,
                                                AllocCDF16,
                                                DefaultDecoder,
-                                               SerialWorker<AllocU8>,
                                                Mux<AllocU8>>>,
     bytes_encoded: usize,
 }
@@ -140,7 +139,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                           true,
                                                               codec::StrideSelection::UseBrotliRec,
                                                               skip_crc);
-        let main_thread_codec = codec.fork(SerialWorker::<AllocU8>::default());
+        let main_thread_codec = codec.fork();
         if !skip_crc {
             codec.get_crc().write(&raw_header[..]);
         }

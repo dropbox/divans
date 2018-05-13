@@ -1,6 +1,7 @@
 // This file contains a threaded decoder
 use core;
-use interface::{DivansResult, StreamMuxer, StreamDemuxer};
+use core::hash::Hasher;
+use interface::{DivansResult, StreamMuxer, StreamDemuxer, StreamID};
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -17,6 +18,7 @@ use super::interface::{
     LiteralBookKeeping,
     drain_or_fill_static_buffer,
     MainThreadContext,
+    CMD_CODER,
 };
 use super::specializations::{
     construct_codec_trait_from_bookkeeping,
@@ -42,10 +44,8 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<Cdf16>,
                           ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
-                          Worker: MainToThread<AllocU8>,
                           LinearInputBytes: StreamDemuxer<AllocU8>> {
     pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
-    pub worker: Worker,
     pub demuxer: LinearInputBytes,
     pub codec_traits: CodecTraitSelector,
     pub crc: SubDigest,
@@ -61,18 +61,15 @@ impl<Cdf16:CDF16,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<Cdf16>,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
-     Worker: MainToThread<AllocU8>,
-     LinearInputBytes: Default+StreamDemuxer<AllocU8>> DivansDecoderCodec<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder, Worker, LinearInputBytes> {
+     LinearInputBytes: Default+StreamDemuxer<AllocU8>> DivansDecoderCodec<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder, LinearInputBytes> {
     pub fn new(main_thread_context: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
-           worker: Worker,
            crc: SubDigest,
            skip_checksum: bool) -> Self {
         let codec_trait = construct_codec_trait_from_bookkeeping(&main_thread_context.lbk);
-        DivansDecoderCodec::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder, Worker, LinearInputBytes> {
+        DivansDecoderCodec::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder, LinearInputBytes> {
             crc:crc,
             skip_checksum:skip_checksum,
             ctx: main_thread_context,
-            worker:worker,
             demuxer: LinearInputBytes::default(),
             codec_traits:codec_trait,
             frozen_checksum: None,
@@ -83,6 +80,24 @@ impl<Cdf16:CDF16,
             state_populate_ring_buffer:Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             specialization:DecoderSpecialization::default(),
         }
+    }
+    pub fn decode<Worker: MainToThread<AllocU8>>(&mut self,
+                                                 worker:&mut Worker,
+                                                 input: &[u8],
+                                                 input_offset: &mut usize,
+                                                 output: &mut [u8],
+                                                 output_offset: &mut usize) {
+        {
+            let adjusted_input_bytes = input.split_at(*input_offset).1;
+            let adjusted_input_bytes_offset = self.demuxer.write_linear(
+                adjusted_input_bytes,
+                self.ctx.m8.get_base_alloc());
+            if !self.skip_checksum {
+                self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
+            }
+            *input_offset += adjusted_input_bytes_offset;
+        }
+        worker.push(self.demuxer.pop(CMD_CODER as StreamID));
     }
 }
 

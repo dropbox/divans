@@ -255,13 +255,12 @@ impl<AllocU8: Allocator<u8>,
         }
         ret
     }
-    pub fn join<Worker:MainToThread<AllocU8>>(&mut self,
-                                              mut decoder: DivansDecoderCodec<Cdf16,
-                                                                              AllocU8,
-                                                                              AllocCDF16,
-                                                                              ArithmeticCoder,
-                                                                              Worker,
-                                                                              Mux<AllocU8>>) -> Worker {
+    pub fn join(&mut self,
+                mut decoder: DivansDecoderCodec<Cdf16,
+                                                AllocU8,
+                                                AllocCDF16,
+                                                ArithmeticCoder,
+                                                Mux<AllocU8>>) {
         free_cmd(&mut decoder.state_populate_ring_buffer, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
         self.crc = decoder.crc;
         decoder.ctx.m8.use_cached_allocation::<
@@ -274,14 +273,12 @@ impl<AllocU8: Allocator<u8>,
             ThreadContext::MainThread(_) => panic!("Tried to join the main thread"),
             ThreadContext::Worker => {},
         };
-        decoder.worker
     }
-    pub fn fork<Worker:MainToThread<AllocU8>>(&mut self, worker:Worker) -> DivansDecoderCodec<Cdf16,
-                                                                                              AllocU8,
-                                                                                              AllocCDF16,
-                                                                                              ArithmeticCoder,
-                                                                                              Worker,
-                                                                                              Mux<AllocU8>> {
+    pub fn fork(&mut self) -> DivansDecoderCodec<Cdf16,
+                                                 AllocU8,
+                                                 AllocCDF16,
+                                                 ArithmeticCoder,
+                                                 Mux<AllocU8>> {
         let skip_checksum = self.skip_checksum;
         if let Some(_) = self.frozen_checksum {
             panic!("Tried to fork() when checksum was already computed");
@@ -296,8 +293,7 @@ impl<AllocU8: Allocator<u8>,
                              AllocU8,
                              AllocCDF16,
                              ArithmeticCoder,
-                             Worker,
-                             Mux<AllocU8>>::new(main_thread_context, worker, self.crc.clone(), skip_checksum)
+                             Mux<AllocU8>>::new(main_thread_context, self.crc.clone(), skip_checksum)
     }
     pub fn free(self) -> (AllocU8, AllocCDF16) {
         self.cross_command_state.free()

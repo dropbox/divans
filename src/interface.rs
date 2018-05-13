@@ -270,7 +270,7 @@ pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
     #[inline(always)]
     fn peek(&self, stream_id: StreamID) -> &[u8];
     #[inline(always)]
-    fn pop(&mut self, stream_id: StreamID) -> slice_util::AllocatedMemoryRange<u8, AllocU8>;
+    fn pop(&mut self, stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8>;
     #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize);
     #[inline(always)]
