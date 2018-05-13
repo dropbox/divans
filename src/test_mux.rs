@@ -83,6 +83,18 @@ fn test_real_mux() {
                   4096, 4096);
 }
 #[test]
+fn test_tiny_mux() {
+    help_test_mux(&rand(8189,1)[..],
+                  &rand(8189,2)[..],
+                  &[(0,8189),(1,8189)], 4096, 4096);
+}
+#[test]
+fn test_nano_mux() {
+    help_test_mux(&rand(1,1)[..],
+                  &rand(1,2)[..],
+                  &[(0,1),(1,1)], 4096, 4096);
+}
+#[test]
 fn test_interleaved_mux() {
     help_test_mux(&rand(1000000,1)[..],
                   &rand(1000000,2)[..],

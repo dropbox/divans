@@ -199,7 +199,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    }
    #[inline(always)]
    pub fn data_avail(&self, stream_id: StreamID) -> &[u8] {
-      &self.buf[usize::from(stream_id)].slice()[self.read_cursor(usize::from(stream_id))..self.write_cursor(usize::from(stream_id))]
+      &self.buf[usize::from(stream_id)].slice() // valid range is already used
    }
    pub fn consume_data(&mut self, stream_id: StreamID, count: usize) {
       self.buf[usize::from(stream_id)].1.start += count;
@@ -221,7 +221,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    }
    pub fn prealloc(&mut self, m8: &mut AllocU8, amount_per_stream: usize) {
        for buf in self.buf.iter_mut() {
-           assert_eq!(buf.slice().len(), 0);
+           assert_eq!(buf.0.slice().len(), 0);
            let mfd = core::mem::replace(&mut buf.0, m8.alloc_cell(amount_per_stream));
            m8.free_cell(mfd);
        }
@@ -281,7 +281,7 @@ impl<AllocU8:Allocator<u8>> Mux<AllocU8> {
    fn serialize_leftover(&mut self, output:&mut[u8]) -> usize {
        let to_copy = core::cmp::min(self.cur_stream_bytes_avail as usize, output.len());
        output.split_at_mut(to_copy).0.clone_from_slice(
-           self.buf[usize::from(self.cur_stream)].slice().split_at(self.read_cursor(usize::from(self.cur_stream))).1.split_at(to_copy).0);
+           self.buf[usize::from(self.cur_stream)].0.slice().split_at(self.read_cursor(usize::from(self.cur_stream))).1.split_at(to_copy).0);
        self.buf[usize::from(self.cur_stream)].1.start += to_copy;
        self.cur_stream_bytes_avail -= to_copy as u32;
        to_copy
