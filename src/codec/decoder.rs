@@ -32,6 +32,7 @@ use ::interface::{
     ArithmeticEncoderOrDecoder,
     BillingDesignation,
     LiteralCommand,
+    PredictionModeContextMap,
     Nop,
     Command,
     free_cmd,
@@ -116,14 +117,14 @@ impl<Cdf16:CDF16,
         }
         DivansInputResult::Success
     }
-    fn populate_ring_buffer(&mut self,
-                            output: &mut [u8],
-                            output_offset: &mut usize) -> DivansOutputResult {
+    fn populate_ring_buffer<Worker:MainToThread<AllocU8>>(&mut self,
+                                                          worker: &mut Worker,
+                                                          output: &mut [u8],
+                                                          output_offset: &mut usize) -> DivansOutputResult {
+        
         if let Some(ref mut pop_cmd) = self.state_populate_ring_buffer {
             match self.ctx.recoder.encode_cmd(pop_cmd, output, output_offset) {
-                DivansOutputResult::Success =>
-                    free_cmd(pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
-                            UninitializedOnAlloc>()),
+                DivansOutputResult::Success => {},
                 DivansOutputResult::Failure(f) => {
                     free_cmd(pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
                             UninitializedOnAlloc>());
@@ -142,6 +143,18 @@ impl<Cdf16:CDF16,
                 | (u64::from(last_8[6])<<0x30)
                 | (u64::from(last_8[7])<<0x38);
         }
+        if let Some(mut pop_cmd) = self.state_populate_ring_buffer.take() {
+            if let Command::PredictionMode(pred_mode) = pop_cmd {
+                match worker.push_context_map(pred_mode) {
+                    Ok(_) => {},
+                    Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
+                }
+            } else {
+                free_cmd(&mut pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
+                        UninitializedOnAlloc>());
+            }
+        }
+
         self.state_populate_ring_buffer = None; // we processed any leftover ringbuffer command
         DivansOutputResult::Success
     }
@@ -151,7 +164,7 @@ impl<Cdf16:CDF16,
                                                                 output: &mut [u8],
                                                                 output_offset: &mut usize) -> DivansResult{
         loop {
-            match self.populate_ring_buffer(output, output_offset) {
+            match self.populate_ring_buffer(worker, output, output_offset) {
                 Success => {},
                 need_something => return DivansResult::from(need_something),
             }
@@ -207,7 +220,11 @@ impl<Cdf16:CDF16,
                     }
                 },
                 CommandResult::Cmd(cmd) => {
-                    unimplemented!();
+                    if let Command::Literal(lit) = cmd {
+                        unimplemented!();
+                    } else {
+                        self.state_populate_ring_buffer=Some(cmd);
+                    }
                 },
             }
         }
