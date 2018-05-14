@@ -2,6 +2,7 @@
 use core;
 use core::hash::Hasher;
 use interface::{DivansResult, DivansOutputResult, DivansInputResult, StreamMuxer, StreamDemuxer, StreamID, ErrMsg};
+use mux::DevNull;
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -50,6 +51,8 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
                           LinearInputBytes: StreamDemuxer<AllocU8>> {
     pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
     pub demuxer: LinearInputBytes,
+    pub devnull: DevNull<AllocU8>,
+    pub nop: LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>,
     pub codec_traits: CodecTraitSelector,
     pub crc: SubDigest,
     pub frozen_checksum: Option<u64>,
@@ -81,6 +84,8 @@ impl<Cdf16:CDF16,
                 lc:LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
                 state:LiteralSubstate::FullyDecoded,
             },
+            devnull: DevNull::default(),
+            nop: LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             state_populate_ring_buffer:None,
             specialization:DecoderSpecialization::default(),
             outstanding_buffer_count: 0,
@@ -159,15 +164,88 @@ impl<Cdf16:CDF16,
         self.state_populate_ring_buffer = None; // we processed any leftover ringbuffer command
         DivansOutputResult::Success
     }
-
+    fn process_eof(&mut self) -> DivansInputResult {
+        if usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
+            return DivansInputResult::NeedsMoreInput;
+        }
+        let crc = self.crc.finish();
+        let checksum = [crc as u8 & 255,
+                        (crc >> 8) as u8 & 255,
+                        (crc >> 16) as u8 & 255,
+                        (crc >> 24) as u8 & 255,
+                        b'a',
+                        b'n',
+                        b's',
+                        b'~'];
+        for (index, (chk, fil)) in checksum.iter().zip(
+            self.deserialized_crc.iter()).enumerate() {
+            if *chk != *fil {
+                if index >= 4 || !self.skip_checksum {
+                    return DivansInputResult::Failure(ErrMsg::BadChecksum(*chk, *fil));
+                }
+            }
+        }
+        return DivansInputResult::Success; // DONE decoding
+    }
+    fn interpret_thread_command(&mut self, cmd: Command<AllocatedMemoryPrefix<u8, AllocU8>>) {
+        if let Command::Literal(lit) = cmd {
+            let num_bytes = lit.data.1;
+            assert_eq!(self.state_lit.lc.data.0.slice().len(), 0);
+            self.state_lit.lc = lit;
+            self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+            let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+            self.state_lit.state = new_state;
+        } else {
+            self.state_populate_ring_buffer=Some(cmd);
+        }
+    }
     pub fn decode_process_output<Worker: MainToThread<AllocU8>>(&mut self,
                                                                 worker:&mut Worker,
                                                                 output: &mut [u8],
                                                                 output_offset: &mut usize) -> DivansResult{
         loop {
-            if let LiteralSubstate::FullyDecoded = self.state_lit.state {
-            } else { // we have literal to decode
-                //FIXME
+            match self.state_lit.state{
+                LiteralSubstate::FullyDecoded => {}, // default case--nothing to do here
+                _ => {
+                    match match self.codec_traits {
+                        CodecTraitSelector::MixingTrait(tr) => self.state_lit.encode_or_decode_content_bytes(
+                            self.ctx.m8.get_base_alloc(),
+                            &mut self.ctx.lit_coder,
+                            &mut self.ctx.lbk,
+                            &mut self.ctx.lit_high_priors,
+                            &mut self.ctx.lit_low_priors,
+                            &mut self.demuxer,
+                            &mut self.devnull,
+                            &self.nop,
+                            output,
+                            output_offset,
+                            tr,
+                            &self.specialization),
+                        CodecTraitSelector::DefaultTrait(tr) => self.state_lit.encode_or_decode_content_bytes(
+                            self.ctx.m8.get_base_alloc(),
+                            &mut self.ctx.lit_coder,
+                            &mut self.ctx.lbk,
+                            &mut self.ctx.lit_high_priors,
+                            &mut self.ctx.lit_low_priors,
+                            &mut self.demuxer,
+                            &mut self.devnull,
+                            &self.nop,
+                            output,
+                            output_offset,
+                            tr,
+                            &self.specialization),
+                    } { 
+                        DivansResult::Success => {
+                            assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
+                            self.state_populate_ring_buffer = Some(Command::Literal(
+                                core::mem::replace(&mut self.state_lit.lc,
+                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
+                        },
+                        retval => {
+                            return retval;
+                        }
+                    }
+                },
             }
             match self.populate_ring_buffer(worker, output, output_offset) {
                 Success => {},
@@ -175,27 +253,7 @@ impl<Cdf16:CDF16,
             }
             match worker.pull() {
                 CommandResult::Eof => {
-                    if usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
-                        return DivansResult::NeedsMoreInput;
-                    }
-                    let crc = self.crc.finish();
-                    let checksum = [crc as u8 & 255,
-                                    (crc >> 8) as u8 & 255,
-                                    (crc >> 16) as u8 & 255,
-                                    (crc >> 24) as u8 & 255,
-                                    b'a',
-                                    b'n',
-                                    b's',
-                                    b'~'];
-                    for (index, (chk, fil)) in checksum.iter().zip(
-                        self.deserialized_crc.iter()).enumerate() {
-                        if *chk != *fil {
-                            if index >= 4 || !self.skip_checksum {
-                                return DivansResult::Failure(ErrMsg::BadChecksum(*chk, *fil));
-                            }
-                        }
-                    }
-                    return DivansResult::Success; // DONE decoding
+                    return DivansResult::from(self.process_eof());
                 },
                 CommandResult::ProcessedData(mut dat) => {
                     self.outstanding_buffer_count -= 1;
@@ -225,16 +283,7 @@ impl<Cdf16:CDF16,
                     }
                 },
                 CommandResult::Cmd(cmd) => {
-                    if let Command::Literal(lit) = cmd {
-                        let num_bytes = lit.data.1;
-                        assert_eq!(self.state_lit.lc.data.0.slice().len(), 0);
-                        self.state_lit.lc = lit;
-                        self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
-                        let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
-                        self.state_lit.state = new_state;
-                    } else {
-                        self.state_populate_ring_buffer=Some(cmd);
-                    }
+                    self.interpret_thread_command(cmd);
                 },
             }
         }

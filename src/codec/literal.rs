@@ -382,6 +382,103 @@ impl<AllocU8:Allocator<u8>,
             LiteralSubstate::LiteralNibbleIndexWithECDF(index)
         }
     }
+    pub fn encode_or_decode_content_bytes<ISlice: SliceWrapper<u8>,
+                            ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearOutputBytes:StreamMuxer<AllocU8>+Default,
+                            Cdf16:CDF16,
+                            Specialization:EncoderOrDecoderSpecialization,
+                            AllocCDF16:Allocator<Cdf16>,
+                            CTraits:CodecTraits,
+                                          >(&mut self,
+                                            m8: &mut AllocU8,
+                                            lit_coder: &mut ArithmeticCoder,
+                                            lbk: &mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+                                            lit_high_priors: &mut LiteralNibblePriors<Cdf16, AllocCDF16>,
+                                            lit_low_priors: &mut LiteralNibblePriors<Cdf16, AllocCDF16>,
+                                            demuxer: &mut LinearInputBytes,
+                                            muxer: &mut LinearOutputBytes,
+                                            in_cmd: &LiteralCommand<ISlice>,
+                                            output_bytes:&mut [u8],
+                                            output_offset: &mut usize,
+                                            ctraits: &'static CTraits,
+                                            specialization: &Specialization) -> DivansResult {
+        let literal_len = in_cmd.data.slice().len() as u32;
+        loop {
+            match drain_or_fill_static_buffer(LIT_CODER,
+                                              lit_coder,
+                                              demuxer, muxer,
+                                              output_bytes, output_offset,
+                                              &mut Some(m8)) {
+                DivansResult::Success => {},
+                needs_something => return needs_something,
+        }
+            let billing = BillingDesignation::LiteralCommand(match self.state {
+                LiteralSubstate::LiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
+                LiteralSubstate::LiteralNibbleLowerHalf(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
+                LiteralSubstate::SafeLiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
+                _ => self.state
+            });
+            match self.state {
+                LiteralSubstate::Begin |
+                LiteralSubstate::LiteralCountSmall(_) |
+                LiteralSubstate::LiteralCountFirst |
+                LiteralSubstate::LiteralCountLengthGreater14Less25 |
+                LiteralSubstate::LiteralCountMantissaNibbles(_,_) |
+                LiteralSubstate::LiteralNibbleIndexWithECDF(_) | 
+                LiteralSubstate::FullyDecoded => unreachable!(),
+                LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
+                    assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
+                    let code_result = self.code_nibble_array(m8, output_bytes, output_offset,
+                                                             in_cmd, nibble_index,
+                                                             lit_coder, demuxer, muxer,
+                                                             lit_high_priors, lit_low_priors,
+                                                             lbk,
+                                                             specialization, NibbleArraySecond{}, ctraits);
+                    match code_result {
+                        DivansResult::Success => {
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        _ => return code_result,
+                    }
+                },
+                LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
+                    let code_result = self.code_nibble_array(m8, output_bytes, output_offset,
+                                                             in_cmd, nibble_index,
+                                                             lit_coder, demuxer, muxer,
+                                                             lit_high_priors, lit_low_priors,
+                                                             lbk,
+                                                             specialization, NibbleArrayLowBuffer{}, ctraits);
+                    match code_result {
+                        DivansResult::Success => {
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        _ => return code_result,
+                    }
+                },
+                LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
+                    match self.code_nibble_array(m8, output_bytes, output_offset,
+                                                 in_cmd, start_nibble_index,
+                                                 lit_coder, demuxer, muxer,
+                                                 lit_high_priors, lit_low_priors,
+                                                 lbk,
+                                                 specialization, NibbleArraySafe{}, ctraits) {
+                        DivansResult::NeedsMoreInput => {
+                            continue;
+                        }
+                        DivansResult::Failure(m) => {
+                            return DivansResult::Failure(m);
+                        }
+                        _ => {},
+                    }
+                    self.state = LiteralSubstate::FullyDecoded;
+                    return DivansResult::Success;
+                },
+            }
+        }
+    }
     pub fn encode_or_decode<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             LinearInputBytes:StreamDemuxer<AllocU8>+Default,
@@ -426,14 +523,6 @@ impl<AllocU8:Allocator<u8>,
                         DivansResult::Success => {},
                         needs_something => return needs_something,
                     }
-                    match drain_or_fill_static_buffer(LIT_CODER,
-                                                      *unwrap_ref!(lit_coder),
-                                              &mut superstate.demuxer, &mut superstate.muxer,
-                                                      output_bytes, output_offset,
-                                                      &mut Some(m.get_base_alloc())) {
-                        DivansResult::Success => {},
-                        needs_something => return needs_something,
-                    }
                 },
                 None => {
                     match drain_or_fill_static_buffer(CMD_CODER,
@@ -444,20 +533,10 @@ impl<AllocU8:Allocator<u8>,
                         DivansResult::Success => {},
                         needs_something => return needs_something,
                     }
-                    match drain_or_fill_static_buffer(LIT_CODER,
-                                                      *unwrap_ref!(lit_coder),
-                                              &mut superstate.demuxer, &mut superstate.muxer,
-                                                      output_bytes, output_offset,
-                                                      &mut None) {
-                        DivansResult::Success => {},
-                        needs_something => return needs_something,
-                    }
                 }
             }
             let billing = BillingDesignation::LiteralCommand(match self.state {
                 LiteralSubstate::LiteralCountMantissaNibbles(_, _) => LiteralSubstate::LiteralCountMantissaNibbles(0, 0),
-                LiteralSubstate::LiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
-                LiteralSubstate::LiteralNibbleLowerHalf(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
                 LiteralSubstate::LiteralNibbleIndexWithECDF(index) => LiteralSubstate::LiteralNibbleIndexWithECDF(index % 2),
                 _ => self.state
             });
@@ -581,54 +660,20 @@ impl<AllocU8:Allocator<u8>,
                         self.state = LiteralSubstate::LiteralNibbleIndexWithECDF(nibble_index + 1);
                     }
                 },
-                LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
-                    assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    let code_result = self.code_nibble_array(unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
-                                                             in_cmd, nibble_index,
-                                                             *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
-                                                             unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
-                                                             unwrap_ref!(lbk),
-                                                             &mut superstate.specialization, NibbleArraySecond{}, ctraits);
-                    match code_result {
-                        DivansResult::Success => {
-                            self.state = LiteralSubstate::FullyDecoded;
-                            return DivansResult::Success;
-                        },
-                        _ => return code_result,
-                    }
-                },
-                LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
-                    let code_result = self.code_nibble_array(&mut unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
-                                                             in_cmd, nibble_index,
-                                                             *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
-                                                             unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
-                                                             unwrap_ref!(lbk),
-                                                             &mut superstate.specialization, NibbleArrayLowBuffer{}, ctraits);
-                    match code_result {
-                        DivansResult::Success => {
-                            self.state = LiteralSubstate::FullyDecoded;
-                            return DivansResult::Success;
-                        },
-                        _ => return code_result,
-                    }
-                },
-                LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
-                    match self.code_nibble_array(unwrap_ref!(m8).get_base_alloc(), output_bytes, output_offset,
-                                                 in_cmd, start_nibble_index,
-                                                 *unwrap_ref!(lit_coder), &mut superstate.demuxer, &mut superstate.muxer,
-                                                 unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
-                                                 unwrap_ref!(lbk),
-                                                 &mut superstate.specialization, NibbleArraySafe{}, ctraits) {
-                        DivansResult::NeedsMoreInput => {
-                            continue;
-                        }
-                        DivansResult::Failure(m) => {
-                            return DivansResult::Failure(m);
-                        }
-                        _ => {},
-                    }
-                    self.state = LiteralSubstate::FullyDecoded;
-                    return DivansResult::Success;
+                LiteralSubstate::LiteralNibbleLowerHalf(_) |
+                LiteralSubstate::LiteralNibbleIndex(_) |
+                LiteralSubstate::SafeLiteralNibbleIndex(_) => {
+                    return self.encode_or_decode_content_bytes(unwrap_ref!(m8).get_base_alloc(),
+                                                        *unwrap_ref!(lit_coder),
+                                                        unwrap_ref!(lbk),
+                                                        unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
+                                                        &mut superstate.demuxer,
+                                                        &mut superstate.muxer,
+                                                        in_cmd,
+                                                        output_bytes,
+                                                        output_offset,
+                                                        ctraits,
+                                                        &mut superstate.specialization);
                 },
                 LiteralSubstate::FullyDecoded => {
                     return DivansResult::Success;
