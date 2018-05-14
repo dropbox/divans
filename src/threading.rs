@@ -132,6 +132,12 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         }
     }
 }
+impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    pub fn get_main_to_thread(&mut self) -> &mut WorkerInterface {
+        &mut self.worker
+    }
+}
+
 struct NopEncoderOrDecoderRecoderSpecialization {}
 impl EncoderOrDecoderRecoderSpecialization for NopEncoderOrDecoderRecoderSpecialization {
     fn get_recoder_output<'a>(&'a mut self, _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
@@ -220,6 +226,22 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         self.worker.push_command(cmd, m8, recoder, specialization, output, output_offset)
     }
+}
+
+impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> MainToThread<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
+    fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
+        self.worker.push_context_map(cm)
+    }
+    #[inline(always)]
+    fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
+        self.worker.push(data)
+    }
+    #[inline(always)]
+    fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>> {
+        self.worker.pull()
+    }
+
 }
 
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {

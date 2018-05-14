@@ -297,6 +297,9 @@ impl<AllocU8: Allocator<u8>,
                              ArithmeticCoder,
                              Mux<AllocU8>>::new(main_thread_context, self.crc.clone(), skip_checksum)
     }
+    pub fn demuxer(&mut self) -> &mut LinearInputBytes{
+        &mut self.cross_command_state.demuxer
+    }
     pub fn free(self) -> (AllocU8, AllocCDF16) {
         self.cross_command_state.free()
     }
