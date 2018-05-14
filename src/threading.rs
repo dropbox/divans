@@ -30,12 +30,14 @@ pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
     ProcessedData(AllocatedMemoryRange<u8, AllocU8>),
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
+    const COOPERATIVE_MAIN: bool;
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()>;
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
+    const COOPERATIVE: bool;
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
     //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
@@ -79,6 +81,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
 
 
 impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
+    const COOPERATIVE_MAIN:bool = true;
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
         if self.cm_len == self.cm.len() {
             return Err(());
@@ -205,6 +208,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
 }
 
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    const COOPERATIVE:bool = WorkerInterface::COOPERATIVE;
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         self.worker.pull_data()
@@ -228,6 +232,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
 }
 
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> MainToThread<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    const COOPERATIVE_MAIN:bool = WorkerInterface::COOPERATIVE_MAIN;
     #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
         self.worker.push_context_map(cm)
@@ -244,6 +249,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 }
 
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
+    const COOPERATIVE:bool = true;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         assert!(self.data_len != 0);
         let ret = core::mem::replace(&mut self.data[self.data_len - 1], ThreadData::Eof);

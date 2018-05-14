@@ -202,7 +202,7 @@ impl<Cdf16:CDF16,
     pub fn decode_process_output<Worker: MainToThread<AllocU8>>(&mut self,
                                                                 worker:&mut Worker,
                                                                 output: &mut [u8],
-                                                                output_offset: &mut usize) -> DivansResult{
+                                                                output_offset: &mut usize) -> DecoderResult{
         loop {
             match self.state_lit.state{
                 LiteralSubstate::FullyDecoded => {}, // default case--nothing to do here
@@ -242,18 +242,18 @@ impl<Cdf16:CDF16,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
                         },
                         retval => {
-                            return retval;
+                            return DecoderResult::Processed(retval);
                         }
                     }
                 },
             }
             match self.populate_ring_buffer(worker, output, output_offset) {
                 DivansOutputResult::Success => {},
-                need_something => return DivansResult::from(need_something),
+                need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
             }
             match worker.pull() {
                 CommandResult::Eof => {
-                    return DivansResult::from(self.process_eof());
+                    return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 },
                 CommandResult::ProcessedData(mut dat) => {
                     self.outstanding_buffer_count -= 1;
@@ -279,15 +279,18 @@ impl<Cdf16:CDF16,
                         self.ctx.m8.free_cell(dat.0)
                     }
                     if need_input {
-                        return DivansResult::NeedsMoreInput;
+                        return DecoderResult::Processed(DivansResult::NeedsMoreInput);
                     }
                 },
                 CommandResult::Cmd(cmd) => {
                     self.interpret_thread_command(cmd);
+                    if Worker::COOPERATIVE_MAIN {
+                        return DecoderResult::Yield;
+                    }
                 },
             }
         }
-        DivansResult::Success
+        DecoderResult::Processed(DivansResult::Success)
     }
     pub fn decode<Worker: MainToThread<AllocU8>>(&mut self,
                                                  worker:&mut Worker,
@@ -299,7 +302,10 @@ impl<Cdf16:CDF16,
             DivansInputResult::Success => {},
             need_something => return DivansResult::from(need_something),
         }
-        self.decode_process_output(worker, output, output_offset)
+        match self.decode_process_output(worker, output, output_offset) {
+            DecoderResult::Processed(retval) => retval,
+            DecoderResult::Yield => unreachable!(),
+        }
     }
 }
 
@@ -323,4 +329,8 @@ impl Default for SubDigest {
     fn default() -> Self {
         default_crc()
     }
+}
+pub enum DecoderResult {
+    Processed(DivansResult),
+    Yield,
 }

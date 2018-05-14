@@ -68,6 +68,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
 
 // this is an implementation of simply printing to the ring buffer that masquerades as communicating with a 'main thread'
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMain<AllocU8> for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
+    const COOPERATIVE:bool = false;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         ThreadData::Data(core::mem::replace(self.0.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
     }

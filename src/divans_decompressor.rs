@@ -7,7 +7,7 @@ use ::DecoderSpecialization;
 use ::codec;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
-use codec::decoder::DivansDecoderCodec;
+use codec::decoder::{DecoderResult, DivansDecoderCodec};
 use threading::{ThreadToMainDemuxer, SerialWorker, MainToThread};
 
 
@@ -223,31 +223,39 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             DivansDecompressor::Decode(ref mut process) => {
                 let mut unused:usize = 0;
                 let old_output_offset = *output_offset;
-                match process.literal_decoder.as_mut().unwrap().decode_process_input(process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
-                                                                                     input,
-                                                                                     input_offset) {
-                    DivansInputResult::Success => {},
-                    need_something => return DivansResult::from(need_something),
+                loop {
+                    match process.literal_decoder.as_mut().unwrap().decode_process_input(process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
+                                                                                         input,
+                                                                                         input_offset) {
+                        DivansInputResult::Success => {},
+                        need_something => return DivansResult::from(need_something),
+                    }
+                    let mut unused_out = 0usize;
+                    let mut unused_in = 0usize;
+                    match process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
+                        &[],
+                        &mut unused_in,
+                        &mut [],
+                        &mut unused_out,
+                        &[],
+                        &mut unused) {
+                        DivansResult::Success => {},
+                        DivansResult::Failure(e) => return DivansResult::Failure(e),
+                        need_something => eprintln!("Thread returned status code {:?}", need_something), // not sure we can do anything in this case
+                    }
+                    let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(
+                        process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
+                        output,
+                        output_offset);
+                    process.bytes_encoded += *output_offset - old_output_offset;
+                    match retval {
+                        DecoderResult::Processed(divans_retval) => {
+                            return divans_retval;
+                        },
+                        DecoderResult::Yield => {
+                        },
+                    }
                 }
-                let mut unused_out = 0usize;
-                let mut unused_in = 0usize;
-                match process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
-                    &[],
-                    &mut unused_in,
-                    &mut [],
-                    &mut unused_out,
-                    &[],
-                    &mut unused) {
-                    DivansResult::Success => {},
-                    DivansResult::Failure(e) => return DivansResult::Failure(e),
-                    need_something => eprintln!("Thread returned status code {:?}", need_something), // not sure we can do anything in this case
-                }
-                let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(
-                    process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
-                    output,
-                    output_offset);
-                process.bytes_encoded += *output_offset - old_output_offset;
-                return retval;
             },
         }
         self.finish_parsing_header(window_size);
