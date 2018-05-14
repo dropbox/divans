@@ -248,7 +248,7 @@ impl<Cdf16:CDF16,
                 },
             }
             match self.populate_ring_buffer(worker, output, output_offset) {
-                Success => {},
+                DivansOutputResult::Success => {},
                 need_something => return DivansResult::from(need_something),
             }
             match worker.pull() {

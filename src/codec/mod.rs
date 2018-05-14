@@ -947,16 +947,21 @@ impl<AllocU8: Allocator<u8>,
                         },
                         DivansOutputResult::Success => {
                             // clobber bk.last_8_literals with the last 8 literals
-                            let last_8 = self.cross_command_state.thread_ctx.recoder().unwrap().last_8_literals();
-                            self.cross_command_state.thread_ctx.lbk().unwrap().last_8_literals = //FIXME(threading) only should be run in the main thread
-                                u64::from(last_8[0])
-                                | (u64::from(last_8[1])<<0x8)
-                                | (u64::from(last_8[2])<<0x10)
-                                | (u64::from(last_8[3])<<0x18)
-                                | (u64::from(last_8[4])<<0x20)
-                                | (u64::from(last_8[5])<<0x28)
-                                | (u64::from(last_8[6])<<0x30)
-                                | (u64::from(last_8[7])<<0x38);
+                            match self.cross_command_state.thread_ctx {
+                                ThreadContext::MainThread(ref mut ctx) => {
+                                    let last_8 = ctx.recoder.last_8_literals();
+                                    ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                                        u64::from(last_8[0])
+                                        | (u64::from(last_8[1])<<0x8)
+                                        | (u64::from(last_8[2])<<0x10)
+                                        | (u64::from(last_8[3])<<0x18)
+                                        | (u64::from(last_8[4])<<0x20)
+                                        | (u64::from(last_8[5])<<0x28)
+                                        | (u64::from(last_8[6])<<0x30)
+                                        | (u64::from(last_8[7])<<0x38);
+                                }
+                                ThreadContext::Worker => {}, // Main thread tracks literals
+                            }
                             self.state = EncodeOrDecodeState::Begin;
                             return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },

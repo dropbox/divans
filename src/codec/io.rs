@@ -86,14 +86,6 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             },
         }
     }
-    fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
-        let lit = m8.unwrap().use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(len);
-        LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>> {
-            data:lit,
-            prob:FeatureFlagSliceType::default(),
-            high_entropy:false,
-        }
-    }
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
                     &mut self,
                     cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,

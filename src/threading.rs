@@ -38,7 +38,7 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
-    fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
+    //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self,
         cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
@@ -164,7 +164,9 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
     }
     #[inline(always)]
     fn data_ready(&self, stream_id:StreamID) -> usize {
-        assert_eq!(stream_id, 0);
+        if stream_id != 0 {
+            return 0;
+        }
         self.slice.slice().len()
     }
     #[inline(always)]
@@ -212,9 +214,6 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
                         m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
         self.worker.pull_context_map(m8)
     }
-    fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
-        self.worker.alloc_literal(len, m8)
-    }
     #[inline(always)]
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
@@ -249,11 +248,6 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         assert!(self.data_len != 0);
         let ret = core::mem::replace(&mut self.data[self.data_len - 1], ThreadData::Eof);
         self.data_len -= 1;
-        ret
-    }
-    fn alloc_literal(&mut self, len: usize, _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>> {
-        let mut ret = LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop();
-        ret.data.1 = len;
         ret
     }
     fn pull_context_map(&mut self,
