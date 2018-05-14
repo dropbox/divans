@@ -345,7 +345,17 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
             },
             7 => {
-                self.state_prediction_mode.reset(self.cross_command_state.thread_ctx.m8().unwrap()); // FIXME(threading) use trait to allocate
+                self.state_prediction_mode.state = context_map::PredictionModeSubstate::Begin;
+                if !self.state_prediction_mode.pm.has_context_speeds() {
+                    if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
+                        self.state_prediction_mode.pm = self.cross_command_state.demuxer.pull_context_map(Some(&mut ctx.m8));
+                    } else {
+                        self.state_prediction_mode.pm = self.cross_command_state.demuxer.pull_context_map(None);
+                    }
+                    
+
+                }
+                
                 self.state = EncodeOrDecodeState::PredictionMode;
             },
             0xf => if is_end {
