@@ -663,17 +663,26 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralNibbleLowerHalf(_) |
                 LiteralSubstate::LiteralNibbleIndex(_) |
                 LiteralSubstate::SafeLiteralNibbleIndex(_) => {
-                    return self.encode_or_decode_content_bytes(unwrap_ref!(m8).get_base_alloc(),
-                                                        *unwrap_ref!(lit_coder),
-                                                        unwrap_ref!(lbk),
-                                                        unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
-                                                        &mut superstate.demuxer,
-                                                        &mut superstate.muxer,
-                                                        in_cmd,
-                                                        output_bytes,
-                                                        output_offset,
-                                                        ctraits,
-                                                        &mut superstate.specialization);
+                    match lit_coder {
+                        None => { // we're on a worker thread
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        Some(mut lc) => {
+                            return self.encode_or_decode_content_bytes(
+                                unwrap_ref!(m8).get_base_alloc(),
+                                lc,
+                                unwrap_ref!(lbk),
+                                unwrap_ref!(lit_high_priors), unwrap_ref!(lit_low_priors),
+                                &mut superstate.demuxer,
+                                &mut superstate.muxer,
+                                in_cmd,
+                                output_bytes,
+                                output_offset,
+                                ctraits,
+                                &mut superstate.specialization);
+                        },
+                    }
                 },
                 LiteralSubstate::FullyDecoded => {
                     return DivansResult::Success;
