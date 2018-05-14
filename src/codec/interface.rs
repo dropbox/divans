@@ -722,10 +722,12 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
     }
     #[inline(always)]
     pub fn drain_or_fill_internal_buffer_cmd(&mut self, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
-        let main = self.thread_ctx.main_thread_mut().unwrap();
-        // FIXME(threading): do not call this
-        drain_or_fill_static_buffer(CMD_CODER, &mut self.coder, &mut self.demuxer, &mut self.muxer, output, output_offset,
-                                    &mut Some(main.m8.get_base_alloc()))
+        match self.thread_ctx.main_thread_mut() {
+            Some(ref mut main) => drain_or_fill_static_buffer(CMD_CODER, &mut self.coder, &mut self.demuxer, &mut self.muxer, output, output_offset,
+                                                              &mut Some(main.m8.get_base_alloc())),
+            None => drain_or_fill_static_buffer(CMD_CODER, &mut self.coder, &mut self.demuxer, &mut self.muxer, output, output_offset,
+                                                &mut None), // FIXME: should we just return success if we are on the worker
+        }
     }
 }
 impl <AllocU8:Allocator<u8>,
