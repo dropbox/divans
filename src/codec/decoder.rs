@@ -317,7 +317,7 @@ impl<Cdf16:CDF16,
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SubDigest(u32);
 impl core::hash::Hasher for SubDigest {
     #[inline(always)]
