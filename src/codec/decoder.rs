@@ -122,7 +122,12 @@ impl<Cdf16:CDF16,
         // beginning and end??
         match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
             Ok(_) => self.outstanding_buffer_count += 1,
-            Err(_) => {}, // too full
+            Err(_) => {
+                if self.outstanding_buffer_count == 0 && self.eof == false && (
+                    self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
+                    return DivansInputResult::NeedsMoreInput;
+                }
+            }, // too full
         }
         DivansInputResult::Success
     }
@@ -278,7 +283,12 @@ impl<Cdf16:CDF16,
                     match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
                         Ok(_) => self.outstanding_buffer_count += 1,
                         Err(_) => {
-                            if self.outstanding_buffer_count == 0 && !self.demuxer.encountered_eof() {
+                            // this is tricky logic:
+                            // if there are no outstanding buffers and we have either not encountered the EOf or still have bytes avail to send
+                            // to the cmd stream
+                            // then we need to signal to our caller that we need input for the worker
+                            if self.outstanding_buffer_count == 0 && self.eof == false && (
+                                self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
                                 need_input = true;
                             }
                         },

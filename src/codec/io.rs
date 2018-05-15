@@ -57,6 +57,10 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
         self.0.consume(stream_id, count)
     }
     #[inline(always)]
+    fn consumed_all_streams_until_eof(&self) -> bool {
+        self.0.consumed_all_streams_until_eof()
+    }
+    #[inline(always)]
     fn encountered_eof(&self) -> bool {
         self.0.encountered_eof()
     }

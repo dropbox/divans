@@ -679,7 +679,7 @@ impl<AllocU8: Allocator<u8>,
                             }
                         },
                     }
-                    if !self.cross_command_state.demuxer.encountered_eof() {
+                    if !self.cross_command_state.demuxer.consumed_all_streams_until_eof() {
                         return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
                     }
                     if self.skip_checksum {

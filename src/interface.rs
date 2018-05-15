@@ -274,6 +274,8 @@ pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
     #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize);
     #[inline(always)]
+    fn consumed_all_streams_until_eof(&self) -> bool;
+    #[inline(always)]
     fn encountered_eof(&self) -> bool;
     #[inline(always)]
     fn free_demux(&mut self, m8: &mut AllocU8);

@@ -8,6 +8,7 @@ use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
 pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
+    Yield,
     Eof,
 }
 
@@ -149,6 +150,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
             match self.worker.pull_data() {
                 ThreadData::Eof => self.eof = true,
                 ThreadData::Data(array) => self.slice = array,
+                ThreadData::Yield => {},
             }
         }
     }
@@ -212,6 +214,10 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         }
     }
     #[inline(always)]
+    fn consumed_all_streams_until_eof(&self) -> bool {
+        self.eof && self.slice.slice().len() == 0
+    }
+    #[inline(always)]
     fn encountered_eof(&self) -> bool {
         self.eof && self.slice.slice().len() == 0
     }
@@ -269,6 +275,9 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE:bool = true;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
+        if self.data_len == 0 {
+            return ThreadData::Yield;
+        }
         assert!(self.data_len != 0);
         assert_eq!(self.data.len(), 2);
         let first = core::mem::replace(&mut self.data[1], ThreadData::Eof);
@@ -277,6 +286,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         match ret {
             ThreadData::Eof => eprint!("THREAD::PULL_EOF\n"),
             ThreadData::Data(ref v) => eprint!("THREAD::PULL_DATA {} [{}]\n", v.slice().len(), v.0.slice().len()),
+            ThreadData::Yield => eprint!("THREAD::SHOULD_YIELD\n"),
         }
         ret
     }

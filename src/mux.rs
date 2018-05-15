@@ -146,8 +146,14 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for Mux<AllocU8>{
     fn consume(&mut self, stream_id: StreamID, count: usize) {
         self.consume_data(stream_id, count)
     }
-    fn encountered_eof(&self) -> bool {
+    fn consumed_all_streams_until_eof(&self) -> bool {
         self.is_eof()
+    }
+    fn encountered_eof(&self) -> bool {
+        match self.eof {
+            StreamState::EofDone => true,
+            _ => false,
+        }
     }
     fn free_demux(&mut self, m8: &mut AllocU8) {
         self.free(m8)
@@ -598,6 +604,9 @@ impl<AllocU8: Allocator<u8> > StreamDemuxer<AllocU8> for DevNull<AllocU8>{
     }
     fn consume(&mut self, _stream_id: StreamID, count: usize) {
         debug_assert_eq!(count, 0);
+    }
+    fn consumed_all_streams_until_eof(&self) -> bool {
+        true
     }
     fn encountered_eof(&self) -> bool {
         true
