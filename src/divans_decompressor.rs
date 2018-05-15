@@ -241,7 +241,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                         &mut unused) {
                         DivansResult::Success => {},
                         DivansResult::Failure(e) => return DivansResult::Failure(e),
-                        need_something => eprintln!("Thread returned status code {:?}", need_something), // not sure we can do anything in this case
+                        DivansResult::NeedsMoreInput => return DivansResult::NeedsMoreInput,
+                        DivansResult::NeedsMoreOutput => {}, // lets make room for more output
                     }
                     let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(
                         process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),

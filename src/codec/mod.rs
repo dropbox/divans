@@ -361,11 +361,7 @@ impl<AllocU8: Allocator<u8>,
             0xf => if is_end {
                 self.state = EncodeOrDecodeState::DivansSuccess; // encoder flows through this path
             } else {
-                match self.cross_command_state.thread_ctx {
-                    // only main thread can checksum
-                    ThreadContext::MainThread(_) => self.state = EncodeOrDecodeState::WriteChecksum(0),
-                    ThreadContext::Worker => self.state = EncodeOrDecodeState::DivansSuccess,
-                }
+                self.state = EncodeOrDecodeState::WriteChecksum(0)
             },
             _ => return DivansResult::Failure(ErrMsg::CommandCodeOutOfBounds(command_type_code)),
         };
@@ -512,7 +508,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                     self.state = EncodeOrDecodeState::WriteChecksum(0);
                 },
-                EncodeOrDecodeState::WriteChecksum(count) => {
+                EncodeOrDecodeState::WriteChecksum(count) => {                    
                     match self.frozen_checksum {
                         None => {
                             if !Specialization::IS_DECODING_FILE {
@@ -665,6 +661,24 @@ impl<AllocU8: Allocator<u8>,
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     assert!(Specialization::IS_DECODING_FILE);
+                    match self.cross_command_state.thread_ctx {
+                        // only main thread can checksum
+                        ThreadContext::MainThread(_) => {},
+                        ThreadContext::Worker => {
+                            let (ret, _cmd) = self.cross_command_state.demuxer.push_command(
+                                CommandResult::Eof,
+                                None, None,
+                                &mut self.cross_command_state.specialization,
+                                output_bytes, output_bytes_offset);
+                            match ret {
+                                DivansOutputResult::Success => {
+                                    self.state = EncodeOrDecodeState::DivansSuccess;
+                                    continue;
+                                },
+                                r => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(r))),
+                            }
+                        },
+                    }
                     if !self.cross_command_state.demuxer.encountered_eof() {
                         return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
                     }

@@ -6,6 +6,7 @@ use alloc::HeapAlloc;
 use alloc::Allocator;
 use alloc::SliceWrapperMut;
 use alloc::SliceWrapper;
+use interface::StreamDemuxer;
 use super::mux;
 
 fn help_test_mux(i0:&[u8], i1:&[u8], copy_pattern: &[(mux::StreamID, usize)], in_buf_size: usize, out_buf_size: usize) {
@@ -1186,4 +1187,21 @@ fn test_short_mux() {
                   &[(0,1),(0,10),(1,1),
                     (0,1),(1,16),(0,6),(1,7),
                   ], 1, 1);
+}
+
+#[test]
+fn unit_test_decode_mux() {
+    let to_decode:[u8;41] = [0x0, 0xf, 0x0, // 16 bytes on stream 0
+                             0x75, 0x98, 0x10, 0x40, 0x2, 0x5, 0x8, 0x0,
+                             0x4f, 0x85, 0x92, 0x18, 0x40, 0x80, 0x0, 0x0,
+                             0x1, 0xf, 0x0, // 16 bytes on stream1
+                             0x1, 0x2a, 0x0, 0x1, 0x8, 0x0, 0x0, 0x0,
+                             0x1, 0x42, 0x0, 0x1, 0x8, 0x0, 0x0, 0x0,
+                             0xff, 0xfe, 0xff];
+    let mut m8 = HeapAlloc::<u8>::new(0);
+    let mut mux = mux::Mux::<HeapAlloc<u8>>::default();
+    let actually_deserialized = mux.deserialize(&to_decode[..], &mut m8);
+    
+    assert_eq!(mux.edit(0).slice(), &to_decode[3..3+16]);
+    assert_eq!(mux.edit(1).slice(), &to_decode[6+16..6+32]);
 }

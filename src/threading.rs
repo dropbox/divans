@@ -84,23 +84,41 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE_MAIN:bool = true;
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
         if self.cm_len == self.cm.len() {
+            eprint!("MAIN::(FAIL)_CONTEXT_MAP\n");
             return Err(());
         }
+        eprint!("MAIN::PUSH_CONTEXT_MAP\n");
         self.cm[self.cm_len] = cm;
         self.cm_len += 1;
         Ok(())
     }
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
         if self.data_len == self.data.len() || data.slice().len() == 0 {
+            eprint!("MAIN::PUSH_0_DATA\n");
             return Err(());
         }
+        eprint!("MAIN::PUSH_DATA {} [{}]\n", data.slice().len(), data.0.slice().len());
         self.data[self.data_len] = ThreadData::Data(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
         self.data_len += 1;
         Ok(())        
     }
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
         assert!(self.result_len != 0);
-        let ret = core::mem::replace(&mut self.result[self.result_len - 1], CommandResult::Eof);
+        assert_eq!(self.result.len(), 3);
+        let second = core::mem::replace(&mut self.result[2], CommandResult::Eof);
+        let first = core::mem::replace(&mut self.result[1], second);
+        let ret = core::mem::replace(&mut self.result[0], first);
+        match ret {
+            CommandResult::Eof => {
+                eprint!("MAIN::RECV_EOF\n")
+            },
+            CommandResult::Cmd(_) => {
+                eprint!("MAIN::RECV_CMD\n")
+            },
+            CommandResult::ProcessedData(ref dat) => {
+                eprint!("MAIN::RECV_PROCESSED_DATA {}\n", dat.0.slice().len())
+            },
+        }
         self.result_len -= 1;
         ret
     }
@@ -252,8 +270,14 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE:bool = true;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         assert!(self.data_len != 0);
-        let ret = core::mem::replace(&mut self.data[self.data_len - 1], ThreadData::Eof);
+        assert_eq!(self.data.len(), 2);
+        let first = core::mem::replace(&mut self.data[1], ThreadData::Eof);
+        let ret = core::mem::replace(&mut self.data[0], first);
         self.data_len -= 1;
+        match ret {
+            ThreadData::Eof => eprint!("THREAD::PULL_EOF\n"),
+            ThreadData::Data(ref v) => eprint!("THREAD::PULL_DATA {} [{}]\n", v.slice().len(), v.0.slice().len()),
+        }
         ret
     }
     fn pull_context_map(&mut self,
@@ -263,6 +287,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
             literal_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
             predmode_speed_and_distance_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
         });
+        eprint!("THREAD::PULL_CONTEXT_MAP\n");
         self.cm_len -= 1;
         ret
     }
@@ -276,11 +301,23 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         if self.result_len == self.result.len() {
             if let CommandResult::Cmd(command) = cmd {
+                eprint!("THREAD::(FAILED) PROCESSED_DATA CMD\n");
                 return (DivansOutputResult::NeedsMoreOutput, Some(command));
             } else {
+                match cmd{
+                    CommandResult::Cmd(command) => unreachable!(),
+                    CommandResult::Eof => eprint!("THREAD::(FAILED) PROCESSED_EOF ??\n"),
+                    CommandResult::ProcessedData(ref dat) => eprint!("THREAD::(FAILED) PROCESSED_DATA {}\n", dat.0.slice().len()),
+                }
                 return (DivansOutputResult::NeedsMoreOutput, None);
             }
         }
+        match cmd{
+            CommandResult::Cmd(ref command) => eprint!("THREAD::PUSH_PROCESSED_CMD\n"),
+            CommandResult::Eof => eprint!("THREAD::PUSH PROCESSED_EOF ??\n"),
+            CommandResult::ProcessedData(ref dat) => eprint!("THREAD::PUSH PROCESSED_DATA {}\n", dat.0.slice().len()),
+        }
+        
         self.result[self.result_len] = cmd;
         self.result_len += 1;
         (DivansOutputResult::Success, None)
