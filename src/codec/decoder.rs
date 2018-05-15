@@ -141,23 +141,21 @@ impl<Cdf16:CDF16,
                 },
                 need_something => return need_something,
             }
-            let last_8 = self.ctx.recoder.last_8_literals();
-            self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                u64::from(last_8[0])
-                | (u64::from(last_8[1])<<0x8)
-                | (u64::from(last_8[2])<<0x10)
-                | (u64::from(last_8[3])<<0x18)
-                | (u64::from(last_8[4])<<0x20)
-                | (u64::from(last_8[5])<<0x28)
-                | (u64::from(last_8[6])<<0x30)
-                | (u64::from(last_8[7])<<0x38);
         }
         if let Some(mut pop_cmd) = self.state_populate_ring_buffer.take() {
             if let Command::PredictionMode(pred_mode) = pop_cmd {
+                let ret = self.ctx.lbk.obs_prediction_mode_context_map(
+                    &pred_mode,
+                    &mut self.ctx.mcdf16);
+
                 match worker.push_context_map(pred_mode) {
                     Ok(_) => {},
                     Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
                 }
+            } else if let Command::BlockSwitchLiteral(new_block_type) = pop_cmd {
+                self.ctx.lbk.obs_literal_block_switch(new_block_type);
+                free_cmd(&mut pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
+                        UninitializedOnAlloc>());
             } else {
                 free_cmd(&mut pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
                         UninitializedOnAlloc>());
@@ -197,6 +195,17 @@ impl<Cdf16:CDF16,
             assert_eq!(self.state_lit.lc.data.0.slice().len(), 0);
             self.state_lit.lc = lit;
             self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+            let last_8 = self.ctx.recoder.last_8_literals();
+            self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                u64::from(last_8[0])
+                | (u64::from(last_8[1])<<0x8)
+                | (u64::from(last_8[2])<<0x10)
+                | (u64::from(last_8[3])<<0x18)
+                | (u64::from(last_8[4])<<0x20)
+                | (u64::from(last_8[5])<<0x28)
+                | (u64::from(last_8[6])<<0x30)
+                | (u64::from(last_8[7])<<0x38);
+
             let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
             self.state_lit.state = new_state;
         } else {
@@ -298,7 +307,6 @@ impl<Cdf16:CDF16,
                 },
             }
         }
-        DecoderResult::Processed(DivansResult::Success)
     }
     pub fn decode<Worker: MainToThread<AllocU8>>(&mut self,
                                                  worker:&mut Worker,

@@ -198,6 +198,8 @@ impl<AllocU8:Allocator<u8>,
                                          (usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
                                           index_b,
                                           index_c));
+        eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
+                 index_b, index_c);
         {
             let immutable_prior: Cdf16;
             let coder_prior: &Cdf16;
@@ -563,6 +565,7 @@ impl<AllocU8:Allocator<u8>,
                         self.state = LiteralSubstate::LiteralCountSmall(true); // right now just 
                     } else {
                         let num_bytes = shortcut_nib as usize + 1;
+                        eprint!("Literal with {} bytes\n", num_bytes);
                         superstate.bk.last_llen = num_bytes as u32;
                         match m8 {
                             Some(ref mut m) =>
@@ -616,6 +619,7 @@ impl<AllocU8:Allocator<u8>,
                     if next_len_remaining == 0 {
                         let num_bytes = next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
+                        eprint!("Literal with {} bytes\n", num_bytes);
                         //FIXME(threading): actually use the trait to alloc
                         self.lc.data = unwrap_ref!(m8).use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                             num_bytes);
