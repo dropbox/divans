@@ -52,6 +52,7 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
     pub demuxer: LinearInputBytes,
     pub devnull: DevNull<AllocU8>,
+    pub eof: bool,
     pub nop: LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>,
     pub codec_traits: CodecTraitSelector,
     pub crc: SubDigest,
@@ -93,6 +94,7 @@ impl<Cdf16:CDF16,
             deserialized_crc_count: 0u8,
             skip_checksum:skip_checksum,
             crc:crc,
+            eof:false,
         }
     }
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
@@ -114,6 +116,7 @@ impl<Cdf16:CDF16,
             let amt_to_copy = core::cmp::min(input.len() - *input_offset, crc_bytes_remaining);
             self.deserialized_crc.split_at_mut(usize::from(self.deserialized_crc_count)).1.split_at_mut(amt_to_copy).0.clone_from_slice(
                 input.split_at(*input_offset).1.split_at(amt_to_copy).0);
+            self.deserialized_crc_count += amt_to_copy as u8;
             *input_offset += amt_to_copy;
         }
         // beginning and end??
@@ -164,6 +167,7 @@ impl<Cdf16:CDF16,
         self.state_populate_ring_buffer = None; // we processed any leftover ringbuffer command
         DivansOutputResult::Success
     }
+    #[cold]
     fn process_eof(&mut self) -> DivansInputResult {
         if usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
             return DivansInputResult::NeedsMoreInput;
@@ -251,8 +255,12 @@ impl<Cdf16:CDF16,
                 DivansOutputResult::Success => {},
                 need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
             }
+            if self.eof {
+                return DecoderResult::Processed(DivansResult::from(self.process_eof()));
+            }
             match worker.pull() {
                 CommandResult::Eof => {
+                    self.eof = true;
                     return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 },
                 CommandResult::ProcessedData(mut dat) => {
