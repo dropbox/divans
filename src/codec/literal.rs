@@ -165,14 +165,8 @@ impl<AllocU8:Allocator<u8>,
         // The mixing_mask is a lookup table that determines which priors are most relevant
         // for a particular actual_context. The table is also indexed by the
         // upper half of the current nibble, or the upper half of the previous nibble
-        let mut mixing_mask_index = usize::from(byte_context.actual_context);
-        if !HTraits::IS_HIGH {
-            mixing_mask_index |= usize::from(cur_byte_prior & 0xf) << 8;
-            mixing_mask_index |= 4096;
-        } else {
-            mixing_mask_index |= (usize::from(byte_context.prev_byte) >> 4) << 8;
-        }
-        let mm_opts = lbk.mixing_mask[mixing_mask_index];
+        let mut mixing_mask_index = 0;
+        let mm_opts = 0;
 
         // if the mixing mask is not zero, the byte, stride distance prior, is a good prior
         let mm = -((mm_opts != 0) as isize) as u8;
@@ -195,9 +189,7 @@ impl<AllocU8:Allocator<u8>,
         };
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
-                                          index_b,
-                                          index_c));
+                                         (0, 0, 0));
         //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)), index_b, index_c);
         {
             let immutable_prior: Cdf16;
@@ -208,35 +200,10 @@ impl<AllocU8:Allocator<u8>,
             } else {
                 coder_prior = nibble_prob;
             }
-            if CTraits::MIXING_PRIORS {
-                let cm_prob = if HTraits::IS_HIGH {
-                    lbk.lit_cm_priors.get(LiteralCMPriorType::FirstNibble,
-                                                    (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
-                                                     usize::from(byte_context.actual_context),))
-                } else {
-                    lbk.lit_cm_priors.get(LiteralCMPriorType::SecondNibble,
-                                                    (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
-                                                     usize::from(cur_byte_prior),
-                                                     usize::from(byte_context.actual_context)))
-                };
-                let prob = cm_prob.average(nibble_prob, lbk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
-                let weighted_prob_range = local_coder.get_or_put_nibble(
-                    &mut cur_nibble,
-                    &prob,
-                    BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
-                assert_eq!(lbk.model_weights[HTraits::IS_HIGH as usize].should_mix(), true);
-                let model_probs = [
-                    cm_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                    nibble_prob.sym_to_start_and_freq(cur_nibble).range.freq,
-                ];
-                lbk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
-                cm_prob.blend(cur_nibble, lbk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
-            } else {
-                // actually code (or decode) the byte from the file
-                local_coder.get_or_put_nibble(&mut cur_nibble,
-                                              coder_prior,
-                                              BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
-            }
+            // actually code (or decode) the byte from the file
+            local_coder.get_or_put_nibble(&mut cur_nibble,
+                                          coder_prior,
+                                          BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
         }
         let blendable_prob: Option<&'a mut Cdf16>;
         if mm_opts == 2 {
@@ -553,7 +520,7 @@ impl<AllocU8:Allocator<u8>,
                         shortcut_nib = NUM_LITERAL_LENGTH_MNEMONIC as u8 + 1;
                     }
                     let mut nibble_prob = superstate.bk.lit_len_priors.get(
-                        LiteralCommandPriorType::CountSmall, (ctype, index));
+                        LiteralCommandPriorType::CountSmall, (0,0));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     nibble_prob.blend(shortcut_nib, Speed::MED);// checked med
 
@@ -578,7 +545,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralCountFirst => {
                     let mut beg_nib = core::cmp::min(15, lllen);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeBegNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeBegNib, (0,));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     nibble_prob.blend(beg_nib, Speed::MUD);
 
@@ -601,7 +568,7 @@ impl<AllocU8:Allocator<u8>,
                 LiteralSubstate::LiteralCountLengthGreater14Less25 => {
                     let mut last_nib = lllen.wrapping_sub(15);
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeLastNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeLastNib, (0,));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
 
@@ -614,7 +581,7 @@ impl<AllocU8:Allocator<u8>,
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeMantissaNib, (ctype,));
+                    let mut nibble_prob = superstate.bk.lit_len_priors.get(LiteralCommandPriorType::SizeMantissaNib, (0,));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     nibble_prob.blend(last_nib, Speed::MUD);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
