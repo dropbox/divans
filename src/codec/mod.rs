@@ -806,14 +806,16 @@ impl<AllocU8: Allocator<u8>,
                             };
                             self.cross_command_state.bk.obs_btypel(new_block_type);
                             match self.cross_command_state.thread_ctx.lbk() {
-                                Some(book_keeping) => book_keeping.obs_literal_block_switch(new_block_type),
+                                Some(book_keeping) => {
+                                    book_keeping.obs_literal_block_switch(new_block_type);
+                                    self.state = EncodeOrDecodeState::Begin;
+                                    return CodecTraitResult::Res(OneCommandReturn::Advance);
+                                },
                                 None => {
                                     self.state_populate_ring_buffer = Command::BlockSwitchLiteral(new_block_type);
                                     self.state = EncodeOrDecodeState::PopulateRingBuffer;                                    
                                 },
                             }
-                            self.state = EncodeOrDecodeState::Begin;
-                            return CodecTraitResult::Res(OneCommandReturn::Advance);
                         },
                         retval => {
                             return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
