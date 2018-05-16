@@ -120,8 +120,16 @@ impl<Cdf16:CDF16,
             *input_offset += amt_to_copy;
         }
         // beginning and end??
+        let buf_to_push_len;
+        {
+            let buf_to_push = self.demuxer.edit(CMD_CODER as StreamID);
+            buf_to_push_len = buf_to_push.slice().len();
+        }
         match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
-            Ok(_) => self.outstanding_buffer_count += 1,
+            Ok(_) => {
+                self.outstanding_buffer_count += 1;
+                eprint!("BUF_PUSHED {} obc: {}\n", buf_to_push_len, self.outstanding_buffer_count);
+            },
             Err(_) => {
                 if self.outstanding_buffer_count == 0 && self.eof == false && (
                     self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
@@ -279,10 +287,23 @@ impl<Cdf16:CDF16,
                     return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 },
                 CommandResult::ProcessedData(mut dat) => {
+                    if dat.0.slice().len() == 0 {
+                        assert_eq!(Worker::COOPERATIVE_MAIN, true);
+                        return DecoderResult::Yield;
+                    }
+                    eprint!("BUF_POPPED {} obc: {}\n", dat.0.slice().len(), self.outstanding_buffer_count);
                     self.outstanding_buffer_count -= 1;
                     let mut need_input = false;
+let but_to_push_len;
+                    {
+                        let buf_to_push = self.demuxer.edit(CMD_CODER as StreamID);
+                         but_to_push_len = buf_to_push.0.slice().len();
+                    }
                     match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
-                        Ok(_) => self.outstanding_buffer_count += 1,
+                        Ok(_) => {
+                            self.outstanding_buffer_count += 1;
+                            eprint!("BUF_PUSHED {} obc: {}\n", but_to_push_len, self.outstanding_buffer_count);
+                        },
                         Err(_) => {
                             // this is tricky logic:
                             // if there are no outstanding buffers and we have either not encountered the EOf or still have bytes avail to send

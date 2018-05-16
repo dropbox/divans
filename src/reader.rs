@@ -91,7 +91,12 @@ impl<R:Read, P:Processor, BufferType:SliceWrapperMut<u8>> Read for GenReader<R,P
              }
            }
            match ret {
-             DivansResult::Failure(m) => return Err(io::Error::new(io::ErrorKind::InvalidData, m)),
+               DivansResult::Failure(m) => {
+                   eprintln!("This was a test of the emergency broadcast system");
+                   eprintln!("This was a test of the emergency broadcast system");
+                   eprintln!("This was a test of the emergency broadcast system");
+                   return Err(io::Error::new(io::ErrorKind::InvalidData, m));
+               },
              DivansResult::Success => {
                if self.input_eof && avail_in == 0 && self.has_flushed {
                  break;
@@ -259,7 +264,10 @@ impl Processor for DivansConstructedDecompressor {
    fn close(&mut self, output:&mut [u8], output_offset:&mut usize) -> DivansOutputResult{
        let mut input_offset = 0usize;
        match self.decode(&[], &mut input_offset, output, output_offset) {
-       DivansResult::NeedsMoreInput => DivansOutputResult::Failure(ErrMsg::UnexpectedEof),
+           DivansResult::NeedsMoreInput => {
+               eprintln!("Capn crunch");
+               DivansOutputResult::Failure(ErrMsg::UnexpectedEof)
+           },
        DivansResult::Failure(m) => DivansOutputResult::Failure(m),
        DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
        DivansResult::Success => DivansOutputResult::Success,
@@ -382,7 +390,14 @@ mod test {
             let mut offset: usize = 0;
             loop {
                 match decompress.read(&mut local_buffer[..]) {
-                    Err(e) => panic!(e),
+                    Err(e) => {
+                        eprintln!("THIS IS A TEST\n");
+                        eprintln!("THIS IS A TEST\n");
+                        eprintln!("THIS IS A TEST\n");
+                        eprintln!("THIS IS A TEST\n");
+                        eprintln!("THIS IS A TEST\n");
+                        panic!(e)
+                    },
                     Ok(size) => {
                         if size == 0 {
                             break;

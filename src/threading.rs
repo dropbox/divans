@@ -50,7 +50,7 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
         specialization: &mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>);
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>);
 }
 
 pub struct SerialWorker<AllocU8:Allocator<u8>> {
@@ -104,6 +104,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         Ok(())        
     }
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
+        if Self::COOPERATIVE_MAIN && self.result_len == 0 {
+            eprint!("MAIN::YIELDING\n");
+            return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default());
+        }
         assert!(self.result_len != 0);
         assert_eq!(self.result.len(), 3);
         let second = core::mem::replace(&mut self.result[2], CommandResult::Eof);
@@ -145,14 +149,37 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
             eof: false,
         }
     }
-    fn pull_if_necessary(&mut self) {
+    fn send_any_empty_data_buffer_to_main(&mut self) -> DivansOutputResult {
+            if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
+                let mut unused = 0usize;
+                let (ret, _ign, dat) = self.worker.push_command(CommandResult::ProcessedData(
+                    core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused); //FIXME(threading): I think passing None here is fine since the receiver will free it
+                if let Some(rejected) = dat {
+                        self.slice = rejected;
+                }
+                return ret;
+            }
+            DivansOutputResult::Success
+        }
+
+    fn pull_if_necessary(&mut self) -> DivansOutputResult{
         if self.slice.slice().len() == 0 {
+            let ret = self.send_any_empty_data_buffer_to_main();
+            match ret {
+                DivansOutputResult::Success => {},
+                need_something => return need_something,
+            }
             match self.worker.pull_data() {
-                ThreadData::Eof => self.eof = true,
-                ThreadData::Data(array) => self.slice = array,
+                ThreadData::Eof => {
+                    self.eof = true;
+                },
+                ThreadData::Data(array) => {
+                    self.slice = array
+                },
                 ThreadData::Yield => {},
             }
         }
+        DivansOutputResult::Success
     }
 }
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
@@ -207,11 +234,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
     fn consume(&mut self, stream_id: StreamID, count: usize) {
         assert_eq!(stream_id, 0);
         self.slice.1.start += count;
-        if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
-            let mut unused = 0usize;
-            self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused); //FIXME(threading): I think passing None here is fine since the receiver will free it
-        }
+        self.send_any_empty_data_buffer_to_main();
     }
     #[inline(always)]
     fn consumed_all_streams_until_eof(&self) -> bool {
@@ -250,7 +273,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         specialization:&mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
         self.worker.push_command(cmd, m8, recoder, specialization, output, output_offset)
     }
 }
@@ -308,18 +331,21 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
                     _specialization:&mut Specialization,
                     _output:&mut [u8],
                     _output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
         if self.result_len == self.result.len() {
             if let CommandResult::Cmd(command) = cmd {
                 eprint!("THREAD::(FAILED) PROCESSED_DATA CMD\n");
-                return (DivansOutputResult::NeedsMoreOutput, Some(command));
+                return (DivansOutputResult::NeedsMoreOutput, Some(command), None);
             } else {
                 match cmd{
                     CommandResult::Cmd(command) => unreachable!(),
                     CommandResult::Eof => eprint!("THREAD::(FAILED) PROCESSED_EOF ??\n"),
-                    CommandResult::ProcessedData(ref dat) => eprint!("THREAD::(FAILED) PROCESSED_DATA {}\n", dat.0.slice().len()),
+                    CommandResult::ProcessedData(ref dat) => eprint!("THREAD::(FAILED) PROCESSED_XDATA {}\n", dat.0.slice().len()),
                 }
-                return (DivansOutputResult::NeedsMoreOutput, None);
+                if let CommandResult::ProcessedData(processed_data) = cmd {
+                    return (DivansOutputResult::NeedsMoreOutput, None, Some(processed_data));
+                }
+                return (DivansOutputResult::NeedsMoreOutput, None, None);
             }
         }
         match cmd{
@@ -330,6 +356,6 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         
         self.result[self.result_len] = cmd;
         self.result_len += 1;
-        (DivansOutputResult::Success, None)
+        (DivansOutputResult::Success, None, None)
     }
 }

@@ -665,7 +665,7 @@ impl<AllocU8: Allocator<u8>,
                         // only main thread can checksum
                         ThreadContext::MainThread(_) => {},
                         ThreadContext::Worker => {
-                            let (ret, _cmd) = self.cross_command_state.demuxer.push_command(
+                            let (ret, _cmd, _mem) = self.cross_command_state.demuxer.push_command(
                                 CommandResult::Eof,
                                 None, None,
                                 &mut self.cross_command_state.specialization,
@@ -937,7 +937,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
-                    let (ret, cmd) = {
+                    let (ret, cmd, _unused) = {
                         let (m8, recoder) = match self.cross_command_state.thread_ctx {
                             ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
                             ThreadContext::Worker => (None, None),

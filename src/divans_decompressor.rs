@@ -243,7 +243,15 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                         &mut unused) {
                         DivansResult::Success => {},
                         DivansResult::Failure(e) => return DivansResult::Failure(e),
-                        DivansResult::NeedsMoreInput => return DivansResult::NeedsMoreInput,
+                        DivansResult::NeedsMoreInput => {
+                            if process.literal_decoder.as_mut().unwrap().outstanding_buffer_count == 0 {
+                                return DivansResult::NeedsMoreInput;
+                            } else {
+                                // we can fall through here because if outstanding_buffer_count != 0 then
+                                // the worker either consumed the buffer and returned a command or returned the buffer (a command)
+
+                            }
+                        },
                         DivansResult::NeedsMoreOutput => {}, // lets make room for more output
                     }
                     let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(

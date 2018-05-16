@@ -99,12 +99,12 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                     specialization:&mut Specialization,
                     output:&mut [u8],
                     output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>) {
+    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
         match cmd {
-            CommandResult::Eof => return (DivansOutputResult::Success, None),
+            CommandResult::Eof => return (DivansOutputResult::Success, None, None),
             CommandResult::ProcessedData(data) => {
                 m8.as_mut().unwrap().free_cell(data.0);
-                return (DivansOutputResult::Success, None);
+                return (DivansOutputResult::Success, None, None);
             },
             CommandResult::Cmd(mut cmd) => {
                 let mut tmp_output_offset_bytes_backing: usize = 0;
@@ -119,7 +119,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                         
                         free_cmd(&mut cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
                                 UninitializedOnAlloc>()),
-                    need_something => return (need_something, Some(cmd))
+                    need_something => return (need_something, Some(cmd), None)
                 }
                 /*
                 match &mut cmd {
@@ -150,7 +150,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                                 UninitializedOnAlloc>().free_cell(mfd);
                     },
                 }*/
-                return (ret, None);
+                return (ret, None, None);
             },
         }
     }
