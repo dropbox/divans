@@ -238,15 +238,6 @@ impl<AllocU8:Allocator<u8>,
                                               BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
             }
         }
-        static mut gitem:u64 = 0;
-        let mut ggitem = unsafe{&mut gitem};
-        eprint!("{}: [{}] {} {} {}\n",
-                *ggitem,
-                cur_nibble,
-                usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
-                index_b,
-                index_c);
-        *ggitem+= 1;
         let blendable_prob: Option<&'a mut Cdf16>;
         if mm_opts == 2 {
             blendable_prob = None;
@@ -631,7 +622,6 @@ impl<AllocU8:Allocator<u8>,
                     if next_len_remaining == 0 {
                         let num_bytes = next_decoded_so_far as usize + NUM_LITERAL_LENGTH_MNEMONIC as usize + 1;
                         superstate.bk.last_llen = num_bytes as u32;
-                        eprint!("Literal with {} bytes\n", num_bytes);
                         match m8 {
                             Some(ref mut m) =>
                                 self.lc.data = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes),
