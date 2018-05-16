@@ -222,6 +222,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                 }
             },
             DivansDecompressor::Decode(ref mut process) => {
+                eprint!("Decode..\n");
                 let mut unused:usize = 0;
                 let old_output_offset = *output_offset;
                 loop {

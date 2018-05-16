@@ -130,6 +130,10 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         },
                         buffer_size,
                         use_brotli).unwrap();
+    use std::fs;
+    use std::io::Write;
+    let mut file = fs::File::create("/tmp/ALICE.DV").unwrap();
+    file.write_all(&dv_buffer.data);
     super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     if ratio != 0.0 {
@@ -236,7 +240,12 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    opts.prior_bitmask_detection=1;
    opts.dynamic_context_mixing=Some(1);
    opts.use_context_map = true;
-   super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
+    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
+    use std::fs;
+    use std::io::Write;
+    let mut file = fs::File::create("/tmp/ALICE.DV").unwrap();
+    file.write_all(&dv_buffer.data);
+    
    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;

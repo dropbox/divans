@@ -238,6 +238,15 @@ impl<AllocU8:Allocator<u8>,
                                               BillingDesignation::LiteralCommand(LiteralSubstate::LiteralNibbleIndex(!HTraits::IS_HIGH as u32)));
             }
         }
+        static mut gitem:u64 = 0;
+        let mut ggitem = unsafe{&mut gitem};
+        eprint!("{}: [{}] {} {} {}\n",
+                *ggitem,
+                cur_nibble,
+                usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
+                index_b,
+                index_c);
+        *ggitem+= 1;
         let blendable_prob: Option<&'a mut Cdf16>;
         if mm_opts == 2 {
             blendable_prob = None;
