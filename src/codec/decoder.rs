@@ -152,13 +152,14 @@ impl<Cdf16:CDF16,
                 let ret = self.ctx.lbk.obs_prediction_mode_context_map(
                     &pred_mode,
                     &mut self.ctx.mcdf16);
-
+                self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                 match worker.push_context_map(pred_mode) {
                     Ok(_) => {},
                     Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
                 }
             } else if let Command::BlockSwitchLiteral(new_block_type) = pop_cmd {
                 self.ctx.lbk.obs_literal_block_switch(new_block_type);
+                self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                 free_cmd(&mut pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
                         UninitializedOnAlloc>());
             } else {
