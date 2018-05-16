@@ -40,7 +40,7 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     const COOPERATIVE: bool;
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
-    fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;
+    fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()>;
     //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self,
@@ -246,7 +246,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     }
     #[inline(always)]
     fn pull_context_map(&mut self,
-                        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+                        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         self.worker.pull_context_map(m8)
     }
     #[inline(always)]
@@ -293,14 +293,17 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         ret
     }
     fn pull_context_map(&mut self,
-                        _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+                        _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
+        if self.cm_len == 0 {
+            return Err(());
+        }
         assert!(self.cm_len != 0);
         let ret = core::mem::replace(&mut self.cm[self.cm_len - 1], PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
             literal_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
             predmode_speed_and_distance_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
         });
         self.cm_len -= 1;
-        ret
+        Ok(ret)
     }
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(&mut self,
                     cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,

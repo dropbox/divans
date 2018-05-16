@@ -345,17 +345,7 @@ impl<AllocU8: Allocator<u8>,
                 self.state = EncodeOrDecodeState::BlockSwitchDistance;
             },
             7 => {
-                self.state_prediction_mode.state = context_map::PredictionModeSubstate::Begin;
-                if !self.state_prediction_mode.pm.has_context_speeds() {
-                    if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
-                        self.state_prediction_mode.pm = self.cross_command_state.demuxer.pull_context_map(Some(&mut ctx.m8));
-                    } else {
-                        self.state_prediction_mode.pm = self.cross_command_state.demuxer.pull_context_map(None);
-                    }
-                    
-
-                }
-                
+                self.state_prediction_mode.state = context_map::PredictionModeSubstate::Begin;                
                 self.state = EncodeOrDecodeState::PredictionMode;
             },
             0xf => if is_end {
@@ -757,6 +747,18 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PredictionMode => {
+                    if !self.state_prediction_mode.pm.has_context_speeds() {
+                        self.state_prediction_mode.pm =
+                            match if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
+                                self.cross_command_state.demuxer.pull_context_map(Some(&mut ctx.m8))
+                            } else {
+                                self.cross_command_state.demuxer.pull_context_map(None)
+                            } {
+                                Ok(pm) => pm,
+                                Err(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)),
+                            };
+                    }
+
                     let default_prediction_mode_context_map = empty_prediction_mode_context_map::<ISl>();
                     let src_pred_mode = match *input_cmd {
                         Command::PredictionMode(ref pm) => pm,

@@ -76,15 +76,15 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         ThreadData::Data(core::mem::replace(self.0.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
     }
-    fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>> {
+    fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         match m8 {
             Some(ref mut m) => {
                 let lit = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
-                PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+                Ok(PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
                     literal_context_map:lit,
                     predmode_speed_and_distance_context_map:m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
                         MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE),
-                }
+                })
             },
             None => {
                 panic!("Pull context map in Demuxer+RingBuffer without an allocator");
