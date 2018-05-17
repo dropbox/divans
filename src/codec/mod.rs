@@ -36,7 +36,7 @@ pub mod crc32_table;
 use self::specializations::{
     construct_codec_trait_from_bookkeeping,
     CodecTraitSelector,
-    CodecTraits,
+    DEFAULT_TRAIT,
 };
 mod interface;
 use threading::ThreadToMain;
@@ -184,11 +184,6 @@ pub enum OneCommandReturn {
     Advance,
     BufferExhausted(DivansResult),
 }
-enum CodecTraitResult {
-    Res(OneCommandReturn),
-    UpdateCodecTraitAndAdvance(CodecTraitSelector),
-}
-
 
 
 impl<AllocU8: Allocator<u8>,
@@ -417,22 +412,16 @@ impl<AllocU8: Allocator<u8>,
                                                             output_bytes,
                                                             output_bytes_offset,
                                                             &nop,
-                                                            &specializations::DEFAULT_TRAIT,
                                                             true) {
-                        CodecTraitResult::Res(one_command_return) => match one_command_return {
-                            OneCommandReturn::BufferExhausted(res) => {
-                                match res {
-                                    DivansResult::Success => {},
-                                    DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::EncodeOneCommandNeedsInput),//"unreachable",//return DivansOutputResult::Success,
-                                    DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
-                                    DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
-                                }
-                            },
-                            OneCommandReturn::Advance => return DivansOutputResult::Failure(ErrMsg::UnintendedCodecState(3)),
+                        OneCommandReturn::BufferExhausted(res) => {
+                            match res {
+                                DivansResult::Success => {},
+                                DivansResult::NeedsMoreInput => return DivansOutputResult::Failure(ErrMsg::EncodeOneCommandNeedsInput),//"unreachable",//return DivansOutputResult::Success,
+                                DivansResult::NeedsMoreOutput => return DivansOutputResult::NeedsMoreOutput,
+                                DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
+                            }
                         },
-                        CodecTraitResult::UpdateCodecTraitAndAdvance(_) => {
-                            return DivansOutputResult::Failure(ErrMsg::UnintendedCodecState(4));
-                        },
+                        OneCommandReturn::Advance => return DivansOutputResult::Failure(ErrMsg::UnintendedCodecState(3)),
                     }
                     self.state = EncodeOrDecodeState::EncodedShutdownNode;
                 },
@@ -564,45 +553,27 @@ impl<AllocU8: Allocator<u8>,
             }
         }
         let mut checksum_input_info = ReadableBytes{data:input_bytes, read_offset:input_bytes_offset};
-        loop {
-            let res:(Option<DivansResult>, Option<CodecTraitSelector>);
-            match self.codec_traits {
-                CodecTraitSelector::MixingTrait(tr) => res = self.e_or_d_specialize(&mut checksum_input_info,
-                                                                                    adjusted_output_bytes,
-                                                                                    &mut adjusted_output_bytes_offset,
-                                                                                    input_commands,
-                                                                                    input_command_offset,
-                                                                                    tr),
-                CodecTraitSelector::DefaultTrait(tr) => res = self.e_or_d_specialize(&mut checksum_input_info,
-                                                                                     adjusted_output_bytes,
-                                                                                     &mut adjusted_output_bytes_offset,
-                                                                                     input_commands,
-                                                                                     input_command_offset,
-                                                                                     tr),
-            }
-            if let Some(update) = res.1 {
-                self.codec_traits = update;
-            }
-            if let Some(result) = res.0 {
-                *output_bytes_offset += adjusted_output_bytes_offset;
-                match self.frozen_checksum {
-                    Some(_) => {},
-                    None => if !Specialization::IS_DECODING_FILE {
-                        self.crc.write(&adjusted_output_bytes.split_at(adjusted_output_bytes_offset).0);
-                    },
-                }
-                return result;
-            }
+        let result = self.e_or_d_specialize(&mut checksum_input_info,
+                                            adjusted_output_bytes,
+                                            &mut adjusted_output_bytes_offset,
+                                            input_commands,
+                                            input_command_offset);
+        *output_bytes_offset += adjusted_output_bytes_offset;
+        match self.frozen_checksum {
+            Some(_) => {},
+            None => if !Specialization::IS_DECODING_FILE {
+                self.crc.write(&adjusted_output_bytes.split_at(adjusted_output_bytes_offset).0);
+            },
         }
+        return result;
     }
-    fn e_or_d_specialize<ISl:SliceWrapper<u8>+Default,
-                         CTraits:CodecTraits>(&mut self,
-                                              checksum_input_info: &mut ReadableBytes,
-                                              output_bytes: &mut [u8],
-                                              output_bytes_offset: &mut usize,
-                                              input_commands: &[Command<ISl>],
-                                              input_command_offset: &mut usize,
-                                              ctraits: &'static CTraits) -> (Option<DivansResult>, Option<CodecTraitSelector>) {
+    fn e_or_d_specialize<ISl:SliceWrapper<u8>+Default>(&mut self,
+                                                       checksum_input_info: &mut ReadableBytes,
+                                                       output_bytes: &mut [u8],
+                                                       output_bytes_offset: &mut usize,
+                                                       input_commands: &[Command<ISl>],
+                                                       input_command_offset: &mut usize,
+    ) -> DivansResult {
         let i_cmd_backing = Command::<ISl>::nop();
         loop {
             let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
@@ -612,37 +583,25 @@ impl<AllocU8: Allocator<u8>,
                                                     output_bytes,
                                                     output_bytes_offset,
                                                     in_cmd,
-                                                    ctraits,
                                                     false /* not end*/) {
-                CodecTraitResult::Res(one_command_return) => match one_command_return {
-                    OneCommandReturn::Advance => {
-                        *input_command_offset += 1;
-                        if input_commands.len() == *input_command_offset {
-                            return (Some(DivansResult::NeedsMoreInput), None);
-                        }
-                    },
-                    OneCommandReturn::BufferExhausted(result) => {
-                        return (Some(result), None);
-                    }
-                },
-                CodecTraitResult::UpdateCodecTraitAndAdvance(cts) => {
+                OneCommandReturn::Advance => {
                     *input_command_offset += 1;
                     if input_commands.len() == *input_command_offset {
-                        return (Some(DivansResult::NeedsMoreInput), Some(cts));
+                        return DivansResult::NeedsMoreInput;
                     }
-                    return (None, Some(cts));
                 },
+                OneCommandReturn::BufferExhausted(result) => {
+                    return result;
+                }
             }
         }
     }
-    fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default,
-                                    CTraits:CodecTraits>(&mut self,
-                                                         checksum_input_info: &mut ReadableBytes,
-                                                         output_bytes: &mut [u8],
-                                                         output_bytes_offset: &mut usize,
-                                                         input_cmd: &Command<ISl>,
-                                                         ctraits: &'static CTraits,
-                                                         is_end: bool) -> CodecTraitResult {
+    fn encode_or_decode_one_command<ISl:SliceWrapper<u8>+Default>(&mut self,
+                                                                  checksum_input_info: &mut ReadableBytes,
+                                                                  output_bytes: &mut [u8],
+                                                                  output_bytes_offset: &mut usize,
+                                                                  input_cmd: &Command<ISl>,
+                                                                  is_end: bool) -> OneCommandReturn {
         loop {
             match self.state {
                 EncodeOrDecodeState::EncodedShutdownNode
@@ -650,7 +609,7 @@ impl<AllocU8: Allocator<u8>,
                     | EncodeOrDecodeState::CoderBufferDrain
                         | EncodeOrDecodeState::MuxDrain => {
                     // not allowed to encode additional commands after flush is invoked
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(ErrMsg::NotAllowedToEncodeAfterFlush)));
+                    return OneCommandReturn::BufferExhausted(DivansResult::Failure(ErrMsg::NotAllowedToEncodeAfterFlush));
                 },
                 EncodeOrDecodeState::WriteChecksum(count) => {
                     assert!(Specialization::IS_DECODING_FILE);
@@ -664,12 +623,12 @@ impl<AllocU8: Allocator<u8>,
                                     self.state = EncodeOrDecodeState::DivansSuccess;
                                     continue;
                                 },
-                                r => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(r))),
+                                r => return OneCommandReturn::BufferExhausted(DivansResult::from(r)),
                             }
                         },
                     }
                     if !self.cross_command_state.demuxer.consumed_all_streams_until_eof() {
-                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
+                        return OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput);
                     }
                     if self.skip_checksum {
                         self.frozen_checksum = Some(0);
@@ -681,7 +640,7 @@ impl<AllocU8: Allocator<u8>,
                     let to_check = core::cmp::min(checksum_input_info.data.len() - *checksum_input_info.read_offset,
                                                   bytes_needed);
                     if to_check == 0 {
-                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
+                        return OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput);
                     }
                     match self.frozen_checksum {
                         Some(_) => {},
@@ -705,8 +664,8 @@ impl<AllocU8: Allocator<u8>,
                         checksum_input_info.data.split_at(*checksum_input_info.read_offset).1.split_at(to_check).0.iter()).enumerate() {
                         if *chk != *fil {
                             if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(
-                                    ErrMsg::BadChecksum(*chk, *fil))));
+                                return OneCommandReturn::BufferExhausted(DivansResult::Failure(
+                                    ErrMsg::BadChecksum(*chk, *fil)));
                             }
                         }
                     }
@@ -718,12 +677,12 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::DivansSuccess => {
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
+                    return OneCommandReturn::BufferExhausted(DivansResult::Success);
                 },
                 EncodeOrDecodeState::Begin => {
                     match self.cross_command_state.drain_or_fill_internal_buffer_cmd(output_bytes, output_bytes_offset) {
                         DivansResult::Success => {},
-                        need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
+                        need_something => return OneCommandReturn::BufferExhausted(need_something),
                     }
                     let mut command_type_code = command_type_to_nibble(input_cmd, is_end);
                     {
@@ -736,7 +695,7 @@ impl<AllocU8: Allocator<u8>,
                     }
                     match self.update_command_state_from_nibble(command_type_code, is_end) {
                         DivansResult::Success => {},
-                        need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(need_something)),
+                        need_something => return OneCommandReturn::BufferExhausted(need_something),
                     }
                     match self.state {
                         EncodeOrDecodeState::Copy => { self.cross_command_state.bk.obs_copy_state(); },
@@ -758,7 +717,7 @@ impl<AllocU8: Allocator<u8>,
                                 }
                             } {
                                 Ok(pm) => pm,
-                                Err(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)),
+                                Err(_) => return OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput),
                             };
                     }
 
@@ -779,10 +738,10 @@ impl<AllocU8: Allocator<u8>,
                                      &mut ctx.mcdf16);
                                  self.state_prediction_mode.reset(&mut ctx.m8);
                                  if let DivansOpResult::Failure(_) = ret {
-                                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(ret)));
+                                     return OneCommandReturn::BufferExhausted(DivansResult::from(ret));
                                  }
-                                 return CodecTraitResult::UpdateCodecTraitAndAdvance(
-                                     construct_codec_trait_from_bookkeeping(&mut ctx.lbk));
+                                 self.codec_traits = construct_codec_trait_from_bookkeeping(&mut ctx.lbk);
+                                 return OneCommandReturn::Advance;
                              } else {
                                  let pm = core::mem::replace(&mut self.state_prediction_mode,
                                                              context_map::PredictionModeState::<AllocU8>::nop());
@@ -791,7 +750,7 @@ impl<AllocU8: Allocator<u8>,
                              }
                          },
                          // this odd new_state command will tell the downstream to readjust the predictors
-                         retval => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval)),
+                         retval => return OneCommandReturn::BufferExhausted(retval),
                     }
                 },
                 EncodeOrDecodeState::BlockSwitchLiteral => {
@@ -806,15 +765,15 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             let new_block_type = match self.state_lit_block_switch {
                                 block_type::LiteralBlockTypeState::FullyDecoded(btype, stride) => LiteralBlockSwitch::new(btype, stride),
-                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
-                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(0)))),
+                                _ => return OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(0))),
                             };
                             self.cross_command_state.bk.obs_btypel(new_block_type);
                             match self.cross_command_state.thread_ctx.lbk() {
                                 Some(book_keeping) => {
                                     book_keeping.obs_literal_block_switch(new_block_type);
                                     self.state = EncodeOrDecodeState::Begin;
-                                    return CodecTraitResult::Res(OneCommandReturn::Advance);
+                                    return OneCommandReturn::Advance;
                                 },
                                 None => {
                                     self.state_populate_ring_buffer = Command::BlockSwitchLiteral(new_block_type);
@@ -823,7 +782,7 @@ impl<AllocU8: Allocator<u8>,
                             }
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -840,14 +799,14 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_btypec(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
-                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
-                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(1)))),
+                                _ => return OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(1))),
                             });
                             self.state = EncodeOrDecodeState::Begin;
-                            return CodecTraitResult::Res(OneCommandReturn::Advance);
+                            return OneCommandReturn::Advance;
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -865,14 +824,14 @@ impl<AllocU8: Allocator<u8>,
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_btyped(match self.state_block_switch {
                                 block_type::BlockTypeState::FullyDecoded(btype) => btype,
-                                _ => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(
-                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(2)))),
+                                _ => return OneCommandReturn::BufferExhausted(
+                                    DivansResult::Failure(ErrMsg::UnintendedCodecState(2))),
                             });
                             self.state = EncodeOrDecodeState::Begin;
-                            return CodecTraitResult::Res(OneCommandReturn::Advance);
+                            return OneCommandReturn::Advance;
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -896,7 +855,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -905,11 +864,28 @@ impl<AllocU8: Allocator<u8>,
                     let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
                         input_cmd,
                         &backing_store);
-                    match self.state_lit.encode_or_decode(&mut self.cross_command_state,
-                                                     src_literal_command,
-                                                     output_bytes,
-                                                     output_bytes_offset,
-                                                     ctraits) {
+                    match if Specialization::IS_DECODING_FILE {
+                        self.state_lit.encode_or_decode(&mut self.cross_command_state,
+                                                        src_literal_command,
+                                                        output_bytes,
+                                                        output_bytes_offset,
+                                                        &DEFAULT_TRAIT)
+                    } else {
+                        match self.codec_traits {
+                            CodecTraitSelector::DefaultTrait(tr) =>
+                                self.state_lit.encode_or_decode(&mut self.cross_command_state,
+                                                                src_literal_command,
+                                                                output_bytes,
+                                                                output_bytes_offset,
+                                                                tr),
+                            CodecTraitSelector::MixingTrait(mtr) =>
+                                self.state_lit.encode_or_decode(&mut self.cross_command_state,
+                                                                src_literal_command,
+                                                                output_bytes,
+                                                                output_bytes_offset,
+                                                                mtr),
+                        }
+                    } {
                         DivansResult::Success => {
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
@@ -917,7 +893,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -937,7 +913,7 @@ impl<AllocU8: Allocator<u8>,
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                            return OneCommandReturn::BufferExhausted(retval);
                         }
                     }
                 },
@@ -951,10 +927,10 @@ impl<AllocU8: Allocator<u8>,
                                                                          output_bytes_offset) {
                              DivansOutputResult::Success => {
                                  self.state = EncodeOrDecodeState::Begin;
-                                 return CodecTraitResult::Res(OneCommandReturn::Advance);
+                                 return OneCommandReturn::Advance;
                              },
                              need_something =>  {
-                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(need_something)));
+                                 return OneCommandReturn::BufferExhausted(DivansResult::from(need_something));
                              },
                          }
                     } else {
@@ -973,11 +949,11 @@ impl<AllocU8: Allocator<u8>,
                         } {
                             DivansOutputResult::NeedsMoreOutput => {
                                 if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
-                                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
+                                    return OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput); // we need the caller to drain the buffer
                                 }
                             },
                             DivansOutputResult::Failure(m) => {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
+                                return OneCommandReturn::BufferExhausted(DivansResult::Failure(m));
                             },
                             DivansOutputResult::Success => {
                                 // clobber bk.last_8_literals with the last 8 literals
@@ -997,7 +973,7 @@ impl<AllocU8: Allocator<u8>,
                                     ThreadContext::Worker => {}, // Main thread tracks literals
                              }
                                 self.state = EncodeOrDecodeState::Begin;
-                                return CodecTraitResult::Res(OneCommandReturn::Advance);
+                                return OneCommandReturn::Advance;
                             },
                         }
                     }
