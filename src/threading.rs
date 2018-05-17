@@ -32,16 +32,22 @@ pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
     const COOPERATIVE_MAIN: bool;
+    #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()>;
+    #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
+    #[inline(always)]
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     const COOPERATIVE: bool;
+    #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
+    #[inline(always)]
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()>;
     //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
+    #[inline(always)]
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self,
         cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
@@ -83,6 +89,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
 
 impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE_MAIN:bool = true;
+    #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
         if self.cm_len == self.cm.len() {
             return Err(());
@@ -91,6 +98,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len += 1;
         Ok(())
     }
+    #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
         if self.data_len == self.data.len() || data.slice().len() == 0 {
             return Err(());
@@ -99,6 +107,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         self.data_len += 1;
         Ok(())        
     }
+    #[inline(always)]
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
         if Self::COOPERATIVE_MAIN && self.result_len == 0 {
             return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default());
@@ -125,6 +134,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+Default> Defau
     }
 }
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
     pub fn new(w:WorkerInterface) -> Self {
         Self{
             worker:w,
@@ -133,6 +143,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
             eof: false,
         }
     }
+    #[inline(always)]
     fn send_any_empty_data_buffer_to_main(&mut self) -> DivansOutputResult {
             if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
                 let mut unused = 0usize;
@@ -145,7 +156,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
             }
             DivansOutputResult::Success
         }
-
+    #[inline(always)]
     fn pull_if_necessary(&mut self) -> DivansOutputResult{
         if self.slice.slice().len() == 0 {
             let ret = self.send_any_empty_data_buffer_to_main();
@@ -167,6 +178,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     }
 }
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
     pub fn get_main_to_thread(&mut self) -> &mut WorkerInterface {
         &mut self.worker
     }
@@ -174,9 +186,11 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 struct NopEncoderOrDecoderRecoderSpecialization {}
 impl EncoderOrDecoderRecoderSpecialization for NopEncoderOrDecoderRecoderSpecialization {
+    #[inline(always)]
     fn get_recoder_output<'a>(&'a mut self, _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
         &mut []
     }
+    #[inline(always)]
     fn get_recoder_output_offset<'a>(&self,
                                      _passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize {
@@ -281,6 +295,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE:bool = true;
+    #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         if self.data_len == 0 {
             return ThreadData::Yield;
@@ -292,6 +307,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.data_len -= 1;
         ret
     }
+    #[inline(always)]
     fn pull_context_map(&mut self,
                         _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         if self.cm_len == 0 {
@@ -305,6 +321,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len -= 1;
         Ok(ret)
     }
+    #[inline(always)]
     fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(&mut self,
                     cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
