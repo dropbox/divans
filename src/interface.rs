@@ -69,6 +69,7 @@ pub enum DivansOpResult {
 }
 
 impl From<DivansOpResult> for DivansResult {
+    #[inline(always)]
     fn from(res: DivansOpResult) -> Self {
         match res {
             DivansOpResult::Failure(x) => DivansResult::Failure(x),
@@ -78,6 +79,7 @@ impl From<DivansOpResult> for DivansResult {
 }
 
 impl From<DivansOpResult> for DivansInputResult {
+    #[inline(always)]
     fn from(res: DivansOpResult) -> Self {
         match res {
             DivansOpResult::Failure(x) => DivansInputResult::Failure(x),
@@ -87,6 +89,7 @@ impl From<DivansOpResult> for DivansInputResult {
 }
 
 impl From<DivansOpResult> for DivansOutputResult {
+    #[inline(always)]
     fn from(res: DivansOpResult) -> Self {
         match res {
             DivansOpResult::Failure(x) => DivansOutputResult::Failure(x),
@@ -111,6 +114,7 @@ pub enum DivansInputResult {
     NeedsMoreInput,
 }
 impl From<DivansInputResult> for DivansResult {
+    #[inline(always)]
     fn from(res: DivansInputResult) -> Self {
         match res {
             DivansInputResult::Failure(x) => DivansResult::Failure(x),
@@ -126,6 +130,7 @@ pub enum DivansOutputResult {
     NeedsMoreOutput,
 }
 impl From<DivansOutputResult> for DivansResult {
+    #[inline(always)]
     fn from(res: DivansOutputResult) -> Self {
         match res {
             DivansOutputResult::Failure(x) => DivansResult::Failure(x),
@@ -235,6 +240,7 @@ pub struct ReadableBytes<'a> {
 }
 
 impl<'a> ReadableBytes<'a> {
+    #[inline(always)]
     pub fn bytes_avail(&self) -> usize {
         self.data.len() - *self.read_offset
     }
@@ -386,6 +392,7 @@ pub trait ArithmeticEncoderOrDecoder : Sized {
     fn get_or_put_bit_without_billing(&mut self,
                                       bit: &mut bool,
                                       prob_of_false: u8);
+    #[inline(always)]
     fn get_or_put_bit(&mut self,
                       bit: &mut bool,
                       prob_of_false: u8,
