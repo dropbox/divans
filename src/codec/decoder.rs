@@ -64,9 +64,9 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub skip_checksum: bool,
     pub state_lit: LiteralState<AllocU8>,
     pub state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
-    pub doing_ring_buffer_populate: bool,
     pub specialization: DecoderSpecialization,
     pub outstanding_buffer_count: usize,
+    pub doing_ring_buffer_populate: bool,
 }
 
 
@@ -90,8 +90,8 @@ impl<Cdf16:CDF16,
             },
             devnull: DevNull::default(),
             nop: LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
-            state_populate_ring_buffer:Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
             doing_ring_buffer_populate: false,
+            state_populate_ring_buffer:Command::nop(),
             specialization:DecoderSpecialization::default(),
             outstanding_buffer_count: 0,
             deserialized_crc:[0u8;8],
@@ -228,7 +228,8 @@ impl<Cdf16:CDF16,
                             &DEFAULT_TRAIT,
                             &self.specialization) { 
                         DivansResult::Success => {
-                            assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
+                            debug_assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
+                            self.doing_ring_buffer_populate = true;
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
@@ -357,6 +358,7 @@ let but_to_push_len;
                             self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                         },
                         remainder => {
+                            self.doing_ring_buffer_populate = true;
                             core::mem::swap(&mut self.state_populate_ring_buffer, remainder);
                         },
                     }
