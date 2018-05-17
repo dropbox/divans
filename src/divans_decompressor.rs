@@ -6,9 +6,8 @@ use ::interface::{NewWithAllocator, Decompressor};
 use ::DecoderSpecialization;
 use ::codec;
 use super::mux::{Mux,DevNull};
-use codec::io::DemuxerAndRingBuffer;
 use codec::decoder::{DecoderResult, DivansDecoderCodec};
-use threading::{ThreadToMainDemuxer, SerialWorker, MainToThread};
+use threading::{ThreadToMainDemuxer, SerialWorker};
 
 
 use ::interface::{DivansResult, DivansInputResult, ErrMsg};

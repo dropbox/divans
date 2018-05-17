@@ -39,7 +39,7 @@ use self::specializations::{
     CodecTraits,
 };
 mod interface;
-use threading::{CommandResult, ThreadToMain, MainToThread};
+use threading::ThreadToMain;
 use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
     ThreadContext,

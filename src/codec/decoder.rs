@@ -1,10 +1,9 @@
 // This file contains a threaded decoder
 use core;
 use core::hash::Hasher;
-use interface::{DivansResult, DivansOutputResult, DivansInputResult, StreamMuxer, StreamDemuxer, StreamID, ErrMsg};
+use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, StreamDemuxer, StreamID, ErrMsg};
 use mux::DevNull;
-use ::probability::{CDF16, Speed, ExternalProbCDF16};
-use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
+use ::probability::{CDF16};
 use ::slice_util::AllocatedMemoryPrefix;
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
@@ -12,39 +11,26 @@ use super::literal::{LiteralState, LiteralSubstate};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use super::crc32::{crc32c_init,crc32c_update};
 use super::interface::{
-    EncoderOrDecoderSpecialization,
-    CrossCommandState,
-    ByteContext,
-    round_up_mod_4,
-    LiteralBookKeeping,
-    drain_or_fill_static_buffer,
     MainThreadContext,
     CMD_CODER,
     LIT_CODER,
-    DEBUG_TRACK,
 };
 use super::specializations::{
     construct_codec_trait_from_bookkeeping,
     CodecTraitSelector,
-    CodecTraits,
-    DEFAULT_TRAIT,
 };
 
 
 use ::interface::{
     NewWithAllocator,
     ArithmeticEncoderOrDecoder,
-    BillingDesignation,
     LiteralCommand,
-    PredictionModeContextMap,
     Nop,
     Command,
     free_cmd,
 };
 
 use threading::{MainToThread, CommandResult};
-use super::priors::LiteralNibblePriors;
-use ::priors::PriorCollection;
 
 pub struct DivansDecoderCodec<Cdf16:CDF16,
                           AllocU8:Allocator<u8>,
@@ -122,30 +108,25 @@ impl<Cdf16:CDF16,
             self.deserialized_crc_count += amt_to_copy as u8;
             *input_offset += amt_to_copy;
         }
-        // beginning and end??
-        let buf_to_push_len;
-        {
-            let buf_to_push = self.demuxer.edit(CMD_CODER as StreamID);
-            buf_to_push_len = buf_to_push.slice().len();
-        }
-        match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
-            Ok(_) => {
-                self.outstanding_buffer_count += 1;
-            },
-            Err(_) => {
-                if self.outstanding_buffer_count == 0 && self.eof == false && (
-                    self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
-                    return DivansInputResult::NeedsMoreInput;
-                }
-            }, // too full
+        if self.demuxer.data_ready(CMD_CODER as StreamID) != 0 {
+            match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
+                Ok(_) => {
+                    self.outstanding_buffer_count += 1;
+                },
+                Err(_) => {
+                    if self.outstanding_buffer_count == 0 && self.eof == false && (
+                        self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
+                        return DivansInputResult::NeedsMoreInput;
+                    }
+                }, // too full
+            }
         }
         DivansInputResult::Success
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
-    fn populate_ring_buffer<Worker:MainToThread<AllocU8>>(&mut self,
-                                                          worker: &mut Worker,
-                                                          output: &mut [u8],
-                                                          output_offset: &mut usize) -> DivansOutputResult {
+    fn populate_ring_buffer(&mut self,
+                            output: &mut [u8],
+                            output_offset: &mut usize) -> DivansOutputResult {
         
         if let Some(ref mut pop_cmd) = self.state_populate_ring_buffer {
             match self.ctx.recoder.encode_cmd(pop_cmd, output, output_offset) {
@@ -213,34 +194,51 @@ impl<Cdf16:CDF16,
                 LiteralSubstate::FullyDecoded => {            /*{DEBUG_TRACK(20)};*/}, // default case--nothing to do here
                 _ => {
                     //{DEBUG_TRACK(21)};
-                    match self.state_lit.encode_or_decode_content_bytes(
-                            self.ctx.m8.get_base_alloc(),
-                            &mut self.ctx.lit_coder,
-                            &mut self.ctx.lbk,
-                            &mut self.ctx.lit_high_priors,
-                            &mut self.ctx.lit_low_priors,
-                            &mut self.demuxer,
-                            &mut self.devnull,
-                            &self.nop,
-                            output,
-                            output_offset,
-                            &DEFAULT_TRAIT,
-                            &self.specialization) { 
-                        DivansResult::Success => {
-                            assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
-                            self.state_populate_ring_buffer = Some(Command::Literal(
-                                core::mem::replace(&mut self.state_lit.lc,
-                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
-                        },
-                        retval => {
-                            //{DEBUG_TRACK(22)};
-                            return DecoderResult::Processed(retval);
-                        }
+                    match match self.codec_traits {
+                        CodecTraitSelector::DefaultTrait(tr) =>
+                            self.state_lit.encode_or_decode_content_bytes(
+                                self.ctx.m8.get_base_alloc(),
+                                &mut self.ctx.lit_coder,
+                                &mut self.ctx.lbk,
+                                &mut self.ctx.lit_high_priors,
+                                &mut self.ctx.lit_low_priors,
+                                &mut self.demuxer,
+                                &mut self.devnull,
+                                &self.nop,
+                                output,
+                                output_offset,
+                                tr,
+                                &self.specialization),
+                        CodecTraitSelector::MixingTrait(mtr) =>
+                            self.state_lit.encode_or_decode_content_bytes(
+                                self.ctx.m8.get_base_alloc(),
+                                &mut self.ctx.lit_coder,
+                                &mut self.ctx.lbk,
+                                &mut self.ctx.lit_high_priors,
+                                &mut self.ctx.lit_low_priors,
+                                &mut self.demuxer,
+                                &mut self.devnull,
+                                &self.nop,
+                                output,
+                                output_offset,
+                                mtr,
+                                &self.specialization),                            
+                    } { 
+                                DivansResult::Success => {
+                                    assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
+                                    self.state_populate_ring_buffer = Some(Command::Literal(
+                                        core::mem::replace(&mut self.state_lit.lc,
+                                                           LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
+                                },
+                                retval => {
+                                    //{DEBUG_TRACK(22)};
+                                    return DecoderResult::Processed(retval);
+                                }
                     }
                     //{DEBUG_TRACK(23)};
                 },
             }
-            match self.populate_ring_buffer(worker, output, output_offset) {
+            match self.populate_ring_buffer(output, output_offset) {
                 DivansOutputResult::Success => {},
                 need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
             }
@@ -263,11 +261,6 @@ impl<Cdf16:CDF16,
                     //{DEBUG_TRACK(4)};
                     self.outstanding_buffer_count -= 1;
                     let mut need_input = false;
-let but_to_push_len;
-                    {
-                        let buf_to_push = self.demuxer.edit(CMD_CODER as StreamID);
-                         but_to_push_len = buf_to_push.0.slice().len();
-                    }
                     //{DEBUG_TRACK(5)};
                     match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
                         Ok(_) => {
@@ -332,6 +325,10 @@ let but_to_push_len;
                     let ret = self.ctx.lbk.obs_prediction_mode_context_map(
                         &pred_mode,
                         &mut self.ctx.mcdf16);
+                    match ret {
+                        DivansOpResult::Success => {},
+                        _ => return DecoderResult::Processed(DivansResult::from(ret)),
+                    }
                     self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                     match worker.push_context_map(pred_mode) {
                         Ok(_) => {},

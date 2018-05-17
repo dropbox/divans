@@ -608,18 +608,6 @@ impl<
     }
 }
 
-pub static mut DEBUG_STATE: u64 = 0;
-#[inline(never)]
-pub fn DEBUG_TRACK(x:u64) -> u64{
-    unsafe {DEBUG_STATE += x};
-    if unsafe{DEBUG_STATE + x == 2359782035823958225} {
-        panic!(x);
-    }
-    if unsafe{DEBUG_STATE & 0xfff == 0} {
-        eprint!("DEBUG STATE {}\n", unsafe{DEBUG_STATE});
-    }
-    unsafe {DEBUG_STATE}
-}
 pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
     pub m8: RepurposingAlloc<u8, AllocU8>,

@@ -16,7 +16,7 @@ use super::interface::{
     drain_or_fill_static_buffer,
     ThreadContext,
 };
-use threading::{CommandResult, ThreadToMain, MainToThread};
+use threading::ThreadToMain;
 use super::specializations::{CodecTraits};
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -406,7 +406,6 @@ impl<AllocU8:Allocator<u8>,
                                             output_offset: &mut usize,
                                             ctraits: &'static CTraits,
                                             specialization: &Specialization) -> DivansResult {
-        let literal_len = in_cmd.data.slice().len() as u32;
         loop {
             match drain_or_fill_static_buffer(LIT_CODER,
                                               lit_coder,
@@ -415,13 +414,7 @@ impl<AllocU8:Allocator<u8>,
                                               &mut Some(m8)) {
                 DivansResult::Success => {},
                 needs_something => return needs_something,
-        }
-            let billing = BillingDesignation::LiteralCommand(match self.state {
-                LiteralSubstate::LiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
-                LiteralSubstate::LiteralNibbleLowerHalf(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
-                LiteralSubstate::SafeLiteralNibbleIndex(index) => LiteralSubstate::LiteralNibbleIndex(index % 2),
-                _ => self.state
-            });
+            }
             match self.state {
                 LiteralSubstate::Begin |
                 LiteralSubstate::LiteralCountSmall(_) |

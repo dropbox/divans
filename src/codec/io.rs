@@ -1,5 +1,5 @@
 use core;
-use interface::{Command, LiteralCommand, PredictionModeContextMap, free_cmd,FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
+use interface::{Command, PredictionModeContextMap, free_cmd, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
 use ::interface::{
     DivansOutputResult,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
@@ -13,7 +13,7 @@ use alloc::{Allocator};
 use alloc_util::{RepurposingAlloc, UninitializedOnAlloc};
 use cmd_to_raw::DivansRecodeState;
 
-use threading::{ThreadToMain,ThreadData,CommandResult};
+use threading::{ThreadToMain,ThreadData};
 
 
 pub struct DemuxerAndRingBuffer<AllocU8:Allocator<u8>,
@@ -112,7 +112,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
         output_offset: &mut usize,
     ) -> DivansOutputResult {
         let mut tmp_output_offset_bytes_backing: usize = 0;
-        let mut tmp_output_offset_bytes = specialization.get_recoder_output_offset(
+        let tmp_output_offset_bytes = specialization.get_recoder_output_offset(
             output_offset,
             &mut tmp_output_offset_bytes_backing);
         let ret = recoder.as_mut().unwrap().encode_cmd(cmd,
@@ -122,7 +122,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             DivansOutputResult::Success | DivansOutputResult::Failure(_) =>
                 free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
                         UninitializedOnAlloc>()),
-            need_something => {},
+            _ => {},
         }
         return ret;
     }

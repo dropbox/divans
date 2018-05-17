@@ -276,8 +276,7 @@ fn bench_with_ir<Run: Runner,
         let mut decompress_lambda = || {
             dv_buffer.reset_read();
             rt_buffer.reset();
-                use std::fs;
-             super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
+            super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
             let actual_ratio =  dv_buffer.written().len() as f64 / input_buffer.slice().len() as f64;
             if !(actual_ratio <= ratio) {
                 println!("Failed: actual buffer length {} dv_buffer size: {}", input_buffer.slice().len(), dv_buffer.written().len());

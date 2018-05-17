@@ -1200,7 +1200,7 @@ fn unit_test_decode_mux() {
                              0xff, 0xfe, 0xff];
     let mut m8 = HeapAlloc::<u8>::new(0);
     let mut mux = mux::Mux::<HeapAlloc<u8>>::default();
-    let actually_deserialized = mux.deserialize(&to_decode[..], &mut m8);
+    let _actually_deserialized = mux.deserialize(&to_decode[..], &mut m8);
     
     assert_eq!(mux.edit(0).slice(), &to_decode[3..3+16]);
     assert_eq!(mux.edit(1).slice(), &to_decode[6+16..6+32]);
