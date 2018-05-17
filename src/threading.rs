@@ -381,7 +381,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
             core::mem::replace(cmd,
                                Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()
         );
-        self.consumed_data_len += 1;
+        self.cmd_result_len += 1;
         DivansOutputResult::Success
     }
     #[inline(always)]
