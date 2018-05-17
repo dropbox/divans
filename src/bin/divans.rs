@@ -157,10 +157,11 @@ struct ItemVecAllocator<Item:Sized+Default> {
 impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item> {
     type AllocatedMemory = ItemVec<Item>;
     fn alloc_cell(&mut self, size:usize) ->ItemVec<Item>{
+        eprint!("A:{}\n", size);
         ItemVec(vec![Item::default();size])
     }
     fn free_cell(&mut self, _bv:ItemVec<Item>) {
-
+        eprint!("F:{}\n", _bv.slice().len());
     }
 }
 fn window_parse(s : &str) -> Result<i32, io::Error> {
