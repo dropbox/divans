@@ -242,14 +242,15 @@ impl<Cdf16:CDF16,
                 },
             }
             if self.doing_ring_buffer_populate {
-            match self.populate_ring_buffer(worker, output, output_offset) {
-                DivansOutputResult::Success => {
-                    if Worker::COOPERATIVE_MAIN {
-                        return DecoderResult::Yield;
-                    }
-                },
-                need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
-            }
+                match self.populate_ring_buffer(worker, output, output_offset) {
+                    DivansOutputResult::Success => {
+                        self.doing_ring_buffer_populate = false;
+                        if Worker::COOPERATIVE_MAIN {
+                            return DecoderResult::Yield;
+                        }
+                    },
+                    need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
+                }
             }
             if self.eof {
                 return DecoderResult::Processed(DivansResult::from(self.process_eof()));
