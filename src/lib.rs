@@ -71,6 +71,7 @@ mod divans_decompressor;
 pub mod mux;
 pub mod constants;
 pub mod threading;
+pub mod multithreading;
 pub use self::interface::{DivansInputResult,DivansOpResult,DivansOutputResult, DivansResult, ErrMsg};
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,

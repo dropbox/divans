@@ -78,6 +78,23 @@ pub struct SerialWorker<AllocU8:Allocator<u8>> {
     result_len: usize,
     result:[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;3],
 }
+impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
+    pub fn result_ready(&self) -> bool {
+        self.result_len != 0
+    }
+    pub fn result_space_ready(&self) -> bool {
+        self.result_len != self.result.len()
+    }
+    pub fn cm_space_ready(&self) -> bool {
+        self.cm_len != self.cm.len()
+    }
+    pub fn cm_ready(&self) -> bool {
+        self.cm_len != 0
+    }
+    pub fn data_ready(&self) -> bool {
+        self.data_len != 0
+    }
+}
 impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
     fn default() -> Self {
         SerialWorker::<AllocU8> {
