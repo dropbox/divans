@@ -47,7 +47,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
     #[inline(always)]
     fn used(&self) -> bool { self.entropy() != Self::default().entropy() }
     #[inline(always)]
-    fn max(&self) -> Prob { 64 }
+    fn max(&self) -> Prob { self.cdf.extract(15) }
     #[inline(always)]
     fn div_by_max(&self, val:i32) -> i32 {
         let divisor = self.cdf.extract(15) as u16;
@@ -84,8 +84,8 @@ impl BaseCDF for SIMDFrequentistCDF16 {
                              sym: u8) -> SymStartFreq {
         let prev_cur = i32x2::new(if sym != 0 {self.cdf(sym - 1) as i32} else {0},
                                   self.cdf(sym) as i32);
-        let scaled_prev_cur = i32x2::from(prev_cur << LOG2_SCALE);
-        let prev_cur_over_max = scaled_prev_cur / i32::from(self.max());
+        let scaled_prev_cur = f64x2::from(prev_cur << LOG2_SCALE);
+        let prev_cur_over_max = scaled_prev_cur / (self.max() as f64);
         let start_end = i32x2::from(prev_cur_over_max);
         let start = start_end.extract(0) + 1; // the +1 is a major hax
         let freq = start_end.extract(1) - start; // don't want rounding errors to work out unfavorably
@@ -97,6 +97,39 @@ impl BaseCDF for SIMDFrequentistCDF16 {
             sym: sym,
         }
     }
+    #[cfg(any(feature="portable-simd", not(target_arch="x86_64")))]
+    #[inline(always)]
+    fn cdf_offset_to_sym_start_and_freq(&self,
+                                        cdf_offset_p: Prob) -> SymStartFreq {
+        let cdfmax = self.max();
+        let inv_max_and_bitlen = lookup_divisor(cdfmax);
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
+        let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
+        let tmp_byte: i8x16 = unsafe { simd_shuffle16(i8x32::from_bits(symbol_less), i8x32::splat(0),
+                                                      [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30]) };
+        let tmp_mask = i64x2::from_bits(tmp_byte & i8x16::new(0xf,0xf,0xf,0xf,0xf,0xf,0xf,0xf,
+                                                              -0x10,-0x10,-0x10,-0x10,-0x10,-0x10,-0x10,-0x10));
+        let bitmask = (tmp_mask.extract(0) | tmp_mask.extract(1)) as u64;
+        let symbol_id = (64 - bitmask.leading_zeros() as u8) >> 2 ;
+        self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
+    }
+    #[cfg(target_arch = "x86_64")]
+    #[cfg(not(feature="portable-simd"))]
+    #[cfg(feature="avx2")]
+    #[inline(always)]
+    fn cdf_offset_to_sym_start_and_freq(&self,
+                                        cdf_offset_p: Prob) -> SymStartFreq {
+        let cdfmax = self.max();
+        let inv_max_and_bitlen = lookup_divisor(cdfmax);
+        let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
+        let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
+        let bitmask = unsafe { core::arch::x86_64::_mm256_movemask_epi8(core::arch::x86_64::__m256i::from_bits(symbol_less)) };
+        let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
+        self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
+    }
+    #[cfg(target_arch = "x86_64")]
+    #[cfg(not(feature="portable-simd"))]
+    #[cfg(not(feature="avx2"))]
     #[inline(always)]
     fn cdf_offset_to_sym_start_and_freq(&self,
                                         cdf_offset_p: Prob) -> SymStartFreq {
