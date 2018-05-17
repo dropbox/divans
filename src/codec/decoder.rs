@@ -99,6 +99,7 @@ impl<Cdf16:CDF16,
             eof:false,
         }
     }
+    #[inline(always)]
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
                                                                worker:&mut Worker,
                                                                input: &[u8],
@@ -200,17 +201,18 @@ impl<Cdf16:CDF16,
             self.state_populate_ring_buffer=Some(cmd);
             DEBUG_TRACK(35);
         }
-    }*/
+}*/
+    #[inline(always)]
     pub fn decode_process_output<Worker: MainToThread<AllocU8>>(&mut self,
                                                                 worker:&mut Worker,
                                                                 output: &mut [u8],
                                                                 output_offset: &mut usize) -> DecoderResult{
-        {DEBUG_TRACK(18)};
+        //{DEBUG_TRACK(18)};
         loop {
             match self.state_lit.state{
-                LiteralSubstate::FullyDecoded => {            {DEBUG_TRACK(20)};}, // default case--nothing to do here
+                LiteralSubstate::FullyDecoded => {            /*{DEBUG_TRACK(20)};*/}, // default case--nothing to do here
                 _ => {
-                    {DEBUG_TRACK(21)};
+                    //{DEBUG_TRACK(21)};
                     match self.state_lit.encode_or_decode_content_bytes(
                             self.ctx.m8.get_base_alloc(),
                             &mut self.ctx.lit_coder,
@@ -231,11 +233,11 @@ impl<Cdf16:CDF16,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
                         },
                         retval => {
-                            {DEBUG_TRACK(22)};
+                            //{DEBUG_TRACK(22)};
                             return DecoderResult::Processed(retval);
                         }
                     }
-                    {DEBUG_TRACK(23)};
+                    //{DEBUG_TRACK(23)};
                 },
             }
             match self.populate_ring_buffer(worker, output, output_offset) {
@@ -248,17 +250,17 @@ impl<Cdf16:CDF16,
             match worker.pull() {
                 CommandResult::Eof => {
                     self.eof = true;
-                    {DEBUG_TRACK(1)};
+                    //{DEBUG_TRACK(1)};
                     return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 },
                 CommandResult::ProcessedData(mut dat) => {
-                    {DEBUG_TRACK(2)};
+                    //{DEBUG_TRACK(2)};
                     if dat.0.slice().len() == 0 {
-                        {DEBUG_TRACK(3)};
+                        //{DEBUG_TRACK(3)};
                         assert_eq!(Worker::COOPERATIVE_MAIN, true);
                         return DecoderResult::Yield;
                     }
-                    {DEBUG_TRACK(4)};
+                    //{DEBUG_TRACK(4)};
                     self.outstanding_buffer_count -= 1;
                     let mut need_input = false;
 let but_to_push_len;
@@ -266,33 +268,33 @@ let but_to_push_len;
                         let buf_to_push = self.demuxer.edit(CMD_CODER as StreamID);
                          but_to_push_len = buf_to_push.0.slice().len();
                     }
-                    {DEBUG_TRACK(5)};
+                    //{DEBUG_TRACK(5)};
                     match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
                         Ok(_) => {
-                            {DEBUG_TRACK(6)};
+                            //{DEBUG_TRACK(6)};
                             self.outstanding_buffer_count += 1;
                         },
                         Err(_) => {
-                            {DEBUG_TRACK(7)};
+                            //{DEBUG_TRACK(7)};
                             // this is tricky logic:
                             // if there are no outstanding buffers and we have either not encountered the EOf or still have bytes avail to send
                             // to the cmd stream
                             // then we need to signal to our caller that we need input for the worker
                             if self.outstanding_buffer_count == 0 && self.eof == false && (
                                 self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
-                                {DEBUG_TRACK(8)};
+                                //{DEBUG_TRACK(8)};
                                 need_input = true;
                             }
                         },
                     }
-                    {DEBUG_TRACK(9)};
+                    //{DEBUG_TRACK(9)};
                     let possible_replacement = self.demuxer.edit(CMD_CODER as StreamID);
                     let possible_replacement_len = possible_replacement.0.slice().len();
                     if possible_replacement_len == 0 { // FIXME: do we want to replace, if twice as big?
-                        {DEBUG_TRACK(10)};
+                        //{DEBUG_TRACK(10)};
                         core::mem::replace(&mut possible_replacement.0, dat.0);
                     } else {
-                        {DEBUG_TRACK(11)};
+                        //{DEBUG_TRACK(11)};
                         if false && possible_replacement_len * 2 <= dat.0.slice().len() {
                             dat.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
                             let tmp = core::mem::replace(&mut possible_replacement.0, dat.0);
@@ -302,11 +304,11 @@ let but_to_push_len;
                         self.ctx.m8.free_cell(dat.0);
                     }
                     if need_input {
-                        {DEBUG_TRACK(12)};
+                        //{DEBUG_TRACK(12)};
                         return DecoderResult::Processed(DivansResult::NeedsMoreInput);
                     }
                 },
-                CommandResult::Cmd(Command::Literal(ref lit)) => {
+                CommandResult::Cmd(Command::Literal(lit)) => {
                     let num_bytes = lit.data.1;
                     self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
                     let last_8 = self.ctx.recoder.last_8_literals();
@@ -336,7 +338,7 @@ let but_to_push_len;
                         Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
                     }
                 },
-                CommandResult::Cmd(Command::BlockSwitchLiteral(ref new_block_type)) => {
+                CommandResult::Cmd(Command::BlockSwitchLiteral(new_block_type)) => {
                     self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
                     self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                 },
@@ -344,9 +346,9 @@ let but_to_push_len;
                     self.state_populate_ring_buffer=Some(remainder);
                 },
             }
-            {DEBUG_TRACK(15)};
+            //{DEBUG_TRACK(15)};
         }
-        {DEBUG_TRACK(16)};
+        //{DEBUG_TRACK(16)};
     }
     pub fn decode<Worker: MainToThread<AllocU8>>(&mut self,
                                                  worker:&mut Worker,
@@ -377,11 +379,13 @@ impl core::hash::Hasher for SubDigest {
         u64::from(self.0)
     }
 }
+#[inline(always)]
 pub fn default_crc() -> SubDigest {
     SubDigest(crc32c_init())
 }
 
 impl Default for SubDigest {
+    #[inline(always)]
     fn default() -> Self {
         default_crc()
     }

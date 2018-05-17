@@ -32,25 +32,41 @@ pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
     const COOPERATIVE_MAIN: bool;
+    #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()>;
+    #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
+    #[inline(always)]
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     const COOPERATIVE: bool;
+    #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
+    #[inline(always)]
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()>;
     //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
-    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
+    #[inline(always)]
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self,
-        cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+        cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
         recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
         specialization: &mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>);
+    ) -> DivansOutputResult;
+    #[inline(always)]
+    fn push_consumed_data(
+        &mut self,
+        data:&mut AllocatedMemoryRange<u8, AllocU8>,
+        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+    ) -> DivansOutputResult;
+    #[inline(always)]
+    fn push_eof(
+        &mut self,
+    ) -> DivansOutputResult;
 }
 
 pub struct SerialWorker<AllocU8:Allocator<u8>> {
@@ -83,6 +99,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
 
 impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE_MAIN:bool = true;
+    #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
         if self.cm_len == self.cm.len() {
             return Err(());
@@ -91,6 +108,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len += 1;
         Ok(())
     }
+    #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
         if self.data_len == self.data.len() || data.slice().len() == 0 {
             return Err(());
@@ -99,6 +117,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         self.data_len += 1;
         Ok(())        
     }
+    #[inline(always)]
     fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
         if Self::COOPERATIVE_MAIN && self.result_len == 0 {
             return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default());
@@ -125,6 +144,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+Default> Defau
     }
 }
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
     pub fn new(w:WorkerInterface) -> Self {
         Self{
             worker:w,
@@ -133,19 +153,15 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
             eof: false,
         }
     }
+    #[inline(always)]
     fn send_any_empty_data_buffer_to_main(&mut self) -> DivansOutputResult {
             if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
                 let mut unused = 0usize;
-                let (ret, _ign, dat) = self.worker.push_command(CommandResult::ProcessedData(
-                    core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused); //FIXME(threading): I think passing None here is fine since the receiver will free it
-                if let Some(rejected) = dat {
-                        self.slice = rejected;
-                }
-                return ret;
+                return self.worker.push_consumed_data(&mut self.slice, None);
             }
             DivansOutputResult::Success
         }
-
+    #[inline(always)]
     fn pull_if_necessary(&mut self) -> DivansOutputResult{
         if self.slice.slice().len() == 0 {
             let ret = self.send_any_empty_data_buffer_to_main();
@@ -167,6 +183,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     }
 }
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> ThreadToMainDemuxer<AllocU8, WorkerInterface> {
+    #[inline(always)]
     pub fn get_main_to_thread(&mut self) -> &mut WorkerInterface {
         &mut self.worker
     }
@@ -174,9 +191,11 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 struct NopEncoderOrDecoderRecoderSpecialization {}
 impl EncoderOrDecoderRecoderSpecialization for NopEncoderOrDecoderRecoderSpecialization {
+    #[inline(always)]
     fn get_recoder_output<'a>(&'a mut self, _passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
         &mut []
     }
+    #[inline(always)]
     fn get_recoder_output_offset<'a>(&self,
                                      _passed_in_output_bytes: &'a mut usize,
                                      backing: &'a mut usize) -> &'a mut usize {
@@ -232,8 +251,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
     fn free_demux(&mut self, _m8: &mut AllocU8){
         if self.slice.0.slice().len() != 0 {
             let mut unused = 0usize;
-            self.worker.push_command(CommandResult::ProcessedData(
-                core::mem::replace(&mut self.slice, AllocatedMemoryRange::<u8, AllocU8>::default())), None, None, &mut NopEncoderOrDecoderRecoderSpecialization{}, &mut [], &mut unused);
+            self.worker.push_consumed_data(&mut self.slice, None);
         }
     }
 }
@@ -250,15 +268,28 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         self.worker.pull_context_map(m8)
     }
     #[inline(always)]
-    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
-        &mut self, cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+        &mut self, cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
         recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
         specialization:&mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
-        self.worker.push_command(cmd, m8, recoder, specialization, output, output_offset)
+    ) -> DivansOutputResult {
+        self.worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset)
+    }
+    #[inline(always)]
+    fn push_consumed_data(
+        &mut self, data:&mut AllocatedMemoryRange<u8, AllocU8>,
+        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+    ) -> DivansOutputResult {
+        self.worker.push_consumed_data(data, m8)
+    }
+    #[inline(always)]
+    fn push_eof(
+        &mut self,
+    ) -> DivansOutputResult {
+        self.worker.push_eof()
     }
 }
 
@@ -281,6 +312,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE:bool = true;
+    #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         if self.data_len == 0 {
             return ThreadData::Yield;
@@ -292,6 +324,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.data_len -= 1;
         ret
     }
+    #[inline(always)]
     fn pull_context_map(&mut self,
                         _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         if self.cm_len == 0 {
@@ -305,27 +338,50 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         self.cm_len -= 1;
         Ok(ret)
     }
-    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(&mut self,
-                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
-                    _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-                    _recoder:Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
-                    _specialization:&mut Specialization,
-                    _output:&mut [u8],
-                    _output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
+    #[inline(always)]
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+        &mut self,
+        cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+        _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+        _recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+        _specialization: &mut Specialization,
+        _output:&mut [u8],
+        _output_offset: &mut usize,
+    ) -> DivansOutputResult {
         if self.result_len == self.result.len() {
-            if let CommandResult::Cmd(command) = cmd {
-                return (DivansOutputResult::NeedsMoreOutput, Some(command), None);
-            } else {
-                if let CommandResult::ProcessedData(processed_data) = cmd {
-                    return (DivansOutputResult::NeedsMoreOutput, None, Some(processed_data));
-                }
-                return (DivansOutputResult::NeedsMoreOutput, None, None);
-            }
+            return DivansOutputResult::NeedsMoreOutput;
+        }
+        self.result[self.result_len] = CommandResult::Cmd(core::mem::replace(cmd,
+                                                                             Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()
+        ));
+        self.result_len += 1;
+        DivansOutputResult::Success
+    }
+    #[inline(always)]
+    fn push_consumed_data(&mut self,
+                    data:&mut AllocatedMemoryRange<u8, AllocU8>,
+                    _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+    ) -> DivansOutputResult {
+        if self.result_len == self.result.len() {
+            return DivansOutputResult::NeedsMoreOutput;
         }
         
-        self.result[self.result_len] = cmd;
+        self.result[self.result_len] = CommandResult::ProcessedData(
+            core::mem::replace(
+                data,
+                AllocatedMemoryRange::<u8, AllocU8>::default()));
         self.result_len += 1;
-        (DivansOutputResult::Success, None, None)
+        DivansOutputResult::Success
+    }
+   #[inline(always)]
+    fn push_eof(&mut self,
+    ) -> DivansOutputResult {
+        if self.result_len == self.result.len() {
+            return DivansOutputResult::NeedsMoreOutput;
+        }
+        
+        self.result[self.result_len] = CommandResult::Eof;
+        self.result_len += 1;
+        DivansOutputResult::Success
     }
 }
