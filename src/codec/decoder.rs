@@ -308,7 +308,7 @@ let but_to_push_len;
                         return DecoderResult::Processed(DivansResult::NeedsMoreInput);
                     }
                 },
-                CommandResult::Cmd(Command::Literal(ref lit)) => {
+                CommandResult::Cmd(Command::Literal(lit)) => {
                     let num_bytes = lit.data.1;
                     self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
                     let last_8 = self.ctx.recoder.last_8_literals();
@@ -338,7 +338,7 @@ let but_to_push_len;
                         Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
                     }
                 },
-                CommandResult::Cmd(Command::BlockSwitchLiteral(ref new_block_type)) => {
+                CommandResult::Cmd(Command::BlockSwitchLiteral(new_block_type)) => {
                     self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
                     self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                 },

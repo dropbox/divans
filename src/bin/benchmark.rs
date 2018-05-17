@@ -277,10 +277,6 @@ fn bench_with_ir<Run: Runner,
             dv_buffer.reset_read();
             rt_buffer.reset();
                 use std::fs;
-    use std::io::Write;
-
-   let mut file = fs::File::create("/tmp/ALICEX.DV").unwrap();
-    file.write_all(&dv_buffer.data);
              super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false).unwrap();
             let actual_ratio =  dv_buffer.written().len() as f64 / input_buffer.slice().len() as f64;
             if !(actual_ratio <= ratio) {
