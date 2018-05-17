@@ -125,9 +125,11 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         if self.data_len == self.data.len() || data.slice().len() == 0 {
             return Err(());
         }
-        self.data[self.data_len] = ThreadData::Data(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
+        debug_assert_eq!(self.data.len() & (self.data.len() - 1), 0); //power of two
+        self.data[self.data_len&(self.data.len() - 1)] =
+                        ThreadData::Data(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
         self.data_len += 1;
-        Ok(())        
+        Ok(())
     }
     #[inline(always)]
     fn pull(&mut self,
@@ -380,10 +382,9 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         if self.cmd_result_len == self.cmd_result.len() {
             return DivansOutputResult::NeedsMoreOutput;
         }
-        self.cmd_result[self.cmd_result_len] =
-            core::mem::replace(cmd,
-                               Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()
-        );
+        debug_assert_eq!(self.cmd_result.len() & (self.cmd_result.len() - 1), 0); // power of two
+        
+        core::mem::swap(&mut self.cmd_result[self.cmd_result_len & (self.cmd_result.len() - 1)], cmd);
         self.cmd_result_len += 1;
         DivansOutputResult::Success
     }
@@ -395,10 +396,9 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         if self.consumed_data_len == self.consumed_data.len() {
             return DivansOutputResult::NeedsMoreOutput;
         }
-        self.consumed_data[self.consumed_data_len] = 
-            core::mem::replace(
-                data,
-                AllocatedMemoryRange::<u8, AllocU8>::default());
+        debug_assert_eq!(self.consumed_data.len() & (self.consumed_data.len() - 1), 0); // power of two
+        core::mem::swap(&mut self.consumed_data[self.consumed_data_len & (self.consumed_data.len() - 1)],
+                        data);
         self.consumed_data_len += 1;
         DivansOutputResult::Success
     }

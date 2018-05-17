@@ -63,7 +63,8 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub deserialized_crc_count: u8,
     pub skip_checksum: bool,
     pub state_lit: LiteralState<AllocU8>,
-    pub state_populate_ring_buffer: Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>,
+    pub state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+    pub doing_ring_buffer_populate: bool,
     pub specialization: DecoderSpecialization,
     pub outstanding_buffer_count: usize,
 }
@@ -89,7 +90,8 @@ impl<Cdf16:CDF16,
             },
             devnull: DevNull::default(),
             nop: LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
-            state_populate_ring_buffer:None,
+            state_populate_ring_buffer:Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
+            doing_ring_buffer_populate: false,
             specialization:DecoderSpecialization::default(),
             outstanding_buffer_count: 0,
             deserialized_crc:[0u8;8],
@@ -146,21 +148,19 @@ impl<Cdf16:CDF16,
                                                           worker: &mut Worker,
                                                           output: &mut [u8],
                                                           output_offset: &mut usize) -> DivansOutputResult {
-        
-        if let Some(ref mut pop_cmd) = self.state_populate_ring_buffer {
-            match self.ctx.recoder.encode_cmd(pop_cmd, output, output_offset) {
-                DivansOutputResult::Success => free_cmd(pop_cmd,
+        if self.doing_ring_buffer_populate {
+            match self.ctx.recoder.encode_cmd(&self.state_populate_ring_buffer, output, output_offset) {
+                DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
                                                         &mut self.ctx.m8.use_cached_allocation::<
                                                                 UninitializedOnAlloc>()),
                 DivansOutputResult::Failure(f) => {
-                    free_cmd(pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
+                    free_cmd(&mut self.state_populate_ring_buffer, &mut self.ctx.m8.use_cached_allocation::<
                             UninitializedOnAlloc>());
                     return DivansOutputResult::Failure(f);
                 },
                 need_something => return need_something,
             }
         }
-        self.state_populate_ring_buffer.take();
         DivansOutputResult::Success
     }
     #[cold]
@@ -230,9 +230,9 @@ impl<Cdf16:CDF16,
                             &self.specialization) { 
                         DivansResult::Success => {
                             assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
-                            self.state_populate_ring_buffer = Some(Command::Literal(
+                            self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
-                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
+                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
                         },
                         retval => {
                             //{DEBUG_TRACK(22)};
@@ -354,16 +354,9 @@ let but_to_push_len;
                             self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                         },
                         remainder => {
-                            self.state_populate_ring_buffer=Some(core::mem::replace(remainder, Command::nop()));
+                            core::mem::swap(&mut self.state_populate_ring_buffer, remainder);
                         },
                     }
-                },
-                CommandResult::Cmd(Command::BlockSwitchLiteral(new_block_type)) => {
-                    self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                },
-                CommandResult::Cmd(remainder) => {
-                    self.state_populate_ring_buffer=Some(remainder);
                 },
             }
             //{DEBUG_TRACK(15)};
