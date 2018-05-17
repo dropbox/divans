@@ -25,10 +25,11 @@ pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> Pred
     }
 }
 
-pub enum CommandResult<AllocU8: Allocator<u8>, SliceType:SliceWrapper<u8>> {
-    Cmd(Command<SliceType>),
+pub enum CommandResult {
+    Cmd,
     Eof,
-    ProcessedData(AllocatedMemoryRange<u8, AllocU8>),
+    ProcessedData,
+    Yield,
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
     const COOPERATIVE_MAIN: bool;
@@ -37,7 +38,9 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
     #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
     #[inline(always)]
-    fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;
+    fn pull(&mut self,
+            cmd: &mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+            consumed:&mut AllocatedMemoryRange<u8, AllocU8>) -> CommandResult;
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
@@ -75,8 +78,11 @@ pub struct SerialWorker<AllocU8:Allocator<u8>> {
     data: [ThreadData<AllocU8>;2],
     cm_len: usize,
     cm: [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2],
-    result_len: usize,
-    result:[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;3],
+    cmd_result_len: usize,
+    cmd_result:[Command<AllocatedMemoryPrefix<u8, AllocU8>>;2],
+    consumed_data_len: usize,
+    consumed_data:[AllocatedMemoryRange<u8, AllocU8>;2],
+    eof_to_main:bool,
 }
 impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
     fn default() -> Self {
@@ -87,12 +93,17 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
             cm_len: 0,
             cm: [empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>(),
                  empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>()],
-            result_len: 0,
-            result: [
-                CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),
+            cmd_result_len: 0,
+            cmd_result: [
+                Command::nop(),
+                Command::nop(),
                 ],
+            consumed_data_len: 0,
+            consumed_data:[
+                AllocatedMemoryRange::<u8, AllocU8>::default(),
+                AllocatedMemoryRange::<u8, AllocU8>::default(),
+            ],
+            eof_to_main: false,
         }
     }
 }
@@ -119,17 +130,30 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         Ok(())        
     }
     #[inline(always)]
-    fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
-        if Self::COOPERATIVE_MAIN && self.result_len == 0 {
-            return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default());
+    fn pull(&mut self,
+            cmd: &mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+            consumed:&mut AllocatedMemoryRange<u8, AllocU8>) -> CommandResult{
+        if self.cmd_result_len == 0 && self.consumed_data_len == 0 {
+            if self.eof_to_main == false {
+                if Self::COOPERATIVE_MAIN {
+                    return CommandResult::Yield;
+                } else {
+                    panic!("No data left to pull and main thread not set to cooperate");
+                }
+            } else {
+                return CommandResult::Eof;
+            }
         }
-        assert!(self.result_len != 0);
-        assert_eq!(self.result.len(), 3);
-        let second = core::mem::replace(&mut self.result[2], CommandResult::Eof);
-        let first = core::mem::replace(&mut self.result[1], second);
-        let ret = core::mem::replace(&mut self.result[0], first);
-        self.result_len -= 1;
-        ret
+        if self.consumed_data_len != 0 {
+            let first = core::mem::replace(&mut self.consumed_data[1], AllocatedMemoryRange::<u8, AllocU8>::default());
+            core::mem::replace(consumed, core::mem::replace(&mut self.consumed_data[0], first));
+            self.consumed_data_len -= 1;
+            return CommandResult::ProcessedData;
+        }
+        let first = core::mem::replace(&mut self.cmd_result[1], Command::nop());
+        core::mem::replace(cmd, core::mem::replace(&mut self.cmd_result[0], first));
+        self.cmd_result_len -= 1;
+        return CommandResult::Cmd;
     }
 }
 type NopUsize = usize;
@@ -306,8 +330,10 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
         self.worker.push(data)
     }
     #[inline(always)]
-    fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>> {
-        self.worker.pull()
+    fn pull(&mut self,
+            cmd: &mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+            consumed:&mut AllocatedMemoryRange<u8, AllocU8>) -> CommandResult{
+        self.worker.pull(cmd, consumed)
     }
 
 }
@@ -351,13 +377,14 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
         _output:&mut [u8],
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
-        if self.result_len == self.result.len() {
+        if self.cmd_result_len == self.cmd_result.len() {
             return DivansOutputResult::NeedsMoreOutput;
         }
-        self.result[self.result_len] = CommandResult::Cmd(core::mem::replace(cmd,
-                                                                             Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()
-        ));
-        self.result_len += 1;
+        self.cmd_result[self.cmd_result_len] =
+            core::mem::replace(cmd,
+                               Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()
+        );
+        self.cmd_result_len += 1;
         DivansOutputResult::Success
     }
     #[inline(always)]
@@ -365,26 +392,20 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
                     data:&mut AllocatedMemoryRange<u8, AllocU8>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
-        if self.result_len == self.result.len() {
+        if self.consumed_data_len == self.consumed_data.len() {
             return DivansOutputResult::NeedsMoreOutput;
         }
-        
-        self.result[self.result_len] = CommandResult::ProcessedData(
+        self.consumed_data[self.consumed_data_len] = 
             core::mem::replace(
                 data,
-                AllocatedMemoryRange::<u8, AllocU8>::default()));
-        self.result_len += 1;
+                AllocatedMemoryRange::<u8, AllocU8>::default());
+        self.consumed_data_len += 1;
         DivansOutputResult::Success
     }
    #[inline(always)]
     fn push_eof(&mut self,
     ) -> DivansOutputResult {
-        if self.result_len == self.result.len() {
-            return DivansOutputResult::NeedsMoreOutput;
-        }
-        
-        self.result[self.result_len] = CommandResult::Eof;
-        self.result_len += 1;
+        self.eof_to_main = true;
         DivansOutputResult::Success
     }
 }
