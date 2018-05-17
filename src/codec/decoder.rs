@@ -99,7 +99,7 @@ impl<Cdf16:CDF16,
             eof:false,
         }
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
                                                                worker:&mut Worker,
                                                                input: &[u8],
@@ -141,7 +141,7 @@ impl<Cdf16:CDF16,
         }
         DivansInputResult::Success
     }
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     fn populate_ring_buffer<Worker:MainToThread<AllocU8>>(&mut self,
                                                           worker: &mut Worker,
                                                           output: &mut [u8],
@@ -202,7 +202,7 @@ impl<Cdf16:CDF16,
             DEBUG_TRACK(35);
         }
 }*/
-    #[inline(always)]
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn decode_process_output<Worker: MainToThread<AllocU8>>(&mut self,
                                                                 worker:&mut Worker,
                                                                 output: &mut [u8],

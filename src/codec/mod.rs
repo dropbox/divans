@@ -541,6 +541,7 @@ impl<AllocU8: Allocator<u8>,
             }
         }
     }
+    #[inline(always)]
     pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
                                                           input_bytes: &[u8],
                                                           input_bytes_offset: &mut usize,
@@ -550,15 +551,17 @@ impl<AllocU8: Allocator<u8>,
                                                           input_command_offset: &mut usize) -> DivansResult {
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
-        if let Some(ref mut m8) = self.cross_command_state.thread_ctx.m8() {
-            let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
-            let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
-                adjusted_input_bytes,
-                m8.get_base_alloc());
-            if Specialization::IS_DECODING_FILE && !self.skip_checksum {
-                self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
+        if !LinearInputBytes::ISOLATED {
+            if let Some(ref mut m8) = self.cross_command_state.thread_ctx.m8() {
+                let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
+                let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
+                    adjusted_input_bytes,
+                    m8.get_base_alloc());
+                if Specialization::IS_DECODING_FILE && !self.skip_checksum {
+                    self.crc.write(adjusted_input_bytes.split_at(adjusted_input_bytes_offset).0);
+                }
+                *input_bytes_offset += adjusted_input_bytes_offset;
             }
-            *input_bytes_offset += adjusted_input_bytes_offset;
         }
         let mut checksum_input_info = ReadableBytes{data:input_bytes, read_offset:input_bytes_offset};
         loop {
@@ -745,10 +748,14 @@ impl<AllocU8: Allocator<u8>,
                 EncodeOrDecodeState::PredictionMode => {
                     if !self.state_prediction_mode.pm.has_context_speeds() {
                         self.state_prediction_mode.pm =
-                            match if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
-                                self.cross_command_state.demuxer.pull_context_map(Some(&mut ctx.m8))
-                            } else {
+                            match if LinearInputBytes::ISOLATED {
                                 self.cross_command_state.demuxer.pull_context_map(None)
+                            } else {
+                                if let ThreadContext::MainThread(ref mut ctx) = self.cross_command_state.thread_ctx {
+                                    self.cross_command_state.demuxer.pull_context_map(Some(&mut ctx.m8))
+                                } else {
+                                    self.cross_command_state.demuxer.pull_context_map(None)
+                                }
                             } {
                                 Ok(pm) => pm,
                                 Err(_) => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)),
@@ -935,47 +942,64 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
-                     match {
-                        let (m8, recoder) = match self.cross_command_state.thread_ctx {
-                            ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
-                            ThreadContext::Worker => (None, None),
-                        };
-                        self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
-                            m8,
-                            recoder,
-                            &mut self.cross_command_state.specialization,
-                            output_bytes,
-                            output_bytes_offset,
-                        )
-                    } {
-                        DivansOutputResult::NeedsMoreOutput => {
-                            if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
-                            }
-                        },
-                        DivansOutputResult::Failure(m) => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
-                        },
-                        DivansOutputResult::Success => {
-                            // clobber bk.last_8_literals with the last 8 literals
-                            match self.cross_command_state.thread_ctx {
-                                ThreadContext::MainThread(ref mut ctx) => {
-                                    let last_8 = ctx.recoder.last_8_literals();
-                                    ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                                        u64::from(last_8[0])
-                                        | (u64::from(last_8[1])<<0x8)
-                                        | (u64::from(last_8[2])<<0x10)
-                                        | (u64::from(last_8[3])<<0x18)
-                                        | (u64::from(last_8[4])<<0x20)
-                                        | (u64::from(last_8[5])<<0x28)
-                                        | (u64::from(last_8[6])<<0x30)
-                                        | (u64::from(last_8[7])<<0x38);
+                    if LinearInputBytes::ISOLATED {
+                         match self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
+                                                                         None,
+                                                                         None,
+                                                                         &mut self.cross_command_state.specialization,
+                                                                         &mut [],
+                                                                         output_bytes_offset) {
+                             DivansOutputResult::Success => {
+                                 self.state = EncodeOrDecodeState::Begin;
+                                 return CodecTraitResult::Res(OneCommandReturn::Advance);
+                             },
+                             need_something =>  {
+                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(need_something)));
+                             },
+                         }
+                    } else {
+                        match {
+                            let (m8, recoder) = match self.cross_command_state.thread_ctx {
+                                ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
+                                ThreadContext::Worker => (None, None),
+                            };
+                            self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
+                                                                      m8,
+                                                                      recoder,
+                                                                      &mut self.cross_command_state.specialization,
+                                                                      output_bytes,
+                                                                      output_bytes_offset,
+                            )
+                        } {
+                            DivansOutputResult::NeedsMoreOutput => {
+                                if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
+                                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
                                 }
-                                ThreadContext::Worker => {}, // Main thread tracks literals
-                            }
-                            self.state = EncodeOrDecodeState::Begin;
-                            return CodecTraitResult::Res(OneCommandReturn::Advance);
-                        },
+                            },
+                            DivansOutputResult::Failure(m) => {
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
+                            },
+                            DivansOutputResult::Success => {
+                                // clobber bk.last_8_literals with the last 8 literals
+                                match self.cross_command_state.thread_ctx {
+                                    ThreadContext::MainThread(ref mut ctx) => {
+                                        let last_8 = ctx.recoder.last_8_literals();
+                                        ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                                            u64::from(last_8[0])
+                                            | (u64::from(last_8[1])<<0x8)
+                                            | (u64::from(last_8[2])<<0x10)
+                                            | (u64::from(last_8[3])<<0x18)
+                                            | (u64::from(last_8[4])<<0x20)
+                                            | (u64::from(last_8[5])<<0x28)
+                                            | (u64::from(last_8[6])<<0x30)
+                                            | (u64::from(last_8[7])<<0x38);
+                                    }
+                                    ThreadContext::Worker => {}, // Main thread tracks literals
+                             }
+                                self.state = EncodeOrDecodeState::Begin;
+                                return CodecTraitResult::Res(OneCommandReturn::Advance);
+                            },
+                        }
                     }
                 },
             }

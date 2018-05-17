@@ -16,7 +16,7 @@ use super::interface::{
     drain_or_fill_static_buffer,
     ThreadContext,
 };
-
+use threading::{CommandResult, ThreadToMain, MainToThread};
 use super::specializations::{CodecTraits};
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -376,6 +376,7 @@ impl<AllocU8:Allocator<u8>,
         self.lc.data = lc_data;
         retval
     }
+    #[inline(always)]
     pub fn get_nibble_code_state<ISlice: SliceWrapper<u8>>(&self, index: u32, in_cmd: &LiteralCommand<ISlice>, bytes_rem:usize) -> LiteralSubstate {
         if in_cmd.prob.slice().is_empty() {
             self.state_literal_nibble_index(index, bytes_rem)
@@ -383,6 +384,7 @@ impl<AllocU8:Allocator<u8>,
             LiteralSubstate::LiteralNibbleIndexWithECDF(index)
         }
     }
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode_content_bytes<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             LinearInputBytes:StreamDemuxer<AllocU8>+Default,
@@ -480,9 +482,10 @@ impl<AllocU8:Allocator<u8>,
             }
         }
     }
+    #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearInputBytes:StreamDemuxer<AllocU8>+Default+ThreadToMain<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             Specialization:EncoderOrDecoderSpecialization,
@@ -504,13 +507,17 @@ impl<AllocU8:Allocator<u8>,
         let serialized_large_literal_len  = literal_len.wrapping_sub(NUM_LITERAL_LENGTH_MNEMONIC + 1);
         let lllen: u8 = (core::mem::size_of_val(&serialized_large_literal_len) as u32 * 8 - serialized_large_literal_len.leading_zeros()) as u8;
         let _ltype = superstate.bk.get_literal_block_type();
-        let (mut lit_coder, mut m8, mut lbk, mut lit_high_priors, mut lit_low_priors) = match superstate.thread_ctx {
-            ThreadContext::Worker => (None, None, None, None, None),
-            ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.lit_coder),
-                                                       Some(&mut ctx.m8),
-                                                       Some(&mut ctx.lbk),
-                                                       Some(&mut ctx.lit_high_priors),
-                                                       Some(&mut ctx.lit_low_priors)),
+        let (mut lit_coder, mut m8, mut lbk, mut lit_high_priors, mut lit_low_priors) = if LinearInputBytes::ISOLATED {
+            (None, None, None, None, None)
+        } else {
+            match superstate.thread_ctx {
+                ThreadContext::Worker => (None, None, None, None, None),
+                ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.lit_coder),
+                                                           Some(&mut ctx.m8),
+                                                           Some(&mut ctx.lbk),
+                                                           Some(&mut ctx.lit_high_priors),
+                                                           Some(&mut ctx.lit_low_priors)),
+            }
         };
         
         loop {

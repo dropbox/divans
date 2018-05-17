@@ -42,6 +42,7 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     const COOPERATIVE: bool;
+    const ISOLATED: bool;
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8>;
     #[inline(always)]
@@ -258,6 +259,7 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
 
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
     const COOPERATIVE:bool = WorkerInterface::COOPERATIVE;
+    const ISOLATED:bool = WorkerInterface::ISOLATED;
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         self.worker.pull_data()
@@ -312,6 +314,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
     const COOPERATIVE:bool = true;
+    const ISOLATED:bool = true;
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         if self.data_len == 0 {
