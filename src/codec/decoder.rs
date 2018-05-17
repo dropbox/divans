@@ -5,7 +5,7 @@ use interface::{DivansResult, DivansOutputResult, DivansInputResult, StreamMuxer
 use mux::DevNull;
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
-use ::slice_util::AllocatedMemoryPrefix;
+use ::slice_util::{AllocatedMemoryPrefix, AllocatedMemoryRange};
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
 use super::literal::{LiteralState, LiteralSubstate};
@@ -208,6 +208,8 @@ impl<Cdf16:CDF16,
                                                                 output: &mut [u8],
                                                                 output_offset: &mut usize) -> DecoderResult{
         //{DEBUG_TRACK(18)};
+        let mut extra_buffer =  AllocatedMemoryRange::<u8, AllocU8>::default();
+        let mut extra_cmd = Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop();
         loop {
             match self.state_lit.state{
                 LiteralSubstate::FullyDecoded => {            /*{DEBUG_TRACK(20)};*/}, // default case--nothing to do here
@@ -247,19 +249,21 @@ impl<Cdf16:CDF16,
             if self.eof {
                 return DecoderResult::Processed(DivansResult::from(self.process_eof()));
             }
-            match worker.pull() {
+            match worker.pull(&mut extra_cmd, &mut extra_buffer) {
                 CommandResult::Eof => {
                     self.eof = true;
                     //{DEBUG_TRACK(1)};
                     return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 },
-                CommandResult::ProcessedData(mut dat) => {
+                CommandResult::Yield => {
+                    //{DEBUG_TRACK(3)};
+                    assert_eq!(Worker::COOPERATIVE_MAIN, true);
+                    return DecoderResult::Yield;
+                },
+                CommandResult::ProcessedData => {
                     //{DEBUG_TRACK(2)};
-                    if dat.0.slice().len() == 0 {
-                        //{DEBUG_TRACK(3)};
-                        assert_eq!(Worker::COOPERATIVE_MAIN, true);
-                        return DecoderResult::Yield;
-                    }
+                    assert!(extra_buffer.0.slice().len() != 0);
+
                     //{DEBUG_TRACK(4)};
                     self.outstanding_buffer_count -= 1;
                     let mut need_input = false;
@@ -292,59 +296,68 @@ let but_to_push_len;
                     let possible_replacement_len = possible_replacement.0.slice().len();
                     if possible_replacement_len == 0 { // FIXME: do we want to replace, if twice as big?
                         //{DEBUG_TRACK(10)};
-                        core::mem::replace(&mut possible_replacement.0, dat.0);
+                        core::mem::swap(possible_replacement, &mut extra_buffer);
+                        possible_replacement.1 = 0..0;
                     } else {
                         //{DEBUG_TRACK(11)};
-                        if false && possible_replacement_len * 2 <= dat.0.slice().len() {
-                            dat.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
-                            let tmp = core::mem::replace(&mut possible_replacement.0, dat.0);
-                            dat.0 = tmp;
+                        if false && possible_replacement_len * 2 <= extra_buffer.0.slice().len() {
+                            extra_buffer.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
+                            core::mem::swap(&mut possible_replacement.0, &mut extra_buffer.0);
                         }
                         //self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(AllocatedMemoryPrefix(dat.0, 0));
-                        self.ctx.m8.free_cell(dat.0);
+                        self.ctx.m8.free_cell(core::mem::replace(&mut extra_buffer.0,
+                                                                 AllocU8::AllocatedMemory::default()));
                     }
                     if need_input {
                         //{DEBUG_TRACK(12)};
                         return DecoderResult::Processed(DivansResult::NeedsMoreInput);
                     }
                 },
-                CommandResult::Cmd(Command::Literal(ref lit)) => {
-                    let num_bytes = lit.data.1;
-                    self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
-                    let last_8 = self.ctx.recoder.last_8_literals();
-                    self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                        u64::from(last_8[0])
-                        | (u64::from(last_8[1])<<0x8)
-                        | (u64::from(last_8[2])<<0x10)
-                        | (u64::from(last_8[3])<<0x18)
-                        | (u64::from(last_8[4])<<0x20)
-                        | (u64::from(last_8[5])<<0x28)
-                        | (u64::from(last_8[6])<<0x30)
-                        | (u64::from(last_8[7])<<0x38);
-                    let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
-                    self.state_lit.state = new_state;
+                CommandResult::Cmd => {
+                    match &mut extra_cmd {
+                        &mut Command::Literal(ref lit) => {
+                            let num_bytes = lit.data.1;
+                            self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                            let last_8 = self.ctx.recoder.last_8_literals();
+                            self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                                u64::from(last_8[0])
+                                | (u64::from(last_8[1])<<0x8)
+                                | (u64::from(last_8[2])<<0x10)
+                                | (u64::from(last_8[3])<<0x18)
+                                | (u64::from(last_8[4])<<0x20)
+                                | (u64::from(last_8[5])<<0x28)
+                                | (u64::from(last_8[6])<<0x30)
+                                | (u64::from(last_8[7])<<0x38);
+                            let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+                            self.state_lit.state = new_state;
 
-                    if Worker::COOPERATIVE_MAIN {
-                        return DecoderResult::Yield;
+                            if Worker::COOPERATIVE_MAIN {
+                                return DecoderResult::Yield;
+                            }
+                        },
+                        &mut Command::PredictionMode(ref mut pred_mode) => {
+                            let ret = self.ctx.lbk.obs_prediction_mode_context_map(
+                                pred_mode,
+                                &mut self.ctx.mcdf16);
+                            self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                            match worker.push_context_map(core::mem::replace(pred_mode,
+                            PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
+                                literal_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
+                                predmode_speed_and_distance_context_map:AllocatedMemoryPrefix::<u8, AllocU8>::default(),
+                            })) {
+                                Ok(_) => {},
+                                Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
+                            }
+                        }
+                        &mut Command::BlockSwitchLiteral(ref new_block_type) => {
+                            self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
+                            self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                        },
+                        remainder => {
+                            self.state_populate_ring_buffer=Some(core::mem::replace(remainder, Command::nop()));
+                        },
                     }
-                },
-                CommandResult::Cmd(Command::PredictionMode(pred_mode)) => {
-                    let ret = self.ctx.lbk.obs_prediction_mode_context_map(
-                        &pred_mode,
-                        &mut self.ctx.mcdf16);
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                    match worker.push_context_map(pred_mode) {
-                        Ok(_) => {},
-                        Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
-                    }
-                },
-                CommandResult::Cmd(Command::BlockSwitchLiteral(ref new_block_type)) => {
-                    self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                },
-                CommandResult::Cmd(remainder) => {
-                    self.state_populate_ring_buffer=Some(remainder);
-                },
+                }
             }
             //{DEBUG_TRACK(15)};
         }
