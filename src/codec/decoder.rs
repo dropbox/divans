@@ -231,6 +231,10 @@ impl<Cdf16:CDF16,
                             self.state_populate_ring_buffer = Some(Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
+                            if Worker::COOPERATIVE_MAIN {
+                                return DecoderResult::Yield;
+                            }
+
                         },
                         retval => {
                             //{DEBUG_TRACK(22)};
@@ -325,7 +329,7 @@ let but_to_push_len;
                     self.state_lit.state = new_state;
 
                     if Worker::COOPERATIVE_MAIN {
-                        return DecoderResult::Yield;
+                        //return DecoderResult::Yield;
                     }
                 },
                 CommandResult::Cmd(Command::PredictionMode(pred_mode)) => {
@@ -343,7 +347,13 @@ let but_to_push_len;
                     self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                 },
                 CommandResult::Cmd(remainder) => {
-                    self.state_populate_ring_buffer=Some(remainder);
+                    match self.ctx.recoder.encode_cmd(&remainder, output, output_offset) {
+                        DivansOutputResult::Success  => {},
+                        need_something => {
+                            self.state_populate_ring_buffer=Some(remainder);
+                            return DecoderResult::Processed(DivansResult::from(need_something));
+                        },
+                    }
                 },
             }
             //{DEBUG_TRACK(15)};
