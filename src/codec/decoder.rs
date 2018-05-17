@@ -148,18 +148,17 @@ impl<Cdf16:CDF16,
                                                           worker: &mut Worker,
                                                           output: &mut [u8],
                                                           output_offset: &mut usize) -> DivansOutputResult {
-        if self.doing_ring_buffer_populate {
-            match self.ctx.recoder.encode_cmd(&self.state_populate_ring_buffer, output, output_offset) {
-                DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
-                                                        &mut self.ctx.m8.use_cached_allocation::<
-                                                                UninitializedOnAlloc>()),
-                DivansOutputResult::Failure(f) => {
-                    free_cmd(&mut self.state_populate_ring_buffer, &mut self.ctx.m8.use_cached_allocation::<
-                            UninitializedOnAlloc>());
-                    return DivansOutputResult::Failure(f);
-                },
-                need_something => return need_something,
-            }
+
+        match self.ctx.recoder.encode_cmd(&self.state_populate_ring_buffer, output, output_offset) {
+            DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
+                                                    &mut self.ctx.m8.use_cached_allocation::<
+                                                            UninitializedOnAlloc>()),
+            DivansOutputResult::Failure(f) => {
+                free_cmd(&mut self.state_populate_ring_buffer, &mut self.ctx.m8.use_cached_allocation::<
+                        UninitializedOnAlloc>());
+                return DivansOutputResult::Failure(f);
+            },
+            need_something => return need_something,
         }
         DivansOutputResult::Success
     }
@@ -242,9 +241,15 @@ impl<Cdf16:CDF16,
                     //{DEBUG_TRACK(23)};
                 },
             }
+            if self.doing_ring_buffer_populate {
             match self.populate_ring_buffer(worker, output, output_offset) {
-                DivansOutputResult::Success => {},
+                DivansOutputResult::Success => {
+                    if Worker::COOPERATIVE_MAIN {
+                        return DecoderResult::Yield;
+                    }
+                },
                 need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
+            }
             }
             if self.eof {
                 return DecoderResult::Processed(DivansResult::from(self.process_eof()));
@@ -331,9 +336,6 @@ let but_to_push_len;
                             let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                             self.state_lit.state = new_state;
 
-                            if Worker::COOPERATIVE_MAIN {
-                                return DecoderResult::Yield;
-                            }
                         },
                         &mut Command::PredictionMode(ref mut pred_mode) => {
                             let ret = self.ctx.lbk.obs_prediction_mode_context_map(
