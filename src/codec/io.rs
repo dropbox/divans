@@ -91,68 +91,39 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             },
         }
     }
-    fn push_command<Specialization:EncoderOrDecoderRecoderSpecialization>(
-                    &mut self,
-                    cmd:CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>,
-                    mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-                    mut recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
-                    specialization:&mut Specialization,
-                    output:&mut [u8],
-                    output_offset: &mut usize,
-    ) -> (DivansOutputResult, Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>, Option<AllocatedMemoryRange<u8, AllocU8>>) {
-        match cmd {
-            CommandResult::Eof => return (DivansOutputResult::Success, None, None),
-            CommandResult::ProcessedData(data) => {
-                m8.as_mut().unwrap().free_cell(data.0);
-                return (DivansOutputResult::Success, None, None);
-            },
-            CommandResult::Cmd(mut cmd) => {
-                let mut tmp_output_offset_bytes_backing: usize = 0;
-                let mut tmp_output_offset_bytes = specialization.get_recoder_output_offset(
-                    output_offset,
-                    &mut tmp_output_offset_bytes_backing);
-                let ret = recoder.as_mut().unwrap().encode_cmd(&mut cmd,
-                                                               specialization.get_recoder_output(output),
-                                                               tmp_output_offset_bytes);
-                match ret {
-                    DivansOutputResult::Success | DivansOutputResult::Failure(_) =>
-                        
-                        free_cmd(&mut cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
-                                UninitializedOnAlloc>()),
-                    need_something => return (need_something, Some(cmd), None)
-                }
-                /*
-                match &mut cmd {
-                    &mut Command::Literal(ref mut l) => {
-                        let mfd = core::mem::replace(
-                            &mut l.data,
-                            AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                        m8.as_mut().unwrap().use_cached_allocation::<
-                                UninitializedOnAlloc>().free_cell(mfd);
-                        //FIXME: what about prob array: should that be freed
-                    },
-                    &mut Command::Dict(_) |
-                    &mut Command::Copy(_) |
-                    &mut Command::BlockSwitchCommand(_) |
-                    &mut Command::BlockSwitchLiteral(_) |
-                    &mut Command::BlockSwitchDistance(_) => {
-                    },
-                    &mut Command::PredictionMode(ref mut pm) => {
-                        let mfd = core::mem::replace(
-                            &mut pm.literal_context_map,
-                            AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                        m8.as_mut().unwrap().use_cached_allocation::<
-                                UninitializedOnAlloc>().free_cell(mfd);
-                        let mfd = core::mem::replace(
-                            &mut pm.predmode_speed_and_distance_context_map,
-                            AllocatedMemoryPrefix::<u8, AllocU8>::default());
-                        m8.as_mut().unwrap().use_cached_allocation::<
-                                UninitializedOnAlloc>().free_cell(mfd);
-                    },
-                }*/
-                return (ret, None, None);
-            },
+    fn push_eof(&mut self) -> DivansOutputResult {
+        DivansOutputResult::Success
+    }
+    fn push_consumed_data(&mut self,
+        data: &mut AllocatedMemoryRange<u8, AllocU8>,
+        mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+    ) -> DivansOutputResult {
+        m8.as_mut().unwrap().free_cell(core::mem::replace(&mut data.0, AllocU8::AllocatedMemory::default()));
+        DivansOutputResult::Success
+    }
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+        &mut self,
+        cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+        mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+        mut recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+        specialization:&mut Specialization,
+        output:&mut [u8],
+        output_offset: &mut usize,
+    ) -> DivansOutputResult {
+        let mut tmp_output_offset_bytes_backing: usize = 0;
+        let mut tmp_output_offset_bytes = specialization.get_recoder_output_offset(
+            output_offset,
+            &mut tmp_output_offset_bytes_backing);
+        let ret = recoder.as_mut().unwrap().encode_cmd(cmd,
+                                                       specialization.get_recoder_output(output),
+                                                       tmp_output_offset_bytes);
+        match ret {
+            DivansOutputResult::Success | DivansOutputResult::Failure(_) =>
+                free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
+                        UninitializedOnAlloc>()),
+            need_something => {},
         }
+        return ret;
     }
 
 }

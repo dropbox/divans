@@ -655,11 +655,7 @@ impl<AllocU8: Allocator<u8>,
                         // only main thread can checksum
                         ThreadContext::MainThread(_) => {},
                         ThreadContext::Worker => {
-                            let (ret, _cmd, _mem) = self.cross_command_state.demuxer.push_command(
-                                CommandResult::Eof,
-                                None, None,
-                                &mut self.cross_command_state.specialization,
-                                output_bytes, output_bytes_offset);
+                            let ret = self.cross_command_state.demuxer.push_eof();
                             match ret {
                                 DivansOutputResult::Success => {
                                     self.state = EncodeOrDecodeState::DivansSuccess;
@@ -939,25 +935,19 @@ impl<AllocU8: Allocator<u8>,
                     }
                 },
                 EncodeOrDecodeState::PopulateRingBuffer => {
-                    let (ret, cmd, _unused) = {
+                     match {
                         let (m8, recoder) = match self.cross_command_state.thread_ctx {
                             ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
                             ThreadContext::Worker => (None, None),
                         };
-                        self.cross_command_state.demuxer.push_command(
-                            CommandResult::Cmd(core::mem::replace(&mut self.state_populate_ring_buffer,
-                                                                  Command::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())),
+                        self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
                             m8,
                             recoder,
                             &mut self.cross_command_state.specialization,
                             output_bytes,
                             output_bytes_offset,
                         )
-                    };
-                    if let Some(command) = cmd {
-                        self.state_populate_ring_buffer = command;
-                    }
-                    match ret {
+                    } {
                         DivansOutputResult::NeedsMoreOutput => {
                             if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
