@@ -27,8 +27,8 @@ lto=true
 vergen = "0.1"
 
 [dependencies]
-"alloc-no-stdlib" = "~1.2"
-"brotli" = { version = "~2.1"}
+"alloc-no-stdlib" = "~1.3"
+"brotli" = { version = "~2.2"}
 
 [features]
 
