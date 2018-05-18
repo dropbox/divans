@@ -71,6 +71,7 @@ pub use self::decoder::{
     DivansDecoderCodec,
     SubDigest,
     default_crc,
+    empty_prediction_mode_context_map,
 };
 
 
@@ -1007,9 +1008,3 @@ impl<AllocU8: Allocator<u8>,
     }
 }
 
-pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> PredictionModeContextMap<ISl> {
-    PredictionModeContextMap::<ISl> {
-        literal_context_map:ISl::default(),
-        predmode_speed_and_distance_context_map:ISl::default(),
-    }
-}

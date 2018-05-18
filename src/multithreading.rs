@@ -1,6 +1,6 @@
 #![cfg(not(feature="no-stdlib"))]
 use std::sync::{Arc, Mutex, Condvar};
-use threading::{SerialWorker, MainToThread, ThreadToMain, CommandResult, ThreadData};
+use threading::{SerialWorker, MainToThread, ThreadToMain, CommandResult, ThreadData, NUM_SERIAL_COMMANDS_BUFFERED};
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 use alloc::{Allocator, SliceWrapper};
 use alloc_util::RepurposingAlloc;
@@ -61,14 +61,14 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
         }
     }
     #[inline(always)]
-    fn pull(&mut self) -> CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>{
+    fn pull(&mut self, output: &mut [CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>; NUM_SERIAL_COMMANDS_BUFFERED]) -> usize {
         loop {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_ready() {
                 cvar.notify_one(); // FIXME: do we want to signal here?
                 //eprintln!("M:PULL_COMMAND_RESULT");
-                return worker.pull();
+                return worker.pull(output);
             } else {
                 //eprintln!("M:WAIT_PULL_COMMAND_RESULT");
                 let _ign = cvar.wait(worker);

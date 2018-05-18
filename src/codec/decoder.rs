@@ -4,7 +4,7 @@ use core::hash::Hasher;
 use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, StreamDemuxer, StreamID, ErrMsg};
 use mux::DevNull;
 use ::probability::{CDF16};
-use ::slice_util::AllocatedMemoryPrefix;
+use ::slice_util::{AllocatedMemoryPrefix, AllocatedMemoryRange};
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
 use super::literal::{LiteralState, LiteralSubstate};
@@ -25,12 +25,13 @@ use ::interface::{
     NewWithAllocator,
     ArithmeticEncoderOrDecoder,
     LiteralCommand,
+    PredictionModeContextMap,
     Nop,
     Command,
     free_cmd,
 };
 
-use threading::{MainToThread, CommandResult};
+use threading::{MainToThread, CommandResult, NUM_SERIAL_COMMANDS_BUFFERED};
 
 pub struct DivansDecoderCodec<Cdf16:CDF16,
                           AllocU8:Allocator<u8>,
@@ -52,6 +53,9 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub state_populate_ring_buffer: Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>,
     pub specialization: DecoderSpecialization,
     pub outstanding_buffer_count: usize,
+    pub cmd_buffer: [CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>; NUM_SERIAL_COMMANDS_BUFFERED],
+    pub cmd_buffer_count: usize,
+    pub cmd_buffer_offset: usize,
 }
 
 
@@ -83,6 +87,92 @@ impl<Cdf16:CDF16,
             skip_checksum:skip_checksum,
             crc:crc,
             eof:false,
+            cmd_buffer_count:0,
+            cmd_buffer_offset:0,
+            cmd_buffer:[
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
+            ]
         }
     }
     pub fn commands_or_data_to_receive(&self) -> bool {
@@ -255,103 +345,122 @@ impl<Cdf16:CDF16,
             if self.eof {
                 return DecoderResult::Processed(DivansResult::from(self.process_eof()));
             }
-            match worker.pull() {
-                CommandResult::Eof => {
-                    self.eof = true;
-                    //{DEBUG_TRACK(1)};
-                    return DecoderResult::Processed(DivansResult::from(self.process_eof()));
-                },
-                CommandResult::ProcessedData(mut dat) => {
-                    //{DEBUG_TRACK(2)};
-                    if dat.0.slice().len() == 0 {
-                        //{DEBUG_TRACK(3)};
-                        assert_eq!(Worker::COOPERATIVE_MAIN, true);
-                        return DecoderResult::Yield;
-                    }
-                    //{DEBUG_TRACK(4)};
-                    self.outstanding_buffer_count -= 1;
-                    let mut need_input = false;
-                    //{DEBUG_TRACK(5)};
-                    match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
-                        Ok(_) => {
-                            //{DEBUG_TRACK(6)};
-                            self.outstanding_buffer_count += 1;
-                        },
-                        Err(_) => {
-                            //{DEBUG_TRACK(7)};
-                            // this is tricky logic:
-                            // if there are no outstanding buffers and we have either not encountered the EOf or still have bytes avail to send
-                            // to the cmd stream
-                            // then we need to signal to our caller that we need input for the worker
-                            if self.outstanding_buffer_count == 0 && self.eof == false && (
-                                self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
-                                //{DEBUG_TRACK(8)};
-                                need_input = true;
-                            }
-                        },
-                    }
-                    //{DEBUG_TRACK(9)};
-                    let possible_replacement = self.demuxer.edit(CMD_CODER as StreamID);
-                    let possible_replacement_len = possible_replacement.0.slice().len();
-                    if possible_replacement_len == 0 { // FIXME: do we want to replace, if twice as big?
-                        //{DEBUG_TRACK(10)};
-                        core::mem::replace(&mut possible_replacement.0, dat.0);
-                    } else {
-                        //{DEBUG_TRACK(11)};
-                        if false && possible_replacement_len * 2 <= dat.0.slice().len() {
-                            dat.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
-                            let tmp = core::mem::replace(&mut possible_replacement.0, dat.0);
-                            dat.0 = tmp;
+            if self.cmd_buffer_offset == self.cmd_buffer_count {
+                self.cmd_buffer_offset = 0;
+                self.cmd_buffer_count = worker.pull(&mut self.cmd_buffer);
+                if self.cmd_buffer_count == 0 && Worker::COOPERATIVE_MAIN {
+                    return DecoderResult::Yield;
+                }
+            }
+            let mut hit_eof = false;
+            for cur_cmd in self.cmd_buffer[self.cmd_buffer_offset..self.cmd_buffer_count].iter_mut() {
+                self.cmd_buffer_offset += 1;
+                match cur_cmd {
+                    &mut CommandResult::Eof => {
+                        self.eof = true;
+                        //{DEBUG_TRACK(1)};
+                        hit_eof = true;
+                        break;
+                    },
+                    &mut CommandResult::ProcessedData(ref mut dat) => {
+                        //{DEBUG_TRACK(2)};
+                        if dat.0.slice().len() == 0 {
+                            //{DEBUG_TRACK(3)};
+                            assert_eq!(Worker::COOPERATIVE_MAIN, true);
+                            return DecoderResult::Yield;
                         }
-                        //self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(AllocatedMemoryPrefix(dat.0, 0));
-                        self.ctx.m8.free_cell(dat.0);
-                    }
-                    if need_input {
-                        //{DEBUG_TRACK(12)};
-                        return DecoderResult::Processed(DivansResult::NeedsMoreInput);
-                    }
-                },
-                CommandResult::Cmd(Command::Literal(lit)) => {
-                    let num_bytes = lit.data.1;
-                    self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
-                    let last_8 = self.ctx.recoder.last_8_literals();
-                    self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                        u64::from(last_8[0])
-                        | (u64::from(last_8[1])<<0x8)
-                        | (u64::from(last_8[2])<<0x10)
-                        | (u64::from(last_8[3])<<0x18)
-                        | (u64::from(last_8[4])<<0x20)
-                        | (u64::from(last_8[5])<<0x28)
-                        | (u64::from(last_8[6])<<0x30)
-                        | (u64::from(last_8[7])<<0x38);
-                    let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
-                    self.state_lit.state = new_state;
-
-                    if Worker::COOPERATIVE_MAIN {
-                        return DecoderResult::Yield;
-                    }
-                },
-                CommandResult::Cmd(Command::PredictionMode(pred_mode)) => {
-                    let ret = self.ctx.lbk.obs_prediction_mode_context_map(
-                        &pred_mode,
-                        &mut self.ctx.mcdf16);
-                    match ret {
-                        DivansOpResult::Success => {},
-                        _ => return DecoderResult::Processed(DivansResult::from(ret)),
-                    }
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                    match worker.push_context_map(pred_mode) {
-                        Ok(_) => {},
-                        Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
-                    }
-                },
-                CommandResult::Cmd(Command::BlockSwitchLiteral(new_block_type)) => {
-                    self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                },
-                CommandResult::Cmd(remainder) => {
-                    self.state_populate_ring_buffer=Some(remainder);
-                },
+                        //{DEBUG_TRACK(4)};
+                        self.outstanding_buffer_count -= 1;
+                        let mut need_input = false;
+                        //{DEBUG_TRACK(5)};
+                        match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
+                            Ok(_) => {
+                                //{DEBUG_TRACK(6)};
+                                self.outstanding_buffer_count += 1;
+                            },
+                            Err(_) => {
+                                //{DEBUG_TRACK(7)};
+                                // this is tricky logic:
+                                // if there are no outstanding buffers and we have either not encountered the EOf or still have bytes avail to send
+                                // to the cmd stream
+                                // then we need to signal to our caller that we need input for the worker
+                                if self.outstanding_buffer_count == 0 && self.eof == false && (
+                                    self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
+                                    //{DEBUG_TRACK(8)};
+                                    need_input = true;
+                                }
+                            },
+                        }
+                        //{DEBUG_TRACK(9)};
+                        let possible_replacement = self.demuxer.edit(CMD_CODER as StreamID);
+                        let possible_replacement_len = possible_replacement.0.slice().len();
+                        if possible_replacement_len == 0 { // FIXME: do we want to replace, if twice as big?
+                            //{DEBUG_TRACK(10)};
+                            core::mem::swap(&mut possible_replacement.0, &mut dat.0);
+                        } else {
+                            //{DEBUG_TRACK(11)};
+                            if false && possible_replacement_len * 2 <= dat.0.slice().len() {
+                                dat.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
+                                core::mem::swap(&mut possible_replacement.0, &mut dat.0);
+                            }
+                            //self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(AllocatedMemoryPrefix(dat.0, 0));
+                            self.ctx.m8.free_cell(core::mem::replace(&mut dat.0, AllocU8::AllocatedMemory::default()));
+                        }
+                        if need_input {
+                            //{DEBUG_TRACK(12)};
+                            return DecoderResult::Processed(DivansResult::NeedsMoreInput);
+                        }
+                    },
+                    &mut CommandResult::Cmd(Command::Literal(ref lit)) => {
+                        let num_bytes = lit.data.1;
+                        self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                        let last_8 = self.ctx.recoder.last_8_literals();
+                        self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                            u64::from(last_8[0])
+                            | (u64::from(last_8[1])<<0x8)
+                            | (u64::from(last_8[2])<<0x10)
+                            | (u64::from(last_8[3])<<0x18)
+                            | (u64::from(last_8[4])<<0x20)
+                            | (u64::from(last_8[5])<<0x28)
+                            | (u64::from(last_8[6])<<0x30)
+                            | (u64::from(last_8[7])<<0x38);
+                        let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+                        self.state_lit.state = new_state;
+                        
+                        if Worker::COOPERATIVE_MAIN {
+                            return DecoderResult::Yield;
+                        } else {
+                            break; //FIXME: process this inline, optimistically?
+                        }
+                    },
+                    &mut CommandResult::Cmd(Command::PredictionMode(ref mut pred_mode)) => {
+                        let ret = self.ctx.lbk.obs_prediction_mode_context_map(
+                            &pred_mode,
+                            &mut self.ctx.mcdf16);
+                        match ret {
+                            DivansOpResult::Success => {},
+                            _ => return DecoderResult::Processed(DivansResult::from(ret)),
+                        }
+                        self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                        match worker.push_context_map(core::mem::replace(pred_mode,
+                                                                         empty_prediction_mode_context_map())
+                        ) {
+                            Ok(_) => {},
+                            Err(_) => panic!("thread unalbe to accept 2 concurrent context map"),
+                        }
+                    },
+                    &mut CommandResult::Cmd(Command::BlockSwitchLiteral(new_block_type)) => {
+                        self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
+                        self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                    },
+                    &mut CommandResult::Cmd(ref mut remainder) => {
+                        self.state_populate_ring_buffer=Some(core::mem::replace(remainder, Command::nop()));
+                        break; // FIXME: process this inline, optimistically?
+                    },
+                }
+            }
+            if hit_eof {
+                return DecoderResult::Processed(DivansResult::from(self.process_eof()));
             }
             //{DEBUG_TRACK(15)};
         }
@@ -397,6 +506,13 @@ impl Default for SubDigest {
         default_crc()
     }
 }
+pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> PredictionModeContextMap<ISl> {
+    PredictionModeContextMap::<ISl> {
+        literal_context_map:ISl::default(),
+        predmode_speed_and_distance_context_map:ISl::default(),
+    }
+}
+
 pub enum DecoderResult {
     Processed(DivansResult),
     Yield,
