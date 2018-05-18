@@ -11,7 +11,13 @@ pub struct MultiWorker<AllocU8:Allocator<u8>> {
     queue: Arc<(Mutex<SerialWorker<AllocU8>>, Condvar)>,
 }
 
-
+impl<AllocU8:Allocator<u8>> Default for MultiWorker<AllocU8> {
+    fn default() -> Self {
+        MultiWorker::<AllocU8> {
+            queue: Arc::new((Mutex::new(SerialWorker::<AllocU8>::default()), Condvar::new())),
+        }
+    }
+}
 impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
     const COOPERATIVE_MAIN:bool = false;
     #[inline(always)]

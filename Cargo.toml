@@ -28,7 +28,7 @@ vergen = "0.1"
 
 [dependencies]
 "alloc-no-stdlib" = "~1.2"
-"brotli" = { version = "~2.1"}
+"brotli" = { version = "~2.1", path="../rust-brotli"}
 
 [features]
 
