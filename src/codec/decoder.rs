@@ -85,6 +85,10 @@ impl<Cdf16:CDF16,
             eof:false,
         }
     }
+    pub fn commands_or_data_to_receive(&self) -> bool {
+        self.outstanding_buffer_count > 0 || ( // if we have outstanding buffer
+            self.demuxer.encountered_eof() && self.demuxer.data_ready(CMD_CODER as StreamID) == 0) // or we have flushed everything we will have
+    }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
                                                                worker:&mut Worker,
@@ -120,8 +124,14 @@ impl<Cdf16:CDF16,
                     }
                 }, // too full
             }
+            DivansInputResult::Success
+        } else {
+            if self.demuxer.encountered_eof() || self.outstanding_buffer_count > 0 {
+                DivansInputResult::Success
+            } else {
+                DivansInputResult::NeedsMoreInput
+            }
         }
-        DivansInputResult::Success
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     fn populate_ring_buffer(&mut self,

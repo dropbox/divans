@@ -2,14 +2,21 @@
 use std::sync::{Arc, Mutex, Condvar};
 use threading::{SerialWorker, MainToThread, ThreadToMain, CommandResult, ThreadData};
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
-use alloc::{Allocator};
+use alloc::{Allocator, SliceWrapper};
 use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
 use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult};
-#[derive(Clone)]
 pub struct MultiWorker<AllocU8:Allocator<u8>> {
     queue: Arc<(Mutex<SerialWorker<AllocU8>>, Condvar)>,
 }
+impl<AllocU8:Allocator<u8>> Clone for MultiWorker<AllocU8> {
+    fn clone(&self) -> Self {
+        Self {
+            queue:self.queue.clone(),
+        }
+    }
+}
+
 
 impl<AllocU8:Allocator<u8>> Default for MultiWorker<AllocU8> {
     fn default() -> Self {
@@ -26,8 +33,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.cm_space_ready() {
+                //eprintln!("M:PUSH_CONTEXT_MAP");
                 return worker.push_context_map(cm);
             } else {
+                //eprintln!("M:WAIT_PUSH_CONTEXT_MAP");
                 let _ign = cvar.wait(worker); // always safe to loop around again
             }
         }
@@ -37,10 +46,18 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
         let &(ref lock, ref cvar) = &*self.queue;
         match lock.lock().unwrap().push(data) {
             Ok(()) => {
+                //eprintln!("M:PUSH_{}_DATA", data.len());
                 cvar.notify_one();
                 return Ok(());
             },
-            err => return err,
+            err => {
+                if data.len() == 0 {
+                    //eprintln!("M:PUSH_0_DATA");
+                } else {
+                    //eprintln!("M:FAIL_PUSH_DATA");
+                }
+                return err
+            },
         }
     }
     #[inline(always)]
@@ -50,9 +67,12 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_ready() {
                 cvar.notify_one(); // FIXME: do we want to signal here?
+                //eprintln!("M:PULL_COMMAND_RESULT");
                 return worker.pull();
             } else {
-                return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default()); // FIXME: busy wait
+                //eprintln!("M:WAIT_PULL_COMMAND_RESULT");
+                let _ign = cvar.wait(worker);
+                //return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default()); // FIXME: busy wait
             } 
         }
     }
@@ -67,8 +87,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.data_ready() {
+                //eprintln!("W:PULL_DATA");
                 return worker.pull_data();
             } else {
+                //eprintln!("W:WAIT_DATA");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -81,8 +103,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.cm_ready() {
                 cvar.notify_one();
+                //eprintln!("W:PULL_CONTEXT_MAP");
                 return worker.pull_context_map(m8);
             } else {
+                //eprintln!("W:WAIT_PULL_CONTEXT_MAP");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -101,9 +125,11 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
+                //eprintln!("W:PUSH_CMD");
                 cvar.notify_one();
                 return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset);
             } else {
+                //eprintln!("W:WAIT_PUSH_CMD");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -118,8 +144,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
                 cvar.notify_one();
+                //eprintln!("W:PUSH_CONSUMED_DATA");
                 return worker.push_consumed_data(data, m8);
             } else {
+                //eprintln!("W:WAIT_PUSH_CONSUMED_DATA");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -132,8 +160,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
                 cvar.notify_one();
+                //eprintln!("W:PUSH_EOF");
                 return worker.push_eof();
             } else {
+                //eprintln!("W:WAIT_PUSH_EOF");
                 let _ign = cvar.wait(worker);
             }
         }

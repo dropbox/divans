@@ -19,7 +19,7 @@ use std::io;
 use std::io::BufReader;
 use core::cmp;
 use divans::{Speed, StrideSelection, DivansCompressorOptions, BrotliCompressionSetting};
-pub static MULTI: bool = false;
+pub static MULTI: bool = true;
 pub struct UnlimitedBuffer {
   pub data: Vec<u8>,
   pub read_offset: usize,

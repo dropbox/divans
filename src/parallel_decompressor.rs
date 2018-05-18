@@ -23,7 +23,7 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
                      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
-                                         ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
+                                         ThreadToMainDemuxer<AllocU8, MultiWorker<AllocU8>>,
                                          DevNull<AllocU8>,
                                          interface::DefaultCDF16,
                                          AllocU8,
@@ -102,7 +102,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let lit_decoder = DefaultDecoder::new(&mut m8);
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
-                                             ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
+                                             ThreadToMainDemuxer<AllocU8, MultiWorker<AllocU8>>,
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
@@ -123,6 +123,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         let main_thread_codec = codec.fork();
         assert_eq!(*codec.get_crc(), main_thread_codec.crc);
+        let multi_worker = (codec.demuxer().get_main_to_thread()).clone();
         let mut thread_codec = Arc::new(Mutex::new(Some(codec)));
         let worker_codec = thread_codec.clone();
         core::mem::replace(self,
@@ -131,7 +132,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                    codec:worker_codec,
                                    literal_decoder:Some(main_thread_codec),
                                    bytes_encoded:0,
-                                   worker: MultiWorker::<AllocU8>::default(),
+                                   worker: multi_worker,
                                }));
         thread::spawn(move || {
             let mut guard = thread_codec.lock().unwrap();
@@ -152,7 +153,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                             unimplemented!(); // HANDLE FAILURE BY TELLING MAIN THREAD
                     },
                         DivansResult::NeedsMoreInput => {
-                            unimplemented!(); // we should block here--- maybe this is an error
+                            //eprintln!("W_RETRY_PULL");//unimplemented!(); // we should block here--- maybe this is an error
                         },
                         DivansResult::NeedsMoreOutput => {}, // lets make room for more output
                     }
@@ -238,11 +239,16 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             DivansParallelDecompressor::Decode(ref mut process) => {
                 let old_output_offset = *output_offset;
                 if let Some(literal_decoder) =  process.literal_decoder.as_mut() {
-                    match literal_decoder.decode_process_input(&mut process.worker,
-                                                               input,
-                                                               input_offset) {
-                        DivansInputResult::Success => {},
-                        need_something => return DivansResult::from(need_something),
+                    loop {
+                        match literal_decoder.decode_process_input(&mut process.worker,
+                                                                   input,
+                                                                   input_offset) {
+                            DivansInputResult::Success => {},
+                            need_something => return DivansResult::from(need_something),
+                        }
+                        if literal_decoder.commands_or_data_to_receive() {
+                            break; // we have successfully delivered a buffer to our worker and then can, at worst pull the result
+                        }
                     }
                     let retval = literal_decoder.decode_process_output(
                         &mut process.worker,
