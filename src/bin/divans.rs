@@ -53,11 +53,14 @@ use divans::Decompressor;
 use divans::Speed;
 use divans::CMD_BUFFER_SIZE;
 use divans::free_cmd;
+
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
 use divans::DivansDecompressorFactory;
 use divans::DivansDecompressorFactoryStruct;
+use divans::DivansParallelDecompressorFactoryStruct;
+use divans::DivansParallelDecompressorFactory;
 use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, StrideSelection};
 use divans::Nop;
 use std::fs::File;
@@ -934,38 +937,69 @@ fn compress_ir<Reader:std::io::BufRead,
     compress_inner(state, r, w)
 }
 
+fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
+                                                           w:&mut Writer,
+                                                           buffer_size: usize,
+                                                           multithread:bool,
+                                                           skip_crc: bool) -> io::Result<()>
+{
+    let ret;
+    if multithread {
+        let mut state = DivansParallelDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>>::new(
+            ItemVecAllocator::<u8>::default(),
+            ItemVecAllocator::<divans::DefaultCDF16>::default(),
+            skip_crc,
+        );
+        
+        ret = decompress_generic(
+            r,
+            w,
+            &mut state,
+            buffer_size);
+        state.free();
+    }else {
+        let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>>::new(
+            ItemVecAllocator::<u8>::default(),
+            ItemVecAllocator::<divans::DefaultCDF16>::default(),
+            skip_crc,
+        );
+        
+        ret = decompress_generic(
+            r,
+            w,
+            &mut state,
+            buffer_size);
+        state.free();
+    }
+    ret
+}
+
+
 #[allow(unused_assignments)]
-fn decompress<Reader:std::io::Read,
-              Writer:std::io::Write> (r:&mut Reader,
-                                      w:&mut Writer,
-                                      mut buffer_size: usize,
-                                      skip_crc: bool) -> io::Result<()> {
-    let mut m8 = ItemVecAllocator::<u8>::default();
+fn decompress_generic<Reader:std::io::Read,
+                      Writer:std::io::Write,
+                      D:Decompressor>(r:&mut Reader,
+                                                  w:&mut Writer,
+                                                  state:&mut D,
+                                                  mut buffer_size: usize) -> io::Result<()> {
     if buffer_size == 0 {
         buffer_size = 4096;
     }
-    let mut ibuffer = m8.alloc_cell(buffer_size);
-    let mut obuffer = m8.alloc_cell(buffer_size);
-    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                                      ItemVecAllocator<divans::DefaultCDF16>>::new(
-        m8,
-        ItemVecAllocator::<divans::DefaultCDF16>::default(), skip_crc);
+    let mut ibuffer = vec![0u8; buffer_size];
+    let mut obuffer = vec![0u8; buffer_size];;
     let mut input_offset = 0usize;
     let mut input_end = 0usize;
     let mut output_offset = 0usize;
 
     loop {
-        match state.decode(ibuffer.slice().split_at(input_end).0,
+        match state.decode(ibuffer[..].split_at(input_end).0,
                            &mut input_offset,
-                           obuffer.slice_mut(),
+                           &mut obuffer[..],
                            &mut output_offset) {
             DivansResult::Success => {
                 break
             },
             DivansResult::Failure(m) => {
-                let mut m8 = state.free().0;
-                m8.free_cell(ibuffer);
-                m8.free_cell(obuffer);
                 return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           DivansErrMsg(m)));
             },
@@ -973,15 +1007,12 @@ fn decompress<Reader:std::io::Read,
                 let mut output_written = 0;
                 while output_written != output_offset {
                     // flush buffer, if any
-                    match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
+                    match w.write(obuffer[..].split_at(output_written).1.split_at(output_offset - output_written).0) {
                         Ok(count) => output_written += count,
                         Err(e) => {
                             if e.kind() == io::ErrorKind::Interrupted {
                                 continue;
                             }
-                            let mut m8 = state.free().0;
-                            m8.free_cell(ibuffer);
-                            m8.free_cell(obuffer);
                             return Err(e);
                         }
                     }
@@ -996,10 +1027,10 @@ fn decompress<Reader:std::io::Read,
                 }
                 let mut any_read = false;
                 loop {
-                    if ibuffer.slice_mut().split_at_mut(input_end).1.len() == 0 {
+                    if ibuffer[..].split_at_mut(input_end).1.len() == 0 {
                         break;
                     }
-                    match r.read(ibuffer.slice_mut().split_at_mut(input_end).1) {
+                    match r.read(ibuffer[..].split_at_mut(input_end).1) {
                         Ok(size) => {
                             if size == 0 && ! any_read {
                                 //println_stderr!("End of file.  Feeding zero's.\n");
@@ -1020,9 +1051,6 @@ fn decompress<Reader:std::io::Read,
                             if e.kind() == io::ErrorKind::Interrupted {
                                 continue;
                             }
-                            let mut m8 = state.free().0;
-                            m8.free_cell(ibuffer);
-                            m8.free_cell(obuffer);
                             return Err(e);
                         },
                     }
@@ -1033,22 +1061,16 @@ fn decompress<Reader:std::io::Read,
     let mut output_written = 0;
     while output_written != output_offset {
         // flush buffer, if any
-        match w.write(obuffer.slice().split_at(output_written).1.split_at(output_offset - output_written).0) {
+        match w.write(obuffer[..].split_at(output_written).1.split_at(output_offset - output_written).0) {
             Ok(count) => output_written += count,
             Err(e) => {
                 if e.kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                let mut m8 = state.free().0;
-                m8.free_cell(ibuffer);
-                m8.free_cell(obuffer);
                 return Err(e);
             }
         }
     }
-    let mut m8 = state.free().0;
-    m8.free_cell(ibuffer);
-    m8.free_cell(obuffer);
     Ok(())
 }
 
@@ -1162,11 +1184,15 @@ fn main() {
     let mut prior_bitmask_detection = false;
     let mut force_literal_context_mode:Option<LiteralPredictionModeNibble> = None;
     let mut skip_crc = false;
-
+    let mut parallel = false;
     if env::args_os().len() > 1 {
         for argument in env::args().skip(1) {
             if !doubledash {
                 if argument == "-d" {
+                    continue;
+                }
+                if argument == "-j" {
+                    parallel = true;
                     continue;
                 }
                 if argument == "-skipcrc" {
@@ -1558,7 +1584,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, buffer_size, skip_crc) {
+                        match decompress(&mut input, &mut output, buffer_size, parallel, skip_crc) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1591,7 +1617,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), buffer_size, skip_crc) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size, parallel, skip_crc) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1621,7 +1647,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, parallel, skip_crc) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1629,7 +1655,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, parallel, skip_crc) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }

@@ -279,7 +279,7 @@ pub struct DivansParallelDecompressorFactoryStruct
 
 impl<AllocU8:Allocator<u8>+Send,
      AllocCDF16:Allocator<interface::DefaultCDF16>+Send> DivansParallelDecompressorFactory<AllocU8,
-                                                                              AllocCDF16>
+                                                                                   AllocCDF16>
     for DivansParallelDecompressorFactoryStruct<AllocU8, AllocCDF16> {
      type DefaultDecoder = DefaultDecoderType!();
 }

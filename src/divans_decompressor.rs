@@ -275,6 +275,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
     }
 }
 
+#[derive(Default)]
 pub struct DivansDecompressorFactoryStruct
     <AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> {
