@@ -34,10 +34,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.cm_space_ready() {
-                //eprintln!("M:PUSH_CONTEXT_MAP");
+                eprintln!("M:PUSH_CONTEXT_MAP");
                 return worker.push_context_map(cm);
             } else {
-                //eprintln!("M:WAIT_PUSH_CONTEXT_MAP");
+                eprintln!("M:WAIT_PUSH_CONTEXT_MAP");
                 let _ign = cvar.wait(worker); // always safe to loop around again
             }
         }
@@ -48,15 +48,15 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
         let &(ref lock, ref cvar) = &*self.queue;
         match lock.lock().unwrap().push(data) {
             Ok(()) => {
-                //eprintln!("M:PUSH_{}_DATA", _len);
+                eprintln!("M:PUSH_{}_DATA", _len);
                 cvar.notify_one();
                 return Ok(());
             },
             err => {
                 if data.len() == 0 {
-                    //eprintln!("M:PUSH_0_DATA");
+                    eprintln!("M:PUSH_0_DATA");
                 } else {
-                    //eprintln!("M:FAIL_PUSH_DATA");
+                    eprintln!("M:FAIL_PUSH_DATA");
                 }
                 return err
             },
@@ -70,10 +70,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             if worker.result_ready() {
                 cvar.notify_one(); // FIXME: do we want to signal here?
                 let ret = worker.pull(output);
-                //eprintln!("M:PULL_COMMAND_RESULT:{}", ret);
+                eprintln!("M:PULL_COMMAND_RESULT:{}", ret);
                 return ret;
             } else {
-                //eprintln!("M:WAIT_PULL_COMMAND_RESULT");
+                eprintln!("M:WAIT_PULL_COMMAND_RESULT");
                 let _ign = cvar.wait(worker);
                 //return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default()); // FIXME: busy wait
             } 
@@ -90,10 +90,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.data_ready() {
-                //eprintln!("W:PULL_DATA");
+                eprintln!("W:PULL_DATA");
                 return worker.pull_data();
             } else {
-                //eprintln!("W:WAIT_DATA");
+                eprintln!("W:WAIT_DATA");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -106,10 +106,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.cm_ready() {
                 cvar.notify_one();
-                //eprintln!("W:PULL_CONTEXT_MAP");
+                eprintln!("W:PULL_CONTEXT_MAP");
                 return worker.pull_context_map(m8);
             } else {
-                //eprintln!("W:WAIT_PULL_CONTEXT_MAP");
+                eprintln!("W:WAIT_PULL_CONTEXT_MAP");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -128,11 +128,11 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
-                //eprintln!("W:PUSH_CMD");
+                eprintln!("W:PUSH_CMD");
                 cvar.notify_one();
                 return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset);
             } else {
-                //eprintln!("W:WAIT_PUSH_CMD");
+                eprintln!("W:WAIT_PUSH_CMD");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -147,10 +147,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
                 cvar.notify_one();
-                //eprintln!("W:PUSH_CONSUMED_DATA");
+                eprintln!("W:PUSH_CONSUMED_DATA");
                 return worker.push_consumed_data(data, m8);
             } else {
-                //eprintln!("W:WAIT_PUSH_CONSUMED_DATA");
+                eprintln!("W:WAIT_PUSH_CONSUMED_DATA");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -163,10 +163,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
                 cvar.notify_one();
-                //eprintln!("W:PUSH_EOF");
+                eprintln!("W:PUSH_EOF");
                 return worker.push_eof();
             } else {
-                //eprintln!("W:WAIT_PUSH_EOF");
+                eprintln!("W:WAIT_PUSH_EOF");
                 let _ign = cvar.wait(worker);
             }
         }
@@ -187,51 +187,9 @@ impl<AllocU8:Allocator<u8>> Default for BufferedMultiWorker<AllocU8> {
 impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
     pub fn new(worker:MultiWorker<AllocU8>)->Self{
         Self {
-            min_buffer_push_len: 4,
+            min_buffer_push_len: 2,
             worker:worker,
             buffer: [
-                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
@@ -278,19 +236,19 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
     }
     fn force_push(&mut self) {
         if self.min_buffer_push_len < self.buffer.len() {
-            self.min_buffer_push_len <<= 2;
+            self.min_buffer_push_len <<= 1;
         }
         loop {
             let &(ref lock, ref cvar) = &*self.worker.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_multi_space_ready(self.buffer_len) {
-                //eprintln!("W:PUSH_CMD:{}", self.buffer_len);
+                eprintln!("W:PUSH_CMD:{}", self.buffer_len);
                 cvar.notify_one();
                 worker.insert_results(self.buffer.split_at_mut(self.buffer_len).0);
                 self.buffer_len = 0;
                 return;
             } else {
-                //eprintln!("W:WAIT_PUSH_CMD (no space for {} commands)", self.buffer_len);
+                eprintln!("W:WAIT_PUSH_CMD (no space for {} commands)", self.buffer_len);
                 let _ign = cvar.wait(worker);
             }
         }

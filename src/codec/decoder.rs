@@ -130,48 +130,6 @@ impl<Cdf16:CDF16,
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-                CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
             ]
         }
     }

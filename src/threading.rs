@@ -69,7 +69,7 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
         &mut self,
     ) -> DivansOutputResult;
 }
-pub const NUM_SERIAL_COMMANDS_BUFFERED: usize = 256;
+pub const NUM_SERIAL_COMMANDS_BUFFERED: usize = 128;
 pub struct SerialWorker<AllocU8:Allocator<u8>> {
     data_len: usize,
     data: [ThreadData<AllocU8>;2],
@@ -155,8 +155,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
-
+/*
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
@@ -197,7 +196,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
-
+*/
                 ],
         }
     }
