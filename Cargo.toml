@@ -21,7 +21,7 @@ doc = false
 name = "divans"
 
 [profile.release]
-lto=true
+debug=true
 
 [build-dependencies]
 vergen = "0.1"
