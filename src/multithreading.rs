@@ -63,13 +63,13 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
         }
     }
     #[inline(always)]
-    fn pull(&mut self, output: &mut [CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>; NUM_SERIAL_COMMANDS_BUFFERED]) -> usize {
+    fn pull(&mut self, output: &mut [CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>]) -> usize {
         loop {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_ready() {
                 cvar.notify_one(); // FIXME: do we want to signal here?
-                let ret = worker.pull(output);
+                let ret = worker.pull(&mut output[..]);
                 //eprintln!("M:PULL_COMMAND_RESULT:{}", ret);
                 return ret;
             } else {
@@ -234,13 +234,16 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
             buffer_len:0,
         }
     }
-    fn force_push(&mut self) {
-        if self.min_buffer_push_len < self.buffer.len() {
+    fn force_push(&mut self, eof_inside: bool) {
+        if self.min_buffer_push_len < self.buffer.len(){
             self.min_buffer_push_len <<= 1;
         }
         loop {
             let &(ref lock, ref cvar) = &*self.worker.queue;
             let mut worker = lock.lock().unwrap();
+            if eof_inside {
+                worker.set_eof_hint(); // so other side gets more aggressive about pulling
+            }
             if worker.result_multi_space_ready(self.buffer_len) {
                 //eprintln!("W:PUSH_CMD:{}", self.buffer_len);
                 cvar.notify_one();
@@ -284,7 +287,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for BufferedMultiWorker<AllocU
         self.buffer[self.buffer_len] =  CommandResult::Cmd(core::mem::replace(cmd, Command::nop()));
         self.buffer_len += 1;
         if force_push || self.buffer_len == self.buffer.len() || self.buffer_len == self.min_buffer_push_len {
-            self.force_push();
+            self.force_push(false);
         }
         DivansOutputResult::Success
     }
@@ -295,7 +298,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for BufferedMultiWorker<AllocU
     ) -> DivansOutputResult {
         self.buffer[self.buffer_len] = CommandResult::ProcessedData(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
         self.buffer_len += 1;
-        self.force_push();
+        self.force_push(false);
         DivansOutputResult::Success
     }
    #[inline(always)]
@@ -303,7 +306,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for BufferedMultiWorker<AllocU
     ) -> DivansOutputResult {
         self.buffer[self.buffer_len] = CommandResult::Eof;
         self.buffer_len += 1;
-        self.force_push();
+        self.force_push(true);
         DivansOutputResult::Success
     }
 }
