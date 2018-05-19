@@ -58,7 +58,9 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
                 return worker.push_context_map(cm);
             } else {
                 thread_debug!("M:WAIT_PUSH_CONTEXT_MAP");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker); // always safe to loop around again
+                _ign.unwrap().waiters -= 1;
             }
         }
     }
@@ -66,10 +68,13 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()> {
         let _len = data.len();
         let &(ref lock, ref cvar) = &*self.queue;
-        match lock.lock().unwrap().push(data) {
+        let mut worker = lock.lock().unwrap();
+        match worker.push(data) {
             Ok(()) => {
                 thread_debug!("M:PUSH_{}_DATA", _len);
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 return Ok(());
             },
             err => {
@@ -88,13 +93,17 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_ready() {
-                cvar.notify_one(); // FIXME: do we want to signal here?
+                if worker.waiters != 0 {
+                    cvar.notify_one(); // FIXME: do we want to signal here?
+                }
                 let ret = worker.pull(&mut output[..]);
                 thread_debug!("M:PULL_COMMAND_RESULT:{}", ret);
                 return ret;
             } else {
                 thread_debug!("M:WAIT_PULL_COMMAND_RESULT");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
                 //return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default()); // FIXME: busy wait
             } 
         }
@@ -114,7 +123,9 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
                 return worker.pull_data();
             } else {
                 thread_debug!("W:WAIT_DATA");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
             }
         }
     }
@@ -125,12 +136,16 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.cm_ready() {
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 thread_debug!("W:PULL_CONTEXT_MAP");
                 return worker.pull_context_map(m8);
             } else {
                 thread_debug!("W:WAIT_PULL_CONTEXT_MAP");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
             }
         }
     }
@@ -149,11 +164,15 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
                 thread_debug!("W:PUSH_CMD");
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset);
             } else {
                 thread_debug!("W:WAIT_PUSH_CMD");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
             }
         }
     }
@@ -166,12 +185,16 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 thread_debug!("W:PUSH_CONSUMED_DATA");
                 return worker.push_consumed_data(data, m8);
             } else {
                 thread_debug!("W:WAIT_PUSH_CONSUMED_DATA");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
             }
         }
     }
@@ -182,12 +205,16 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 thread_debug!("W:PUSH_EOF");
                 return worker.push_eof();
             } else {
                 thread_debug!("W:WAIT_PUSH_EOF");
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -=1;
             }
         }
     }
@@ -309,7 +336,9 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
             }
             if worker.result_multi_space_ready(self.buffer_len) {
                 thread_debug!("W:PUSH_CMD:{}", self.buffer_len);
-                cvar.notify_one();
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 let extant_space = worker.insert_results(self.buffer.split_at_mut(self.buffer_len).0);
                 if extant_space <= 16 {
                     self.min_buffer_push_len = core::cmp::max(self.min_buffer_push_len >> 1, 4);
@@ -319,7 +348,9 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
                 return;
             } else {
                 thread_debug!("W:WAIT_PUSH_CMD (no space for {} commands)", self.buffer_len);
+                worker.waiters += 1;
                 let _ign = cvar.wait(worker);
+                _ign.unwrap().waiters -= 1;
             }
         }
     }

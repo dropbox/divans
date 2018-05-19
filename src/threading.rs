@@ -79,6 +79,7 @@ pub struct SerialWorker<AllocU8:Allocator<u8>> {
     result_write_off: usize,
     result_lin:[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;NUM_SERIAL_COMMANDS_BUFFERED],
     eof_present_in_result: bool, // retriever should try to get everything
+    pub waiters: u8,
 }
 impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
     pub fn result_ready(&self) -> bool {
@@ -130,6 +131,7 @@ impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
 impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
     fn default() -> Self {
         SerialWorker::<AllocU8> {
+            waiters: 0,
             eof_present_in_result: false,
             data_len: 0,
             data:[ThreadData::<AllocU8>::default(),
