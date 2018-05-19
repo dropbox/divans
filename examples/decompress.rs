@@ -13,6 +13,7 @@ fn main() {
             stdin,
             4096, // buffer size
             false,
+            true, // parallel
         );
         let mut buf = [0u8; 4096];
         loop {

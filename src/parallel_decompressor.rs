@@ -1,11 +1,11 @@
 #![cfg(not(feature="no-stdlib"))]
 use core;
-use core::marker::PhantomData;
 use core::hash::Hasher;
 use ::interface;
-use ::interface::{NewWithAllocator, Decompressor};
+use ::interface::{NewWithAllocator};
 use ::DecoderSpecialization;
 use ::codec;
+use slice_util;
 use std::sync::{Arc, Mutex};
 use divans_decompressor::HeaderParser;
 use super::mux::{Mux,DevNull};
@@ -18,9 +18,11 @@ use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 use std::thread;
 
-pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
-                     AllocU8:Allocator<u8>,
-                     AllocCDF16:Allocator<interface::DefaultCDF16>> {
+pub type StaticCommand = interface::Command<slice_util::SliceReference<'static, u8>>;
+pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                                 AllocU8:Allocator<u8>,
+                                 AllocCDF16:Allocator<interface::DefaultCDF16>,
+                                 AllocCommand:Allocator<StaticCommand>> {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
                                          ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8>>,
@@ -36,67 +38,37 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
                                                DefaultDecoder,
                                                Mux<AllocU8>>>,
     bytes_encoded: usize,
-}
-pub enum DivansParallelDecompressor<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>+Send,
-                            AllocU8:Allocator<u8>+Send,
-                            AllocCDF16:Allocator<interface::DefaultCDF16>+Send> {
-    Header(HeaderParser<AllocU8, AllocCDF16>),
-    Decode(DivansProcess<DefaultDecoder,
-                              AllocU8,
-                              AllocCDF16>),
+    mcommand: AllocCommand,
 }
 
-pub trait DivansParallelDecompressorFactory<
-     AllocU8:Allocator<u8> + Send,
-     AllocCDF16:Allocator<interface::DefaultCDF16> + Send> {
-    type DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + Send;
-    fn new(m8: AllocU8,
-           mcdf16:AllocCDF16,
-           skip_crc:bool) -> DivansParallelDecompressor<Self::DefaultDecoder, AllocU8, AllocCDF16> {
-        DivansParallelDecompressor::Header(HeaderParser{header:[0u8;interface::HEADER_LENGTH], read_offset:0, m8:Some(m8), mcdf16:Some(mcdf16),
-                                                skip_crc:skip_crc})
-    }
-}
 
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability + Send + 'static,
-                        AllocU8:Allocator<u8> + Send + 'static,
-                        AllocCDF16:Allocator<interface::DefaultCDF16> + Send + 'static>
-    DivansParallelDecompressor<DefaultDecoder, AllocU8, AllocCDF16>
+     AllocU8:Allocator<u8> + Send + 'static,
+     AllocCDF16:Allocator<interface::DefaultCDF16> + Send + 'static,
+     AllocCommand:Allocator<StaticCommand> + Send + 'static>
+    ParallelDivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand>
     where <AllocU8 as Allocator<u8>>::AllocatedMemory: core::marker::Send,
           <AllocCDF16 as Allocator<interface::DefaultCDF16>>::AllocatedMemory: core::marker::Send,
+          <AllocCommand as Allocator<StaticCommand>>::AllocatedMemory: core::marker::Send,
 {
 
-    fn finish_parsing_header(&mut self, window_size: usize) -> DivansResult {
+    pub fn new(header: &mut HeaderParser<AllocU8, AllocCDF16, AllocCommand>, mut window_size: usize) -> Self {
         if window_size < 10 {
-            return DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8));
+            window_size = 10;
         }
         if window_size > 24 {
-            return DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8));
+            window_size = 24;
         }
         let mut m8:AllocU8;
         let mcdf16:AllocCDF16;
+        let mc: AllocCommand;
         let raw_header:[u8; interface::HEADER_LENGTH];
         let skip_crc:bool;
-        match *self {
-            DivansParallelDecompressor::Header(ref mut header) => {
-                m8 = match core::mem::replace(&mut header.m8, None) {
-                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(8)),
-                    Some(m) => m,
-                };
-                raw_header = header.header;
-                skip_crc = header.skip_crc;
-            },
-            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
-        }
-        match *self {
-            DivansParallelDecompressor::Header(ref mut header) => {
-                mcdf16 = match core::mem::replace(&mut header.mcdf16, None) {
-                    None => return DivansResult::Failure(ErrMsg::MissingAllocator(16)),
-                    Some(m) => m,
-                }
-            },
-            _ => return DivansResult::Failure(ErrMsg::WrongInternalDecoderState),
-        }
+        m8 = header.m8.take().unwrap();
+        raw_header = header.header;
+        skip_crc = header.skip_crc;
+        mcdf16 = header.mcdf16.take().unwrap();
+        mc = header.mcommand.take().unwrap();
         //update this if you change the SelectedArithmeticDecoder macro
         let cmd_decoder = DefaultDecoder::new(&mut m8);
         let lit_decoder = DefaultDecoder::new(&mut m8);
@@ -126,14 +98,6 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let multi_worker = (codec.demuxer().worker).worker.clone();
         let thread_codec = Arc::new(Mutex::new(Some(codec)));
         let worker_codec = thread_codec.clone();
-        core::mem::replace(self,
-                           DivansParallelDecompressor::Decode(
-                               DivansProcess::<DefaultDecoder, AllocU8, AllocCDF16> {
-                                   codec:worker_codec,
-                                   literal_decoder:Some(main_thread_codec),
-                                   bytes_encoded:0,
-                                   worker: multi_worker,
-                               }));
         thread::spawn(move || {
             let mut guard = thread_codec.lock().unwrap();
             if let Some(ref mut process_codec) = *guard {
@@ -162,130 +126,73 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                 panic!("Thread started with None-process_codec")
             }
         });
-        DivansResult::Success
+        ParallelDivansProcess::<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand> {
+            mcommand:mc,
+            codec:worker_codec,
+            literal_decoder:Some(main_thread_codec),
+            bytes_encoded:0,
+            worker: multi_worker,
+        }
     }
     pub fn free_ref(&mut self) {
-        if let DivansParallelDecompressor::Decode(ref mut process) = *self {
-            if let Some(ref mut codec) = *process.codec.lock().unwrap() {
-                let lit_decoder = core::mem::replace(&mut process.literal_decoder, None);
-                if let Some(ld) = lit_decoder {
-                    codec.join(ld);
-                }
-                codec.free_ref();
+        if let Some(ref mut codec) = *self.codec.lock().unwrap() {
+            let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
+            if let Some(ld) = lit_decoder {
+                codec.join(ld);
             }
+            codec.free_ref();
         }
     }
-    pub fn free(self) -> (AllocU8, AllocCDF16) {
-        match self {
-            DivansParallelDecompressor::Header(parser) => {
-                (parser.m8.unwrap(),
-                 parser.mcdf16.unwrap())
-            },
-            DivansParallelDecompressor::Decode(mut process) => {
-                use codec::NUM_ARITHMETIC_CODERS;
-                if let Some(mut codec) = core::mem::replace(&mut *process.codec.lock().unwrap(), None) {
-                    let lit_decoder = core::mem::replace(&mut process.literal_decoder, None);
-                    if let Some(ld) = lit_decoder {
-                        codec.join(ld);
-                    }
-                    for index in 0..NUM_ARITHMETIC_CODERS {
-                        codec.get_coder(index as u8).debug_print(process.bytes_encoded);
-                    }
-                    codec.free()
-                } else {
-                    panic!("Trying to free unjoined decoder"); //FIXME: this does not seem ergonomic
-                }
+    pub fn free(mut self) -> (AllocU8, AllocCDF16, AllocCommand) {
+        use codec::NUM_ARITHMETIC_CODERS;
+        if let Some(mut codec) = core::mem::replace(&mut *self.codec.lock().unwrap(), None) {
+            let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
+            if let Some(ld) = lit_decoder {
+                codec.join(ld);
             }
+            for index in 0..NUM_ARITHMETIC_CODERS {
+                codec.get_coder(index as u8).debug_print(self.bytes_encoded);
+            }
+            let (m8,mcdf) = codec.free();
+            (m8, mcdf, self.mcommand)
+        } else {
+            panic!("Trying to free unjoined decoder"); //FIXME: this does not seem ergonomic
         }
     }
-}
-
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability+Send+'static,
-     AllocU8:Allocator<u8>+Send+'static,
-     AllocCDF16:Allocator<interface::DefaultCDF16> +Send+'static> Decompressor for DivansParallelDecompressor<DefaultDecoder,
-                                                                                        AllocU8,
-                                                                                                              AllocCDF16>
-    where <AllocU8 as Allocator<u8>>::AllocatedMemory: core::marker::Send,
-          <AllocCDF16 as Allocator<interface::DefaultCDF16>>::AllocatedMemory: core::marker::Send,
-    {
-    fn decode(&mut self,
+    pub fn decode(&mut self,
               input:&[u8],
               input_offset:&mut usize,
               output:&mut [u8],
               output_offset: &mut usize) -> DivansResult {
-        let window_size: usize;
-
-        match *self  {
-            DivansParallelDecompressor::Header(ref mut header_parser) => {
-                let remaining = input.len() - *input_offset;
-                let header_left = header_parser.header.len() - header_parser.read_offset;
-                if remaining >= header_left {
-                    header_parser.header[header_parser.read_offset..].clone_from_slice(
-                        input.split_at(*input_offset).1.split_at(header_left).0);
-                    *input_offset += header_left;
-                    match header_parser.parse_header() {
-                        Ok(wsize) => window_size = wsize,
-                        Err(result) => return result,
-                    }
-                } else {
-                    header_parser.header[(header_parser.read_offset)..
-                                         (header_parser.read_offset+remaining)].clone_from_slice(
-                        input.split_at(*input_offset).1);
-                    *input_offset += remaining;
-                    header_parser.read_offset += remaining;
-                    return DivansResult::NeedsMoreInput;
+        let old_output_offset = *output_offset;
+        if let Some(literal_decoder) =  self.literal_decoder.as_mut() {
+            loop {
+                match literal_decoder.decode_process_input(&mut self.worker,
+                                                           input,
+                                                           input_offset) {
+                    DivansInputResult::Success => {},
+                    need_something => return DivansResult::from(need_something),
                 }
-            },
-            DivansParallelDecompressor::Decode(ref mut process) => {
-                let old_output_offset = *output_offset;
-                if let Some(literal_decoder) =  process.literal_decoder.as_mut() {
-                    loop {
-                        match literal_decoder.decode_process_input(&mut process.worker,
-                                                                   input,
-                                                                   input_offset) {
-                            DivansInputResult::Success => {},
-                            need_something => return DivansResult::from(need_something),
-                        }
-                        if literal_decoder.commands_or_data_to_receive() {
-                            break; // we have successfully delivered a buffer to our worker and then can, at worst pull the result
-                        }
-                    }
-                    let retval = literal_decoder.decode_process_output(
-                        &mut process.worker,
-                        output,
-                        output_offset);
-                    process.bytes_encoded += *output_offset - old_output_offset;
-                    match retval {
-                        DecoderResult::Processed(divans_retval) => {
-                            return divans_retval;
-                        },
-                        DecoderResult::Yield => {
-                            unreachable!(); // we are not marked cooperative
-                        },
-                    }
-                } else {
-                    return DivansResult::Failure(ErrMsg::DecodingDecoderAlreadyFreed);
+                if literal_decoder.commands_or_data_to_receive() {
+                    break; // we have successfully delivered a buffer to our worker and then can, at worst pull the result
                 }
-            },
+            }
+            let retval = literal_decoder.decode_process_output(
+                &mut self.worker,
+                output,
+                output_offset);
+            self.bytes_encoded += *output_offset - old_output_offset;
+            match retval {
+                DecoderResult::Processed(divans_retval) => {
+                    return divans_retval;
+                },
+                DecoderResult::Yield => {
+                    unreachable!(); // we are not marked cooperative
+                },
+            }
+        } else {
+            return DivansResult::Failure(ErrMsg::DecodingDecoderAlreadyFreed);
         }
-        self.finish_parsing_header(window_size);
-        if *input_offset < input.len() {
-            return self.decode(input, input_offset, output, output_offset);
-        }
-        DivansResult::NeedsMoreInput
     }
 }
 
-pub struct DivansParallelDecompressorFactoryStruct
-    <AllocU8:Allocator<u8>,
-     AllocCDF16:Allocator<interface::DefaultCDF16>> {
-    p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF16>,
-}
-
-impl<AllocU8:Allocator<u8>+Send,
-     AllocCDF16:Allocator<interface::DefaultCDF16>+Send> DivansParallelDecompressorFactory<AllocU8,
-                                                                                   AllocCDF16>
-    for DivansParallelDecompressorFactoryStruct<AllocU8, AllocCDF16> {
-     type DefaultDecoder = DefaultDecoderType!();
-}

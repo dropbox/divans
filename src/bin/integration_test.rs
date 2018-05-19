@@ -131,7 +131,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                         },
                         buffer_size,
                         use_brotli).unwrap();
-    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, MULTI, false).unwrap();
+    super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false, MULTI).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     if ratio != 0.0 {
         let actual_ratio =  dv_buffer.data.len() as f64 / in_buffer.data.len() as f64;
@@ -215,7 +215,7 @@ fn test_e2e_empty_just_flush() {
     }
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
     let mut dv_buffer = UnlimitedBuffer::new(obuffer.split_at(olim).0);
-    super::decompress(&mut dv_buffer, &mut rt_buffer, 0, MULTI, false).unwrap();
+    super::decompress(&mut dv_buffer, &mut rt_buffer, 0, false, MULTI).unwrap();
     assert_eq!(rt_buffer.data, &[]);
     state.free();
 }
@@ -239,7 +239,7 @@ fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    opts.use_context_map = true;
     super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
     
-   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, MULTI, false).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, false, MULTI).unwrap();
    println!("dv_buffer size: {}", dv_buffer.data.len());
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
@@ -274,7 +274,7 @@ fn test_e2e_32xx() {
    opts.literal_adaptation = None;
 
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, MULTI, false).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, false, MULTI).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);
@@ -294,7 +294,7 @@ fn test_e2e_262145_at() {
    opts.use_context_map = true;
    opts.dynamic_context_mixing = Some(2);
    super::compress_ir(&mut buf_ir, &mut dv_buffer, opts).unwrap();
-   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, MULTI, false).unwrap();
+   super::decompress(&mut dv_buffer, &mut rt_buffer, 15, false, MULTI).unwrap();
    let a =  rt_buffer.data;
    let b = raw_text_buffer.data;
    assert_eq!(a, b);

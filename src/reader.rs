@@ -10,6 +10,8 @@ use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
+use ::StaticCommand;
+use ::brotli::interface::Nop;
 impl core::fmt::Display for ErrMsg {
     fn fmt(&self, f:&mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         <Self as core::fmt::Debug>::fmt(self, f)
@@ -248,12 +250,15 @@ impl<R:Read> DivansExperimentalCompressorReader<R> {
 
 
 type StandardDivansDecompressorFactory = ::DivansDecompressorFactoryStruct<HeapAlloc<u8>,
-                                                                     HeapAlloc<::DefaultCDF16>>;
+                                                                           HeapAlloc<::DefaultCDF16>,
+                                                                           HeapAlloc<StaticCommand>>;
 type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompressorFactory as ::DivansDecompressorFactory<HeapAlloc<u8>,
-                                                                                                                            HeapAlloc<::DefaultCDF16>>
+                                                                                                                            HeapAlloc<::DefaultCDF16>,
+                                                                                                                            HeapAlloc<StaticCommand>>
                                                            >::DefaultDecoder,
                                                           HeapAlloc<u8>,
-                                                          HeapAlloc<::DefaultCDF16>>;
+                                                          HeapAlloc<::DefaultCDF16>,
+                                                          HeapAlloc<StaticCommand>>;
 impl Processor for DivansConstructedDecompressor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.decode(input, input_offset, output, output_offset)
@@ -281,7 +286,7 @@ impl<R:Read> Read for DivansDecompressorReader<R> {
     }
 }
 impl<R:Read> DivansDecompressorReader<R> {
-    pub fn new(reader: R, mut buffer_size: usize, skip_crc:bool) -> Self {
+    pub fn new(reader: R, mut buffer_size: usize, skip_crc:bool, multithread:bool) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -295,7 +300,9 @@ impl<R:Read> DivansDecompressorReader<R> {
                           StandardDivansDecompressorFactory::new(
                               m8,
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              HeapAlloc::<StaticCommand>::new(::StaticCommand::nop()),
                               skip_crc,
+                              multithread,
                           ),
                           buffer,
                           false,
@@ -381,7 +388,7 @@ mod test {
                 reader:compress,
                 output: &mut ub,
             };
-            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false);
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false, true);
             let mut local_buffer = vec![0u8; buffer_size];
             let mut offset: usize = 0;
             loop {
@@ -412,7 +419,7 @@ mod test {
                 reader:compress,
                 output: &mut ub,
             };
-            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false);
+            let mut decompress = super::DivansDecompressorReader::new(tee, buffer_size, false, false);
             let mut local_buffer = vec![0u8; buffer_size];
             let mut offset: usize = 0;
             loop {

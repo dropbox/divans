@@ -45,6 +45,7 @@ pub struct CAllocator {
     pub opaque: *mut c_void,
 }
 
-
+unsafe impl Send for CAllocator {
+}
 
 

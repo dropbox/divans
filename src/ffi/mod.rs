@@ -3,7 +3,7 @@
 #[no_mangle]
 use core;
 use core::slice;
-
+use ::StaticCommand;
 use super::DivansDecompressorFactory;
 use super::interface::Decompressor;
 pub mod interface;
@@ -181,7 +181,7 @@ pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
             alloc_func:None,
             free_func:None,
             opaque: core::ptr::null_mut(),
-        }, 0)
+        }, 0, 1)
     }
 }
 
@@ -198,13 +198,15 @@ fn divans_new_decompressor_without_custom_alloc(to_box: DivansDecompressorState)
 
 
 #[no_mangle]
-pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator, skip_crc:u8) -> *mut DivansDecompressorState{
+pub unsafe extern fn divans_new_decompressor_with_custom_alloc(allocators:CAllocator, skip_crc:u8, multithread: u8) -> *mut DivansDecompressorState{
     let to_box = DivansDecompressorState{
         custom_allocator:allocators.clone(),
         decompressor:decompressor::DecompressorFactory::new(
             SubclassableAllocator::<u8>::new(allocators.clone()),
             SubclassableAllocator::<super::DefaultCDF16>::new(allocators.clone()),
+            SubclassableAllocator::<StaticCommand>::new(allocators.clone()),
             skip_crc != 0,
+            multithread != 0,
         ),
     };
     if let Some(alloc_fn) = allocators.alloc_func {

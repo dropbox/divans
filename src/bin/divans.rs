@@ -37,6 +37,7 @@ use std::error;
 
 use core::convert::From;
 use std::vec::Vec;
+use divans::StaticCommand;
 use divans::BlockSwitch;
 use divans::FeatureFlagSliceType;
 use divans::CopyCommand;
@@ -59,8 +60,6 @@ use divans::DivansCompressorFactoryStruct;
 use divans::DivansCompressorFactory;
 use divans::DivansDecompressorFactory;
 use divans::DivansDecompressorFactoryStruct;
-use divans::DivansParallelDecompressorFactoryStruct;
-use divans::DivansParallelDecompressorFactory;
 use divans::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, StrideSelection};
 use divans::Nop;
 use std::fs::File;
@@ -940,37 +939,24 @@ fn compress_ir<Reader:std::io::BufRead,
 fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
                                                            w:&mut Writer,
                                                            buffer_size: usize,
-                                                           multithread:bool,
-                                                           skip_crc: bool) -> io::Result<()>
+                                                           skip_crc: bool,
+                                                           multithread:bool,) -> io::Result<()>
 {
     let ret;
-    if multithread {
-        let mut state = DivansParallelDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>>::new(
-            ItemVecAllocator::<u8>::default(),
-            ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            skip_crc,
-        );
-        
-        ret = decompress_generic(
-            r,
-            w,
-            &mut state,
-            buffer_size);
-        state.free();
-    }else {
-        let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>>::new(
-            ItemVecAllocator::<u8>::default(),
-            ItemVecAllocator::<divans::DefaultCDF16>::default(),
-            skip_crc,
-        );
-        
-        ret = decompress_generic(
-            r,
-            w,
-            &mut state,
-            buffer_size);
-        state.free();
-    }
+    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>, ItemVecAllocator<StaticCommand>>::new(
+        ItemVecAllocator::<u8>::default(),
+        ItemVecAllocator::<divans::DefaultCDF16>::default(),
+        ItemVecAllocator::<StaticCommand>::default(),
+        skip_crc,
+        multithread,
+    );
+    
+    ret = decompress_generic(
+        r,
+        w,
+        &mut state,
+        buffer_size);
+    state.free();
     ret
 }
 
@@ -1584,7 +1570,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, buffer_size, parallel, skip_crc) {
+                        match decompress(&mut input, &mut output, buffer_size, skip_crc, parallel) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1617,7 +1603,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), buffer_size, parallel, skip_crc) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size, skip_crc, parallel) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1647,7 +1633,7 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, parallel, skip_crc) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc, parallel) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1655,7 +1641,7 @@ fn main() {
         }
     } else {
         assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, parallel, skip_crc) {
+        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc, parallel) {
             Ok(_) => return,
             Err(e) => panic!("Error {:?}", e),
         }

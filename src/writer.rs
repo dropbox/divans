@@ -9,6 +9,8 @@ use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
+use ::StaticCommand;
+use ::brotli::interface::Nop;
 
 trait Processor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult;
@@ -214,12 +216,15 @@ impl<W:Write> DivansExperimentalCompressorWriter<W> {
 
 
 type StandardDivansDecompressorFactory = ::DivansDecompressorFactoryStruct<HeapAlloc<u8>,
-                                                                     HeapAlloc<::DefaultCDF16>>;
+                                                                           HeapAlloc<::DefaultCDF16>,
+                                                                           HeapAlloc<StaticCommand>>;
 type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompressorFactory as ::DivansDecompressorFactory<HeapAlloc<u8>,
-                                                                                                                            HeapAlloc<::DefaultCDF16>>
+                                                                                                                            HeapAlloc<::DefaultCDF16>,
+                                                                                                                            HeapAlloc<StaticCommand>>
                                                            >::DefaultDecoder,
                                                           HeapAlloc<u8>,
-                                                          HeapAlloc<::DefaultCDF16>>;
+                                                          HeapAlloc<::DefaultCDF16>,
+                                                          HeapAlloc<StaticCommand>>;
 impl Processor for DivansConstructedDecompressor {
    fn process(&mut self, input:&[u8], input_offset:&mut usize, output:&mut [u8], output_offset:&mut usize) -> DivansResult {
        self.decode(input, input_offset, output, output_offset)
@@ -248,7 +253,7 @@ impl<W:Write> Write for DivansDecompressorWriter<W> {
     }
 }
 impl<W:Write> DivansDecompressorWriter<W> {
-    pub fn new(writer: W, mut buffer_size: usize, skip_crc:bool) -> Self {
+    pub fn new(writer: W, mut buffer_size: usize, skip_crc:bool, multithread: bool) -> Self {
        if buffer_size == 0 {
           buffer_size = 4096;
        }
@@ -262,7 +267,9 @@ impl<W:Write> DivansDecompressorWriter<W> {
                           StandardDivansDecompressorFactory::new(
                               m8,
                               HeapAlloc::<::DefaultCDF16>::new(::DefaultCDF16::default()),
+                              HeapAlloc::<StaticCommand>::new(StaticCommand::nop()),
                               skip_crc,
+                              multithread,
                           ),
                           buffer,
                           false,
@@ -340,7 +347,7 @@ mod test {
               writer: tmp,
               output: &mut dest,
           };
-          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false);
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false, false);
             let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
                 writer:decompress,
                 output: &mut ub,
@@ -375,7 +382,7 @@ mod test {
               writer: tmp,
               output: &mut dest,
           };
-          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false);
+          let decompress = super::DivansDecompressorWriter::new(dest_tee, buffer_size, false, true);
             let tee = Tee::<::DivansDecompressorWriter<Tee<UnlimitedBuffer>>> {
                 writer:decompress,
                 output: &mut ub,
