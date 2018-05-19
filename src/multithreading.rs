@@ -18,7 +18,7 @@ macro_rules! thread_debug {
         eprintln!($a, $b)
     };
     ($a: expr) => {
-        eprintln!($b)
+        eprintln!($a)
     };
 }
 
