@@ -81,12 +81,19 @@ impl<AllocU8:Allocator<u8>> Clone for MultiWorker<AllocU8> {
 #[cfg(feature="threadlog")]
 impl<AllocU8:Allocator<u8>> Drop for MultiWorker<AllocU8> {
     fn drop(&mut self) {
+        let epoch_d = self.start.duration_since(std::time::UNIX_EPOCH).unwrap_or(Duration::new(0,0));
+        let epoch = (epoch_d.as_secs()%100) * 100 + u64::from(epoch_d.subsec_nanos()) / 10000000;
+        let start_log = self.start.elapsed().unwrap_or(Duration::new(0,0));
         use std::io::Write;
+        use std;
         let stderr = io::stderr();
         let mut handle = stderr.lock();
+        writeln!(handle, "{:04}:{:02}:{:09} LOG_START\n", epoch, start_log.as_secs(), start_log.subsec_nanos()).unwrap();
         for entry in self.log[..self.log_offset as usize].iter() {
-            writeln!(handle, "{:02}:{:09} {:?} {}", entry.2.as_secs(), entry.2.subsec_nanos(), entry.0, entry.1).unwrap();
+            writeln!(handle, "{:04}:{:02}:{:09} {:?} {}", epoch, entry.2.as_secs(), entry.2.subsec_nanos(), entry.0, entry.1).unwrap();
         }
+        let fin_log = self.start.elapsed().unwrap_or(Duration::new(0,0));
+        writeln!(handle, "{:04}:{:02}:{:09} LOG_FLUSH {:?}ns\n", epoch, fin_log.as_secs(), fin_log.subsec_nanos(), fin_log - start_log).unwrap();
     }
 }
 
