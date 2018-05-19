@@ -75,3 +75,5 @@ benchmark = ["brotli/benchmark"]
 external-literal-probability = ["brotli/external-literal-probability"]
 
 uncached_frequentist = []
+
+threadlog = []

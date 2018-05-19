@@ -460,7 +460,7 @@ fn bench_ir_decode_context_mixing_1024k(b: &mut Bencher) {
 
 #[cfg(feature="benchmark")]
 #[bench]
-fn bench_ir_decode_context_pure_average_1024k(b: &mut Bencher) {
+fn bench_ir_decode_okr_1024k(b: &mut Bencher) {
     let raw_file = include_bytes!("../../testdata/random_then_unicode");
     let ir = include_bytes!("../../testdata/random_then_unicode.ir");
     bench_with_ir(65536,
