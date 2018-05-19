@@ -256,7 +256,9 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
             return 0;
         }
         let mut eligible_file_len = self.result_write_off - self.result_read_off;
-        if eligible_file_len > 16 && !self.eof_present_in_result {
+        // the idea here was to leave some space in the buffer behind so that if it wasn't filled, we wouldn't stall in the cv-notify
+        // unfortunately this turns out to be a badly performing idea
+        if false && eligible_file_len > 16 && !self.eof_present_in_result {
             let data_to_leave = core::cmp::min(eligible_file_len >> 1, 16);
             eligible_file_len -= data_to_leave;
         }

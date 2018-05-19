@@ -299,7 +299,7 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
     }
     fn force_push(&mut self, eof_inside: bool) {
         if self.min_buffer_push_len * 2 < self.buffer.len(){
-            self.min_buffer_push_len += 16;
+            self.min_buffer_push_len <<= 2;
         }
         loop {
             let &(ref lock, ref cvar) = &*self.worker.queue;
