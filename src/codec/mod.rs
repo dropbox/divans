@@ -39,7 +39,7 @@ use self::specializations::{
     CodecTraits,
 };
 mod interface;
-use threading::ThreadToMain;
+use threading::{ThreadToMain, StaticCommand};
 use ::slice_util::AllocatedMemoryPrefix;
 pub use self::interface::{
     ThreadContext,
@@ -257,12 +257,15 @@ impl<AllocU8: Allocator<u8>,
         }
         ret
     }
-    pub fn join(&mut self,
+    
+    pub fn join<AllocCommand:Allocator<StaticCommand>>(&mut self,
                 mut decoder: DivansDecoderCodec<Cdf16,
                                                 AllocU8,
                                                 AllocCDF16,
+                                                AllocCommand,
                                                 ArithmeticCoder,
-                                                Mux<AllocU8>>) {
+                                                Mux<AllocU8>>,
+                mcommand: &mut AllocCommand) {
         if let Some(ref mut ring_buffer_state) = decoder.state_populate_ring_buffer {
             free_cmd(ring_buffer_state, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
         }
@@ -272,17 +275,23 @@ impl<AllocU8: Allocator<u8>,
         self.skip_checksum = decoder.skip_checksum;
         self.frozen_checksum = decoder.frozen_checksum;
         decoder.demuxer.free(&mut decoder.ctx.m8.get_base_alloc());
+        mcommand.free_cell(decoder.cmd_buffer.0);
+        let p0 = core::mem::replace(&mut decoder.pred_buffer[0], empty_prediction_mode_context_map());
+        let p1 = core::mem::replace(&mut decoder.pred_buffer[1], empty_prediction_mode_context_map());
+        free_cmd(&mut Command::PredictionMode(p0), &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
+        free_cmd(&mut Command::PredictionMode(p1), &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
         let old_thread_context = core::mem::replace(&mut self.cross_command_state.thread_ctx, ThreadContext::MainThread(decoder.ctx));
         match old_thread_context {
             ThreadContext::MainThread(_) => panic!("Tried to join the main thread"),
             ThreadContext::Worker => {},
         };
     }
-    pub fn fork(&mut self) -> DivansDecoderCodec<Cdf16,
-                                                 AllocU8,
-                                                 AllocCDF16,
-                                                 ArithmeticCoder,
-                                                 Mux<AllocU8>> {
+    pub fn fork<AllocCommand:Allocator<StaticCommand>>(&mut self, mcommand:&mut AllocCommand) -> DivansDecoderCodec<Cdf16,
+                                                                                                                    AllocU8,
+                                                                                                                    AllocCDF16,
+                                                                                                                    AllocCommand,
+                                                                                                                    ArithmeticCoder,
+                                                                                                                    Mux<AllocU8>> {
         let skip_checksum = self.skip_checksum;
         if let Some(_) = self.frozen_checksum {
             panic!("Tried to fork() when checksum was already computed");
@@ -296,8 +305,9 @@ impl<AllocU8: Allocator<u8>,
         DivansDecoderCodec::<Cdf16,
                              AllocU8,
                              AllocCDF16,
+                             AllocCommand,
                              ArithmeticCoder,
-                             Mux<AllocU8>>::new(main_thread_context, self.crc.clone(), skip_checksum)
+                             Mux<AllocU8>>::new(main_thread_context, mcommand, self.crc.clone(), skip_checksum)
     }
     pub fn demuxer(&mut self) -> &mut LinearInputBytes{
         &mut self.cross_command_state.demuxer

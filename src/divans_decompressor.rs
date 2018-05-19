@@ -8,13 +8,13 @@ use ::codec;
 use super::mux::{Mux,DevNull};
 use codec::decoder::{DecoderResult, DivansDecoderCodec};
 use threading::{ThreadToMainDemuxer, SerialWorker};
-use slice_util;
+
 
 use ::interface::{DivansResult, DivansOpResult, DivansInputResult, ErrMsg};
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
+pub use threading::StaticCommand;
 
-pub type StaticCommand = interface::Command<slice_util::SliceReference<'static, u8>>;
 #[cfg(not(feature="no-stdlib"))]
 use parallel_decompressor::{ParallelDivansProcess};
 #[cfg(feature="no-stdlib")]
@@ -95,6 +95,7 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
     literal_decoder: Option<DivansDecoderCodec<interface::DefaultCDF16,
                                                AllocU8,
                                                AllocCDF16,
+                                               AllocCommand,
                                                DefaultDecoder,
                                                Mux<AllocU8>>>,
     bytes_encoded: usize,
@@ -163,12 +164,12 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         if let Some(mut codec) = core::mem::replace(&mut self.codec, None) {
             let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
             if let Some(ld) = lit_decoder {
-                codec.join(ld);
+                codec.join(ld, &mut self.mcommand);
             }
             for index in 0..NUM_ARITHMETIC_CODERS {
                 codec.get_coder(index as u8).debug_print(self.bytes_encoded);
             }
-            codec.demuxer().worker.free(&mut self.mcommand);
+            codec.demuxer().worker.free(codec.get_m8().as_mut().unwrap(), &mut self.mcommand);
             let (m8, mcdf) = codec.free();
             (m8, mcdf, self.mcommand)
         } else {
@@ -179,9 +180,9 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         if let Some(ref mut codec) = self.codec {
             let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
             if let Some(ld) = lit_decoder {
-                codec.join(ld);
+                codec.join(ld, &mut self.mcommand);
             }
-            codec.demuxer().worker.free(&mut self.mcommand);
+            codec.demuxer().worker.free(codec.get_m8().as_mut().unwrap(), &mut self.mcommand);
             codec.free_ref();
         }
     }
@@ -276,7 +277,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         if !skip_crc {
             codec.get_crc().write(&raw_header[..]);
         }
-        let main_thread_codec = codec.fork();
+        let main_thread_codec = codec.fork(&mut mcommand);
         assert_eq!(*codec.get_crc(), main_thread_codec.crc);
         core::mem::replace(self,
                            DivansDecompressor::Decode(

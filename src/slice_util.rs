@@ -14,6 +14,33 @@
 use core;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
+#[derive(Copy,Clone,Default,Debug)]
+pub struct SlicePlaceholder32<T> {
+    len:u32,
+    ph: core::marker::PhantomData<T>,
+}
+impl<T> SlicePlaceholder32<T> {
+    pub fn new(len: u32) -> Self {
+        SlicePlaceholder32::<T>{
+            len: len,
+            ph: core::marker::PhantomData::<T>::default(),
+        }
+    }
+}
+
+impl<T> SliceWrapper<T> for SlicePlaceholder32<T> {
+    fn slice(&self) -> &[T]{
+        &[]
+    }
+    fn len(&self) -> usize {
+        self.len as usize
+    }
+}
+
+
+
+
+
 #[derive(Copy,Clone)]
 pub struct SliceReference<'a, T:'a> {
     data: &'a[T],
@@ -98,6 +125,9 @@ impl<T, AllocT:Allocator<T>> SliceWrapperMut<T> for AllocatedMemoryPrefix<T, All
 impl<T, AllocT:Allocator<T>> SliceWrapper<T> for AllocatedMemoryPrefix<T, AllocT> {
     fn slice(&self) -> &[T] {
         self.0.slice().split_at(self.1).0
+    }
+    fn len(&self) -> usize {
+        self.1
     }
 }
 impl <T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
