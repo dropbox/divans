@@ -110,11 +110,13 @@ impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
             // need to shuffle things to the front
             let total_data_size = self.result_write_off - self.result_read_off;
             assert!(total_data_size < self.result_lin.len());
-            let mut rl = &mut self.result_lin;
+            let rl = &mut self.result_lin;
             for (out_index, in_index) in (0..total_data_size).zip(self.result_read_off..self.result_write_off) {
                 let (mut prefix, mut postfix) = rl.split_at_mut(in_index);
                 core::mem::swap(&mut prefix[out_index], &mut postfix[0]);
             }
+            self.result_read_off = 0;
+            self.result_write_off = total_data_size;
         }
         for (dst, src) in self.result_lin.split_at_mut(self.result_write_off).1.split_at_mut(data.len()).0.iter_mut().zip(data.iter_mut()) {
             core::mem::swap(dst, src);
@@ -248,7 +250,12 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
         if Self::COOPERATIVE_MAIN && self.result_write_off == self.result_read_off {
             return 0;
         }
-        let result_len = core::cmp::min(self.result_write_off - self.result_read_off, output.len());
+        let mut eligible_file_len = self.result_write_off - self.result_read_off;
+        if !self.eof_present_in_result {
+            let data_to_leave = core::cmp::min(eligible_file_len >> 1, 16);
+            eligible_file_len -= data_to_leave;
+        }
+        let result_len = core::cmp::min(eligible_file_len, output.len());
         for (outp, inp) in output.split_at_mut(result_len).0.iter_mut().zip(
             self.result_lin.split_at_mut(self.result_read_off).1.split_at_mut(result_len).0) {
             core::mem::swap(outp, inp);
