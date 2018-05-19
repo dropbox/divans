@@ -1,5 +1,6 @@
 #![cfg(not(feature="no-stdlib"))]
 use core;
+use std::io;
 use std::sync::{Arc, Mutex, Condvar};
 use threading::{SerialWorker, MainToThread, ThreadToMain, CommandResult, ThreadData, NUM_SERIAL_COMMANDS_BUFFERED};
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
@@ -7,41 +8,96 @@ use alloc::{Allocator, SliceWrapper};
 use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
 use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult, Nop};
-pub struct MultiWorker<AllocU8:Allocator<u8>> {
-    queue: Arc<(Mutex<SerialWorker<AllocU8>>, Condvar)>,
-}
-
+use std::time::{SystemTime, Duration};
 
 #[cfg(feature="threadlog")]
+const MAX_LOG_SIZE: usize = 8192;
+#[cfg(not(feature="threadlog"))]
+const MAX_LOG_SIZE: usize = 0;
+
+
+pub struct MultiWorker<AllocU8:Allocator<u8>> {
+    start: SystemTime,
+    queue: Arc<(Mutex<SerialWorker<AllocU8>>, Condvar)>,
+    log: [ThreadEvent; MAX_LOG_SIZE],
+    log_offset: u32,
+}
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy)]
+enum ThreadEventType {
+    M_PUSH_CONTEXT_MAP,
+    M_WAIT_PUSH_CONTEXT_MAP,
+    M_PUSH_DATA,
+    M_PUSH_EMPTY_DATA,
+    M_FAIL_PUSH_DATA,
+    M_PULL_COMMAND_RESULT,
+    M_WAIT_PULL_COMMAND_RESULT,
+    W_PULL_DATA,
+    W_WAIT_PULL_DATA,
+    W_PULL_CONTEXT_MAP,
+    W_WAIT_PULL_CONTEXT_MAP,
+    W_PUSH_CMD,
+    W_WAIT_PUSH_CMD,
+    W_PUSH_BATCH_CMD,
+    W_WAIT_PUSH_BATCH_CMD,
+    W_PUSH_CONSUMED_DATA,
+    W_WAIT_PUSH_CONSUMED_DATA,
+    W_PUSH_EOF,
+    W_WAIT_PUSH_EOF
+}
+#[derive(Debug, Clone, Copy)]
+struct ThreadEvent(ThreadEventType, u32, Duration);
+
+    
+#[cfg(feature="threadlog")]
 macro_rules! thread_debug {
-    ($a: expr, $b: expr) => {
-        eprintln!($a, $b)
-    };
-    ($a: expr) => {
-        eprintln!($a)
+    ($en: expr, $quant: expr, $proc: expr) => {
+        if $proc.log_offset as usize != $proc.log.len() {
+            $proc.log[$proc.log_offset as usize] = ThreadEvent($en, $quant as u32, $proc.start.elapsed().unwrap_or(Duration::new(0,0)));
+            $proc.log_offset += 1;
+        }
+        //eprintln!("{:?} {} {:?}", $en, $quant, $proc.start.elapsed().unwrap_or(Duration::new(0,0)));
     };
 }
 
 #[cfg(not(feature="threadlog"))]
 macro_rules! thread_debug {
-    ($a: expr, $b: expr) => {
-    };
-    ($a: expr) => {
+    ($a: expr, $b: expr, $c: expr) => {
     };
 }
 
 impl<AllocU8:Allocator<u8>> Clone for MultiWorker<AllocU8> {
     fn clone(&self) -> Self {
         Self {
+            log:self.log.clone(),
+            log_offset:self.log_offset.clone(),
+            start:self.start,
             queue:self.queue.clone(),
         }
     }
 }
 
+#[cfg(feature="threadlog")]
+impl<AllocU8:Allocator<u8>> Drop for MultiWorker<AllocU8> {
+    fn drop(&mut self) {
+        use std::io::Write;
+        let stderr = io::stderr();
+        let mut handle = stderr.lock();
+        for entry in self.log[..self.log_offset as usize].iter() {
+            writeln!(handle, "{:02}:{:09} {:?} {}", entry.2.as_secs(), entry.2.subsec_nanos(), entry.0, entry.1).unwrap();
+        }
+    }
+}
+
+
 
 impl<AllocU8:Allocator<u8>> Default for MultiWorker<AllocU8> {
     fn default() -> Self {
         MultiWorker::<AllocU8> {
+            log:[ThreadEvent(ThreadEventType::M_PUSH_EMPTY_DATA, 0, Duration::new(0,0)); MAX_LOG_SIZE],
+            log_offset:0,
+            start: SystemTime::now(),
             queue: Arc::new((Mutex::new(SerialWorker::<AllocU8>::default()), Condvar::new())),
         }
     }
@@ -54,10 +110,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.cm_space_ready() {
-                thread_debug!("M:PUSH_CONTEXT_MAP");
+                thread_debug!(ThreadEventType::M_PUSH_CONTEXT_MAP, 1, self);
                 return worker.push_context_map(cm);
             } else {
-                thread_debug!("M:WAIT_PUSH_CONTEXT_MAP");
+                thread_debug!(ThreadEventType::M_WAIT_PUSH_CONTEXT_MAP, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker); // always safe to loop around again
                 _ign.unwrap().waiters -= 1;
@@ -71,7 +127,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
         let mut worker = lock.lock().unwrap();
         match worker.push(data) {
             Ok(()) => {
-                thread_debug!("M:PUSH_{}_DATA", _len);
+                thread_debug!(ThreadEventType::M_PUSH_DATA, _len, self);
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
@@ -79,9 +135,9 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
             },
             err => {
                 if data.len() == 0 {
-                    thread_debug!("M:PUSH_0_DATA");
+                    thread_debug!(ThreadEventType::M_PUSH_EMPTY_DATA, 0, self);
                 } else {
-                    thread_debug!("M:FAIL_PUSH_DATA");
+                    thread_debug!(ThreadEventType::M_FAIL_PUSH_DATA, 0, self);
                 }
                 return err
             },
@@ -97,10 +153,10 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
                     cvar.notify_one(); // FIXME: do we want to signal here?
                 }
                 let ret = worker.pull(&mut output[..]);
-                thread_debug!("M:PULL_COMMAND_RESULT:{}", ret);
+                thread_debug!(ThreadEventType::M_PULL_COMMAND_RESULT, ret, self);
                 return ret;
             } else {
-                thread_debug!("M:WAIT_PULL_COMMAND_RESULT");
+                thread_debug!(ThreadEventType::M_WAIT_PULL_COMMAND_RESULT, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -119,10 +175,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.data_ready() {
-                thread_debug!("W:PULL_DATA");
+                thread_debug!(ThreadEventType::W_PULL_DATA, 1, self);
                 return worker.pull_data();
             } else {
-                thread_debug!("W:WAIT_DATA");
+                thread_debug!(ThreadEventType::W_WAIT_PULL_DATA, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -139,10 +195,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
-                thread_debug!("W:PULL_CONTEXT_MAP");
+                thread_debug!(ThreadEventType::W_PULL_CONTEXT_MAP, 1, self);
                 return worker.pull_context_map(m8);
             } else {
-                thread_debug!("W:WAIT_PULL_CONTEXT_MAP");
+                thread_debug!(ThreadEventType::W_WAIT_PULL_CONTEXT_MAP, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -163,13 +219,13 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.result_space_ready() {
-                thread_debug!("W:PUSH_CMD");
+                thread_debug!(ThreadEventType::W_PUSH_CMD, 1, self);
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
                 return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset);
             } else {
-                thread_debug!("W:WAIT_PUSH_CMD");
+                thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -181,6 +237,7 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
                     data:&mut AllocatedMemoryRange<u8, AllocU8>,
                     m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
+        let _len = data.len();
         loop {
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
@@ -188,10 +245,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
-                thread_debug!("W:PUSH_CONSUMED_DATA");
+                thread_debug!(ThreadEventType::W_PUSH_CONSUMED_DATA, _len, self);
                 return worker.push_consumed_data(data, m8);
             } else {
-                thread_debug!("W:WAIT_PUSH_CONSUMED_DATA");
+                thread_debug!(ThreadEventType::W_WAIT_PUSH_CONSUMED_DATA, 0, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -208,10 +265,10 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
-                thread_debug!("W:PUSH_EOF");
+                thread_debug!(ThreadEventType::W_PUSH_EOF, 1, self);
                 return worker.push_eof();
             } else {
-                thread_debug!("W:WAIT_PUSH_EOF");
+                thread_debug!(ThreadEventType::W_WAIT_PUSH_EOF, 1, self);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -=1;
@@ -335,7 +392,7 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
                 worker.set_eof_hint(); // so other side gets more aggressive about pulling
             }
             if worker.result_multi_space_ready(self.buffer_len) {
-                thread_debug!("W:PUSH_CMD:{}", self.buffer_len);
+                thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer_len, self.worker);
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
@@ -347,7 +404,7 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
                 self.buffer_len = 0;
                 return;
             } else {
-                thread_debug!("W:WAIT_PUSH_CMD (no space for {} commands)", self.buffer_len);
+                thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, self.buffer_len, self.worker);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
