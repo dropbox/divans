@@ -4,7 +4,7 @@ use core::hash::Hasher;
 use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, StreamDemuxer, StreamID, ErrMsg};
 use mux::DevNull;
 use ::probability::{CDF16};
-use ::slice_util::{AllocatedMemoryPrefix, AllocatedMemoryRange};
+use ::slice_util::{AllocatedMemoryPrefix};
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
 use super::literal::{LiteralState, LiteralSubstate};
@@ -345,12 +345,13 @@ impl<Cdf16:CDF16,
             if self.eof {
                 return DecoderResult::Processed(DivansResult::from(self.process_eof()));
             }
-            if self.cmd_buffer_offset == self.cmd_buffer_count {
+            if self.cmd_buffer_offset >= self.cmd_buffer_count {
                 self.cmd_buffer_offset = 0;
                 self.cmd_buffer_count = worker.pull(&mut self.cmd_buffer);
-                if self.cmd_buffer_count == 0 && Worker::COOPERATIVE_MAIN {
+                if self.cmd_buffer_count == 0 {
                     return DecoderResult::Yield;
                 }
+                assert!(self.cmd_buffer_offset < self.cmd_buffer_count);
             }
             let mut hit_eof = false;
             for cur_cmd in self.cmd_buffer[self.cmd_buffer_offset..self.cmd_buffer_count].iter_mut() {

@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use divans_decompressor::HeaderParser;
 use super::mux::{Mux,DevNull};
 use codec::decoder::{DecoderResult, DivansDecoderCodec};
-use threading::{ThreadToMainDemuxer, SerialWorker};
-use multithreading::MultiWorker;
+use threading::{ThreadToMainDemuxer};
+use multithreading::{BufferedMultiWorker, MultiWorker};
 
 use ::interface::{DivansResult, DivansInputResult, ErrMsg};
 use ::ArithmeticEncoderOrDecoder;
@@ -23,7 +23,7 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
                      AllocCDF16:Allocator<interface::DefaultCDF16>> {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
-                                         ThreadToMainDemuxer<AllocU8, MultiWorker<AllocU8>>,
+                                         ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8>>,
                                          DevNull<AllocU8>,
                                          interface::DefaultCDF16,
                                          AllocU8,
@@ -102,7 +102,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let lit_decoder = DefaultDecoder::new(&mut m8);
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
-                                             ThreadToMainDemuxer<AllocU8, MultiWorker<AllocU8>>,
+                                             ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8>>,
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
@@ -123,8 +123,8 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         let main_thread_codec = codec.fork();
         assert_eq!(*codec.get_crc(), main_thread_codec.crc);
-        let multi_worker = (codec.demuxer().get_main_to_thread()).clone();
-        let mut thread_codec = Arc::new(Mutex::new(Some(codec)));
+        let multi_worker = (codec.demuxer().worker).worker.clone();
+        let thread_codec = Arc::new(Mutex::new(Some(codec)));
         let worker_codec = thread_codec.clone();
         core::mem::replace(self,
                            DivansParallelDecompressor::Decode(

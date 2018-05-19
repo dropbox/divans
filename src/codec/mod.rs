@@ -56,7 +56,6 @@ use super::interface::{
     CopyCommand,
     DictCommand,
     LiteralCommand,
-    PredictionModeContextMap,
     free_cmd,
 };
 pub mod io;

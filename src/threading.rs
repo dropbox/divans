@@ -85,6 +85,9 @@ impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
     pub fn result_space_ready(&self) -> bool {
         self.result_len != self.result.len()
     }
+    pub fn result_multi_space_ready(&self, space_needed:usize) -> bool {
+        self.result_len + space_needed <= self.result.len()
+    }
     pub fn cm_space_ready(&self) -> bool {
         self.cm_len != self.cm.len()
     }
@@ -93,6 +96,12 @@ impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
     }
     pub fn data_ready(&self) -> bool {
         self.data_len != 0
+    }
+    pub fn insert_results(&mut self, data:&mut[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>]) {
+        for (dst, src) in self.result.split_at_mut(self.result_len).1.split_at_mut(data.len()).0.iter_mut().zip(data.iter_mut()) {
+            core::mem::swap(dst, src);
+        }
+        self.result_len += data.len();
     }
 }
 impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
@@ -230,7 +239,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
 }
 type NopUsize = usize;
 pub struct ThreadToMainDemuxer<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>>{
-    worker: WorkerInterface,
+    pub worker: WorkerInterface,
     slice: AllocatedMemoryRange<u8, AllocU8>,
     unused: NopUsize,
     eof: bool,
