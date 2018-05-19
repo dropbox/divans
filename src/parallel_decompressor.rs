@@ -5,7 +5,6 @@ use ::interface;
 use ::interface::{NewWithAllocator};
 use ::DecoderSpecialization;
 use ::codec;
-use slice_util;
 use std::sync::{Arc, Mutex};
 use divans_decompressor::HeaderParser;
 use super::mux::{Mux,DevNull};
@@ -17,8 +16,8 @@ use ::interface::{DivansResult, DivansInputResult, ErrMsg};
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 use std::thread;
+use super::divans_decompressor::StaticCommand;
 
-pub type StaticCommand = interface::Command<slice_util::SliceReference<'static, u8>>;
 pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                  AllocU8:Allocator<u8>,
                                  AllocCDF16:Allocator<interface::DefaultCDF16>,

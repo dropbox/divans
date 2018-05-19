@@ -19,6 +19,9 @@ use std::io;
 use std::io::BufReader;
 use core::cmp;
 use divans::{Speed, StrideSelection, DivansCompressorOptions, BrotliCompressionSetting};
+#[cfg(feature="no-stdlib")]
+pub static MULTI: bool = false;
+#[cfg(not(feature="no-stdlib"))]
 pub static MULTI: bool = true;
 pub struct UnlimitedBuffer {
   pub data: Vec<u8>,

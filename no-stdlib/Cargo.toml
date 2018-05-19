@@ -27,8 +27,8 @@ lto=true
 vergen = "0.1"
 
 [dependencies]
-"alloc-no-stdlib" = "~1.2"
-"brotli" = { version = "~2, > 2.0.0"}
+"alloc-no-stdlib" = "~1.3"
+"brotli" = { version = "~2.2"}
 
 [features]
 default= ["no-stdlib","no-stdlib-rust-binding", "no-stdlib-rlib"]

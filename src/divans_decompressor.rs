@@ -8,13 +8,17 @@ use ::codec;
 use super::mux::{Mux,DevNull};
 use codec::decoder::{DecoderResult, DivansDecoderCodec};
 use threading::{ThreadToMainDemuxer, SerialWorker};
+use slice_util;
 
-
-use ::interface::{DivansResult, DivansInputResult, ErrMsg};
+use ::interface::{DivansResult, DivansOpResult, DivansInputResult, ErrMsg};
 use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
-pub use parallel_decompressor::StaticCommand;
+
+pub type StaticCommand = interface::Command<slice_util::SliceReference<'static, u8>>;
+#[cfg(not(feature="no-stdlib"))]
 use parallel_decompressor::{ParallelDivansProcess};
+#[cfg(feature="no-stdlib")]
+use stub_parallel_decompressor::{ParallelDivansProcess};
 
 pub struct HeaderParser<AllocU8:Allocator<u8>,
                         AllocCDF16:Allocator<interface::DefaultCDF16>,
@@ -31,22 +35,50 @@ pub struct HeaderParser<AllocU8:Allocator<u8>,
 impl<AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
      AllocCommand:Allocator<StaticCommand>>HeaderParser<AllocU8, AllocCDF16, AllocCommand> {
-    pub fn parse_header(&mut self)->Result<usize, DivansResult>{
+    pub fn parse_header(&mut self)->Result<usize, DivansOpResult>{
         if self.header[0] != interface::MAGIC_NUMBER[0] ||
             self.header[1] != interface::MAGIC_NUMBER[1] {
-                return Err(DivansResult::Failure(ErrMsg::MagicNumberWrongA(self.header[0], self.header[1])));
+                return Err(DivansOpResult::Failure(ErrMsg::MagicNumberWrongA(self.header[0], self.header[1])));
         }
         if self.header[2] != interface::MAGIC_NUMBER[2] ||
             self.header[3] != interface::MAGIC_NUMBER[3] {
-                return Err(DivansResult::Failure(ErrMsg::MagicNumberWrongB(self.header[2], self.header[3])));
+                return Err(DivansOpResult::Failure(ErrMsg::MagicNumberWrongB(self.header[2], self.header[3])));
         }
         let window_size = self.header[5] as usize;
         if window_size < 10 || window_size >= 25 {
-            return Err(DivansResult::Failure(ErrMsg::BadWindowSize(window_size as u8)));
+            return Err(DivansOpResult::Failure(ErrMsg::BadWindowSize(window_size as u8)));
         }
         Ok(window_size)
     }
-
+    pub fn decode(&mut self,
+                  input:&[u8],
+                  input_offset:&mut usize) -> (usize, bool, DivansInputResult) {
+        let header_parser = self;
+        let window_size: usize;
+        let is_multi: bool;
+        let remaining = input.len() - *input_offset;
+        let header_left = header_parser.header.len() - header_parser.read_offset;
+        if remaining >= header_left {
+            header_parser.header[header_parser.read_offset..].clone_from_slice(
+                input.split_at(*input_offset).1.split_at(header_left).0);
+            *input_offset += header_left;
+            match header_parser.parse_header() {
+                Ok(wsize) => {
+                    window_size = wsize;
+                    is_multi = header_parser.multithread;
+                },
+                Err(result) => return (0, false, DivansInputResult::from(result)),
+            }
+        } else {
+            header_parser.header[(header_parser.read_offset)..
+                                 (header_parser.read_offset+remaining)].clone_from_slice(
+                input.split_at(*input_offset).1);
+            *input_offset += remaining;
+            header_parser.read_offset += remaining;
+            return (0, false, DivansInputResult::NeedsMoreInput);
+        }
+        (window_size, is_multi, DivansInputResult::Success)
+    }
 }
 
 pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -75,6 +107,57 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
      AllocCommand:Allocator<StaticCommand>> DivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand> {
+    fn decode(&mut self,
+              input:&[u8],
+              input_offset:&mut usize,
+              output:&mut [u8],
+              output_offset: &mut usize) -> DivansResult {
+        let process = self;
+        let mut unused:usize = 0;
+        let old_output_offset = *output_offset;
+        loop {
+            match process.literal_decoder.as_mut().unwrap().decode_process_input(process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
+                                                                                 input,
+                                                                                 input_offset) {
+                DivansInputResult::Success => {},
+                need_something => return DivansResult::from(need_something),
+            }
+            let mut unused_out = 0usize;
+            let mut unused_in = 0usize;
+            match process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
+                &[],
+                &mut unused_in,
+                &mut [],
+                &mut unused_out,
+                &[],
+                &mut unused) {
+                DivansResult::Success => {},
+                DivansResult::Failure(e) => return DivansResult::Failure(e),
+                DivansResult::NeedsMoreInput => {
+                    if process.literal_decoder.as_mut().unwrap().outstanding_buffer_count == 0 {
+                        return DivansResult::NeedsMoreInput;
+                    } else {
+                        // we can fall through here because if outstanding_buffer_count != 0 then
+                        // the worker either consumed the buffer and returned a command or returned the buffer (a command)
+                        
+                    }
+                },
+                DivansResult::NeedsMoreOutput => {}, // lets make room for more output
+            }
+            let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(
+                process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
+                output,
+                output_offset);
+            process.bytes_encoded += *output_offset - old_output_offset;
+            match retval {
+                DecoderResult::Processed(divans_retval) => {
+                    return divans_retval;
+                },
+                DecoderResult::Yield => {
+                },
+            }
+        }
+    }
     pub fn free(mut self) -> (AllocU8, AllocCDF16, AllocCommand) {
         use codec::NUM_ARITHMETIC_CODERS;
         if let Some(mut codec) = core::mem::replace(&mut self.codec, None) {
@@ -201,25 +284,13 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         DivansResult::Success
     }
 }
-impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
-     AllocU8:Allocator<u8>,
-     AllocCDF16:Allocator<interface::DefaultCDF16>,
-     AllocCommand:Allocator<StaticCommand>>
-    DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand>
-    where
-        DefaultDecoder: Send + 'static,  // fixme: only demand send if not no-stdlib
-        AllocCommand : Send + 'static,
-        AllocCDF16 : Send + 'static,
-        AllocU8 : Send + 'static,
-        AllocCommand::AllocatedMemory : Send + 'static,
-        AllocCDF16::AllocatedMemory : Send + 'static,
-        AllocU8::AllocatedMemory : Send + 'static,
-        {
 
+
+macro_rules! free_body {
+    () => {
     pub fn free_ref(&mut self) {
         match self {
-            DivansDecompressor::Header(_parser) => {
-            },
+            DivansDecompressor::Header(_parser) => {},
             DivansDecompressor::MultiDecode(ref mut process) => {
                 process.free_ref()
             },
@@ -244,15 +315,14 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             }
         }
     }
+    }
 }
-
+#[cfg(not(feature="no-stdlib"))]
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
-     AllocCommand:Allocator<StaticCommand>> Decompressor for DivansDecompressor<DefaultDecoder,
-                                                                                AllocU8,
-                                                                                AllocCDF16,
-                                                                                AllocCommand>
+     AllocCommand:Allocator<StaticCommand>>
+    DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand>
     where
         DefaultDecoder: Send + 'static,  // fixme: only demand send if not no-stdlib
         AllocCommand : Send + 'static,
@@ -262,6 +332,21 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         AllocCDF16::AllocatedMemory : Send + 'static,
         AllocU8::AllocatedMemory : Send + 'static,
         {
+    free_body!();
+}
+
+#[cfg(feature="no-stdlib")]
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
+     AllocU8:Allocator<u8>,
+     AllocCDF16:Allocator<interface::DefaultCDF16>,
+     AllocCommand:Allocator<StaticCommand>>
+    DivansDecompressor<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand> {
+        free_body!();
+}
+
+
+macro_rules! decode_body {
+    () => {
     fn decode(&mut self,
               input:&[u8],
               input_offset:&mut usize,
@@ -271,76 +356,19 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         let is_multi: bool;
         match *self  {
             DivansDecompressor::Header(ref mut header_parser) => {
-                let remaining = input.len() - *input_offset;
-                let header_left = header_parser.header.len() - header_parser.read_offset;
-                if remaining >= header_left {
-                    header_parser.header[header_parser.read_offset..].clone_from_slice(
-                        input.split_at(*input_offset).1.split_at(header_left).0);
-                    *input_offset += header_left;
-                    match header_parser.parse_header() {
-                        Ok(wsize) => {
-                            window_size = wsize;
-                            is_multi = header_parser.multithread;
-                        },
-                        Err(result) => return result,
-                    }
+                let (ws, mul, ret) = header_parser.decode(input, input_offset);
+                if let DivansInputResult::Success = ret {
+                    window_size = ws;
+                    is_multi = mul;
                 } else {
-                    header_parser.header[(header_parser.read_offset)..
-                                         (header_parser.read_offset+remaining)].clone_from_slice(
-                        input.split_at(*input_offset).1);
-                    *input_offset += remaining;
-                    header_parser.read_offset += remaining;
-                    return DivansResult::NeedsMoreInput;
+                    return DivansResult::from(ret);
                 }
             },
             DivansDecompressor::MultiDecode(ref mut process) => {
                 return process.decode(input, input_offset, output, output_offset);
             },
             DivansDecompressor::Decode(ref mut process) => {
-                let mut unused:usize = 0;
-                let old_output_offset = *output_offset;
-                loop {
-                    match process.literal_decoder.as_mut().unwrap().decode_process_input(process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
-                                                                                         input,
-                                                                                         input_offset) {
-                        DivansInputResult::Success => {},
-                        need_something => return DivansResult::from(need_something),
-                    }
-                    let mut unused_out = 0usize;
-                    let mut unused_in = 0usize;
-                    match process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
-                        &[],
-                        &mut unused_in,
-                        &mut [],
-                        &mut unused_out,
-                        &[],
-                        &mut unused) {
-                        DivansResult::Success => {},
-                        DivansResult::Failure(e) => return DivansResult::Failure(e),
-                        DivansResult::NeedsMoreInput => {
-                            if process.literal_decoder.as_mut().unwrap().outstanding_buffer_count == 0 {
-                                return DivansResult::NeedsMoreInput;
-                            } else {
-                                // we can fall through here because if outstanding_buffer_count != 0 then
-                                // the worker either consumed the buffer and returned a command or returned the buffer (a command)
-
-                            }
-                        },
-                        DivansResult::NeedsMoreOutput => {}, // lets make room for more output
-                    }
-                    let retval = process.literal_decoder.as_mut().unwrap().decode_process_output(
-                        process.codec.as_mut().unwrap().demuxer().get_main_to_thread(),
-                        output,
-                        output_offset);
-                    process.bytes_encoded += *output_offset - old_output_offset;
-                    match retval {
-                        DecoderResult::Processed(divans_retval) => {
-                            return divans_retval;
-                        },
-                        DecoderResult::Yield => {
-                        },
-                    }
-                }
+                return process.decode(input, input_offset, output, output_offset);
             },
         }
         if is_multi {
@@ -361,7 +389,41 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         DivansResult::NeedsMoreInput
     }
+        
+    }
 }
+
+#[cfg(not(feature="no-stdlib"))]
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
+     AllocU8:Allocator<u8>,
+     AllocCDF16:Allocator<interface::DefaultCDF16>,
+     AllocCommand:Allocator<StaticCommand>> Decompressor for DivansDecompressor<DefaultDecoder,
+                                                                                AllocU8,
+                                                                                AllocCDF16,
+                                                                                AllocCommand>
+    where
+        DefaultDecoder: Send + 'static,  // fixme: only demand send if not no-stdlib
+        AllocCommand : Send + 'static,
+        AllocCDF16 : Send + 'static,
+        AllocU8 : Send + 'static,
+        AllocCommand::AllocatedMemory : Send + 'static,
+        AllocCDF16::AllocatedMemory : Send + 'static,
+        AllocU8::AllocatedMemory : Send + 'static,
+{
+    decode_body!();
+}
+
+#[cfg(feature="no-stdlib")]
+impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
+     AllocU8:Allocator<u8>,
+     AllocCDF16:Allocator<interface::DefaultCDF16>,
+     AllocCommand:Allocator<StaticCommand>> Decompressor for DivansDecompressor<DefaultDecoder,
+                                                                                AllocU8,
+                                                                                AllocCDF16,
+                                                                                AllocCommand> {
+    decode_body!();
+}
+
 pub trait DivansDecompressorFactory<
      AllocU8:Allocator<u8>,
     AllocCDF16:Allocator<interface::DefaultCDF16>,

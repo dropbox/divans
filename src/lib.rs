@@ -69,6 +69,7 @@ mod brotli_ir_gen;
 mod divans_compressor;
 mod divans_decompressor;
 mod parallel_decompressor;
+mod stub_parallel_decompressor;
 pub mod mux;
 pub mod constants;
 pub mod threading;
