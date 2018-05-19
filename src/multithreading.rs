@@ -9,16 +9,16 @@ use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
 use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult, Nop};
 use std::time::{SystemTime, Duration};
-
+use threading::StaticCommand;
 #[cfg(feature="threadlog")]
 const MAX_LOG_SIZE: usize = 8192;
 #[cfg(not(feature="threadlog"))]
 const MAX_LOG_SIZE: usize = 0;
 
 
-pub struct MultiWorker<AllocU8:Allocator<u8>> {
+pub struct MultiWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
     start: SystemTime,
-    queue: Arc<(Mutex<SerialWorker<AllocU8>>, Condvar)>,
+    queue: Arc<(Mutex<SerialWorker<AllocU8, AllocCommand>>, Condvar)>,
     log: [ThreadEvent; MAX_LOG_SIZE],
     log_offset: u32,
 }
@@ -78,7 +78,7 @@ macro_rules! thread_debug {
     };
 }
 
-impl<AllocU8:Allocator<u8>> Clone for MultiWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> Clone for MultiWorker<AllocU8, AllocCommand> {
     fn clone(&self) -> Self {
         Self {
             log:self.log.clone(),
@@ -90,7 +90,7 @@ impl<AllocU8:Allocator<u8>> Clone for MultiWorker<AllocU8> {
 }
 
 #[cfg(feature="threadlog")]
-impl<AllocU8:Allocator<u8>> Drop for MultiWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> Drop for MultiWorker<AllocU8, AllocCommand> {
     fn drop(&mut self) {
         let epoch_d = self.start.duration_since(std::time::UNIX_EPOCH).unwrap_or(Duration::new(0,0));
         let epoch = (epoch_d.as_secs()%100) * 100 + u64::from(epoch_d.subsec_nanos()) / 10000000;
@@ -110,17 +110,23 @@ impl<AllocU8:Allocator<u8>> Drop for MultiWorker<AllocU8> {
 
 
 
-impl<AllocU8:Allocator<u8>> Default for MultiWorker<AllocU8> {
-    fn default() -> Self {
-        MultiWorker::<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MultiWorker<AllocU8, AllocCommand>
+{
+    pub fn new(mcommand: &mut AllocCommand) -> Self {
+        MultiWorker::<AllocU8, AllocCommand> {
             log:[ThreadEvent(ThreadEventType::M_PUSH_EMPTY_DATA, 0, Duration::new(0,0)); MAX_LOG_SIZE],
             log_offset:0,
             start: SystemTime::now(),
-            queue: Arc::new((Mutex::new(SerialWorker::<AllocU8>::default()), Condvar::new())),
+            queue: Arc::new((Mutex::new(SerialWorker::<AllocU8, AllocCommand>::new(mcommand)), Condvar::new())),
         }
     }
+    pub fn free(&mut self, mcommand: &mut AllocCommand) {
+        let &(ref lock, ref _cvar) = &*self.queue;
+        let mut worker = lock.lock().unwrap();
+        worker.free(mcommand);
+    }
 }
-impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<AllocU8> for MultiWorker<AllocU8, AllocCommand> {
     const COOPERATIVE_MAIN:bool = false;
     #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
@@ -188,7 +194,7 @@ impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for MultiWorker<AllocU8> {
     }
 }
 
-impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<AllocU8> for MultiWorker<AllocU8, AllocCommand> {
     const COOPERATIVE:bool = false;
     const ISOLATED:bool = true;
     #[inline(always)]
@@ -304,19 +310,15 @@ impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for MultiWorker<AllocU8> {
     }
 }
 
-pub struct BufferedMultiWorker<AllocU8:Allocator<u8>> {
-    pub worker: MultiWorker<AllocU8>,
+pub struct BufferedMultiWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
+    pub worker: MultiWorker<AllocU8, AllocCommand>,
     buffer: [CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;NUM_SERIAL_COMMANDS_BUFFERED],
     buffer_len: usize,
     min_buffer_push_len: usize,
 }
-impl<AllocU8:Allocator<u8>> Default for BufferedMultiWorker<AllocU8> {
-    fn default() -> Self {
-        Self::new(MultiWorker::default())
-    }
-}
-impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
-    pub fn new(worker:MultiWorker<AllocU8>)->Self{
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMultiWorker<AllocU8, AllocCommand> {
+    pub fn new(mc: &mut AllocCommand)->Self{
+        let worker = MultiWorker::<AllocU8, AllocCommand>::new(mc);
         Self {
             min_buffer_push_len: 2,
             worker:worker,
@@ -439,8 +441,11 @@ impl<AllocU8:Allocator<u8>> BufferedMultiWorker<AllocU8> {
             }
         }
     }
+    pub fn free(&mut self, mc: &mut AllocCommand) {
+        self.worker.free(mc);
+    }
 }
-impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for BufferedMultiWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<AllocU8> for BufferedMultiWorker<AllocU8, AllocCommand> {
     const COOPERATIVE:bool = false;
     const ISOLATED:bool = true;
     #[inline(always)]

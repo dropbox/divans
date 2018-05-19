@@ -24,13 +24,13 @@ pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + Ne
                                  AllocCommand:Allocator<StaticCommand>> {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
-                                         ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8>>,
+                                         ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8, AllocCommand>>,
                                          DevNull<AllocU8>,
                                          interface::DefaultCDF16,
                                          AllocU8,
                                          AllocCDF16>>>,
                >,
-    worker: MultiWorker<AllocU8>,
+    worker: MultiWorker<AllocU8, AllocCommand>,
     literal_decoder: Option<DivansDecoderCodec<interface::DefaultCDF16,
                                                AllocU8,
                                                AllocCDF16,
@@ -60,7 +60,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
         let mut m8:AllocU8;
         let mcdf16:AllocCDF16;
-        let mc: AllocCommand;
+        let mut mc: AllocCommand;
         let raw_header:[u8; interface::HEADER_LENGTH];
         let skip_crc:bool;
         m8 = header.m8.take().unwrap();
@@ -71,9 +71,11 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         //update this if you change the SelectedArithmeticDecoder macro
         let cmd_decoder = DefaultDecoder::new(&mut m8);
         let lit_decoder = DefaultDecoder::new(&mut m8);
+        let linear_input_bytes = ThreadToMainDemuxer::<AllocU8,BufferedMultiWorker<AllocU8, AllocCommand>>::new(
+            BufferedMultiWorker::<AllocU8, AllocCommand>::new(&mut mc));
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
-                                             ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8>>,
+                                             ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8, AllocCommand>>,
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
@@ -82,6 +84,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                                               cmd_decoder,
                                                               lit_decoder,
                                                               DecoderSpecialization::new(),
+                                                              linear_input_bytes,
                                                               window_size,
                                                               0,
                                                               None,
@@ -139,6 +142,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             if let Some(ld) = lit_decoder {
                 codec.join(ld);
             }
+            codec.demuxer().worker.free(&mut self.mcommand);
             codec.free_ref();
         }
     }
@@ -152,6 +156,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             for index in 0..NUM_ARITHMETIC_CODERS {
                 codec.get_coder(index as u8).debug_print(self.bytes_encoded);
             }
+            codec.demuxer().worker.free(&mut self.mcommand);
             let (m8,mcdf) = codec.free();
             (m8, mcdf, self.mcommand)
         } else {

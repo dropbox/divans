@@ -104,7 +104,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             Specialization:EncoderOrDecoderSpecialization,
-                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearInputBytes:StreamDemuxer<AllocU8>,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                         AllocCDF16:Allocator<Cdf16>,

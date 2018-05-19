@@ -6,6 +6,7 @@ use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 use alloc::{SliceWrapper, Allocator};
 use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
+pub use divans_decompressor::StaticCommand;
 pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
     Yield,
@@ -70,18 +71,19 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     ) -> DivansOutputResult;
 }
 pub const NUM_SERIAL_COMMANDS_BUFFERED: usize = 256;
-pub struct SerialWorker<AllocU8:Allocator<u8>> {
+pub struct SerialWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
     data_len: usize,
     data: [ThreadData<AllocU8>;2],
     cm_len: usize,
     cm: [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2],
     result_read_off: usize,
     result_write_off: usize,
+    result: AllocCommand::AllocatedMemory,
     result_lin:[CommandResult<AllocU8, AllocatedMemoryPrefix<u8, AllocU8>>;NUM_SERIAL_COMMANDS_BUFFERED],
     eof_present_in_result: bool, // retriever should try to get everything
     pub waiters: u8,
 }
-impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<AllocU8, AllocCommand> {
     pub fn result_ready(&self) -> bool {
         self.result_read_off != self.result_write_off
     }
@@ -128,9 +130,9 @@ impl<AllocU8:Allocator<u8>> SerialWorker<AllocU8> {
         ret
     }
 }
-impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
-    fn default() -> Self {
-        SerialWorker::<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<AllocU8, AllocCommand> {
+    pub fn new(mc:&mut AllocCommand) -> Self {
+        SerialWorker::<AllocU8, AllocCommand> {
             waiters: 0,
             eof_present_in_result: false,
             data_len: 0,
@@ -141,6 +143,7 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
                  empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>()],
             result_read_off: 0,
             result_write_off: 0,
+            result:mc.alloc_cell(NUM_SERIAL_COMMANDS_BUFFERED),
             result_lin: [
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
                 CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),CommandResult::Cmd(Command::nop()),
@@ -229,10 +232,13 @@ impl<AllocU8:Allocator<u8>> Default for SerialWorker<AllocU8> {
                 ],
         }
     }
+    pub fn free(&mut self, mc:&mut AllocCommand) {
+        mc.free_cell(core::mem::replace(&mut self.result, AllocCommand::AllocatedMemory::default()));
+    }
 }
 
 
-impl<AllocU8:Allocator<u8>> MainToThread<AllocU8> for SerialWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<AllocU8> for SerialWorker<AllocU8, AllocCommand> {
     const COOPERATIVE_MAIN:bool = true;
     #[inline(always)]
     fn push_context_map(&mut self, cm: PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>) -> Result<(),()> {
@@ -437,7 +443,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 
 }
 
-impl<AllocU8:Allocator<u8>> ThreadToMain<AllocU8> for SerialWorker<AllocU8> {
+impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<AllocU8> for SerialWorker<AllocU8, AllocCommand> {
     const COOPERATIVE:bool = true;
     const ISOLATED:bool = true;
     #[inline(always)]

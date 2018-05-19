@@ -49,7 +49,7 @@ impl DictState {
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
                         Cdf16:CDF16,
-                        LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                        LinearInputBytes:StreamDemuxer<AllocU8>,
                         LinearOutputBytes:StreamMuxer<AllocU8>+Default,                             
                         AllocU8:Allocator<u8>,
                         AllocCDF16:Allocator<Cdf16>>(&mut self,

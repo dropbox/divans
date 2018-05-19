@@ -30,7 +30,7 @@ impl BlockTypeState {
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearInputBytes:StreamDemuxer<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,
@@ -118,7 +118,7 @@ impl LiteralBlockTypeState {
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                         Specialization:EncoderOrDecoderSpecialization,
-                            LinearInputBytes:StreamDemuxer<AllocU8>+Default,
+                            LinearInputBytes:StreamDemuxer<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,

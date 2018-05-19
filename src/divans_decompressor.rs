@@ -87,7 +87,7 @@ pub struct DivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAll
                          AllocCommand:Allocator<StaticCommand>> {
     codec: Option<codec::DivansCodec<DefaultDecoder,
                               DecoderSpecialization,
-                              ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
+                              ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8, AllocCommand>>,
                               DevNull<AllocU8>,
                               interface::DefaultCDF16,
                               AllocU8,
@@ -168,6 +168,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             for index in 0..NUM_ARITHMETIC_CODERS {
                 codec.get_coder(index as u8).debug_print(self.bytes_encoded);
             }
+            codec.demuxer().worker.free(&mut self.mcommand);
             let (m8, mcdf) = codec.free();
             (m8, mcdf, self.mcommand)
         } else {
@@ -180,6 +181,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             if let Some(ld) = lit_decoder {
                 codec.join(ld);
             }
+            codec.demuxer().worker.free(&mut self.mcommand);
             codec.free_ref();
         }
     }
@@ -217,7 +219,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         let mcdf16:AllocCDF16;
         let raw_header:[u8; interface::HEADER_LENGTH];
         let skip_crc:bool;
-        let mcommand:AllocCommand;
+        let mut mcommand:AllocCommand;
         match *self {
             DivansDecompressor::Header(ref mut header) => {
                 m8 = match core::mem::replace(&mut header.m8, None) {
@@ -250,9 +252,11 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         //update this if you change the SelectedArithmeticDecoder macro
         let cmd_decoder = DefaultDecoder::new(&mut m8);
         let lit_decoder = DefaultDecoder::new(&mut m8);
+        let linear_input_bytes = ThreadToMainDemuxer::<AllocU8,SerialWorker<AllocU8, AllocCommand>>::new(
+            SerialWorker::<AllocU8, AllocCommand>::new(&mut mcommand));
         let mut codec = codec::DivansCodec::<DefaultDecoder,
                                              DecoderSpecialization,
-                                             ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8>>,
+                                             ThreadToMainDemuxer<AllocU8, SerialWorker<AllocU8, AllocCommand>>,
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
@@ -261,6 +265,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                               cmd_decoder,
                                                               lit_decoder,
                                                               DecoderSpecialization::new(),
+                                                              linear_input_bytes,
                                                               window_size,
                                                               0,
                                                               None,
