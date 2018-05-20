@@ -34,7 +34,10 @@ pub enum CommandResult {
     Err(ErrMsg)
 }
 pub trait PullAllocatedCommand<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> {
-    fn pull_command_buf(&mut self) -> (&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>, &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED], &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult);
+    fn pull_command_buf(&mut self,
+            output:&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
+                        consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+                        pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult;
 }
 pub trait MainToThread<AllocU8:Allocator<u8>> {
     const COOPERATIVE_MAIN: bool;
@@ -44,7 +47,10 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
     #[inline(always)]
     fn push(&mut self, data: &mut AllocatedMemoryRange<u8, AllocU8>) -> Result<(),()>;
     #[inline(always)]
-    fn pull(&mut self) -> (&mut Self::CommandOutputType, &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED], &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult);
+    fn pull(&mut self,
+            output:&mut Self::CommandOutputType,
+            consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+            pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult;
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
@@ -90,10 +96,16 @@ pub struct SerialWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticComm
 }
 impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<AllocU8, AllocCommand> {
     pub fn result_ready(&self) -> bool {
-        self.result.1 != 0
+        if let CommandResult::Eof = self.eof_present_in_result {
+            return true;
+        }
+        self.result.1 != 0 || self.result_data[0].0.len() != 0
     }
     pub fn result_space_ready(&self) -> bool {
         self.result.0.len() > self.result.1
+    }
+    pub fn debug_result_commands_ready(&self) -> usize {
+        self.result.1
     }
     pub fn result_multi_space_ready(&self, space_needed:usize) -> bool {
         self.result.0.len() - self.result.1 >= space_needed
@@ -110,6 +122,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     pub fn returned_data_space_ready(&self) -> bool {
         self.result_data[NUM_DATA_BUFFERED -1].0.len() == 0
     }
+    pub fn set_error(&mut self, m:ErrMsg) {
+        self.eof_present_in_result = CommandResult::Err(m);
+    }
     pub fn set_eof_hint(&mut self) {
         if let CommandResult::Ok = self.eof_present_in_result {
             self.eof_present_in_result = CommandResult::Eof; // don't want to override errors here
@@ -122,7 +137,6 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         let old_len = self.result.1;
         if self.result.1 == 0 {
             core::mem::swap(&mut self.result, cmds);
-            self.result.1 = 0;
         } else {
             self.result.0.slice_mut().split_at_mut(old_len).1.split_at_mut(cmds.len()).0.clone_from_slice(cmds.slice());
         }
@@ -158,6 +172,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc:&mut AllocCommand) {
         mc.free_cell(core::mem::replace(&mut self.result.0, AllocCommand::AllocatedMemory::default()));
+        self.result.1 = 0;
         for item in self.cm.iter_mut() {
             let cur_item = core::mem::replace(item, empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>());
             free_cmd(&mut Command::PredictionMode(cur_item),
@@ -172,10 +187,11 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
 }
 
 impl<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> PullAllocatedCommand<AllocU8, AllocCommand> for SerialWorker<AllocU8, AllocCommand> {
-    fn pull_command_buf(&mut self) -> (&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
-                                       &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
-                                       &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult) {
-        self.pull()
+    fn pull_command_buf(&mut self,
+                        output:&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
+                        consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+                        pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {
+        self.pull(output, consumed_data, pm)
     }
 }
 
@@ -201,14 +217,19 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
         Ok(())        
     }
     #[inline(always)]
-    fn pull(&mut self) -> (&mut Self::CommandOutputType,
-                           &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
-                           &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult) {
+    fn pull(&mut self,
+            output:&mut Self::CommandOutputType,
+            consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+            pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {    
         if self.result.len() == 0 {
             assert_eq!(self.result_cm[0].has_context_speeds(), false);
             assert_eq!(self.result_cm[1].has_context_speeds(), false);
         }
-        (&mut self.result, &mut self.result_data, &mut self.result_cm, self.eof_present_in_result)
+        
+        core::mem::swap(output, &mut self.result);
+        core::mem::swap(consumed_data, &mut self.result_data);
+        core::mem::swap(pm, &mut self.result_cm);
+        self.eof_present_in_result
     }
 }
 type NopUsize = usize;
@@ -370,15 +391,20 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
         self.worker.push(data)
     }
     #[inline(always)]
-    fn pull(&mut self) -> (&mut Self::CommandOutputType, &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED], &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult) {
-        self.worker.pull()
+    fn pull(&mut self,
+            output:&mut Self::CommandOutputType,
+            consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+            pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {    
+        self.worker.pull(output, consumed_data, pm)
     }
 
 }
 #[inline(always)]
 pub fn downcast_command<AllocU8:Allocator<u8>>(cmd: &mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> (StaticCommand, Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) {
     match cmd {
-        &mut Command::PredictionMode(ref mut pm) => return (Command::PredictionMode(empty_prediction_mode_context_map()), Some(pm)),
+        &mut Command::PredictionMode(ref mut pm) => {
+            return (Command::PredictionMode(empty_prediction_mode_context_map()), Some(pm));
+        },
         &mut Command::BlockSwitchCommand(mcc) => return (Command::BlockSwitchCommand(mcc), None),
         &mut Command::BlockSwitchDistance(mcc) => return (Command::BlockSwitchDistance(mcc), None),
         &mut Command::BlockSwitchLiteral(mcc) => return (Command::BlockSwitchLiteral(mcc), None),
@@ -441,7 +467,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
                         core::mem::swap(*cm, &mut self.result_cm[1]);
                     }
                 } else {
-                    core::mem::swap(*cm, &mut self.result_cm[1]);
+                    core::mem::swap(*cm, &mut self.result_cm[0]);
                 }
             }
             let index = self.result.1;

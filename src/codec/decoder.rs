@@ -269,17 +269,14 @@ impl<Cdf16:CDF16,
             }
             if self.cmd_buffer_offset >= self.cmd_buffer.1 && !self.cmd_buffer_contains_eof {
                 self.cmd_buffer_offset = 0;
+                self.cmd_buffer.1 = 0; //reset the command buffer to zero
                 let mut consumed_data = [AllocatedMemoryRange::<u8, AllocU8>::default(),
                                          AllocatedMemoryRange::<u8, AllocU8>::default()];
                 let status;
                 {
-                    let (new_command_buffer, mut tmp_returned_data, mut new_cm, tmp_status) = worker.pull_command_buf();
-                    core::mem::swap(&mut self.cmd_buffer, new_command_buffer);
                     assert_eq!(self.pred_buffer[0].has_context_speeds(), false);
                     assert_eq!(self.pred_buffer[1].has_context_speeds(), false);
-                    core::mem::swap(&mut self.pred_buffer, &mut new_cm);
-                    core::mem::swap(&mut consumed_data, &mut tmp_returned_data);
-                    status = tmp_status;
+                    status = worker.pull_command_buf(&mut self.cmd_buffer, &mut consumed_data, &mut self.pred_buffer);
                 }
                 let mut need_input = false;
                 for dat in consumed_data.iter_mut() {
@@ -329,7 +326,10 @@ impl<Cdf16:CDF16,
                 if self.cmd_buffer_contains_eof {
                     return DecoderResult::Processed(DivansResult::from(self.process_eof()));
                 } else {
-                    return DecoderResult::Yield;
+                    if Worker::COOPERATIVE_MAIN  {
+                        return DecoderResult::Yield;
+                    }
+                    continue;
                 }
             }
             let offt = self.cmd_buffer_offset;

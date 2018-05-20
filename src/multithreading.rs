@@ -68,7 +68,7 @@ macro_rules! thread_debug {
             $proc.log[$proc.log_offset as usize] = ThreadEvent($en, $quant as u32, $timevar);
             $proc.log_offset += 1;
         }
-        //eprintln!("{:?} {} {:?}", $en, $quant, $proc.start.elapsed().unwrap_or(Duration::new(0,0)));
+        eprintln!("{:?} {} {:?}", $en, $quant, $proc.start.elapsed().unwrap_or(Duration::new(0,0)));
     };
 }
 
@@ -127,10 +127,11 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MultiWorker<A
     }
 }
 impl<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> PullAllocatedCommand<AllocU8, AllocCommand> for MultiWorker<AllocU8, AllocCommand> {
-    fn pull_command_buf(&mut self) -> (&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
-                                       &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
-                                       &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult) {
-        self.pull()
+    fn pull_command_buf(&mut self,
+                        output:&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
+                        consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+                        pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {
+        self.pull(output, consumed_data, pm)
     }
 }
 
@@ -180,9 +181,10 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
         }
     }
     #[inline(always)]
-    fn pull(&mut self) -> (&mut Self::CommandOutputType,
-                           &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
-                           &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2], CommandResult) {
+    fn pull(&mut self,
+            output:&mut Self::CommandOutputType,
+            consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
+            pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {
         loop {
             let _elapsed = unguarded_debug_time!(self);
             let &(ref lock, ref cvar) = &*self.queue;
@@ -191,8 +193,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
                 if worker.waiters != 0 {
                     cvar.notify_one(); // FIXME: do we want to signal here?
                 }
-                let ret = worker.pull();
-                thread_debug!(ThreadEventType::M_PULL_COMMAND_RESULT, ret.0.len(), self, _elapsed);
+                let ret = worker.pull(output, consumed_data, pm);
+                thread_debug!(ThreadEventType::M_PULL_COMMAND_RESULT, output.len(), self, _elapsed);
                 return ret;
             } else {
                 thread_debug!(ThreadEventType::M_WAIT_PULL_COMMAND_RESULT, 0, self, _elapsed);
@@ -215,8 +217,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
             let &(ref lock, ref cvar) = &*self.queue;
             let mut worker = lock.lock().unwrap();
             if worker.data_ready() {
-                thread_debug!(ThreadEventType::W_PULL_DATA, 1, self, _elapsed);
-                return worker.pull_data();
+                let ret = worker.pull_data();
+                thread_debug!(ThreadEventType::W_PULL_DATA, match ret {ThreadData::Data(ref d) => d.len(), ThreadData::Yield => 0, ThreadData::Eof=> 99999999,}, self, _elapsed);
+                return ret;
             } else {
                 thread_debug!(ThreadEventType::W_WAIT_PULL_DATA, 0, self, _elapsed);
                 worker.waiters += 1;
@@ -353,16 +356,39 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             let _elapsed = unguarded_debug_time!(self.worker);
             let &(ref lock, ref cvar) = &*self.worker.queue;
             let mut worker = lock.lock().unwrap();
+            let mut did_notify = false;
             if eof_inside {
+                thread_debug!(ThreadEventType::W_PUSH_EOF, worker.debug_result_commands_ready(), self.worker, _elapsed);
                 worker.set_eof_hint(); // so other side gets more aggressive about pulling
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                    did_notify = true;
+                }
             }
             if data.0.len() != 0 { // before we get to sending commands, lets make sure data is taken care of
-                let _ret = worker.push_consumed_data(data, None);
-                debug_assert!(if let DivansOutputResult::Success = _ret {true} else {false});
+                match worker.push_consumed_data(data, None) {
+                    DivansOutputResult::Success => {
+                        thread_debug!(ThreadEventType::W_PUSH_CONSUMED_DATA, data.0.len() as u32, self.worker, _elapsed);
+                    },
+                    DivansOutputResult::NeedsMoreOutput => {
+                        thread_debug!(ThreadEventType::W_WAIT_PUSH_CONSUMED_DATA, data.0.len(), self.worker, _elapsed);
+                        worker.waiters += 1;
+                        let _ign = cvar.wait(worker);
+                        _ign.unwrap().waiters -= 1;
+                        continue;
+                    }
+                    DivansOutputResult::Failure(e) => {
+                        worker.set_error(e);
+                    }
+                }
+                if worker.waiters != 0 && !did_notify{
+                    cvar.notify_one();
+                    did_notify = true;
+                }
             }
             if worker.result_multi_space_ready(self.buffer.1) {
                 thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
-                if worker.waiters != 0 {
+                if worker.waiters != 0 && !did_notify{
                     cvar.notify_one();
                 }
                 let extant_space = worker.insert_results(&mut self.buffer, pm);
