@@ -349,7 +349,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
         }
     }
     fn force_push(&mut self, eof_inside: bool, data: &mut AllocatedMemoryRange<u8, AllocU8>, pm: Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) {
-        if self.min_buffer_push_len * 2 < self.buffer.len(){
+        if self.min_buffer_push_len * 2 < self.buffer.max_len(){
             self.min_buffer_push_len <<= 2;
         }
         loop {
@@ -389,7 +389,6 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
                 let extant_space = worker.insert_results(&mut self.buffer, pm);
                 if extant_space <= 16 {
                     self.min_buffer_push_len = core::cmp::max(self.min_buffer_push_len >> 1, 4);
-                    
                 }
                 self.buffer.1 = 0;
                 return;

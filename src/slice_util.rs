@@ -109,11 +109,16 @@ impl<T, AllocT:Allocator<T>> Default for AllocatedMemoryPrefix<T, AllocT> {
     }
 }
 impl<T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
+    #[inline(always)]
     pub fn mem(&mut self) -> &mut AllocT::AllocatedMemory {
         &mut self.0
     }
     pub fn components(self) -> (AllocT::AllocatedMemory, usize) {
         (self.0, self.1)
+    }
+    #[inline(always)]
+    pub fn max_len(&self) -> usize {
+        self.0.len()
     }
 }
 
