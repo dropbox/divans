@@ -657,9 +657,6 @@ impl<AllocU8: Allocator<u8>,
                                                          is_end: bool) -> CodecTraitResult {
         loop {
             match self.state {
-                EncodeOrDecodeState::DivansSuccess => {
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
-                },
                 EncodeOrDecodeState::Begin => {
                     match self.cross_command_state.drain_or_fill_internal_buffer_cmd(output_bytes, output_bytes_offset) {
                         DivansResult::Success => {},
@@ -699,9 +696,7 @@ impl<AllocU8: Allocator<u8>,
                                                       ) {
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
-                            self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
-                                &mut self.state_copy.cc,
-                                CopyCommand{distance:1, num_bytes:0}));
+                            self.state_populate_ring_buffer = Command::Copy(self.state_copy.cc.clone());
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
@@ -723,26 +718,6 @@ impl<AllocU8: Allocator<u8>,
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
-                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
-                        },
-                        retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
-                        }
-                    }
-                },
-                EncodeOrDecodeState::Dict => {
-                    let backing_store = DictCommand::nop();
-                    let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
-                                                                                                                 &backing_store);
-                    match self.state_dict.encode_or_decode(&mut self.cross_command_state,
-                                                      src_dict_command,
-                                                      output_bytes,
-                                                      output_bytes_offset
-                                                      ) {
-                        DivansResult::Success => {
-                            self.state_populate_ring_buffer = Command::Dict(
-                                core::mem::replace(&mut self.state_dict.dc,
-                                                   DictCommand::nop()));
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
                         retval => {
@@ -808,6 +783,24 @@ impl<AllocU8: Allocator<u8>,
                                 self.state = EncodeOrDecodeState::Begin;
                                 return CodecTraitResult::Res(OneCommandReturn::Advance);
                             },
+                        }
+                    }
+                },
+                EncodeOrDecodeState::Dict => {
+                    let backing_store = DictCommand::nop();
+                    let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
+                                                                                                           &backing_store);
+                    match self.state_dict.encode_or_decode(&mut self.cross_command_state,
+                                                      src_dict_command,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        DivansResult::Success => {
+                            self.state_populate_ring_buffer = Command::Dict(self.state_dict.dc.clone());
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                        },
+                        retval => {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
                         }
                     }
                 },
@@ -1013,6 +1006,9 @@ impl<AllocU8: Allocator<u8>,
                     } else {
                         self.state = EncodeOrDecodeState::DivansSuccess;
                     }
+                },
+                EncodeOrDecodeState::DivansSuccess => {
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
                 },
             }
         }

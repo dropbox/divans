@@ -416,27 +416,23 @@ impl<AllocU8:Allocator<u8>,
                 needs_something => return needs_something,
             }
             match self.state {
-                LiteralSubstate::Begin |
-                LiteralSubstate::LiteralCountSmall(_) |
-                LiteralSubstate::LiteralCountFirst |
-                LiteralSubstate::LiteralCountLengthGreater14Less25 |
-                LiteralSubstate::LiteralCountMantissaNibbles(_,_) |
-                LiteralSubstate::LiteralNibbleIndexWithECDF(_) | 
-                LiteralSubstate::FullyDecoded => unreachable!(),
-                LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
-                    assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
-                    let code_result = self.code_nibble_array(m8, output_bytes, output_offset,
-                                                             in_cmd, nibble_index,
-                                                             lit_coder, demuxer, muxer,
-                                                             lit_high_priors, lit_low_priors,
-                                                             lbk,
-                                                             specialization, NibbleArraySecond{}, ctraits);
-                    match code_result {
-                        DivansResult::Success => {
+                LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
+                    match self.code_nibble_array(m8, output_bytes, output_offset,
+                                                 in_cmd, start_nibble_index,
+                                                 lit_coder, demuxer, muxer,
+                                                 lit_high_priors, lit_low_priors,
+                                                 lbk,
+                                                 specialization, NibbleArraySafe{}, ctraits) {
+                        DivansResult::Success | DivansResult::NeedsMoreOutput => {
                             self.state = LiteralSubstate::FullyDecoded;
                             return DivansResult::Success;
-                        },
-                        _ => return code_result,
+                        }
+                        DivansResult::NeedsMoreInput => {
+                            continue;
+                        }
+                        DivansResult::Failure(m) => {
+                            return DivansResult::Failure(m);
+                        }
                     }
                 },
                 LiteralSubstate::LiteralNibbleIndex(nibble_index) => {
@@ -454,24 +450,29 @@ impl<AllocU8:Allocator<u8>,
                         _ => return code_result,
                     }
                 },
-                LiteralSubstate::SafeLiteralNibbleIndex(start_nibble_index) => {
-                    match self.code_nibble_array(m8, output_bytes, output_offset,
-                                                 in_cmd, start_nibble_index,
-                                                 lit_coder, demuxer, muxer,
-                                                 lit_high_priors, lit_low_priors,
-                                                 lbk,
-                                                 specialization, NibbleArraySafe{}, ctraits) {
-                        DivansResult::NeedsMoreInput => {
-                            continue;
-                        }
-                        DivansResult::Failure(m) => {
-                            return DivansResult::Failure(m);
-                        }
-                        _ => {},
+                LiteralSubstate::LiteralNibbleLowerHalf(nibble_index) => {
+                    assert_eq!(nibble_index & 1, 1); // this is only for odd nibbles
+                    let code_result = self.code_nibble_array(m8, output_bytes, output_offset,
+                                                             in_cmd, nibble_index,
+                                                             lit_coder, demuxer, muxer,
+                                                             lit_high_priors, lit_low_priors,
+                                                             lbk,
+                                                             specialization, NibbleArraySecond{}, ctraits);
+                    match code_result {
+                        DivansResult::Success => {
+                            self.state = LiteralSubstate::FullyDecoded;
+                            return DivansResult::Success;
+                        },
+                        _ => return code_result,
                     }
-                    self.state = LiteralSubstate::FullyDecoded;
-                    return DivansResult::Success;
                 },
+                LiteralSubstate::Begin |
+                LiteralSubstate::LiteralCountSmall(_) |
+                LiteralSubstate::LiteralCountFirst |
+                LiteralSubstate::LiteralCountLengthGreater14Less25 |
+                LiteralSubstate::LiteralCountMantissaNibbles(_,_) |
+                LiteralSubstate::LiteralNibbleIndexWithECDF(_) | 
+                LiteralSubstate::FullyDecoded => unreachable!(),
             }
         }
     }
