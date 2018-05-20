@@ -147,6 +147,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
             let mut worker = lock.lock().unwrap();
             if worker.cm_space_ready() {
                 thread_debug!(ThreadEventType::M_PUSH_CONTEXT_MAP, 1, self, _elapsed);
+                if worker.waiters != 0 {
+                    cvar.notify_one();
+                }
                 return worker.push_context_map(cm);
             } else {
                 thread_debug!(ThreadEventType::M_WAIT_PUSH_CONTEXT_MAP, 0, self, _elapsed);
