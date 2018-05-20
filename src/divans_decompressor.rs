@@ -169,7 +169,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             for index in 0..NUM_ARITHMETIC_CODERS {
                 codec.get_coder(index as u8).debug_print(self.bytes_encoded);
             }
-            codec.demuxer().worker.free(codec.get_m8().as_mut().unwrap(), &mut self.mcommand);
+            codec.cross_command_state.demuxer.worker.free(codec.cross_command_state.thread_ctx.m8().as_mut().unwrap(), &mut self.mcommand);
             let (m8, mcdf) = codec.free();
             (m8, mcdf, self.mcommand)
         } else {
@@ -182,7 +182,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             if let Some(ld) = lit_decoder {
                 codec.join(ld, &mut self.mcommand);
             }
-            codec.demuxer().worker.free(codec.get_m8().as_mut().unwrap(), &mut self.mcommand);
+            codec.cross_command_state.demuxer.worker.free(codec.cross_command_state.thread_ctx.m8().as_mut().unwrap(), &mut self.mcommand);
             codec.free_ref();
         }
     }

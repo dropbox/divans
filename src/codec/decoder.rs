@@ -4,7 +4,7 @@ use core::hash::Hasher;
 use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, StreamDemuxer, StreamID, ErrMsg};
 use mux::DevNull;
 use ::probability::{CDF16};
-use ::slice_util::{AllocatedMemoryPrefix};
+use ::slice_util::{AllocatedMemoryPrefix, AllocatedMemoryRange};
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
 use super::literal::{LiteralState, LiteralSubstate};
@@ -269,14 +269,20 @@ impl<Cdf16:CDF16,
             }
             if self.cmd_buffer_offset >= self.cmd_buffer.1 && !self.cmd_buffer_contains_eof {
                 self.cmd_buffer_offset = 0;
-                let (mut new_command_buffer, mut returned_data, mut new_cm, status) = worker.pull_command_buf();
-                core::mem::swap(&mut self.cmd_buffer, new_command_buffer);
-                assert_eq!(self.pred_buffer[0].has_context_speeds(), false);
-                assert_eq!(self.pred_buffer[1].has_context_speeds(), false);
-                core::mem::swap(&mut self.pred_buffer, &mut new_cm);
-
+                let mut consumed_data = [AllocatedMemoryRange::<u8, AllocU8>::default(),
+                                         AllocatedMemoryRange::<u8, AllocU8>::default()];
+                let status;
+                {
+                    let (new_command_buffer, mut tmp_returned_data, mut new_cm, tmp_status) = worker.pull_command_buf();
+                    core::mem::swap(&mut self.cmd_buffer, new_command_buffer);
+                    assert_eq!(self.pred_buffer[0].has_context_speeds(), false);
+                    assert_eq!(self.pred_buffer[1].has_context_speeds(), false);
+                    core::mem::swap(&mut self.pred_buffer, &mut new_cm);
+                    core::mem::swap(&mut consumed_data, &mut tmp_returned_data);
+                    status = tmp_status;
+                }
                 let mut need_input = false;
-                for dat in returned_data.iter_mut() {
+                for dat in consumed_data.iter_mut() {
                     if dat.0.len() == 0 {
                         continue; //FIXME: should we yield here?
                         // assert_eq!(Worker::COOPERATIVE_MAIN, true);
@@ -326,7 +332,8 @@ impl<Cdf16:CDF16,
                     return DecoderResult::Yield;
                 }
             }
-            let cur_cmd = &mut self.cmd_buffer.slice()[self.cmd_buffer_offset];
+            let offt = self.cmd_buffer_offset;
+            let cur_cmd = &mut self.cmd_buffer.slice_mut()[offt];
             self.cmd_buffer_offset += 1;
             match cur_cmd {
                 &mut Command::Literal(ref lit) => {
@@ -349,7 +356,7 @@ impl<Cdf16:CDF16,
                         return DecoderResult::Yield;
                     }
                 },
-                &mut Command::PredictionMode(ref mut dummy_pred_mode) => {
+                &mut Command::PredictionMode(_) => {
                     let mut pred_mode = empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>();
                     core::mem::swap(&mut pred_mode, &mut self.pred_buffer[1]);
                         core::mem::swap(&mut pred_mode, &mut self.pred_buffer[0]); // shift pred_buffer[1] to pred_buffer[0] and extract [0]

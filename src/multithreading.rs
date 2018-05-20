@@ -4,12 +4,12 @@ use core;
 use std::sync::{Arc, Mutex, Condvar};
 use threading::{SerialWorker, MainToThread, ThreadToMain, CommandResult, ThreadData, NUM_SERIAL_COMMANDS_BUFFERED, NUM_DATA_BUFFERED,};
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
-use alloc::{Allocator, SliceWrapper};
+use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
-use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult, Nop};
+use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult};
 use std::time::{SystemTime, Duration};
-use threading::{StaticCommand, PullAllocatedCommand};
+use threading::{StaticCommand, PullAllocatedCommand, downcast_command};
 #[cfg(feature="threadlog")]
 const MAX_LOG_SIZE: usize = 8192;
 #[cfg(not(feature="threadlog"))]
@@ -324,16 +324,16 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
 pub struct BufferedMultiWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
     pub worker: MultiWorker<AllocU8, AllocCommand>,
     buffer: AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
-    buffer_len: usize,
     min_buffer_push_len: usize,
 }
+/*
 impl<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> PullAllocatedCommand<AllocU8, AllocCommand> for BufferedMultiWorker<AllocU8, AllocCommand> {
     fn pull_command_buf(&mut self) -> (&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
                                        &mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
                                        &mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; NUM_DATA_BUFFERED], CommandResult) {
         self.pull()
     }
-}
+}*/
 
 
 impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMultiWorker<AllocU8, AllocCommand> {
@@ -342,10 +342,10 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
         Self {
             min_buffer_push_len: 2,
             worker:worker,
-            buffer: mc.alloc_cell(NUM_SERIAL_COMMANDS_BUFFERED),
+            buffer: AllocatedMemoryPrefix::realloc(mc.alloc_cell(NUM_SERIAL_COMMANDS_BUFFERED), 0),
         }
     }
-    fn force_push(&mut self, eof_inside: bool) {
+    fn force_push(&mut self, eof_inside: bool, data: &mut AllocatedMemoryRange<u8, AllocU8>, pm: Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) {
         if self.min_buffer_push_len * 2 < self.buffer.len(){
             self.min_buffer_push_len <<= 2;
         }
@@ -356,20 +356,24 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             if eof_inside {
                 worker.set_eof_hint(); // so other side gets more aggressive about pulling
             }
-            if worker.result_multi_space_ready(self.buffer_len) {
-                thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer_len, self.worker, _elapsed);
+            if data.0.len() != 0 { // before we get to sending commands, lets make sure data is taken care of
+                let _ret = worker.push_consumed_data(data, None);
+                debug_assert!(if let DivansOutputResult::Success = _ret {true} else {false});
+            }
+            if worker.result_multi_space_ready(self.buffer.1) {
+                thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
-                let extant_space = worker.insert_results(self.buffer.split_at_mut(self.buffer_len).0);
+                let extant_space = worker.insert_results(&mut self.buffer, pm);
                 if extant_space <= 16 {
                     self.min_buffer_push_len = core::cmp::max(self.min_buffer_push_len >> 1, 4);
                     
                 }
-                self.buffer_len = 0;
+                self.buffer.1 = 0;
                 return;
             } else {
-                thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, self.buffer_len, self.worker, _elapsed);
+                thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
@@ -402,15 +406,13 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _output:&mut [u8],
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
-        let force_push = if let &mut Command::PredictionMode(_) = cmd {
-            true
-        } else {
-            false
-        };
-        self.buffer[self.buffer_len] =  CommandResult::Cmd(core::mem::replace(cmd, Command::nop()));
-        self.buffer_len += 1;
-        if force_push || self.buffer_len == self.buffer.len() || self.buffer_len == self.min_buffer_push_len {
-            self.force_push(false);
+        let (static_command, pm) = downcast_command(cmd);
+        self.buffer.0.slice_mut()[self.buffer.1] = static_command;
+        self.buffer.1 += 1;
+        if pm.is_some() {
+            self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), pm);
+        } else if self.buffer.1 == self.buffer.0.len() || self.buffer.1 == self.min_buffer_push_len {
+            self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None);
         }
         DivansOutputResult::Success
     }
@@ -419,17 +421,13 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
                     data:&mut AllocatedMemoryRange<u8, AllocU8>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
-        self.buffer[self.buffer_len] = CommandResult::ProcessedData(core::mem::replace(data, AllocatedMemoryRange::<u8, AllocU8>::default()));
-        self.buffer_len += 1;
-        self.force_push(false);
+        self.force_push(false, data, None);
         DivansOutputResult::Success
     }
    #[inline(always)]
     fn push_eof(&mut self,
     ) -> DivansOutputResult {
-        self.buffer[self.buffer_len] = CommandResult::Eof;
-        self.buffer_len += 1;
-        self.force_push(true);
+        self.force_push(true, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None);
         DivansOutputResult::Success
     }
 }

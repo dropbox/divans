@@ -107,6 +107,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     pub fn data_ready(&self) -> bool {
         self.data_len != 0
     }
+    pub fn returned_data_space_ready(&self) -> bool {
+        self.result_data[NUM_DATA_BUFFERED -1].0.len() == 0
+    }
     pub fn set_eof_hint(&mut self) {
         if let CommandResult::Ok = self.eof_present_in_result {
             self.eof_present_in_result = CommandResult::Eof; // don't want to override errors here
@@ -115,7 +118,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     // returns the old space
     pub fn insert_results(&mut self,
                           cmds:&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
-                          cm:Option<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) -> usize {
+                          cm:Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) -> usize {
         let old_len = self.result.1;
         if self.result.1 == 0 {
             core::mem::swap(&mut self.result, cmds);
@@ -127,9 +130,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         if let Some(context_map) = cm {
             assert_eq!(self.result_cm[1].has_context_speeds(), false);
             if self.result_cm[0].has_context_speeds() {
-                self.result_cm[1] = context_map;
+                core::mem::swap(&mut self.result_cm[1], context_map);
             } else {
-                self.result_cm[0] = context_map;
+                core::mem::swap(&mut self.result_cm[0], context_map);
             }
         }
         old_len
@@ -372,6 +375,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
     }
 
 }
+#[inline(always)]
 pub fn downcast_command<AllocU8:Allocator<u8>>(cmd: &mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> (StaticCommand, Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) {
     match cmd {
         &mut Command::PredictionMode(ref mut pm) => return (Command::PredictionMode(empty_prediction_mode_context_map()), Some(pm)),
@@ -380,7 +384,7 @@ pub fn downcast_command<AllocU8:Allocator<u8>>(cmd: &mut Command<AllocatedMemory
         &mut Command::BlockSwitchLiteral(mcc) => return (Command::BlockSwitchLiteral(mcc), None),
         &mut Command::Dict(d) => return (Command::Dict(d), None),
         &mut Command::Copy(c) => return (Command::Copy(c), None),
-        &mut Command::Literal(l) => return (Command::Literal(LiteralCommand{
+        &mut Command::Literal(ref l) => return (Command::Literal(LiteralCommand{
             data:SlicePlaceholder32::<u8>::new(l.data.len() as u32),
             prob:FeatureFlagSliceType::default(),
             high_entropy: l.high_entropy,
@@ -428,7 +432,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
         if self.result.1 < self.result.0.len() {
-            let (static_cmd, opt_cm) = downcast_command(cmd);
+            let (static_cmd, mut opt_cm) = downcast_command(cmd);
             if let Some(ref mut cm) = opt_cm {
                 if self.result_cm[0].has_context_speeds() {
                     if self.result_cm[1].has_context_speeds() {

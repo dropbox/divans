@@ -159,7 +159,7 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
                        AllocCDF16:Allocator<Cdf16>> {
-    cross_command_state: CrossCommandState<ArithmeticCoder,
+    pub cross_command_state: CrossCommandState<ArithmeticCoder, // needs to be public so we can use items on that struct to free items
                                            Specialization,
                                            LinearInputBytes,
                                            LinearOutputBytes,
