@@ -52,7 +52,8 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub deserialized_crc_count: u8,
     pub skip_checksum: bool,
     pub state_lit: LiteralState<AllocU8>,
-    pub state_populate_ring_buffer: Option<Command<AllocatedMemoryPrefix<u8, AllocU8>>>,
+    pub is_populating_ring_buffer: bool,
+    pub state_populate_ring_buffer: Command<AllocatedMemoryPrefix<u8, AllocU8>>,
     pub specialization: DecoderSpecialization,
     pub outstanding_buffer_count: usize,
     pub cmd_buffer: AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
@@ -84,7 +85,8 @@ impl<Cdf16:CDF16,
             },
             devnull: DevNull::default(),
             nop: LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop(),
-            state_populate_ring_buffer:None,
+            is_populating_ring_buffer:false,
+            state_populate_ring_buffer:Command::nop(),
             specialization:DecoderSpecialization::default(),
             outstanding_buffer_count: 0,
             deserialized_crc:[0u8;8],
@@ -151,21 +153,21 @@ impl<Cdf16:CDF16,
     fn populate_ring_buffer(&mut self,
                             output: &mut [u8],
                             output_offset: &mut usize) -> DivansOutputResult {
-        
-        if let Some(ref mut pop_cmd) = self.state_populate_ring_buffer {
-            match self.ctx.recoder.encode_cmd(pop_cmd, output, output_offset) {
-                DivansOutputResult::Success => free_cmd(pop_cmd,
-                                                        &mut self.ctx.m8.use_cached_allocation::<
-                                                                UninitializedOnAlloc>()),
-                DivansOutputResult::Failure(f) => {
-                    free_cmd(pop_cmd, &mut self.ctx.m8.use_cached_allocation::<
-                            UninitializedOnAlloc>());
-                    return DivansOutputResult::Failure(f);
-                },
-                need_something => return need_something,
-            }
+        if !self.is_populating_ring_buffer {
+            return DivansOutputResult::Success;
         }
-        self.state_populate_ring_buffer.take();
+        match self.ctx.recoder.encode_cmd(&mut self.state_populate_ring_buffer, output, output_offset) {
+            DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
+                                                    &mut self.ctx.m8.use_cached_allocation::<
+                                                            UninitializedOnAlloc>()),
+            DivansOutputResult::Failure(f) => {
+                free_cmd(&mut self.state_populate_ring_buffer, &mut self.ctx.m8.use_cached_allocation::<
+                        UninitializedOnAlloc>());
+                return DivansOutputResult::Failure(f);
+            },
+            need_something => return need_something,
+        }
+        self.is_populating_ring_buffer = false;
         DivansOutputResult::Success
     }
     #[cold]
@@ -255,9 +257,10 @@ impl<Cdf16:CDF16,
                     } { 
                                 DivansResult::Success => {
                                     assert!(match self.state_lit.state{LiteralSubstate::FullyDecoded => true, _ => false});
-                                    self.state_populate_ring_buffer = Some(Command::Literal(
+                                    self.is_populating_ring_buffer = true;
+                                    self.state_populate_ring_buffer = Command::Literal(
                                         core::mem::replace(&mut self.state_lit.lc,
-                                                           LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop())));
+                                                           LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
                                 },
                                 retval => {
                                     return DecoderResult::Processed(retval);
@@ -341,7 +344,8 @@ impl<Cdf16:CDF16,
             let cur_cmd = &mut self.cmd_buffer.slice_mut()[offt];
             self.cmd_buffer_offset += 1;
             if let &mut Command::Copy(cp) = cur_cmd {
-                self.state_populate_ring_buffer=Some(Command::Copy(cp));
+                self.is_populating_ring_buffer = true;
+                self.state_populate_ring_buffer=Command::Copy(cp);
             } else if let &mut Command::Literal(ref lit) = cur_cmd {
                 let num_bytes = lit.data.len();
                 self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
@@ -384,9 +388,18 @@ impl<Cdf16:CDF16,
                         self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
                         self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
                     },
-                    &mut Command::BlockSwitchCommand(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchCommand(mcc)),
-                    &mut Command::BlockSwitchDistance(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchDistance(mcc)),
-                    &mut Command::Dict(dc) => self.state_populate_ring_buffer=Some(Command::Dict(dc)),
+                    &mut Command::BlockSwitchCommand(mcc) => {
+                        self.is_populating_ring_buffer = true;
+                        self.state_populate_ring_buffer=Command::BlockSwitchCommand(mcc);
+                    },
+                    &mut Command::BlockSwitchDistance(mcc) =>{
+                        self.is_populating_ring_buffer = true;
+                        self.state_populate_ring_buffer=Command::BlockSwitchDistance(mcc);
+                    },
+                    &mut Command::Dict(dc) => {
+                        self.is_populating_ring_buffer = true;
+                        self.state_populate_ring_buffer=Command::Dict(dc);
+                    },  
                     &mut Command::Literal(_) | &mut Command::Copy(_) => unreachable!(),
                 }
             }
