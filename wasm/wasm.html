@@ -20,7 +20,7 @@
           STACK_MAX: memory.buffer.byteLength
       }
    };
-   WebAssembly.instantiateStreaming(fetch('target/wasm32-unknown-unknown/release/divans.wasm'),
+   WebAssembly.instantiateStreaming(fetch('../target/wasm32-unknown-unknown/release/divans.wasm'),
       importObj).then(obj => {
          console.log("Imports", WebAssembly.Module.imports(obj.module));
          console.log("Exports", obj.instance.exports);
