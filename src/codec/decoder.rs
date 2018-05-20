@@ -335,53 +335,55 @@ impl<Cdf16:CDF16,
             let offt = self.cmd_buffer_offset;
             let cur_cmd = &mut self.cmd_buffer.slice_mut()[offt];
             self.cmd_buffer_offset += 1;
-            match cur_cmd {
-                &mut Command::Literal(ref lit) => {
-                    let num_bytes = lit.data.len();
-                    self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
-                    let last_8 = self.ctx.recoder.last_8_literals();
-                    self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                        u64::from(last_8[0])
-                        | (u64::from(last_8[1])<<0x8)
-                        | (u64::from(last_8[2])<<0x10)
-                        | (u64::from(last_8[3])<<0x18)
-                        | (u64::from(last_8[4])<<0x20)
-                        | (u64::from(last_8[5])<<0x28)
-                        | (u64::from(last_8[6])<<0x30)
-                        | (u64::from(last_8[7])<<0x38);
-                    let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
-                    self.state_lit.state = new_state;
-                    
-                    if Worker::COOPERATIVE_MAIN {
-                        return DecoderResult::Yield;
-                    }
-                },
-                &mut Command::PredictionMode(_) => {
+            if let &mut Command::Copy(cp) = cur_cmd {
+                self.state_populate_ring_buffer=Some(Command::Copy(cp));
+            } else if let &mut Command::Literal(ref lit) = cur_cmd {
+                let num_bytes = lit.data.len();
+                self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
+                let last_8 = self.ctx.recoder.last_8_literals();
+                self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                    u64::from(last_8[0])
+                    | (u64::from(last_8[1])<<0x8)
+                    | (u64::from(last_8[2])<<0x10)
+                    | (u64::from(last_8[3])<<0x18)
+                    | (u64::from(last_8[4])<<0x20)
+                    | (u64::from(last_8[5])<<0x28)
+                    | (u64::from(last_8[6])<<0x30)
+                    | (u64::from(last_8[7])<<0x38);
+                let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+                self.state_lit.state = new_state;
+                if Worker::COOPERATIVE_MAIN {
+                    return DecoderResult::Yield;
+                }
+            } else {
+                match cur_cmd {
+                    &mut Command::PredictionMode(_) => {
                     let mut pred_mode = empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>();
-                    core::mem::swap(&mut pred_mode, &mut self.pred_buffer[1]);
+                        core::mem::swap(&mut pred_mode, &mut self.pred_buffer[1]);
                         core::mem::swap(&mut pred_mode, &mut self.pred_buffer[0]); // shift pred_buffer[1] to pred_buffer[0] and extract [0]
-                    
-                    let ret = self.ctx.lbk.obs_prediction_mode_context_map(
-                        &pred_mode,
-                        &mut self.ctx.mcdf16);
-                    match ret {
-                        DivansOpResult::Success => {},
-                        _ => return DecoderResult::Processed(DivansResult::from(ret)),
+                        
+                        let ret = self.ctx.lbk.obs_prediction_mode_context_map(
+                            &pred_mode,
+                            &mut self.ctx.mcdf16);
+                        match ret {
+                            DivansOpResult::Success => {},
+                            _ => return DecoderResult::Processed(DivansResult::from(ret)),
                         }
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                    match worker.push_context_map(pred_mode) {
-                        Ok(_) => {},
-                        Err(_) => panic!("thread unable to accept 2 concurrent context map"),
-                    }
-                },
-                &mut Command::BlockSwitchLiteral(new_block_type) => {
-                    self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
-                    self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
-                },
-                &mut Command::BlockSwitchCommand(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchCommand(mcc)),
-                &mut Command::BlockSwitchDistance(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchDistance(mcc)),
-                &mut Command::Dict(dc) => self.state_populate_ring_buffer=Some(Command::Dict(dc)),
-                &mut Command::Copy(cp) => self.state_populate_ring_buffer=Some(Command::Copy(cp)),
+                        self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                        match worker.push_context_map(pred_mode) {
+                            Ok(_) => {},
+                            Err(_) => panic!("thread unable to accept 2 concurrent context map"),
+                        }
+                    },
+                    &mut Command::BlockSwitchLiteral(new_block_type) => {
+                        self.ctx.lbk.obs_literal_block_switch(new_block_type.clone());
+                        self.codec_traits = construct_codec_trait_from_bookkeeping(&self.ctx.lbk);
+                    },
+                    &mut Command::BlockSwitchCommand(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchCommand(mcc)),
+                    &mut Command::BlockSwitchDistance(mcc) => self.state_populate_ring_buffer=Some(Command::BlockSwitchDistance(mcc)),
+                    &mut Command::Dict(dc) => self.state_populate_ring_buffer=Some(Command::Dict(dc)),
+                    &mut Command::Literal(_) | &mut Command::Copy(_) => unreachable!(),
+                }
             }
         }
     }

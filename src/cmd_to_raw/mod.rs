@@ -89,9 +89,8 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             let amount_to_copy = core::cmp::min((self.ring_buffer_decode_index - self.ring_buffer_output_index) as usize ,
                                                 output.len() - *output_offset);
             
-            output[*output_offset..(*output_offset + amount_to_copy)].clone_from_slice(
-                &self.ring_buffer.slice()[self.ring_buffer_output_index as usize..(self.ring_buffer_output_index as usize+
-                                                                 amount_to_copy)]);
+            output.split_at_mut(*output_offset).1.split_at_mut(amount_to_copy).0.clone_from_slice(
+                &self.ring_buffer.slice().split_at(self.ring_buffer_output_index as usize).1.split_at(amount_to_copy).0);
             self.ring_buffer_output_index += amount_to_copy as u32;
             *output_offset += amount_to_copy;
             if self.ring_buffer_output_index as usize == self.ring_buffer.slice().len() {
@@ -332,6 +331,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                 DivansOutputResult::Failure(_) => return res,
             }
         }
+        //return DivansOutputResult::Success;
         let prev_output_offset = *output_offset;
         match self.flush(output, output_offset)  {
             DivansOutputResult::Success => {
