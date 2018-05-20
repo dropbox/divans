@@ -657,78 +657,6 @@ impl<AllocU8: Allocator<u8>,
                                                          is_end: bool) -> CodecTraitResult {
         loop {
             match self.state {
-                EncodeOrDecodeState::EncodedShutdownNode
-                    | EncodeOrDecodeState::ShutdownCoder(_)
-                    | EncodeOrDecodeState::CoderBufferDrain
-                        | EncodeOrDecodeState::MuxDrain => {
-                    // not allowed to encode additional commands after flush is invoked
-                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(ErrMsg::NotAllowedToEncodeAfterFlush)));
-                },
-                EncodeOrDecodeState::WriteChecksum(count) => {
-                    assert!(Specialization::IS_DECODING_FILE);
-                    match self.cross_command_state.thread_ctx {
-                        // only main thread can checksum
-                        ThreadContext::MainThread(_) => {},
-                        ThreadContext::Worker => {
-                            let ret = self.cross_command_state.demuxer.push_eof();
-                            match ret {
-                                DivansOutputResult::Success => {
-                                    self.state = EncodeOrDecodeState::DivansSuccess;
-                                    continue;
-                                },
-                                r => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(r))),
-                            }
-                        },
-                    }
-                    if !self.cross_command_state.demuxer.consumed_all_streams_until_eof() {
-                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
-                    }
-                    if self.skip_checksum {
-                        self.frozen_checksum = Some(0);
-                    }
-                    // decoder only operation
-                    let checksum_cur_index = count;
-                    let bytes_needed = CHECKSUM_LENGTH - count as usize;
-
-                    let to_check = core::cmp::min(checksum_input_info.data.len() - *checksum_input_info.read_offset,
-                                                  bytes_needed);
-                    if to_check == 0 {
-                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
-                    }
-                    match self.frozen_checksum {
-                        Some(_) => {},
-                        None => {
-                            //DO NOT DO AGAIN; self.crc.write(checksum_input_info.data.split_at(*checksum_input_info.read_offset).0); ALREADY DONE
-                            self.frozen_checksum= Some(self.crc.finish());
-                        },
-                    }
-                    let crc = self.frozen_checksum.unwrap();
-                    assert!(crc <= 0xffffffff);
-                    let checksum = [crc as u8 & 255,
-                                    (crc >> 8) as u8 & 255,
-                                    (crc >> 16) as u8 & 255,
-                                    (crc >> 24) as u8 & 255,
-                                    b'a',
-                                    b'n',
-                                    b's',
-                                    b'~'];
-
-                    for (index, (chk, fil)) in checksum.split_at(checksum_cur_index as usize).1.split_at(to_check).0.iter().zip(
-                        checksum_input_info.data.split_at(*checksum_input_info.read_offset).1.split_at(to_check).0.iter()).enumerate() {
-                        if *chk != *fil {
-                            if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(
-                                    ErrMsg::BadChecksum(*chk, *fil))));
-                            }
-                        }
-                    }
-                    *checksum_input_info.read_offset += to_check;
-                    if bytes_needed != to_check {
-                        self.state = EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8);
-                    } else {
-                        self.state = EncodeOrDecodeState::DivansSuccess;
-                    }
-                },
                 EncodeOrDecodeState::DivansSuccess => {
                     return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Success));
                 },
@@ -755,6 +683,132 @@ impl<AllocU8: Allocator<u8>,
                         EncodeOrDecodeState::Dict => { self.cross_command_state.bk.obs_dict_state(); },
                         EncodeOrDecodeState::Literal => { self.cross_command_state.bk.obs_literal_state(); },
                         _ => {},
+                    }
+                },
+                EncodeOrDecodeState::Copy => {
+                    let backing_store = CopyCommand{
+                        distance:1,
+                        num_bytes:0,
+                    };
+                    let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
+                                                                                                           &backing_store);
+                    match self.state_copy.encode_or_decode(&mut self.cross_command_state,
+                                                      src_copy_command,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        DivansResult::Success => {
+                            self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
+                            self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
+                                &mut self.state_copy.cc,
+                                CopyCommand{distance:1, num_bytes:0}));
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                        },
+                        retval => {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                        }
+                    }
+                },
+                EncodeOrDecodeState::Literal => {
+                    let backing_store = LiteralCommand::nop();
+                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
+                        input_cmd,
+                        &backing_store);
+                    match self.state_lit.encode_or_decode(&mut self.cross_command_state,
+                                                     src_literal_command,
+                                                     output_bytes,
+                                                     output_bytes_offset,
+                                                     ctraits) {
+                        DivansResult::Success => {
+                            self.state_populate_ring_buffer = Command::Literal(
+                                core::mem::replace(&mut self.state_lit.lc,
+                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                        },
+                        retval => {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                        }
+                    }
+                },
+                EncodeOrDecodeState::Dict => {
+                    let backing_store = DictCommand::nop();
+                    let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
+                                                                                                                 &backing_store);
+                    match self.state_dict.encode_or_decode(&mut self.cross_command_state,
+                                                      src_dict_command,
+                                                      output_bytes,
+                                                      output_bytes_offset
+                                                      ) {
+                        DivansResult::Success => {
+                            self.state_populate_ring_buffer = Command::Dict(
+                                core::mem::replace(&mut self.state_dict.dc,
+                                                   DictCommand::nop()));
+                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                        },
+                        retval => {
+                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                        }
+                    }
+                },
+                EncodeOrDecodeState::PopulateRingBuffer => {
+                    if LinearInputBytes::ISOLATED {
+                         match self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
+                                                                         None,
+                                                                         None,
+                                                                         &mut self.cross_command_state.specialization,
+                                                                         &mut [],
+                                                                         output_bytes_offset) {
+                             DivansOutputResult::Success => {
+                                 self.state = EncodeOrDecodeState::Begin;
+                                 return CodecTraitResult::Res(OneCommandReturn::Advance);
+                             },
+                             need_something =>  {
+                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(need_something)));
+                             },
+                         }
+                    } else {
+                        match {
+                            let (m8, recoder) = match self.cross_command_state.thread_ctx {
+                                ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
+                                ThreadContext::Worker => (None, None),
+                            };
+                            self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
+                                                                      m8,
+                                                                      recoder,
+                                                                      &mut self.cross_command_state.specialization,
+                                                                      output_bytes,
+                                                                      output_bytes_offset,
+                            )
+                        } {
+                            DivansOutputResult::NeedsMoreOutput => {
+                                if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
+                                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
+                                }
+                            },
+                            DivansOutputResult::Failure(m) => {
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
+                            },
+                            DivansOutputResult::Success => {
+                                // clobber bk.last_8_literals with the last 8 literals
+                                match self.cross_command_state.thread_ctx {
+                                    ThreadContext::MainThread(ref mut ctx) => {
+                                        let last_8 = ctx.recoder.last_8_literals();
+                                        ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
+                                            u64::from(last_8[0])
+                                            | (u64::from(last_8[1])<<0x8)
+                                            | (u64::from(last_8[2])<<0x10)
+                                            | (u64::from(last_8[3])<<0x18)
+                                            | (u64::from(last_8[4])<<0x20)
+                                            | (u64::from(last_8[5])<<0x28)
+                                            | (u64::from(last_8[6])<<0x30)
+                                            | (u64::from(last_8[7])<<0x38);
+                                    }
+                                    ThreadContext::Worker => {}, // Main thread tracks literals
+                             }
+                                self.state = EncodeOrDecodeState::Begin;
+                                return CodecTraitResult::Res(OneCommandReturn::Advance);
+                            },
+                        }
                     }
                 },
                 EncodeOrDecodeState::PredictionMode => {
@@ -888,130 +942,76 @@ impl<AllocU8: Allocator<u8>,
                         }
                     }
                 },
-                EncodeOrDecodeState::Copy => {
-                    let backing_store = CopyCommand{
-                        distance:1,
-                        num_bytes:0,
-                    };
-                    let src_copy_command = self.cross_command_state.specialization.get_source_copy_command(input_cmd,
-                                                                                                           &backing_store);
-                    match self.state_copy.encode_or_decode(&mut self.cross_command_state,
-                                                      src_copy_command,
-                                                      output_bytes,
-                                                      output_bytes_offset
-                                                      ) {
-                        DivansResult::Success => {
-                            self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
-                            self.state_populate_ring_buffer = Command::Copy(core::mem::replace(
-                                &mut self.state_copy.cc,
-                                CopyCommand{distance:1, num_bytes:0}));
-                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
+                EncodeOrDecodeState::EncodedShutdownNode
+                    | EncodeOrDecodeState::ShutdownCoder(_)
+                    | EncodeOrDecodeState::CoderBufferDrain
+                        | EncodeOrDecodeState::MuxDrain => {
+                    // not allowed to encode additional commands after flush is invoked
+                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(ErrMsg::NotAllowedToEncodeAfterFlush)));
+                },
+                EncodeOrDecodeState::WriteChecksum(count) => {
+                    assert!(Specialization::IS_DECODING_FILE);
+                    match self.cross_command_state.thread_ctx {
+                        // only main thread can checksum
+                        ThreadContext::MainThread(_) => {},
+                        ThreadContext::Worker => {
+                            let ret = self.cross_command_state.demuxer.push_eof();
+                            match ret {
+                                DivansOutputResult::Success => {
+                                    self.state = EncodeOrDecodeState::DivansSuccess;
+                                    continue;
+                                },
+                                r => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(r))),
+                            }
                         },
-                        retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
+                    }
+                    if !self.cross_command_state.demuxer.consumed_all_streams_until_eof() {
+                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
+                    }
+                    if self.skip_checksum {
+                        self.frozen_checksum = Some(0);
+                    }
+                    // decoder only operation
+                    let checksum_cur_index = count;
+                    let bytes_needed = CHECKSUM_LENGTH - count as usize;
+
+                    let to_check = core::cmp::min(checksum_input_info.data.len() - *checksum_input_info.read_offset,
+                                                  bytes_needed);
+                    if to_check == 0 {
+                        return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreInput));
+                    }
+                    match self.frozen_checksum {
+                        Some(_) => {},
+                        None => {
+                            //DO NOT DO AGAIN; self.crc.write(checksum_input_info.data.split_at(*checksum_input_info.read_offset).0); ALREADY DONE
+                            self.frozen_checksum= Some(self.crc.finish());
+                        },
+                    }
+                    let crc = self.frozen_checksum.unwrap();
+                    assert!(crc <= 0xffffffff);
+                    let checksum = [crc as u8 & 255,
+                                    (crc >> 8) as u8 & 255,
+                                    (crc >> 16) as u8 & 255,
+                                    (crc >> 24) as u8 & 255,
+                                    b'a',
+                                    b'n',
+                                    b's',
+                                    b'~'];
+
+                    for (index, (chk, fil)) in checksum.split_at(checksum_cur_index as usize).1.split_at(to_check).0.iter().zip(
+                        checksum_input_info.data.split_at(*checksum_input_info.read_offset).1.split_at(to_check).0.iter()).enumerate() {
+                        if *chk != *fil {
+                            if checksum_cur_index as usize + index >= 4 || !self.skip_checksum {
+                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(
+                                    ErrMsg::BadChecksum(*chk, *fil))));
+                            }
                         }
                     }
-                },
-                EncodeOrDecodeState::Literal => {
-                    let backing_store = LiteralCommand::nop();
-                    let src_literal_command = self.cross_command_state.specialization.get_source_literal_command(
-                        input_cmd,
-                        &backing_store);
-                    match self.state_lit.encode_or_decode(&mut self.cross_command_state,
-                                                     src_literal_command,
-                                                     output_bytes,
-                                                     output_bytes_offset,
-                                                     ctraits) {
-                        DivansResult::Success => {
-                            self.state_populate_ring_buffer = Command::Literal(
-                                core::mem::replace(&mut self.state_lit.lc,
-                                                   LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
-                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
-                        },
-                        retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
-                        }
-                    }
-                },
-                EncodeOrDecodeState::Dict => {
-                    let backing_store = DictCommand::nop();
-                    let src_dict_command = self.cross_command_state.specialization.get_source_dict_command(input_cmd,
-                                                                                                                 &backing_store);
-                    match self.state_dict.encode_or_decode(&mut self.cross_command_state,
-                                                      src_dict_command,
-                                                      output_bytes,
-                                                      output_bytes_offset
-                                                      ) {
-                        DivansResult::Success => {
-                            self.state_populate_ring_buffer = Command::Dict(
-                                core::mem::replace(&mut self.state_dict.dc,
-                                                   DictCommand::nop()));
-                            self.state = EncodeOrDecodeState::PopulateRingBuffer;
-                        },
-                        retval => {
-                            return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(retval));
-                        }
-                    }
-                },
-                EncodeOrDecodeState::PopulateRingBuffer => {
-                    if LinearInputBytes::ISOLATED {
-                         match self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
-                                                                         None,
-                                                                         None,
-                                                                         &mut self.cross_command_state.specialization,
-                                                                         &mut [],
-                                                                         output_bytes_offset) {
-                             DivansOutputResult::Success => {
-                                 self.state = EncodeOrDecodeState::Begin;
-                                 return CodecTraitResult::Res(OneCommandReturn::Advance);
-                             },
-                             need_something =>  {
-                                 return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(need_something)));
-                             },
-                         }
+                    *checksum_input_info.read_offset += to_check;
+                    if bytes_needed != to_check {
+                        self.state = EncodeOrDecodeState::WriteChecksum(count as u8 + to_check as u8);
                     } else {
-                        match {
-                            let (m8, recoder) = match self.cross_command_state.thread_ctx {
-                                ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
-                                ThreadContext::Worker => (None, None),
-                            };
-                            self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
-                                                                      m8,
-                                                                      recoder,
-                                                                      &mut self.cross_command_state.specialization,
-                                                                      output_bytes,
-                                                                      output_bytes_offset,
-                            )
-                        } {
-                            DivansOutputResult::NeedsMoreOutput => {
-                                if Specialization::DOES_CALLER_WANT_ORIGINAL_FILE_BYTES {
-                                    return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::NeedsMoreOutput)); // we need the caller to drain the buffer
-                                }
-                            },
-                            DivansOutputResult::Failure(m) => {
-                                return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::Failure(m)));
-                            },
-                            DivansOutputResult::Success => {
-                                // clobber bk.last_8_literals with the last 8 literals
-                                match self.cross_command_state.thread_ctx {
-                                    ThreadContext::MainThread(ref mut ctx) => {
-                                        let last_8 = ctx.recoder.last_8_literals();
-                                        ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                                            u64::from(last_8[0])
-                                            | (u64::from(last_8[1])<<0x8)
-                                            | (u64::from(last_8[2])<<0x10)
-                                            | (u64::from(last_8[3])<<0x18)
-                                            | (u64::from(last_8[4])<<0x20)
-                                            | (u64::from(last_8[5])<<0x28)
-                                            | (u64::from(last_8[6])<<0x30)
-                                            | (u64::from(last_8[7])<<0x38);
-                                    }
-                                    ThreadContext::Worker => {}, // Main thread tracks literals
-                             }
-                                self.state = EncodeOrDecodeState::Begin;
-                                return CodecTraitResult::Res(OneCommandReturn::Advance);
-                            },
-                        }
+                        self.state = EncodeOrDecodeState::DivansSuccess;
                     }
                 },
             }
