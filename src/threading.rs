@@ -139,6 +139,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
             core::mem::swap(&mut self.result, cmds);
         } else {
             self.result.0.slice_mut().split_at_mut(old_len).1.split_at_mut(cmds.len()).0.clone_from_slice(cmds.slice());
+            self.result.1 += cmds.len();
         }
         cmds.1 = 0;
         if let Some(context_map) = cm {

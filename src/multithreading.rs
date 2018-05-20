@@ -357,14 +357,6 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             let &(ref lock, ref cvar) = &*self.worker.queue;
             let mut worker = lock.lock().unwrap();
             let mut did_notify = false;
-            if eof_inside {
-                thread_debug!(ThreadEventType::W_PUSH_EOF, worker.debug_result_commands_ready(), self.worker, _elapsed);
-                worker.set_eof_hint(); // so other side gets more aggressive about pulling
-                if worker.waiters != 0 {
-                    cvar.notify_one();
-                    did_notify = true;
-                }
-            }
             if data.0.len() != 0 { // before we get to sending commands, lets make sure data is taken care of
                 match worker.push_consumed_data(data, None) {
                     DivansOutputResult::Success => {
@@ -388,6 +380,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             }
             if worker.result_multi_space_ready(self.buffer.1) {
                 thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
+                if eof_inside {
+                    worker.set_eof_hint(); // so other side gets more aggressive about pulling
+                }
                 if worker.waiters != 0 && !did_notify{
                     cvar.notify_one();
                 }
