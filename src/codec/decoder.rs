@@ -169,9 +169,14 @@ impl<Cdf16:CDF16,
         DivansOutputResult::Success
     }
     #[cold]
-    fn process_eof(&mut self) -> DivansInputResult {
+    fn process_eof(&mut self, output: &mut [u8], output_offset: &mut usize) -> DivansResult {
+        match self.ctx.recoder.flush(output, output_offset) {
+            DivansOutputResult::Success => {},
+            need_something => return DivansResult::from(need_something),
+        }
+
         if usize::from(self.deserialized_crc_count) != self.deserialized_crc.len() {
-            return DivansInputResult::NeedsMoreInput;
+            return DivansResult::NeedsMoreInput;
         }
         let crc = self.crc.finish();
         let checksum = [crc as u8 & 255,
@@ -186,11 +191,11 @@ impl<Cdf16:CDF16,
             self.deserialized_crc.iter()).enumerate() {
             if *chk != *fil {
                 if index >= 4 || !self.skip_checksum {
-                    return DivansInputResult::Failure(ErrMsg::BadChecksum(*chk, *fil));
+                    return DivansResult::Failure(ErrMsg::BadChecksum(*chk, *fil));
                 }
             }
         }
-        return DivansInputResult::Success; // DONE decoding
+        return DivansResult::Success; // DONE decoding
     }
     /*
     fn interpret_thread_literal(&mut self, lit: LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>) {
@@ -265,7 +270,7 @@ impl<Cdf16:CDF16,
                 need_something => return DecoderResult::Processed(DivansResult::from(need_something)),
             }
             if self.eof {
-                return DecoderResult::Processed(DivansResult::from(self.process_eof()));
+                return DecoderResult::Processed(self.process_eof(output, output_offset));
             }
             if self.cmd_buffer_offset >= self.cmd_buffer.1 && !self.cmd_buffer_contains_eof {
                 self.cmd_buffer_offset = 0;
@@ -324,7 +329,7 @@ impl<Cdf16:CDF16,
             }
             if self.cmd_buffer_offset >= self.cmd_buffer.1 {
                 if self.cmd_buffer_contains_eof {
-                    return DecoderResult::Processed(DivansResult::from(self.process_eof()));
+                    return DecoderResult::Processed(self.process_eof(output, output_offset));
                 } else {
                     if Worker::COOPERATIVE_MAIN  {
                         return DecoderResult::Yield;

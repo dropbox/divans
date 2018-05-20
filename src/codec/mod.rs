@@ -946,7 +946,12 @@ impl<AllocU8: Allocator<u8>,
                     assert!(Specialization::IS_DECODING_FILE);
                     match self.cross_command_state.thread_ctx {
                         // only main thread can checksum
-                        ThreadContext::MainThread(_) => {},
+                        ThreadContext::MainThread(ref mut main_thread_ctx) => {
+                            match main_thread_ctx.recoder.flush(output_bytes, output_bytes_offset) {
+                                DivansOutputResult::Success => {},
+                                need_something => return CodecTraitResult::Res(OneCommandReturn::BufferExhausted(DivansResult::from(need_something))),
+                            }
+                        },
                         ThreadContext::Worker => {
                             let ret = self.cross_command_state.demuxer.push_eof();
                             match ret {

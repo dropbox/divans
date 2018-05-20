@@ -73,6 +73,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
     // it starts at the ring_buffer_output_index...and advances up to the ring_buffer_decode_index
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn flush(&mut self, output :&mut[u8], output_offset: &mut usize) -> DivansOutputResult {
+        let prev_output_offset = *output_offset;
         if self.ring_buffer_decode_index < self.ring_buffer_output_index { // we wrap around
             let bytes_until_wrap = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
             let amount_to_copy = core::cmp::min(bytes_until_wrap, output.len() - *output_offset);
@@ -97,6 +98,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                self.ring_buffer_output_index = 0;
             }           
         }
+        self.total_offset += *output_offset - prev_output_offset;
         if self.ring_buffer_output_index != self.ring_buffer_decode_index {
             return DivansOutputResult::NeedsMoreOutput;
         }
@@ -179,13 +181,13 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         let first_section = self.ring_buffer.slice_mut().len() as u32 - self.ring_buffer_decode_index;
         let amount_to_copy = core::cmp::min(data.len() as u32, first_section);
         let (data_first, data_second) = data.split_at(amount_to_copy as usize);
-        self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index + amount_to_copy) as usize].clone_from_slice(data_first);
+        self.ring_buffer.slice_mut().split_at_mut(self.ring_buffer_decode_index as usize).1.split_at_mut(amount_to_copy as usize).0.clone_from_slice(data_first);
         self.ring_buffer_decode_index += amount_to_copy as u32;
         retval += amount_to_copy as usize;
         if self.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.ring_buffer_decode_index = 0;
             let second_amount_to_copy = data_second.len();
-            self.ring_buffer.slice_mut()[self.ring_buffer_decode_index as usize .. (self.ring_buffer_decode_index as usize + second_amount_to_copy)].clone_from_slice(data_second.split_at(second_amount_to_copy).0);
+            self.ring_buffer.slice_mut().split_at_mut(self.ring_buffer_decode_index as usize).1.split_at_mut(second_amount_to_copy).0.clone_from_slice(data_second.split_at(second_amount_to_copy).0);
             self.ring_buffer_decode_index += second_amount_to_copy as u32;
             retval += second_amount_to_copy;
         }
@@ -313,7 +315,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                   output :&mut[u8],
                   output_offset: &mut usize) -> DivansOutputResult {
         loop {
-            let prev_output_offset = *output_offset;
             let res = self.parse_command(cmd);
             match res {
                 DivansOutputResult::Success => {
@@ -323,7 +324,6 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                     match self.flush(output, output_offset) {
                         DivansOutputResult::Success => {},
                         flush_res => {
-                            self.total_offset += *output_offset - prev_output_offset;
                             return flush_res
                         },
                     }
@@ -331,16 +331,16 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                 DivansOutputResult::Failure(_) => return res,
             }
         }
-        //return DivansOutputResult::Success;
-        let prev_output_offset = *output_offset;
+        if ((self.ring_buffer_decode_index as u32 ^ self.ring_buffer_output_index as u32) & 0xffff_fc00) == 0 {
+            self.input_sub_offset = 0;
+            return DivansOutputResult::Success;
+        }
         match self.flush(output, output_offset)  {
             DivansOutputResult::Success => {
                 self.input_sub_offset = 0;
-                self.total_offset += *output_offset - prev_output_offset;
                 DivansOutputResult::Success
             },
             res => {
-                self.total_offset += *output_offset - prev_output_offset;
                 res
             },
         }
