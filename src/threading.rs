@@ -473,6 +473,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
             let index = self.result.1;
             self.result.1 += 1;
             self.result[index] = static_cmd;
+        } else {
+            return DivansOutputResult::NeedsMoreOutput;
         }
         DivansOutputResult::Success
     }
