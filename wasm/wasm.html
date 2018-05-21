@@ -187,10 +187,10 @@
              event.dataTransfer.dropEffect = 'copy';
          }
          function handleDrop(event) {
-             event.stopPropagation();
-             event.preventDefault();
              var files = input_dialog.files;
              if (event && event.dataTransfer) {
+                 event.stopPropagation();
+                 event.preventDefault();
                 files = event.dataTransfer.files;
              }
              for (var file_i =0; files && file_i < files.length; file_i+= 1) {
