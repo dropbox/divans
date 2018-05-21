@@ -55,6 +55,7 @@
              }
              return ret;
    }
+   var el = document.createElement('a');
    var pre = document.createElement('pre');
    var input_dialog = document.createElement("input");
    function init() {
@@ -75,6 +76,8 @@
          document.body.appendChild(document.createElement('br'));
          document.body.appendChild(document.createTextNode("(Drag and drop your file in the gray area to compress)"));
          document.body.appendChild(document.createElement("br"));
+         document.body.appendChild(el);
+         document.body.appendChild(document.createElement('br'));
          var floatDiv = document.createElement("div");
          floatDiv.style.float = "right";
          floatDiv.style.textAlign = "center";
@@ -207,7 +210,6 @@
              return file.length > 16 && file[0] == 255 && file[1] == 229 && file[2] == 140 && file[3] == 159;
          }
              file = _example_dv_file;
-         var el = document.createElement('a');
          if (!is_divans(file)) {
              var div_file = encode(file, should_debug);
              var dv_len = array_buffers_length(div_file);
@@ -241,7 +243,6 @@
                  el.href = blobUrl;
              }
          }
-         document.body.appendChild(el);
          function handleDragOver(event) {
              event.stopPropagation();
              event.preventDefault();
@@ -283,7 +284,7 @@
                                  window.brotliIR.style.visibility = "visible";
                                  window.brotliSize.innerHTML = ""; // clear
                                  window.brotliSize.appendChild(document.createTextNode(
-                                     "Brotli IR below (compressed " + output_len + "/" + file_orig_length + "bytes)"));
+                                     "IR below (brotli compressed " + output_len + "/" + file_orig_length + "bytes)"));
                              });
                          var dv_len = array_buffers_length(div_file);
                          var blob = new Blob(div_file, {type:"application/binary+div"});
