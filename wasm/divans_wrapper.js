@@ -129,7 +129,7 @@ if (self.document === undefined) {
     self.onmessage = function(e) {
         msg_buffer[msg_buffer.length] = e;
     };
-    const memory = new WebAssembly.Memory({ initial: 256, maximum: 256 });
+    const memory = new WebAssembly.Memory({ initial: 256, maximum: 4096 });
     const importObj = {
       env: {
           log2f: Math.log2,
@@ -212,6 +212,13 @@ options_map = { // taken from ffi.h
    "force_literal_context_mode": 19,
 };
 desired_option_list[desired_option_list.length] = {
+   "quality": 2,
+   "window_size": 22,
+   "force_literal_context_mode": 0, //  lsb
+   "literal_adaptation": 0, // just serialize the bits
+   "brotli_literal_byte_score": 840,
+};
+desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "window_size": 22,
    "force_literal_context_mode": 0, // lsb
@@ -259,11 +266,4 @@ desired_option_list[desired_option_list.length] = {
    "force_literal_context_mode": 0, //  lsb
    "literal_adaptation": 8, // 1,16384
    "brotli_literal_byte_score": 40,
-};
-desired_option_list[desired_option_list.length] = {
-   "quality": 9,
-   "window_size": 22,
-   "force_literal_context_mode": 0, //  lsb
-   "literal_adaptation": 0, // just serialize the bits
-   "brotli_literal_byte_score": 840,
 };

@@ -8,7 +8,7 @@
 <script type="text/javascript">
     var job_id = 0;
     var cur_best_length = 0;
-    const memory = new WebAssembly.Memory({ initial: 256, maximum: 256 });
+    const memory = new WebAssembly.Memory({ initial: 256, maximum: 4096 });
     const importObj = {
       env: {
           log2f: Math.log2,
@@ -25,11 +25,22 @@
       }
    };
    var workers = [];
+   let num_workers = 6;
    function setupWorkers() {
       if (workers.length !== 0) {
           return;
       }
-      for (var i = 0; i < 8; i += 1) {
+      if ( navigator.userAgent.match(/Android/i)
+           || navigator.userAgent.match(/webOS/i)
+           || navigator.userAgent.match(/iPhone/i)
+           || navigator.userAgent.match(/iPad/i)
+           || navigator.userAgent.match(/iPod/i)
+           || navigator.userAgent.match(/BlackBerry/i)
+           || navigator.userAgent.match(/Windows Phone/i)
+      ) {
+        return;
+      }
+      for (var i = 0; i < num_workers; i += 1) {
           try {
               if (window.Worker) {
                   var wrk = new window.Worker('divans_wrapper.js')
@@ -86,6 +97,8 @@
    }
    var el = document.createElement('a');
    var pre = document.createElement('pre');
+   var help_text = document.createElement('div');
+   var size_limit = document.createElement('b');
    var input_dialog = document.createElement("input");
    var brotliComparisonText = document.createElement('div');
    function init() {
@@ -94,7 +107,8 @@
              ascii_string += String.fromCharCode(file[i]);
          }
          ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
-         document.body.appendChild(document.createTextNode("Example file:"));
+         help_text.appendChild(document.createTextNode("Example file:"));
+         document.body.appendChild(help_text);
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
          document.body.appendChild(pre);
@@ -104,7 +118,17 @@
          input_dialog.multiple="";
          document.body.appendChild(input_dialog);
          document.body.appendChild(document.createElement('br'));
-         document.body.appendChild(document.createTextNode("(Drag and drop your file in the gray area to compress)"));
+         document.body.appendChild(document.createTextNode("Drag and drop any file less than 2MiB above to compress/Decompress."));
+         document.body.appendChild(document.createElement("br"));
+         document.body.appendChild(size_limit);
+         size_limit.style.display = "none";
+         size_limit.appendChild(document.createTextNode("This tool only supports files <= 2MB. Trying anyway..."));
+         var project_link = document.createElement('a');
+         project_link.href = "https://github.com/dropbox/divans";
+         project_link.target = "_blank";
+         project_link.appendChild(document.createTextNode("(Download standalone divans for larger files)"));
+         size_limit.appendChild(project_link);
+         document.body.appendChild(document.createElement("br"));
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(el);
          document.body.appendChild(document.createElement('br'));
@@ -187,6 +211,7 @@
              event.dataTransfer.dropEffect = 'copy';
          }
          function handleDrop(event) {
+             window.brotliIR.value = "Computing IR..."
              var files = input_dialog.files;
              if (event && event.dataTransfer) {
                  event.stopPropagation();
@@ -194,11 +219,18 @@
                 files = event.dataTransfer.files;
              }
              for (var file_i =0; files && file_i < files.length; file_i+= 1) {
+                 help_text.removeChild(help_text.firstChild);
+                 help_text.appendChild(document.createTextNode("Processing " + files[file_i].name + ":"));
                  job_id += 1;
                  var fileReader = new FileReader();
-                 fileReader.onload = function(event) {
+                 fileReaderCallback = function(event) {
                      var file_array_buffer = event.target.result;
                      var file_contents = new Uint8Array(file_array_buffer);
+                     if (file_contents.length > 2048 * 1024 && size_limit.style.display == "none") {
+                        size_limit.style.display = "block";
+                        window.setTimeout(0, function() {fileReaderCallback(event)});
+                        return;
+                     }
                      if (is_divans(file_contents)) {
                          brotliComparisonText.removeChild(brotliComparisonText.firstChild);
                          brotliComparisonText.appendChild(document.createTextNode(""))
@@ -215,7 +247,7 @@
                              el.href = blobUrl;
                          }
                      } else {
-                         cur_best_length = file_contents.length;
+                         cur_best_length = 16384 + 2 * file_contents.length;
                          var approve_div_file;
                          var msgHandler = function(event) {
                                 if (should_debug) {
@@ -242,7 +274,11 @@
                          pre.removeChild(pre.firstChild); // no more text
                          var file_orig_length = file_contents.length
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
-                         var div_file = encode(file_contents, obj.instance.exports, should_debug);
+                         var opts = {};
+                         if (workers.length != 0) {
+                            opts['quality'] = 9;
+                         }
+                         var div_file = encode(file_contents, obj.instance.exports, should_debug, opts);
                          approve_div_file = function (div_file) {
                              var dv_len = array_buffers_length(div_file);
                              var blob = new Blob(div_file, {type:"application/binary+div"});
@@ -260,12 +296,14 @@
                          encodeBrotliAndShowResult(file_array_buffer, file_orig_length);
                      }
                  }
+                 fileReader.onload = fileReaderCallback;
                  fileReader.readAsArrayBuffer(files[file_i]);
              }
          }
          
          input_dialog.addEventListener('change', handleDrop, false);
          if (input_dialog.files && input_dialog.files.length) {
+             setupWorkers(); // may not be ready yet, make sure they are now
              handleDrop();
          }
          pre.addEventListener("dragover", handleDragOver);
