@@ -275,7 +275,7 @@ impl<Cdf16:CDF16,
             if self.eof {
                 return DecoderResult::Processed(self.process_eof(output, output_offset));
             }
-            if self.cmd_buffer_offset >= self.cmd_buffer.1 && !self.cmd_buffer_contains_eof {
+            if self.cmd_buffer_offset >= self.cmd_buffer.1 as usize && !self.cmd_buffer_contains_eof {
                 self.cmd_buffer_offset = 0;
                 self.cmd_buffer.1 = 0; //reset the command buffer to zero
                 let mut consumed_data = [AllocatedMemoryRange::<u8, AllocU8>::default(),
@@ -330,7 +330,7 @@ impl<Cdf16:CDF16,
                     return DecoderResult::Processed(DivansResult::NeedsMoreInput);
                 }
             }
-            if self.cmd_buffer_offset >= self.cmd_buffer.1 {
+            if self.cmd_buffer_offset >= self.cmd_buffer.1 as usize{
                 if self.cmd_buffer_contains_eof {
                     return DecoderResult::Processed(self.process_eof(output, output_offset));
                 } else {

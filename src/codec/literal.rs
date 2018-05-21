@@ -570,7 +570,7 @@ impl<AllocU8:Allocator<u8>,
                         match m8 {
                             Some(ref mut m) =>
                                 self.lc.data = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes),
-                            None => self.lc.data.1 = num_bytes,
+                            None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.data_ready(LIT_CODER as u8));
@@ -590,7 +590,7 @@ impl<AllocU8:Allocator<u8>,
                         match m8 {
                             Some(ref mut m) =>
                                 self.lc.data = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes),
-                            None => self.lc.data.1 = num_bytes,
+                            None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.data_ready(LIT_CODER as u8));
@@ -626,7 +626,7 @@ impl<AllocU8:Allocator<u8>,
                         match m8 {
                             Some(ref mut m) =>
                                 self.lc.data = m.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes),
-                            None => self.lc.data.1 = num_bytes,
+                            None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
                                                                 superstate.demuxer.data_ready(LIT_CODER as u8));

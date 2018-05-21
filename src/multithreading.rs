@@ -381,7 +381,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
                     did_notify = true;
                 }
             }
-            if worker.result_multi_space_ready(self.buffer.1) {
+            if worker.result_multi_space_ready(self.buffer.1 as usize) {
                 thread_debug!(ThreadEventType::W_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
                 if eof_inside {
                     worker.set_eof_hint(); // so other side gets more aggressive about pulling
@@ -430,11 +430,11 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
         let (static_command, pm) = downcast_command(cmd);
-        self.buffer.0.slice_mut()[self.buffer.1] = static_command;
+        self.buffer.0.slice_mut()[self.buffer.1 as usize] = static_command;
         self.buffer.1 += 1;
         if pm.is_some() {
             self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), pm);
-        } else if self.buffer.1 == self.buffer.0.len() || self.buffer.1 == self.min_buffer_push_len {
+        } else if self.buffer.1 as usize == self.buffer.0.len() || self.buffer.1 as usize == self.min_buffer_push_len {
             self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None);
         }
         DivansOutputResult::Success

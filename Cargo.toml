@@ -20,9 +20,6 @@ crate-type=["cdylib", "rlib", "staticlib"]
 doc = false
 name = "divans"
 
-#[profile.release]
-#lto=true
-
 [build-dependencies]
 vergen = "0.1"
 
