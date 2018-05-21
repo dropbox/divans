@@ -276,10 +276,10 @@
              event.dataTransfer.dropEffect = 'copy';
          }
          function handleDrop(event) {
-             event.stopPropagation();
-             event.preventDefault();
              var files = input_dialog.files;
              if (event && event.dataTransfer) {
+                event.stopPropagation();
+                event.preventDefault();
                 files = event.dataTransfer.files;
              }
              for (var i =0; files && i < files.length; i+= 1) {
