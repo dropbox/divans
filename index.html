@@ -331,7 +331,7 @@
          pre.addEventListener("dragover", handleDragOver);
          pre.addEventListener("drop", handleDrop);
    };
-   var wasm_divans_bytecode = '../target/wasm32-unknown-unknown/release/divans.wasm';
+   var wasm_divans_bytecode = 'divans.wasm';
    if (WebAssembly.instantiateStreaming) {
        WebAssembly.instantiateStreaming(fetch(wasm_divans_bytecode),
           importObj).then(wasm_callback)/*.catch((function(reason){
