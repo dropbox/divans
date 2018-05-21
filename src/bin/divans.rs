@@ -72,6 +72,17 @@ macro_rules! println_stderr(
     } }
 );
 
+fn is_divans(header:&[u8]) -> bool {
+    if header.len() < divans::MAGIC_NUMBER.len() {
+        return false;
+    }
+    for (a, b) in header[..divans::MAGIC_NUMBER.len()].iter().zip(divans::MAGIC_NUMBER[..].iter()) {
+        if a != b {
+            return false;
+        }
+    }
+    return true;
+}
 
 use std::path::Path;
 fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
@@ -105,6 +116,7 @@ fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
     }
     Ok(output)
 }
+
 #[derive(Copy,Clone,Debug)]
 struct DivansErrMsg(pub divans::ErrMsg);
 impl core::fmt::Display for DivansErrMsg {
@@ -112,6 +124,7 @@ impl core::fmt::Display for DivansErrMsg {
         <divans::ErrMsg as core::fmt::Debug>::fmt(&self.0, f)
     }
 }
+
 impl error::Error for DivansErrMsg {
     fn description(&self) -> &str {
         "Divans error"
@@ -730,15 +743,30 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                                              mut ibuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
                                              mut obuffer: <ItemVecAllocator<u8> as Allocator<u8>>::AllocatedMemory,
                                              mut compress_state: Compressor,
+                                             mut additional_input: &mut [u8],
                                              free_state: &mut Fn(Compressor)->ItemVecAllocator<u8>) -> io::Result<()> {
-    let mut ilim = 0usize;
+    let mut ilim = additional_input.len();
     let mut idec_index = 0usize;
     let mut olim = 0usize;
     let mut oenc_index = 0usize;
-    loop {
+    let mut err: io::Result<()> = Ok(());
+    // read in the header and check for divans
+
+    while let Ok(_) = err {
+        let mut borrowed_ibuffer = ibuffer.slice_mut();
+        if additional_input.len() != 0 {
+            if idec_index == additional_input.len() {
+                additional_input = &mut []; // clear out the header
+                ilim = 0;
+                idec_index = 0;
+            } else {
+                borrowed_ibuffer = &mut additional_input[..];
+                ilim = borrowed_ibuffer.len();
+            }
+        }
         if idec_index == ilim {
             idec_index = 0;
-            match r.read(ibuffer.slice_mut()) {
+            match r.read(borrowed_ibuffer) {
                 Ok(count) => {
                     ilim = count;
                     if ilim == 0 {
@@ -749,25 +777,21 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                     if e.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    let mut m8 = free_state(compress_state);
-                    m8.free_cell(ibuffer);
-                    m8.free_cell(obuffer);
-                    return Err(e);
+                    err = Err(e);
+                    break;
                 }
             }
         }
         if idec_index != ilim {
-            match compress_state.encode(ibuffer.slice().split_at(ilim).0,
+            match compress_state.encode(borrowed_ibuffer.split_at(ilim).0,
                                &mut idec_index,
                                obuffer.slice_mut().split_at_mut(oenc_index).1,
                                &mut olim) {
                 DivansResult::Success => continue,
                 DivansResult::Failure(m) => {
-                    let mut m8 = free_state(compress_state);
-                    m8.free_cell(ibuffer);
-                    m8.free_cell(obuffer);
-                    return Err(io::Error::new(io::ErrorKind::Other,
+                    err = Err(io::Error::new(io::ErrorKind::Other,
                                DivansErrMsg(m)));
+                    break;
                 },
                 DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {},
             }
@@ -779,15 +803,19 @@ fn compress_raw_inner<Compressor: divans::interface::Compressor,
                     if e.kind() == io::ErrorKind::Interrupted {
                         continue;
                     }
-                    let mut m8 = free_state(compress_state);
-                    m8.free_cell(ibuffer);
-                    m8.free_cell(obuffer);
-                    return Err(e);
+                    err = Err(e);
+                    break;
                 }
             }
         }
         olim = 0;
         oenc_index = 0;
+    }
+    if let Err(e) = err {
+        let mut m8 = free_state(compress_state);
+        m8.free_cell(ibuffer);
+        m8.free_cell(obuffer);
+        return Err(e);
     }
     let mut done = false;
     while !done {
@@ -850,7 +878,35 @@ fn compress_raw<Reader:std::io::Read,
                                        w:&mut Writer,
                                        opts: divans::DivansCompressorOptions,
                                        mut buffer_size: usize,
-                                       use_brotli: bool) -> io::Result<()> {
+                                       use_brotli: bool,
+                                       force_compress: bool) -> io::Result<()> {
+    let mut basic_buffer_backing = [0u8; 16];
+    let basic_buffer: &mut[u8];
+    if force_compress {
+        basic_buffer = &mut[];
+    } else {
+        let mut ilim = 0usize;
+        loop {
+            match r.read(&mut basic_buffer_backing[ilim..]) {
+                Ok(count) => {
+                    ilim += count;
+                    if count == 0 || ilim == basic_buffer_backing.len() {
+                        basic_buffer = &mut basic_buffer_backing[..ilim];
+                        break; // we're done reading the input
+                    }
+                },
+                Err(e) => {
+                    if e.kind() == io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+    }
+    if force_compress == false && is_divans(basic_buffer) {
+        return decompress(r, w, buffer_size, basic_buffer, false, PARALLEL_AVAILABLE);
+    }
     let mut m8 = ItemVecAllocator::<u8>::default();
     if buffer_size == 0 {
         buffer_size = 4096;
@@ -883,6 +939,7 @@ fn compress_raw<Reader:std::io::Read,
         compress_raw_inner(r, w,
                            ibuffer, obuffer,
                            state,
+                           basic_buffer,
                            &mut free_closure)
     } else {
         type Factory = DivansCompressorFactoryStruct<
@@ -898,6 +955,7 @@ fn compress_raw<Reader:std::io::Read,
         compress_raw_inner(r, w,
                            ibuffer, obuffer,
                            state,
+                           basic_buffer,
                            &mut free_closure)
     }
 }
@@ -939,6 +997,7 @@ fn compress_ir<Reader:std::io::BufRead,
 fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
                                                            w:&mut Writer,
                                                            buffer_size: usize,
+                                                           additional_input: &mut[u8],
                                                            skip_crc: bool,
                                                            multithread:bool,) -> io::Result<()>
 {
@@ -955,6 +1014,7 @@ fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
         r,
         w,
         &mut state,
+        additional_input,
         buffer_size);
     state.free();
     ret
@@ -965,16 +1025,18 @@ fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
 fn decompress_generic<Reader:std::io::Read,
                       Writer:std::io::Write,
                       D:Decompressor>(r:&mut Reader,
-                                                  w:&mut Writer,
-                                                  state:&mut D,
-                                                  mut buffer_size: usize) -> io::Result<()> {
+                                      w:&mut Writer,
+                                      state:&mut D,
+                                      additional_input:&mut[u8],
+                                      mut buffer_size: usize) -> io::Result<()> {
     if buffer_size == 0 {
         buffer_size = 4096;
     }
-    let mut ibuffer = vec![0u8; buffer_size];
+    let mut ibuffer = vec![0u8; core::cmp::max(buffer_size, additional_input.len())];
+    ibuffer[..additional_input.len()].clone_from_slice(additional_input);
     let mut obuffer = vec![0u8; buffer_size];;
     let mut input_offset = 0usize;
-    let mut input_end = 0usize;
+    let mut input_end = additional_input.len();
     let mut output_offset = 0usize;
 
     loop {
@@ -1145,40 +1207,46 @@ fn recode<Reader:std::io::BufRead,
         _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Window size must be <=24 >= 10")),
     }
 }
+#[cfg(not(feature="no-stdlib"))]
+const PARALLEL_AVAILABLE: bool = true;
+#[cfg(feature="no-stdlib")]
+const PARALLEL_AVAILABLE: bool = false;
+
 fn main() {
-    let mut do_compress = false;
-    let mut raw_compress = false;
+    let mut force_compress = false;
+    let mut do_compress = true;
+    let mut raw_compress = true;
     let mut q9_5 = false;
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
-    let mut use_context_map = false;
+    let mut use_context_map = true;
     let mut use_brotli = true;
-    let mut force_stride_value = StrideSelection::PriorDisabled;
+    let mut force_stride_value = StrideSelection::UseBrotliRec;
     let mut literal_adaptation: Option<[Speed;4]> = None;
-    let mut window_size: Option<i32> = None;
-    let mut lgwin: Option<u32> = None;
-    let mut quality: Option<u16> = None;
+    let mut window_size: Option<i32> = Some(22);
+    let mut lgwin: Option<u32> = Some(22);
+    let mut quality: Option<u16> = Some(11);
     let mut stride_detection_quality: Option<u8> = None;
     let mut speed_detection_quality: Option<u8> = None;
-    let mut dynamic_context_mixing: Option<u8> = None;
+    let mut dynamic_context_mixing: Option<u8> = Some(1);
     let mut buffer_size:usize = 65_536;
     let mut force_prior_depth: Option<u8> = None;
     let mut set_low = false;
     let mut brotli_literal_byte_score: Option<u32> = None;
     let mut doubledash = false;
-    let mut prior_bitmask_detection = false;
+    let mut prior_bitmask_detection = true;
     let mut force_literal_context_mode:Option<LiteralPredictionModeNibble> = None;
     let mut skip_crc = false;
-    let mut parallel = false;
-    if env::args_os().len() > 1 {
+    let mut parallel = PARALLEL_AVAILABLE;
+    {
         for argument in env::args().skip(1) {
             if !doubledash {
                 if argument == "-d" {
-                    continue;
+                    do_compress = false;
                 }
-                if argument == "-j" {
-                    parallel = true;
+                if argument == "-serial" {
+                    parallel = false;
                     continue;
                 }
                 if argument == "-skipcrc" {
@@ -1330,6 +1398,9 @@ fn main() {
                     stride_detection_quality = Some(3);
                     continue;
                 }
+                if argument.starts_with("-nostride") {
+                    force_stride_value = StrideSelection::PriorDisabled;
+                }
                 if argument.starts_with("-stride") || argument == "-s" {
                     if argument.starts_with("-stride=") {
                         let fs = argument.trim_matches(
@@ -1365,13 +1436,19 @@ fn main() {
                     use_context_map = true;
                     continue;
                 }
+                if argument == "-nocm" || argument == "-nocontextmap" {
+                    use_context_map = false;
+                    continue;
+                }
                 if argument == "-i" {
                     do_compress = true;
+                    raw_compress = false;
                     continue;
                 }
                 if argument == "-c" {
                     do_compress = true;
                     raw_compress = true;
+                    force_compress = true;
                     continue;
                 }
                 if argument == "-nobrotli" {
@@ -1560,7 +1637,7 @@ fn main() {
                         match compress_raw(&mut input,
                                            &mut output,
                                            opts,
-                                           buffer_size, use_brotli) {
+                                           buffer_size, use_brotli, force_compress) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1570,7 +1647,7 @@ fn main() {
                                &mut output).unwrap();
                         input = buffered_input.into_inner();
                     } else {
-                        match decompress(&mut input, &mut output, buffer_size, skip_crc, parallel) {
+                        match decompress(&mut input, &mut output, buffer_size, &mut [], skip_crc, parallel) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1594,7 +1671,7 @@ fn main() {
                                        &mut io::stdout(),
                                        opts,
                                        buffer_size,
-                                       use_brotli) {
+                                       use_brotli, force_compress) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1603,7 +1680,7 @@ fn main() {
                     recode(&mut buffered_input,
                            &mut io::stdout()).unwrap()
                 } else {
-                    match decompress(&mut input, &mut io::stdout(), buffer_size, skip_crc, parallel) {
+                    match decompress(&mut input, &mut io::stdout(), buffer_size, &mut [], skip_crc, parallel) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1623,7 +1700,7 @@ fn main() {
                                    &mut io::stdout(),
                                    opts,
                                    buffer_size,
-                                   use_brotli) {
+                                   use_brotli, force_compress) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
@@ -1633,17 +1710,11 @@ fn main() {
                 recode(&mut stdin,
                        &mut io::stdout()).unwrap()
             } else {
-                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc, parallel) {
+                match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, &mut [], skip_crc, parallel) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
             }
-        }
-    } else {
-        assert_eq!(num_benchmarks, 1);
-        match decompress(&mut io::stdin(), &mut io::stdout(), buffer_size, skip_crc, parallel) {
-            Ok(_) => return,
-            Err(e) => panic!("Error {:?}", e),
         }
     }
 }
