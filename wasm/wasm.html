@@ -124,9 +124,9 @@
                          "IR below"));
                  });
          }
-         function encode(external_uint8_buffer, debug) {
+         function encode(external_uint8_buffer, obj_instance_exports, debug) {
              var list_of_encoded_buffers = [];
-             var divans = obj.instance.exports;
+             var divans = obj_instance_exports;
              var state = divans.divans_new_compressor();
              var input_ptr = divans.divans_compressor_malloc_u8(state, external_uint8_buffer.length);
              var output_ptr = divans.divans_compressor_malloc_u8(state, 4096);
@@ -183,9 +183,9 @@
              divans.divans_free_compressor(state);
              return list_of_encoded_buffers;
          }
-         function decode(external_uint8_buffer, debug) {
+         function decode(external_uint8_buffer, obj_instance_exports, debug) {
              var list_of_decoded_buffers = [];
-             var divans = obj.instance.exports;
+             var divans = obj_instance_exports;
              var state = divans.divans_new_serial_decompressor();
              var input_ptr = divans.divans_decompressor_malloc_u8(state, external_uint8_buffer.length);
              var output_ptr = divans.divans_decompressor_malloc_u8(state, 4096);
@@ -237,12 +237,12 @@
          var file_buf = new ArrayBuffer(file.length);
          new Uint8Array(file_buf).set(new Uint8Array(file));
          if (!is_divans(file)) {
-             var div_file = encode(file, should_debug);
+             var div_file = encode(file, obj.instance.exports, should_debug);
              encodeBrotliAndShowResult(file_buf, file.length);
              var dv_len = array_buffers_length(div_file);
              if (should_debug) {
                  var to_decode = array_buffers_join(div_file);
-                 var rt = decode(to_decode, should_debug);
+                 var rt = decode(to_decode, obj.instance.exports, should_debug);
                  var rt_joined = array_buffers_join(rt);
                  console.log(rt_joined.length, file.length);
                  var ok = (rt_joined.length == file.length);
@@ -258,7 +258,7 @@
              el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file.length + "bytes)"));
              el.href = blobUrl;
          } else {
-             var original_file = decode(file, should_debug);
+             var original_file = decode(file, obj.instance.exports, should_debug);
              if (original_file.length == 0) {
                  el = document.createTextNode("Divans file incompatible with this decompressor");
                  
