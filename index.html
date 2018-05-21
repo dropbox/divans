@@ -106,8 +106,7 @@
          window.brotliIR.style.visibility = "hidden";
    }
    document.addEventListener("DOMContentLoaded", init);
-   WebAssembly.instantiateStreaming(fetch('divans.wasm'),
-      importObj).then(obj => {
+   var wasm_callback = obj => {
          var should_debug = false;
          if (should_debug) {
              console.log("Imports", WebAssembly.Module.imports(obj.module));
@@ -317,7 +316,7 @@
                          if (el.firstChild) {
                              el.removeChild(el.firstChild);
                          }
-                         el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + "bytes)"));
+                         el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + " bytes)"));
                          el.href = blobUrl;
                      }
                  }
@@ -331,9 +330,22 @@
          }
          pre.addEventListener("dragover", handleDragOver);
          pre.addEventListener("drop", handleDrop);
-    })/*.catch((function(reason){
-        console.error("wasm streaming compile failed: "+reason);
-    }))*/;
+   };
+   var wasm_divans_bytecode = '../target/wasm32-unknown-unknown/release/divans.wasm';
+   if (WebAssembly.instantiateStreaming) {
+       WebAssembly.instantiateStreaming(fetch(wasm_divans_bytecode),
+          importObj).then(wasm_callback)/*.catch((function(reason){
+            console.error("wasm streaming compile failed: "+reason);
+       }))*/;
+    } else {
+         var gmodule = null;
+         fetch(wasm_divans_bytecode).then(response =>
+         response.arrayBuffer()).then(bytes =>
+             WebAssembly.compile(bytes)).then(function(module) {
+                gmodule = module;
+                return WebAssembly.instantiate(module, importObj);
+             }).then(instance => wasm_callback({instance:instance, module:gmodule}));
+    }
 </script>
 </head>
 <body>
