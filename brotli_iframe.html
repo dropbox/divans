@@ -56,6 +56,11 @@ window.onmessage = function(e) {
     inputArrBuffer = e.data;
     pmOrigin = e.origin;
     inputU8Arr = new Uint8Array(e.data);
+    if (inputU8Arr.length > 4000000) {
+       Module.arguments = ["-c"];
+       stdErr = "File size " + inputU8Arr.length + " IR too large to display.\n\n\nDownload brotli from https://github.com/dropbox/rust-brotli\nand run with -c -i to see the IR on stderr\n";
+       finishTimeout = setTimeout(finishOutput, 0);
+    }
     inputOffset = 0;
     shouldRunNow=true;
     Module.calledRun = false;
