@@ -428,7 +428,7 @@ pub trait DivansCompressorFactory<
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum BrotliCompressionSetting {
     UseInternalCommandSelection = 0,
     UseBrotliCommandSelection = 1,
@@ -440,7 +440,7 @@ impl Default for BrotliCompressionSetting {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct DivansCompressorOptions{
     pub literal_adaptation: Option<[probability::Speed;4]>,
     pub window_size: Option<i32>,

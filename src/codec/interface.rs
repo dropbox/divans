@@ -44,7 +44,7 @@ pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
 pub const NUM_ARITHMETIC_CODERS:usize = 2;
 pub const CMD_CODER: usize = 0;
 pub const LIT_CODER: usize = 1;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum StrideSelection {
     PriorDisabled = 0u8,
