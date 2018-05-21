@@ -122,17 +122,20 @@ impl error::Error for DivansErrMsg {
 #[derive(Debug)]
 pub struct ItemVec<Item:Sized+Default>(Box<[Item]>);
 impl<Item:Sized+Default> Default for ItemVec<Item> {
+    #[inline(always)]
     fn default() -> Self {
-        ItemVec(Box::new([]))
+        ItemVec(Vec::new().into_boxed_slice())
     }
 }
 impl<Item:Sized+Default> alloc::SliceWrapper<Item> for ItemVec<Item> {
+    #[inline(always)]
     fn slice(&self) -> &[Item] {
         &*self.0
     }
 }
 
 impl<Item:Sized+Default> alloc::SliceWrapperMut<Item> for ItemVec<Item> {
+    #[inline(always)]
     fn slice_mut(&mut self) -> &mut [Item] {
         &mut *self.0
     }
@@ -140,13 +143,14 @@ impl<Item:Sized+Default> alloc::SliceWrapperMut<Item> for ItemVec<Item> {
 
 impl<Item:Sized+Default> core::ops::Index<usize> for ItemVec<Item> {
     type Output = Item;
+    #[inline(always)]
     fn index(&self, index:usize) -> &Item {
         &(*self.0)[index]
     }
 }
 
 impl<Item:Sized+Default> core::ops::IndexMut<usize> for ItemVec<Item> {
-
+    #[inline(always)]
     fn index_mut(&mut self, index:usize) -> &mut Item {
         &mut (*self.0)[index]
     }
@@ -160,9 +164,7 @@ impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item>
     type AllocatedMemory = ItemVec<Item>;
     fn alloc_cell(&mut self, size:usize) ->ItemVec<Item>{
         //eprint!("A:{}\n", size);
-        let mut v = Vec::new();
-        v.resize(size, Item::default());
-        ItemVec(v.into_boxed_slice())
+        ItemVec(vec![Item::default();size].into_boxed_slice())
     }
     fn free_cell(&mut self, _bv:ItemVec<Item>) {
         //eprint!("F:{}\n", _bv.slice().len());
