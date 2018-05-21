@@ -88,7 +88,7 @@ impl<'a, T> Default for SliceReference<'a, T> {
     }
 }
 
-pub struct AllocatedMemoryPrefix<T, AllocT:Allocator<T>>(pub AllocT::AllocatedMemory, pub usize);
+pub struct AllocatedMemoryPrefix<T, AllocT:Allocator<T>>(pub AllocT::AllocatedMemory, pub u32);
 
 impl<T, AllocT: Allocator<T>> core::ops::Index<usize> for AllocatedMemoryPrefix<T, AllocT> {
    type Output = T;
@@ -105,7 +105,7 @@ impl<T, AllocT: Allocator<T>> core::ops::IndexMut<usize> for AllocatedMemoryPref
 
 impl<T, AllocT:Allocator<T>> Default for AllocatedMemoryPrefix<T, AllocT> {
     fn default() -> Self {
-        AllocatedMemoryPrefix(AllocT::AllocatedMemory::default(), 0usize)
+        AllocatedMemoryPrefix(AllocT::AllocatedMemory::default(), 0u32)
     }
 }
 impl<T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
@@ -114,7 +114,7 @@ impl<T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
         &mut self.0
     }
     pub fn components(self) -> (AllocT::AllocatedMemory, usize) {
-        (self.0, self.1)
+        (self.0, self.1 as usize)
     }
     #[inline(always)]
     pub fn max_len(&self) -> usize {
@@ -124,24 +124,24 @@ impl<T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
 
 impl<T, AllocT:Allocator<T>> SliceWrapperMut<T> for AllocatedMemoryPrefix<T, AllocT> {
     fn slice_mut(&mut self) -> &mut [T] {
-        self.0.slice_mut().split_at_mut(self.1).0
+        self.0.slice_mut().split_at_mut(self.1 as usize).0
     }
 }
 impl<T, AllocT:Allocator<T>> SliceWrapper<T> for AllocatedMemoryPrefix<T, AllocT> {
     fn slice(&self) -> &[T] {
-        self.0.slice().split_at(self.1).0
+        self.0.slice().split_at(self.1 as usize).0
     }
     fn len(&self) -> usize {
-        self.1
+        self.1 as usize
     }
 }
 impl <T, AllocT:Allocator<T>> AllocatedMemoryPrefix<T, AllocT> {
     pub fn new(m8 : &mut AllocT, len: usize) -> Self {
-        AllocatedMemoryPrefix::<T, AllocT>(m8.alloc_cell(len), len)
+        AllocatedMemoryPrefix::<T, AllocT>(m8.alloc_cell(len), len as u32)
     }
     pub fn realloc(mem : AllocT::AllocatedMemory, len: usize) -> Self {
         debug_assert!(len <= mem.slice().len(), "Must realloc to a smaller size for AllocatedMemoryPrefix");
-        AllocatedMemoryPrefix::<T, AllocT>(mem, len)
+        AllocatedMemoryPrefix::<T, AllocT>(mem, len as u32)
     }
 }
 

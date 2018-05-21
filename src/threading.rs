@@ -102,13 +102,13 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         self.result.1 != 0 || self.result_data[0].0.len() != 0
     }
     pub fn result_space_ready(&self) -> bool {
-        self.result.0.len() > self.result.1
+        self.result.0.len() > self.result.1 as usize
     }
     pub fn debug_result_commands_ready(&self) -> usize {
-        self.result.1
+        self.result.1 as usize
     }
     pub fn result_multi_space_ready(&self, space_needed:usize) -> bool {
-        self.result.0.len() - self.result.1 >= space_needed
+        self.result.0.len() - self.result.1 as usize >= space_needed
     }
     pub fn cm_space_ready(&self) -> bool {
         self.cm_len != self.cm.len()
@@ -138,8 +138,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         if self.result.1 == 0 {
             core::mem::swap(&mut self.result, cmds);
         } else {
-            self.result.0.slice_mut().split_at_mut(old_len).1.split_at_mut(cmds.len()).0.clone_from_slice(cmds.slice());
-            self.result.1 += cmds.len();
+            self.result.0.slice_mut().split_at_mut(old_len as usize).1.split_at_mut(cmds.len()).0.clone_from_slice(cmds.slice());
+            self.result.1 += cmds.len() as u32;
         }
         cmds.1 = 0;
         if let Some(context_map) = cm {
@@ -150,7 +150,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
                 core::mem::swap(&mut self.result_cm[0], context_map);
             }
         }
-        old_len
+        old_len as usize
     }
 }
 impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<AllocU8, AllocCommand> {
@@ -458,7 +458,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _output:&mut [u8],
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
-        if self.result.1 < self.result.0.len() {
+        if (self.result.1 as usize) < self.result.0.len() {
             let (static_cmd, mut opt_cm) = downcast_command(cmd);
             if let Some(ref mut cm) = opt_cm {
                 if self.result_cm[0].has_context_speeds() {
@@ -473,7 +473,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
             }
             let index = self.result.1;
             self.result.1 += 1;
-            self.result[index] = static_cmd;
+            self.result[index as usize] = static_cmd;
         } else {
             return DivansOutputResult::NeedsMoreOutput;
         }
