@@ -302,10 +302,10 @@ pub type SpeedPalette = [Speed;SPEED_PALETTE_SIZE];
 impl Speed {
     pub const ENCODER_DEFAULT_PALETTE: SpeedPalette = [
         Speed(0, 1024),
-        Speed(1, 32),
+        Speed(2, 1024),
         Speed(1, 128),
         Speed(1, 16384),
-        Speed(2, 1024),
+        Speed(2, 2048),
         Speed(4, 1024),
         Speed(8, 8192),
         Speed(16, 48),
