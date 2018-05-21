@@ -54,6 +54,7 @@
              }
              return ret;
    }
+   var pre = document.createElement('pre');
    function init() {
          var ascii_string = "";
          for (var i =0;i < file.length; i += 1) {
@@ -61,7 +62,6 @@
          }
 
          document.body.appendChild(document.createTextNode("Example file:"));
-         var pre = document.createElement('pre');
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
          document.body.appendChild(pre);
@@ -223,6 +223,61 @@
              }
          }
          document.body.appendChild(el);
+         var input_dialog = document.createElement("input");
+         function handleDragOver(event) {
+             event.stopPropagation();
+             event.preventDefault();
+             event.dataTransfer.dropEffect = 'copy';
+         }
+         function handleDrop(event) {
+             event.stopPropagation();
+             event.preventDefault();
+             var files = input_dialog.files;
+             if (event.dataTransfer) {
+                files = event.dataTransfer.files;
+             }
+             for (var i =0;i < files.length; i+= 1) {
+                 var fileReader = new FileReader();
+                 fileReader.onload = function(event) {
+                     var file_contents = new Uint8Array(event.target.result);
+                     if (is_divans(file_contents)) {
+                         pre.removeChild(pre.firstChild); // no more text
+                         pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
+                         var original_file = decode(file_contents, should_debug);
+                         if (original_file.length == 0) {
+                             el = document.createTextNode("Divans file incompatible with this decompressor");
+                         } else {
+                             var original_len = array_buffers_length(original_file);
+                             var blob = new Blob(original_file, {type:"application/binary+div"});
+                             var blobUrl = URL.createObjectURL(blob);
+                             el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file_contents.length + "bytes)"));
+                             el.href = blobUrl;
+                         }
+                     } else {
+                         pre.removeChild(pre.firstChild); // no more text
+                         pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being compressed"));
+                         var div_file = encode(file_contents, should_debug);
+                         var dv_len = array_buffers_length(div_file);
+                         var blob = new Blob(div_file, {type:"application/binary+div"});
+                         var blobUrl = URL.createObjectURL(blob);
+                         el.removeChild(el.firstChild);
+                         el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_contents.length + "bytes)"));
+                         el.href = blobUrl;
+                     }
+                 }
+                 fileReader.readAsArrayBuffer(files[i]);
+             }
+         }
+         document.body.appendChild(document.createElement("br"));
+         input_dialog.type = "file";
+         input_dialog.id = "files";
+         input_dialog.name="files[]";
+         input_dialog.multiple="";
+         
+         document.body.appendChild(input_dialog);
+         input_dialog.addEventListener('change', handleDrop, false);
+         pre.addEventListener("dragover", handleDragOver);
+         pre.addEventListener("drop", handleDrop);
     })/*.catch((function(reason){
         console.error("wasm streaming compile failed: "+reason);
     }))*/;
