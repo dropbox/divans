@@ -25,8 +25,17 @@
            0x61, 0x69, 0x6e, 0x65, 0x64, 0x2c, 0x20, 0x61, 0x6e, 0x64, 0x20, 0x68,
            0x61, 0x69, 0x6c, 0x65, 0x64, 0x20, 0x74, 0x68, 0x65, 0x20, 0x73, 0x61,
            0x6d, 0x65, 0x20, 0x6d, 0x6f, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x2e, 0x0a];
-
-   var file = array_buffers_join([helper,helper,helper,helper,helper,helper,helper]);
+   var file = new Uint8Array(10000);
+   var count = 0;
+   for (var i= 0; i + 3 < file.length; i+= 4) {
+      file[i] = i & 0xff;
+      file[i + 1] = (i >> 8) & 0xff;
+      file[i + 2] = (i >> 16) & 0xff;
+      file[i + 3] = (i >> 24) & 0xff;
+   }
+   for (var i = 0; i < helper.length; i+= 1) {
+      file[i] = helper[i];
+   }
          // example divans file
    var _example_dv_file = [0xff, 0xe5, 0x8c, 0x9f, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
              0x00, 0x00, 0x00, 0x00, 0x00, 0x2b, 0x00, 0xd5, 0xbe, 0x98, 0x84, 0x91,
@@ -61,10 +70,10 @@
    var brotliComparisonText = document.createElement('div');
    function init() {
          var ascii_string = "";
-         for (var i =0;i < file.length; i += 1) {
+         for (var i =0;i < helper.length; i += 1) {
              ascii_string += String.fromCharCode(file[i]);
          }
-
+         ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
          document.body.appendChild(document.createTextNode("Example file:"));
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
@@ -280,6 +289,8 @@
                      var file_array_buffer = event.target.result;
                      var file_contents = new Uint8Array(file_array_buffer);
                      if (is_divans(file_contents)) {
+                         brotliComparisonText.removeChild(brotliComparisonText.firstChild);
+                         brotliComparisonText.appendChild(document.createTextNode(""))
                          pre.removeChild(pre.firstChild); // no more text
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
                          var original_file = decode(file_contents, should_debug);
@@ -293,6 +304,8 @@
                              el.href = blobUrl;
                          }
                      } else {
+                         brotliComparisonText.removeChild(brotliComparisonText.firstChild);
+                         brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"))
                          pre.removeChild(pre.firstChild); // no more text
                          var file_orig_length = file_contents.length
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
