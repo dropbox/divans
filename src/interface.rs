@@ -440,7 +440,7 @@ impl Default for BrotliCompressionSetting {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DivansCompressorOptions{
     pub literal_adaptation: Option<[probability::Speed;4]>,
     pub window_size: Option<i32>,
@@ -457,4 +457,25 @@ pub struct DivansCompressorOptions{
     pub prior_depth: Option<u8>,
     pub prior_bitmask_detection: u8,
     pub brotli_literal_byte_score: Option<u32>,
+}
+impl Default for DivansCompressorOptions{
+    fn default() ->Self {
+        DivansCompressorOptions{
+            literal_adaptation: None,
+            window_size: Some(22),
+            lgblock: Some(22),
+            quality: Some(11),
+            q9_5: false,
+            force_literal_context_mode: None,
+            dynamic_context_mixing: Some(1),
+            stride_detection_quality: None,
+            speed_detection_quality: None,
+            use_brotli: BrotliCompressionSetting::default(),
+            use_context_map: true,
+            force_stride_value: StrideSelection::UseBrotliRec,
+            prior_depth: None,
+            prior_bitmask_detection: 1,
+            brotli_literal_byte_score: None,
+        }
+    }
 }
