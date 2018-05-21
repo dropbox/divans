@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+    <meta charset="utf-8" />
+    <head>
+        <title>Brotli</title>
+        <script type="text/javascript">
+var finishTimeout = null;
+var Module = {
+    arguments: ["-c", "-i"],
+    print: function(output) { document.body.appendChild(document.createTextNode(output)); },
+    printErr: function(err) { console.warn(err); },
+    stdin: function stdin() {
+        if (inputOffset >= inputU8Arr.length) {
+            return null;
+        }
+        return inputU8Arr[inputOffset++];
+    },
+    stdout: function stdout(i) {
+        outputLen += 1;
+    },
+    stderr: function stderr(i) {
+        stdErr += String.fromCharCode(i);
+        if (finishTimeout === null) {
+            finishTimeout = setTimeout(finishOutput, 0);
+        }
+    },
+    environ: {
+        RUST_BACKTRACE: "1"
+    },
+    noInitialRun: true,
+    calledRun: true
+};
+        </script>
+        <script type="text/javascript" src="./brotli.js"></script>
+        <script>
+var inputArrBuffer;
+var inputU8Arr;
+var inputOffset;
+var outputLen = 0;
+var stdErr = '';
+var pmOrigin = null;
+
+function finishOutput() {
+    parent.postMessage(["brotli-finished", outputLen, stdErr], pmOrigin,
+            [inputArrBuffer]);
+    /*console.log("FINISHED", outputLen, stdErr);*/
+    setTimeout(function() {
+        location.reload();
+    }, 10);
+}
+
+window.onmessage = function(e) {
+    if (!(e.data instanceof ArrayBuffer)) {
+        console.error("Invalid type", e);
+    }
+    inputArrBuffer = e.data;
+    pmOrigin = e.origin;
+    inputU8Arr = new Uint8Array(e.data);
+    inputOffset = 0;
+    shouldRunNow=true;
+    Module.calledRun = false;
+    window.onmessage = function(e) {
+        console.error("not ready to receive onmessage", e);
+    }
+    run();
+}
+/*
+FS.init(function() {
+            if (stdOff >= inputU8Arr.length) {
+                return -1;
+            }
+            return inputU8Arr[stdOff++];
+        },
+        function(i) {
+            stdOutput += 1;
+        },
+        function(i) {
+            stdErr += String.fromCharCode(i);
+        });
+*/
+parent.postMessage(["brotli-worker-ready"], "*");
+        </script>
+    </head>
+    <body></body>
+</html>

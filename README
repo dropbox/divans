@@ -1,0 +1,44 @@
+Building DivANS for the browser:
+================================
+
+Make sure to add this to /etc/mime.types:
+-----------
+application/wasm                      wasm
+-----------
+
+For divans, you must actually build with wasm32-unknown-unknown:
+-----------------
+cargo build --target wasm32-unknown-unknown --release
+-----------------
+
+
+Add a working brotli demo to the wasm page:
+===========================================
+
+checkout the rust-brotli repository, then:
+Add a emcc wrapper as follows
+
+Create a script 'myscript' somewhere with the followiing
+-------------
+#!/bin/bash
+emcc -s ALLOW_MEMORY_GROWTH=1 "$@"
+-------------
+chmod +x myscript
+
+Now modify ~/.cargo/config and set
+--------------
+target.wasm32-unknown-emscripten]
+linker = "/home/user/bin/myscript"
+--------------
+
+Now build with
+-------------------
+cargo build --target wasm32-unknown-emscripten --release
+-------------------
+And copy the binaries from target/wasm32-unknown-emscripten/release/brotli.wasm and brotli.js to the divans/wasm/ directory
+
+Finally, in addition to adding wasm to /etc/mime.types, you must allow CORS  in your webserver config: search for setting the "Access-Control-Allow-Origin" header.
+If you are not able to do this, you may modify brotli_wrapper.html and remove the line which sets "sandbox".
+
+
+
