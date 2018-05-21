@@ -55,6 +55,7 @@
              return ret;
    }
    var pre = document.createElement('pre');
+   var input_dialog = document.createElement("input");
    function init() {
          var ascii_string = "";
          for (var i =0;i < file.length; i += 1) {
@@ -65,9 +66,14 @@
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
          document.body.appendChild(pre);
+         input_dialog.type = "file";
+         input_dialog.id = "files";
+         input_dialog.name="files[]";
+         input_dialog.multiple="";
+         document.body.appendChild(input_dialog);
          document.body.appendChild(document.createElement('br'));
          document.body.appendChild(document.createTextNode("(Drag and drop your file in the gray area to compress)"));
-         document.body.appendChild(document.createElement('br'));
+         document.body.appendChild(document.createElement("br"));
    }
    document.addEventListener("DOMContentLoaded", init);
    WebAssembly.instantiateStreaming(fetch('../target/wasm32-unknown-unknown/release/divans.wasm'),
@@ -223,7 +229,6 @@
              }
          }
          document.body.appendChild(el);
-         var input_dialog = document.createElement("input");
          function handleDragOver(event) {
              event.stopPropagation();
              event.preventDefault();
@@ -233,10 +238,10 @@
              event.stopPropagation();
              event.preventDefault();
              var files = input_dialog.files;
-             if (event.dataTransfer) {
+             if (event && event.dataTransfer) {
                 files = event.dataTransfer.files;
              }
-             for (var i =0;i < files.length; i+= 1) {
+             for (var i =0; files && i < files.length; i+= 1) {
                  var fileReader = new FileReader();
                  fileReader.onload = function(event) {
                      var file_contents = new Uint8Array(event.target.result);
@@ -268,14 +273,11 @@
                  fileReader.readAsArrayBuffer(files[i]);
              }
          }
-         document.body.appendChild(document.createElement("br"));
-         input_dialog.type = "file";
-         input_dialog.id = "files";
-         input_dialog.name="files[]";
-         input_dialog.multiple="";
          
-         document.body.appendChild(input_dialog);
          input_dialog.addEventListener('change', handleDrop, false);
+         if (input_dialog.files && input_dialog.files.length) {
+             handleDrop();
+         }
          pre.addEventListener("dragover", handleDragOver);
          pre.addEventListener("drop", handleDrop);
     })/*.catch((function(reason){
