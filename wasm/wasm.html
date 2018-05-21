@@ -226,7 +226,6 @@
          function is_divans(file) {
              return file.length > 16 && file[0] == 255 && file[1] == 229 && file[2] == 140 && file[3] == 159;
          }
-         file = _example_dv_file;
          var file_buf = new ArrayBuffer(file.length);
          new Uint8Array(file_buf).set(new Uint8Array(file));
          if (!is_divans(file)) {
