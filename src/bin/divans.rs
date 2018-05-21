@@ -120,35 +120,35 @@ impl error::Error for DivansErrMsg {
 }
 
 #[derive(Debug)]
-pub struct ItemVec<Item:Sized+Default>(Vec<Item>);
+pub struct ItemVec<Item:Sized+Default>(Box<[Item]>);
 impl<Item:Sized+Default> Default for ItemVec<Item> {
     fn default() -> Self {
-        ItemVec(Vec::<Item>::new())
+        ItemVec(Box::new([]))
     }
 }
 impl<Item:Sized+Default> alloc::SliceWrapper<Item> for ItemVec<Item> {
     fn slice(&self) -> &[Item] {
-        &self.0[..]
+        &*self.0
     }
 }
 
 impl<Item:Sized+Default> alloc::SliceWrapperMut<Item> for ItemVec<Item> {
     fn slice_mut(&mut self) -> &mut [Item] {
-        &mut self.0[..]
+        &mut *self.0
     }
 }
 
 impl<Item:Sized+Default> core::ops::Index<usize> for ItemVec<Item> {
     type Output = Item;
     fn index(&self, index:usize) -> &Item {
-        &self.0[index]
+        &(*self.0)[index]
     }
 }
 
 impl<Item:Sized+Default> core::ops::IndexMut<usize> for ItemVec<Item> {
 
     fn index_mut(&mut self, index:usize) -> &mut Item {
-        &mut self.0[index]
+        &mut (*self.0)[index]
     }
 }
 
@@ -160,7 +160,9 @@ impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item>
     type AllocatedMemory = ItemVec<Item>;
     fn alloc_cell(&mut self, size:usize) ->ItemVec<Item>{
         //eprint!("A:{}\n", size);
-        ItemVec(vec![Item::default();size])
+        let mut v = Vec::new();
+        v.resize(size, Item::default());
+        ItemVec(v.into_boxed_slice())
     }
     fn free_cell(&mut self, _bv:ItemVec<Item>) {
         //eprint!("F:{}\n", _bv.slice().len());
@@ -230,12 +232,14 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
             literal_context_map: ItemVec::<u8>::default(),
             predmode_speed_and_distance_context_map: ItemVec::<u8>::default(),
         };
+        let mut lcm = Vec::<u8>::new();
+        let mut psdcm = Vec::<u8>::new();
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "lcontextmap") {
             for literal_context_map_val in command_vec.split_at(index + 1).1.iter() {
                 match literal_context_map_val.parse::<i64>() {
                     Ok(el) => {
                         if el <= 255 && el >= 0 {
-                            ret.literal_context_map.0.push(el as u8);
+                            lcm.push(el as u8);
                         } else {
                             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                                       literal_context_map_val.to_string() +
@@ -248,14 +252,13 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 }
             }
         }
-        ret.predmode_speed_and_distance_context_map.0.resize(PredictionModeContextMap::<ItemVec<u8> >::size_of_combined_array(0), 0u8);
-        ret.set_literal_prediction_mode(pmode);
+        psdcm.resize(PredictionModeContextMap::<ItemVec<u8> >::size_of_combined_array(0), 0u8);
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "dcontextmap") {
             for distance_context_map_val in command_vec.split_at(index + 1).1.iter() {
                 match distance_context_map_val.parse::<i64>() {
                     Ok(el) => {
                         if el <= 255 && el >= 0 {
-                            ret.predmode_speed_and_distance_context_map.0.push(el as u8);
+                            psdcm.push(el as u8);
                         } else {
                             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                                       distance_context_map_val.to_string() +
@@ -268,6 +271,9 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
                 }
             }
         }
+        ret.literal_context_map.0 = lcm.into_boxed_slice();
+        ret.predmode_speed_and_distance_context_map.0 = psdcm.into_boxed_slice();
+        ret.set_literal_prediction_mode(pmode);
         let mut mixing_values = [0;8192];
         if let Some((index, _)) = command_vec.iter().enumerate().find(|r| *r.1 == "mixingvalues") {
             let mut offset = 0usize;
@@ -484,7 +490,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         match deserialize_external_probabilities(&probs) {
             Ok(external_probs) => {
                 return Ok(Some(Command::Literal(LiteralCommand{
-                    data:ItemVec(data),
+                    data:ItemVec(data.into_boxed_slice()),
                     high_entropy:cmd == "rndins",
                     prob:external_probs,
                          })));
