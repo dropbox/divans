@@ -120,7 +120,7 @@
                      list_of_decoded_buffers[list_of_decoded_buffers.length] = new Uint8Array(produced_data);
                 }
                 output_offset_buf[0] = 0;
-             } while(ret != 0 && ret != 1);
+             } while(ret != 0 && ret != 1 && ret != 3);
              if (debug) {
                  console.log("TOTAL SIZE " + output_size);
              }
@@ -129,6 +129,9 @@
              divans.divans_decompressor_free_usize(state, input_offset_ptr, 1);
              divans.divans_decompressor_free_usize(state, output_offset_ptr, 1);
              divans.divans_free_decompressor(state);
+             if (ret != 0) {
+                 return [];
+             }
              return list_of_decoded_buffers;
          }
          function is_divans(file) {
@@ -168,6 +171,7 @@
              0xeb, 0xe1, 0xe5, 0x35, 0x2f, 0xaf, 0xc7, 0x09, 0x92, 0xe9, 0x1d, 0xab,
              0xbd, 0xd9, 0x43, 0x4f, 0xb7, 0x08, 0xff, 0xfe, 0xff, 0xfe, 0xfb, 0x53,
              0x04, 0x61, 0x6e, 0x73, 0x7e];
+             file = _example_dv_file;
          var el = document.createElement('a');
          if (!is_divans(file)) {
              var div_file = encode(file, should_debug);
@@ -191,11 +195,16 @@
              el.href = blobUrl;
          } else {
              var original_file = decode(file, should_debug);
-             var original_len = array_buffers_length(original_file);
-             var blob = new Blob(original_file, {type:"application/binary+div"});
-             var blobUrl = URL.createObjectURL(blob);
-             el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file.length + "bytes)"));
-             el.href = blobUrl;
+             if (original_file.length == 0) {
+                 el = document.createTextNode("Divans file incompatible with this decompressor");
+                 
+             } else {
+                 var original_len = array_buffers_length(original_file);
+                 var blob = new Blob(original_file, {type:"application/binary+div"});
+                 var blobUrl = URL.createObjectURL(blob);
+                 el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file.length + "bytes)"));
+                 el.href = blobUrl;
+             }
          }
          document.body.appendChild(el);
          console.log(blobUrl);
