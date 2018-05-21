@@ -1,1 +1,3 @@
 target
+wasm/brotli.js
+wasm/brotli.wasm

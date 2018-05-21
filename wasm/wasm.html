@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>DivANS</title>
+<script type="text/javascript" src="brotli_wrapper.js"></script>
 <script type="text/javascript">
     const memory = new WebAssembly.Memory({ initial: 256, maximum: 256 });
     const importObj = {
@@ -74,6 +75,18 @@
          document.body.appendChild(document.createElement('br'));
          document.body.appendChild(document.createTextNode("(Drag and drop your file in the gray area to compress)"));
          document.body.appendChild(document.createElement("br"));
+         var floatDiv = document.createElement("div");
+         floatDiv.style.float = "right";
+         floatDiv.style.textAlign = "center";
+         document.body.appendChild(floatDiv);
+         window.brotliSize = document.createElement("div");
+         floatDiv.appendChild(window.brotliSize);
+         window.brotliIR = document.createElement("textarea");
+         window.brotliIR.onclick = function() {this.select();};
+         window.brotliIR.rows = "20";
+         window.brotliIR.cols = "80";
+         floatDiv.appendChild(window.brotliIR);
+         window.brotliIR.style.visibility = "hidden";
    }
    document.addEventListener("DOMContentLoaded", init);
    WebAssembly.instantiateStreaming(fetch('../target/wasm32-unknown-unknown/release/divans.wasm'),
@@ -244,7 +257,8 @@
              for (var i =0; files && i < files.length; i+= 1) {
                  var fileReader = new FileReader();
                  fileReader.onload = function(event) {
-                     var file_contents = new Uint8Array(event.target.result);
+                     var file_array_buffer = event.target.result;
+                     var file_contents = new Uint8Array(file_array_buffer);
                      if (is_divans(file_contents)) {
                          pre.removeChild(pre.firstChild); // no more text
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
@@ -260,13 +274,22 @@
                          }
                      } else {
                          pre.removeChild(pre.firstChild); // no more text
-                         pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being compressed"));
+                         var file_orig_length = file_contents.length
+                         pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
                          var div_file = encode(file_contents, should_debug);
+                         Brotli.runBrotliDestroysInput(file_array_buffer,
+                             function(original_input, output_len, brotli_ir) {
+                                 window.brotliIR.value = brotli_ir;
+                                 window.brotliIR.style.visibility = "visible";
+                                 window.brotliSize.innerHTML = ""; // clear
+                                 window.brotliSize.appendChild(document.createTextNode(
+                                     "Brotli IR below (compressed " + output_len + "/" + file_orig_length + "bytes)"));
+                             });
                          var dv_len = array_buffers_length(div_file);
                          var blob = new Blob(div_file, {type:"application/binary+div"});
                          var blobUrl = URL.createObjectURL(blob);
                          el.removeChild(el.firstChild);
-                         el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_contents.length + "bytes)"));
+                         el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + "bytes)"));
                          el.href = blobUrl;
                      }
                  }
