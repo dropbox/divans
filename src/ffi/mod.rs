@@ -186,6 +186,18 @@ pub extern fn divans_new_decompressor() -> *mut DivansDecompressorState{
 }
 
 
+#[no_mangle]
+pub extern fn divans_new_serial_decompressor() -> *mut DivansDecompressorState{
+    unsafe {
+        divans_new_decompressor_with_custom_alloc(CAllocator{
+            alloc_func:None,
+            free_func:None,
+            opaque: core::ptr::null_mut(),
+        }, 0, 0)
+    }
+}
+
+
 #[cfg(feature="no-stdlib")]
 fn divans_new_decompressor_without_custom_alloc(_to_box: DivansDecompressorState) -> *mut DivansDecompressorState{
     panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");

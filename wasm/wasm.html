@@ -22,52 +22,175 @@
    };
    WebAssembly.instantiateStreaming(fetch('../target/wasm32-unknown-unknown/release/divans.wasm'),
       importObj).then(obj => {
-         console.log("Imports", WebAssembly.Module.imports(obj.module));
-         console.log("Exports", obj.instance.exports);
-         var divans = obj.instance.exports;
-         var state = divans.divans_new_compressor();
-         var input_ptr = divans.divans_compressor_malloc_u8(state, 4096);
-         var output_ptr = divans.divans_compressor_malloc_u8(state, 4096);
-         var input_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
-         var output_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
-         var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
-         var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
-         var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
-
-         for (var i= 0;i < 4096; i += 1) {
-             input_buf[i] = (i * 2) & 255;
+         var should_debug = false;
+         if (should_debug) {
+             console.log("Imports", WebAssembly.Module.imports(obj.module));
+             console.log("Exports", obj.instance.exports);
          }
-         var output_size = 0;
-         var ret = 0;
-         do {
-            ret = divans.divans_encode(state, input_ptr, 4096, input_offset_ptr,
-                           output_ptr, 4096, output_offset_ptr);
-            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
-            output_size += output_offset_buf[0];
-            console.log(ret);
-            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
-            if (output_offset_buf[0] !== 0) {
-                 console.log(output_offset_buf[0]);
-                 console.log(new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]));
-            }
-            output_offset_buf[0] = 0;
-         } while(ret != 0 && ret != 1);
-         do {
-            ret = divans.divans_encode_flush(state,
-                           output_ptr, 4096, output_offset_ptr);
-            var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
-            output_size += output_offset_buf[0];
-            if (output_offset_buf[0] != 0) {
-                 console.log(new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]));
-            }
-            output_offset_buf[0] = 0;
-         } while(ret != 0);
-         console.log("TOTAL SIZE " + output_size);
-         divans.divans_compressor_free_u8(state, input_ptr, 4096);
-         divans.divans_compressor_free_u8(state, output_ptr, 4096);
-         divans.divans_compressor_free_usize(state, input_offset_ptr, 1);
-         divans.divans_compressor_free_usize(state, output_offset_ptr, 1);
-         divans.divans_free_compressor(state);
+         function encode(external_uint8_buffer, debug) {
+             var list_of_encoded_buffers = [];
+             var divans = obj.instance.exports;
+             var state = divans.divans_new_compressor();
+             var input_ptr = divans.divans_compressor_malloc_u8(state, external_uint8_buffer.length);
+             var output_ptr = divans.divans_compressor_malloc_u8(state, 4096);
+             var input_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
+             var output_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
+             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
+             var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
+             var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
+             input_buf.set(external_uint8_buffer)
+             var output_size = 0;
+             var ret = 0;
+             do {
+                ret = divans.divans_encode(state, input_ptr, external_uint8_buffer.length, input_offset_ptr,
+                               output_ptr, 4096, output_offset_ptr);
+                var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
+                output_size += output_offset_buf[0];
+                if (debug) {
+                    console.log(ret);
+                }
+                var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
+                if (output_offset_buf[0] !== 0) {
+                     if (debug) {
+                          console.log(output_offset_buf[0]);
+                     }
+                     var produced_data = new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]);
+                     if (debug) {
+                          console.log(produced_data);
+                     }
+                     list_of_encoded_buffers[list_of_encoded_buffers.length] = new Uint8Array(produced_data);
+                }
+                output_offset_buf[0] = 0;
+             } while(ret != 0 && ret != 1);
+             do {
+                ret = divans.divans_encode_flush(state,
+                               output_ptr, 4096, output_offset_ptr);
+                var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
+                output_size += output_offset_buf[0];
+                if (output_offset_buf[0] != 0) {
+                     var produced_data = new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]);
+                     if (debug) {
+                         console.log(produced_data);
+                     }
+                     list_of_encoded_buffers[list_of_encoded_buffers.length] = new Uint8Array(produced_data);
+                }
+                output_offset_buf[0] = 0;
+             } while(ret != 0);
+             if (debug) {
+                 console.log("TOTAL SIZE " + output_size);
+             }
+             divans.divans_compressor_free_u8(state, input_ptr, 4096);
+             divans.divans_compressor_free_u8(state, output_ptr, 4096);
+             divans.divans_compressor_free_usize(state, input_offset_ptr, 1);
+             divans.divans_compressor_free_usize(state, output_offset_ptr, 1);
+             divans.divans_free_compressor(state);
+             return list_of_encoded_buffers;
+         }
+         function decode(external_uint8_buffer, debug) {
+             var list_of_decoded_buffers = [];
+             var divans = obj.instance.exports;
+             var state = divans.divans_new_serial_decompressor();
+             var input_ptr = divans.divans_decompressor_malloc_u8(state, external_uint8_buffer.length);
+             var output_ptr = divans.divans_decompressor_malloc_u8(state, 4096);
+             var input_offset_ptr = divans.divans_decompressor_malloc_usize(state, 1);
+             var output_offset_ptr = divans.divans_decompressor_malloc_usize(state, 1);
+             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
+             var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
+             var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
+             input_buf.set(external_uint8_buffer)
+             var output_size = 0;
+             var ret = 0;
+             do {
+                ret = divans.divans_decode(state, input_ptr, external_uint8_buffer.length, input_offset_ptr,
+                               output_ptr, 4096, output_offset_ptr);
+                var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
+                output_size += output_offset_buf[0];
+                if (debug) {
+                     console.log(ret);
+                }
+                var output_offset_buf = new Uint32Array(divans.memory.buffer,output_offset_ptr, 1);
+                if (output_offset_buf[0] !== 0) {
+                     if (debug) {
+                         console.log(output_offset_buf[0]);
+                     }
+                     var produced_data = new Uint8Array(divans.memory.buffer, output_ptr, output_offset_buf[0]);
+                     if (debug) {
+                         console.log(produced_data);
+                     }
+                     list_of_decoded_buffers[list_of_decoded_buffers.length] = new Uint8Array(produced_data);
+                }
+                output_offset_buf[0] = 0;
+             } while(ret != 0 && ret != 1);
+             if (debug) {
+                 console.log("TOTAL SIZE " + output_size);
+             }
+             divans.divans_decompressor_free_u8(state, input_ptr, 4096);
+             divans.divans_decompressor_free_u8(state, output_ptr, 4096);
+             divans.divans_decompressor_free_usize(state, input_offset_ptr, 1);
+             divans.divans_decompressor_free_usize(state, output_offset_ptr, 1);
+             divans.divans_free_decompressor(state);
+             return list_of_decoded_buffers;
+         }
+         function is_divans(file) {
+             return file.length > 16 && file[0] == 255 && file[1] == 229 && file[2] == 140 && file[3] == 159;
+         }
+         function array_buffers_length(arr) {
+             var total_length = 0;
+             for (var i = 0; i < arr.length; i++) {
+                total_length += arr[i].length;
+             }
+             return total_length;
+         }
+         function array_buffers_join(arr) {
+             var total_length = array_buffers_length(arr);
+             var ret = new Uint8Array(total_length);
+             total_length = 0;
+             for (var i = 0; i < arr.length; i++) {
+                ret.set(arr[i], total_length);
+                total_length += arr[i].length;
+             }
+             return ret;
+         }
+         var helper = [0,1,2,3,4,5,0,1,2,3,4,0,1,2,3,0,1,2,0,1,0];
+         var file = array_buffers_join([helper,helper,helper,helper,helper,helper,helper]);
+         // example divans file
+         var _example_dv_file = [255, 229, 140, 159, 0, 22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                 31, 0, 169, 60, 37, 234, 151, 174, 244, 1, 8, 26, 25, 134,
+                 16, 1, 0, 0, 118, 135, 185, 63, 29, 36, 241, 96, 171, 132, 192,
+                 205, 90, 30, 234, 195, 1, 23, 0, 12, 4, 86, 45, 21, 24, 0, 0, 178,
+                 134, 103, 236, 213, 130, 17, 77, 120, 6, 151, 247, 101, 160, 137,
+                 158, 255, 254, 255, 93, 61, 80, 10, 97, 110, 115, 126];
+         var el = document.createElement('a');
+         if (!is_divans(file)) {
+             var div_file = encode(file, should_debug);
+             var dv_len = array_buffers_length(div_file);
+             if (should_debug) {
+                 var to_decode = array_buffers_join(div_file);
+                 var rt = decode(to_decode, should_debug);
+                 var rt_joined = array_buffers_join(rt);
+                 console.log(rt_joined.length, file.length);
+                 var ok = (rt_joined.length == file.length);
+                 for (var i = 0; i < rt_joined.length && i < file.length; i++) {
+                   if (file[i] != rt_joined[i]) {
+                      ok = false;
+                   }
+                 }
+                 console.log("RT status", ok);
+             }
+             var blob = new Blob(div_file, {type:"application/binary+div"});
+             var blobUrl = URL.createObjectURL(blob);
+             el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file.length + "bytes)"));
+             el.href = blobUrl;
+         } else {
+             var original_file = decode(file, should_debug);
+             var original_len = array_buffers_length(original_file);
+             var blob = new Blob(original_file, {type:"application/binary+div"});
+             var blobUrl = URL.createObjectURL(blob);
+             el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file.length + "bytes)"));
+             el.href = blobUrl;
+         }
+         document.body.appendChild(el);
+         console.log(blobUrl);
     })/*.catch((function(reason){
         console.error("wasm streaming compile failed: "+reason);
     }))*/;
