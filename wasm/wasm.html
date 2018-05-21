@@ -99,6 +99,16 @@
              console.log("Imports", WebAssembly.Module.imports(obj.module));
              console.log("Exports", obj.instance.exports);
          }
+         function encodeBrotliAndShowResult(file_array_buffer, file_orig_length) {
+             Brotli.runBrotliDestroysInput(file_array_buffer,
+                 function(original_input, output_len, brotli_ir) {
+                     window.brotliIR.value = brotli_ir;
+                     window.brotliIR.style.visibility = "visible";
+                     window.brotliSize.innerHTML = ""; // clear
+                     window.brotliSize.appendChild(document.createTextNode(
+                         "IR below (brotli compressed " + output_len + "/" + file_orig_length + "bytes)"));
+                 });
+         }
          function encode(external_uint8_buffer, debug) {
              var list_of_encoded_buffers = [];
              var divans = obj.instance.exports;
@@ -209,9 +219,12 @@
          function is_divans(file) {
              return file.length > 16 && file[0] == 255 && file[1] == 229 && file[2] == 140 && file[3] == 159;
          }
-             file = _example_dv_file;
+         file = _example_dv_file;
+         var file_buf = new ArrayBuffer(file.length);
+         new Uint8Array(file_buf).set(new Uint8Array(file));
          if (!is_divans(file)) {
              var div_file = encode(file, should_debug);
+             encodeBrotliAndShowResult(file_buf);
              var dv_len = array_buffers_length(div_file);
              if (should_debug) {
                  var to_decode = array_buffers_join(div_file);
@@ -278,14 +291,7 @@
                          var file_orig_length = file_contents.length
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
                          var div_file = encode(file_contents, should_debug);
-                         Brotli.runBrotliDestroysInput(file_array_buffer,
-                             function(original_input, output_len, brotli_ir) {
-                                 window.brotliIR.value = brotli_ir;
-                                 window.brotliIR.style.visibility = "visible";
-                                 window.brotliSize.innerHTML = ""; // clear
-                                 window.brotliSize.appendChild(document.createTextNode(
-                                     "IR below (brotli compressed " + output_len + "/" + file_orig_length + "bytes)"));
-                             });
+                         encodeBrotliAndShowResult(file_array_buffer);
                          var dv_len = array_buffers_length(div_file);
                          var blob = new Blob(div_file, {type:"application/binary+div"});
                          var blobUrl = URL.createObjectURL(blob);
