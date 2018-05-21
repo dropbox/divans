@@ -91,7 +91,7 @@
              var output_ptr = divans.divans_compressor_malloc_u8(state, 4096);
              var input_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
              var output_offset_ptr = divans.divans_compressor_malloc_usize(state, 1);
-             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
+             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, external_uint8_buffer.length);
              var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
              var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
              input_buf.set(external_uint8_buffer)
@@ -135,7 +135,7 @@
              if (debug) {
                  console.log("TOTAL SIZE " + output_size);
              }
-             divans.divans_compressor_free_u8(state, input_ptr, 4096);
+             divans.divans_compressor_free_u8(state, input_ptr, external_uint8_buffer.length);
              divans.divans_compressor_free_u8(state, output_ptr, 4096);
              divans.divans_compressor_free_usize(state, input_offset_ptr, 1);
              divans.divans_compressor_free_usize(state, output_offset_ptr, 1);
@@ -150,7 +150,7 @@
              var output_ptr = divans.divans_decompressor_malloc_u8(state, 4096);
              var input_offset_ptr = divans.divans_decompressor_malloc_usize(state, 1);
              var output_offset_ptr = divans.divans_decompressor_malloc_usize(state, 1);
-             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, 4096);
+             var input_buf = new Uint8Array(divans.memory.buffer, input_ptr, external_uint8_buffer.length);
              var output_buf = new Uint8Array(divans.memory.buffer, output_ptr, 4096);
              var input_offset_buf = new Uint32Array(divans.memory.buffer, input_offset_ptr, 1);
              input_buf.set(external_uint8_buffer)
@@ -180,7 +180,7 @@
              if (debug) {
                  console.log("TOTAL SIZE " + output_size);
              }
-             divans.divans_decompressor_free_u8(state, input_ptr, 4096);
+             divans.divans_decompressor_free_u8(state, input_ptr, external_uint8_buffer.length);
              divans.divans_decompressor_free_u8(state, output_ptr, 4096);
              divans.divans_decompressor_free_usize(state, input_offset_ptr, 1);
              divans.divans_decompressor_free_usize(state, output_offset_ptr, 1);
