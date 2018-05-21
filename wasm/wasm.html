@@ -58,6 +58,7 @@
    var el = document.createElement('a');
    var pre = document.createElement('pre');
    var input_dialog = document.createElement("input");
+   var brotliComparisonText = document.createElement('div');
    function init() {
          var ascii_string = "";
          for (var i =0;i < file.length; i += 1) {
@@ -78,8 +79,11 @@
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(el);
          document.body.appendChild(document.createElement('br'));
+         brotliComparisonText.appendChild(document.createTextNode(""));
+         document.body.appendChild(brotliComparisonText)
+         document.body.appendChild(document.createElement("br"));
          var floatDiv = document.createElement("div");
-         floatDiv.style.float = "right";
+         floatDiv.style.float = "left";
          floatDiv.style.textAlign = "center";
          document.body.appendChild(floatDiv);
          window.brotliSize = document.createElement("div");
@@ -88,6 +92,7 @@
          window.brotliIR.onclick = function() {this.select();};
          window.brotliIR.rows = "20";
          window.brotliIR.cols = "80";
+         window.brotliIR.wrap = "off"
          floatDiv.appendChild(window.brotliIR);
          window.brotliIR.style.visibility = "hidden";
    }
@@ -105,8 +110,10 @@
                      window.brotliIR.value = brotli_ir;
                      window.brotliIR.style.visibility = "visible";
                      window.brotliSize.innerHTML = ""; // clear
+                     brotliComparisonText.removeChild(brotliComparisonText.firstChild);
+                     brotliComparisonText.appendChild(document.createTextNode("[Brotli compressed " + output_len + "/" + file_orig_length + " bytes]"))
                      window.brotliSize.appendChild(document.createTextNode(
-                         "IR below (brotli compressed " + output_len + "/" + file_orig_length + "bytes)"));
+                         "IR below"));
                  });
          }
          function encode(external_uint8_buffer, debug) {
@@ -224,7 +231,7 @@
          new Uint8Array(file_buf).set(new Uint8Array(file));
          if (!is_divans(file)) {
              var div_file = encode(file, should_debug);
-             encodeBrotliAndShowResult(file_buf);
+             encodeBrotliAndShowResult(file_buf, file.length);
              var dv_len = array_buffers_length(div_file);
              if (should_debug) {
                  var to_decode = array_buffers_join(div_file);
@@ -283,7 +290,7 @@
                              var original_len = array_buffers_length(original_file);
                              var blob = new Blob(original_file, {type:"application/binary+div"});
                              var blobUrl = URL.createObjectURL(blob);
-                             el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file_contents.length + "bytes)"));
+                             el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file_contents.length + " bytes)"));
                              el.href = blobUrl;
                          }
                      } else {
@@ -291,11 +298,13 @@
                          var file_orig_length = file_contents.length
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
                          var div_file = encode(file_contents, should_debug);
-                         encodeBrotliAndShowResult(file_array_buffer);
+                         encodeBrotliAndShowResult(file_array_buffer, file_orig_length);
                          var dv_len = array_buffers_length(div_file);
                          var blob = new Blob(div_file, {type:"application/binary+div"});
                          var blobUrl = URL.createObjectURL(blob);
-                         el.removeChild(el.firstChild);
+                         if (el.firstChild) {
+                             el.removeChild(el.firstChild);
+                         }
                          el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + "bytes)"));
                          el.href = blobUrl;
                      }
