@@ -24,20 +24,23 @@
           STACK_MAX: memory.buffer.byteLength
       }
    };
-   var workers = [];
-   let num_workers = 6;
-   function setupWorkers() {
-      if (workers.length !== 0) {
-          return;
-      }
-      if ( navigator.userAgent.match(/Android/i)
+   function isMobile() {
+       return ( navigator.userAgent.match(/Android/i)
            || navigator.userAgent.match(/webOS/i)
            || navigator.userAgent.match(/iPhone/i)
            || navigator.userAgent.match(/iPad/i)
            || navigator.userAgent.match(/iPod/i)
            || navigator.userAgent.match(/BlackBerry/i)
            || navigator.userAgent.match(/Windows Phone/i)
-      ) {
+      );
+   }
+   var workers = [];
+   let num_workers = 6;
+   function setupWorkers() {
+      if (workers.length !== 0) {
+          return;
+      }
+      if (isMobile()) {
         return;
       }
       for (var i = 0; i < num_workers; i += 1) {
@@ -220,7 +223,11 @@
              }
              for (var file_i =0; files && file_i < files.length; file_i+= 1) {
                  help_text.removeChild(help_text.firstChild);
-                 help_text.appendChild(document.createTextNode("Processing " + files[file_i].name + ":"));
+                 var mobile_text = "";
+                 if (isMobile()) {
+                    mobile_text = " Using simplified compressor on mobile: expect larger files.";
+                 }
+                 help_text.appendChild(document.createTextNode("Processing " + files[file_i].name + ":" + mobile_text));
                  job_id += 1;
                  var fileReader = new FileReader();
                  fileReaderCallback = function(event) {
