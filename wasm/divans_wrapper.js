@@ -290,7 +290,6 @@ desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "q9_5": 1,
    "window_size": 22,
-   "lgblock": 18,
    "force_literal_context_mode": 3, // sign
    "literal_adaptation": 8, // 16,8192
    "brotli_literal_byte_score": 40,
