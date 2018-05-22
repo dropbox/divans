@@ -35,7 +35,19 @@
       );
    }
    var workers = [];
-   let num_workers = 6;
+   let num_workers = 1;
+   function getParam(n) {
+     var where = location.search.split('&' + n + '=')[1];
+     if (!where) where = location.search.split('?' + n + '=')[1];
+     if (where !== undefined) {
+        return decodeURIComponent(where.split('&')[0]);
+     }
+     return null;
+   }
+   var desired_workers = getParam("workers");
+   if (desired_workers !== null) {
+       num_workers = parseInt(desired_workers)
+   }
    function setupWorkers() {
       if (workers.length !== 0) {
           return;
@@ -224,20 +236,13 @@
              for (var file_i =0; files && file_i < files.length; file_i+= 1) {
                  help_text.removeChild(help_text.firstChild);
                  var mobile_text = "";
-                 if (isMobile()) {
+                 if (workers.length === 0) {
                     mobile_text = " Using simplified compressor on mobile: expect larger files.";
                  }
                  help_text.appendChild(document.createTextNode("Processing " + files[file_i].name + ":" + mobile_text));
                  job_id += 1;
                  var fileReader = new FileReader();
-                 fileReaderCallback = function(event) {
-                     var file_array_buffer = event.target.result;
-                     var file_contents = new Uint8Array(file_array_buffer);
-                     if (file_contents.length > 2048 * 1024 && size_limit.style.display == "none") {
-                        size_limit.style.display = "block";
-                        window.setTimeout(0, function() {fileReaderCallback(event)});
-                        return;
-                     }
+                 function fileContentsCallback(file_array_buffer, file_contents) {
                      if (is_divans(file_contents)) {
                          brotliComparisonText.removeChild(brotliComparisonText.firstChild);
                          brotliComparisonText.appendChild(document.createTextNode(""))
@@ -271,10 +276,12 @@
                                        approve_div_file(u8blob);
                                    }
                                 }
-                         };                                                   
-                         for (var worker_id = 0; worker_id < workers.length; worker_id += 1) {
-                             workers[worker_id].onmessage = msgHandler;
-                             workers[worker_id].postMessage([job_id, file_contents, worker_id]);
+                         };
+                         if (workers.length !== 0) {
+                             for (var worker_id = 0; worker_id < 8; worker_id += 1) {
+                                 workers[worker_id % workers.length].onmessage = msgHandler;
+                                 workers[worker_id % workers.length].postMessage([job_id, file_contents, worker_id]);
+                             }
                          }
                          brotliComparisonText.removeChild(brotliComparisonText.firstChild);
                          brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"))
@@ -302,6 +309,16 @@
 
                          encodeBrotliAndShowResult(file_array_buffer, file_orig_length);
                      }
+                 };
+                 fileReaderCallback = function(event) {
+                     var file_array_buffer = event.target.result;
+                     var file_contents = new Uint8Array(file_array_buffer);
+                     if (file_contents.length > 2048 * 1024 && size_limit.style.display == "none") {
+                        size_limit.style.display = "block";
+                        window.setTimeout(function() {fileContentsCallback(file_array_buffer, file_contents);}, 0);
+                        return;
+                     }
+                     fileContentsCallback(file_array_buffer, file_contents);
                  }
                  fileReader.onload = fileReaderCallback;
                  fileReader.readAsArrayBuffer(files[file_i]);
