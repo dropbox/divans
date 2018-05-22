@@ -283,11 +283,7 @@
                                  workers[worker_id % workers.length].postMessage([job_id, file_contents, worker_id]);
                              }
                          }
-                         brotliComparisonText.removeChild(brotliComparisonText.firstChild);
-                         brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"))
-                         pre.removeChild(pre.firstChild); // no more text
                          var file_orig_length = file_contents.length
-                         pre.appendChild(document.createTextNode("Your Custom file, length " + file_orig_length + " is being compressed"));
                          var opts = {};
                          if (workers.length != 0) {
                             opts['quality'] = 9;
@@ -313,12 +309,14 @@
                  fileReaderCallback = function(event) {
                      var file_array_buffer = event.target.result;
                      var file_contents = new Uint8Array(file_array_buffer);
+                     brotliComparisonText.removeChild(brotliComparisonText.firstChild);
+                     brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"))
+                     pre.removeChild(pre.firstChild); // no more text
+                     pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being compressed"));
                      if (file_contents.length > 2048 * 1024 && size_limit.style.display == "none") {
                         size_limit.style.display = "block";
-                        window.setTimeout(function() {fileContentsCallback(file_array_buffer, file_contents);}, 0);
-                        return;
                      }
-                     fileContentsCallback(file_array_buffer, file_contents);
+                     window.setTimeout(function() {fileContentsCallback(file_array_buffer, file_contents);}, 0);
                  }
                  fileReader.onload = fileReaderCallback;
                  fileReader.readAsArrayBuffer(files[file_i]);
