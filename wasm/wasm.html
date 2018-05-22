@@ -115,6 +115,10 @@
    var help_text = document.createElement('div');
    var size_limit = document.createElement('b');
    var input_dialog = document.createElement("input");
+   var progress_bar = document.createElement("img");
+   progress_bar.src="progress.gif";
+   progress_bar.style.height="40px"
+   progress_bar.style.display="none";
    var brotliComparisonText = document.createElement('div');
    function init() {
          var ascii_string = "";
@@ -122,7 +126,7 @@
              ascii_string += String.fromCharCode(file[i]);
          }
          ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
-         help_text.appendChild(document.createTextNode("Example file:"));
+         help_text.appendChild(document.createTextNode("Example file; Drag and drop any file less than 2MiB above to compress/Decompress."));
          document.body.appendChild(help_text);
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
@@ -132,8 +136,8 @@
          input_dialog.name="files[]";
          input_dialog.multiple="";
          document.body.appendChild(input_dialog);
-         document.body.appendChild(document.createElement('br'));
-         document.body.appendChild(document.createTextNode("Drag and drop any file less than 2MiB above to compress/Decompress."));
+         document.body.appendChild(document.createElement("br"));
+         document.body.appendChild(progress_bar);
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(size_limit);
          size_limit.style.display = "none";
@@ -226,6 +230,8 @@
              event.dataTransfer.dropEffect = 'copy';
          }
          function handleDrop(event) {
+             progress_bar.style.float = "left";
+             progress_bar.style.display="block";
              window.brotliIR.value = "Computing IR..."
              var files = input_dialog.files;
              if (event && event.dataTransfer) {
@@ -249,6 +255,8 @@
                          pre.removeChild(pre.firstChild); // no more text
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
                          var original_file = decode(file_contents, should_debug);
+                         progress_bar.style.display="none";
+                         size_limit.style.display = "none";
                          if (original_file.length == 0) {
                              el = document.createTextNode("Divans file incompatible with this decompressor");
                          } else {
@@ -289,6 +297,8 @@
                             opts['quality'] = 9;
                          }
                          var div_file = encode(file_contents, obj.instance.exports, should_debug, opts);
+                         progress_bar.style.display="none";
+                         size_limit.style.display = "none";
                          approve_div_file = function (div_file) {
                              var dv_len = array_buffers_length(div_file);
                              var blob = new Blob(div_file, {type:"application/binary+div"});
