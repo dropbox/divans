@@ -59,7 +59,7 @@
           try {
               if (window.Worker) {
                   var wrk = new window.Worker('divans_wrapper.js')
-                  wrk.onmessage = function(event) {console.log(event, "FALLBAC");};
+                  wrk.onmessage = function(event) {console.log(event, "FALLBACK");};
                   workers[workers.length] = wrk;
               }
           } catch(e) {
@@ -115,6 +115,11 @@
    var help_text = document.createElement('div');
    var size_limit = document.createElement('b');
    var input_dialog = document.createElement("input");
+   var progress_bar = document.createElement("img");
+   var quality_dialog;
+   progress_bar.src="progress.gif";
+   progress_bar.style.height="40px"
+   progress_bar.style.display="none";
    var brotliComparisonText = document.createElement('div');
    function init() {
          var ascii_string = "";
@@ -122,8 +127,11 @@
              ascii_string += String.fromCharCode(file[i]);
          }
          ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
-         help_text.appendChild(document.createTextNode("Example file:"));
+         help_text.appendChild(document.createTextNode("Example file; Drag and drop any file less than 2MiB above to compress/Decompress."));
+         quality_dialog = makeQualityDialog();
+         
          document.body.appendChild(help_text);
+         document.body.appendChild(quality_dialog)
          pre.style.backgroundColor = "#EBECE4";
          pre.appendChild(document.createTextNode(ascii_string));
          document.body.appendChild(pre);
@@ -132,8 +140,8 @@
          input_dialog.name="files[]";
          input_dialog.multiple="";
          document.body.appendChild(input_dialog);
-         document.body.appendChild(document.createElement('br'));
-         document.body.appendChild(document.createTextNode("Drag and drop any file less than 2MiB above to compress/Decompress."));
+         document.body.appendChild(document.createElement("br"));
+         document.body.appendChild(progress_bar);
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(size_limit);
          size_limit.style.display = "none";
@@ -187,7 +195,7 @@
          var file_buf = new ArrayBuffer(file.length);
          new Uint8Array(file_buf).set(new Uint8Array(file));
          if (!is_divans(file)) {
-             var div_file = encode(file, obj.instance.exports, should_debug);
+             var div_file = encode(file, obj.instance.exports, should_debug, {});
              encodeBrotliAndShowResult(file_buf, file.length);
              var dv_len = array_buffers_length(div_file);
              if (should_debug) {
@@ -226,13 +234,18 @@
              event.dataTransfer.dropEffect = 'copy';
          }
          function handleDrop(event) {
-             window.brotliIR.value = "Computing IR..."
              var files = input_dialog.files;
              if (event && event.dataTransfer) {
                  event.stopPropagation();
                  event.preventDefault();
                 files = event.dataTransfer.files;
              }
+             if (files.length === 0) {
+                 return;
+             }
+             progress_bar.style.float = "left";
+             progress_bar.style.display="block";
+             window.brotliIR.value = "Computing IR..."
              for (var file_i =0; files && file_i < files.length; file_i+= 1) {
                  help_text.removeChild(help_text.firstChild);
                  var mobile_text = "";
@@ -248,7 +261,9 @@
                          brotliComparisonText.appendChild(document.createTextNode(""))
                          pre.removeChild(pre.firstChild); // no more text
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
-                         var original_file = decode(file_contents, should_debug);
+                         var original_file = decode(file_contents, obj.instance.exports, should_debug);
+                         progress_bar.style.display="none";
+                         size_limit.style.display = "none";
                          if (original_file.length == 0) {
                              el = document.createTextNode("Divans file incompatible with this decompressor");
                          } else {
@@ -272,7 +287,6 @@
                                        console.log("SHOULD APPROVE " + blob_len + " vs " +cur_best_length);
                                    }
                                    if (blob_len < cur_best_length) {
-                                       cur_best_length = blob_len;
                                        approve_div_file(u8blob);
                                    }
                                 }
@@ -280,7 +294,7 @@
                          if (workers.length !== 0) {
                              for (var worker_id = 0; worker_id < 8; worker_id += 1) {
                                  workers[worker_id % workers.length].onmessage = msgHandler;
-                                 workers[worker_id % workers.length].postMessage([job_id, file_contents, worker_id]);
+                                 workers[worker_id % workers.length].postMessage([job_id, file_contents, worker_id, max_quality]);
                              }
                          }
                          var file_orig_length = file_contents.length
@@ -289,8 +303,11 @@
                             opts['quality'] = 9;
                          }
                          var div_file = encode(file_contents, obj.instance.exports, should_debug, opts);
+                         progress_bar.style.display="none";
+                         size_limit.style.display = "none";
                          approve_div_file = function (div_file) {
                              var dv_len = array_buffers_length(div_file);
+                             cur_best_length = dv_len;
                              var blob = new Blob(div_file, {type:"application/binary+div"});
                              var blobUrl = URL.createObjectURL(blob);
                              if (el.firstChild) {
@@ -299,9 +316,7 @@
                              el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + " bytes)"));
                              el.href = blobUrl;
                          }
-                         if(cur_best_length == file_orig_length || div_file.length < cur_best_length) {
-                             approve_div_file(div_file);
-                         }
+                         approve_div_file(div_file);
 
                          encodeBrotliAndShowResult(file_array_buffer, file_orig_length);
                      }
@@ -322,7 +337,7 @@
                  fileReader.readAsArrayBuffer(files[file_i]);
              }
          }
-         
+         quality_dialog.addEventListener("change", function(event) {set_max_quality(parseFloat(quality_dialog.value)); handleDrop();});
          input_dialog.addEventListener('change', handleDrop, false);
          if (input_dialog.files && input_dialog.files.length) {
              setupWorkers(); // may not be ready yet, make sure they are now

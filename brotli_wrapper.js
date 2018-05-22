@@ -38,6 +38,8 @@ function processBrotliNow(arrayBuf, finishedFunc) {
     brotliFinished = finishedFunc;
     brotliReady = false;
     setTimeout(function() {
+        
+        brotliWindow.postMessage(max_quality, "*");
         brotliWindow.postMessage(arrayBuf, "*", [arrayBuf]);
     }, 0);
 }
