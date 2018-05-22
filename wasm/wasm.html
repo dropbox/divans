@@ -59,7 +59,7 @@
           try {
               if (window.Worker) {
                   var wrk = new window.Worker('divans_wrapper.js')
-                  wrk.onmessage = function(event) {console.log(event, "FALLBAC");};
+                  wrk.onmessage = function(event) {console.log(event, "FALLBACK");};
                   workers[workers.length] = wrk;
               }
           } catch(e) {
@@ -254,7 +254,7 @@
                          brotliComparisonText.appendChild(document.createTextNode(""))
                          pre.removeChild(pre.firstChild); // no more text
                          pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being decompressed"));
-                         var original_file = decode(file_contents, should_debug);
+                         var original_file = decode(file_contents, obj.instance.exports, should_debug);
                          progress_bar.style.display="none";
                          size_limit.style.display = "none";
                          if (original_file.length == 0) {
