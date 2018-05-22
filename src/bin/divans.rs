@@ -1400,6 +1400,7 @@ fn main() {
                 }
                 if argument.starts_with("-nostride") {
                     force_stride_value = StrideSelection::PriorDisabled;
+                    continue;
                 }
                 if argument.starts_with("-stride") || argument == "-s" {
                     if argument.starts_with("-stride=") {
