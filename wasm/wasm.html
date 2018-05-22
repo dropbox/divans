@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>DivANS</title>
+<link rel="icon" href="favicon.ico?v=b" type="image/x-icon"/>
+<link rel="shortcut icon" href="favicon.ico" type="image/x-icon"/>
 <script type="text/javascript" src="brotli_wrapper.js"></script>
 <script type="text/javascript" src="divans_wrapper.js"></script>
 <script type="text/javascript">
@@ -118,7 +120,6 @@
    var progress_bar = document.createElement("img");
    var quality_dialog;
    progress_bar.src="progress.gif";
-   progress_bar.style.height="40px"
    progress_bar.style.display="none";
    var brotliComparisonText = document.createElement('div');
    function init() {
@@ -182,6 +183,8 @@
          function encodeBrotliAndShowResult(file_array_buffer, file_orig_length) {
              Brotli.runBrotliDestroysInput(file_array_buffer,
                  function(original_input, output_len, brotli_ir) {
+                     progress_bar.style.display="none";
+                     size_limit.style.display = "none";
                      setupWorkers();
                      window.brotliIR.value = brotli_ir;
                      window.brotliIR.style.visibility = "visible";
@@ -303,8 +306,6 @@
                             opts['quality'] = 9;
                          }
                          var div_file = encode(file_contents, obj.instance.exports, should_debug, opts);
-                         progress_bar.style.display="none";
-                         size_limit.style.display = "none";
                          approve_div_file = function (div_file) {
                              var dv_len = array_buffers_length(div_file);
                              cur_best_length = dv_len;
