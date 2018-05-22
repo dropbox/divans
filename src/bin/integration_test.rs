@@ -133,8 +133,9 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             stride_detection_quality: None,
                         },
                         buffer_size,
+                        use_brotli,
                         true,
-                        use_brotli).unwrap();
+                        true).unwrap();
     super::decompress(&mut dv_buffer, &mut rt_buffer, buffer_size, &mut[], false, MULTI).unwrap();
     assert_eq!(rt_buffer.data, in_buffer.data);
     if ratio != 0.0 {

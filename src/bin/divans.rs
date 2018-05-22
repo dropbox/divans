@@ -879,7 +879,8 @@ fn compress_raw<Reader:std::io::Read,
                                        opts: divans::DivansCompressorOptions,
                                        mut buffer_size: usize,
                                        use_brotli: bool,
-                                       force_compress: bool) -> io::Result<()> {
+                                       force_compress: bool,
+                                       multithread: bool) -> io::Result<()> {
     let mut basic_buffer_backing = [0u8; 16];
     let basic_buffer: &mut[u8];
     if force_compress {
@@ -905,7 +906,7 @@ fn compress_raw<Reader:std::io::Read,
         }
     }
     if force_compress == false && is_divans(basic_buffer) {
-        return decompress(r, w, buffer_size, basic_buffer, false, PARALLEL_AVAILABLE);
+        return decompress(r, w, buffer_size, basic_buffer, false, multithread);
     }
     let mut m8 = ItemVecAllocator::<u8>::default();
     if buffer_size == 0 {
@@ -1639,7 +1640,7 @@ fn main() {
                         match compress_raw(&mut input,
                                            &mut output,
                                            opts,
-                                           buffer_size, use_brotli, force_compress) {
+                                           buffer_size, use_brotli, force_compress, parallel) {
                             Ok(_) => {}
                             Err(e) => panic!("Error {:?}", e),
                         }
@@ -1673,7 +1674,7 @@ fn main() {
                                        &mut io::stdout(),
                                        opts,
                                        buffer_size,
-                                       use_brotli, force_compress) {
+                                       use_brotli, force_compress, parallel) {
                         Ok(_) => {}
                         Err(e) => panic!("Error {:?}", e),
                     }
@@ -1702,7 +1703,7 @@ fn main() {
                                    &mut io::stdout(),
                                    opts,
                                    buffer_size,
-                                   use_brotli, force_compress) {
+                                   use_brotli, force_compress, parallel) {
                     Ok(_) => return,
                     Err(e) => panic!("Error {:?}", e),
                 }
