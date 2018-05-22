@@ -1244,6 +1244,7 @@ fn main() {
             if !doubledash {
                 if argument == "-d" {
                     do_compress = false;
+                    continue;
                 }
                 if argument == "-serial" {
                     parallel = false;
