@@ -128,7 +128,7 @@
              ascii_string += String.fromCharCode(file[i]);
          }
          ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
-         help_text.appendChild(document.createTextNode("Example file; Drag and drop any file less than 2MiB above to compress/Decompress."));
+         help_text.appendChild(document.createTextNode("Example file; Choose a file less than 2MiB above to compress/decompress."));
          quality_dialog = makeQualityDialog();
          
          document.body.appendChild(help_text);
@@ -146,7 +146,8 @@
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(size_limit);
          size_limit.style.display = "none";
-         size_limit.appendChild(document.createTextNode("This tool only supports files <= 2MB. Trying anyway..."));
+         size_limit.appendChild(document.createTextNode("Browser-based DivANS only supports files < 2MB. Trying anyway..."));
+         size_limit.appendChild(document.createElement('br'));
          var project_link = document.createElement('a');
          project_link.href = "https://github.com/dropbox/divans";
          project_link.target = "_blank";
@@ -156,7 +157,7 @@
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(el);
          document.body.appendChild(document.createElement('br'));
-         brotliComparisonText.appendChild(document.createTextNode(""));
+         brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"));
          document.body.appendChild(brotliComparisonText)
          document.body.appendChild(document.createElement("br"));
          var floatDiv = document.createElement("div");
@@ -165,13 +166,15 @@
          document.body.appendChild(floatDiv);
          window.brotliSize = document.createElement("div");
          floatDiv.appendChild(window.brotliSize);
+         window.brotliSize.appendChild(document.createTextNode("IR below"));
          window.brotliIR = document.createElement("textarea");
          window.brotliIR.onclick = function() {this.select();};
          window.brotliIR.rows = "20";
          window.brotliIR.cols = "80";
          window.brotliIR.wrap = "off"
          floatDiv.appendChild(window.brotliIR);
-         window.brotliIR.style.visibility = "hidden";
+         //window.brotliIR.style.visibility = "hidden";
+         window.brotliIR.value = "window 22 0 0 0\nprediction sign lcontextmap 0\nltype 0 0\ninsert 2 4974\ndict 5 word 4,649 736e6f77 func 6 20736e6f77\ninsert 3 65642c\ndict 5 word 4,288 7261696e func 6 207261696e\ncopy 4 from 8\ndict 5 word 12,552 616e64206869732077696665 func 48 616e642068\ncopy 2 from 12\ninsert 1 6c\ncopy 2 from 12\ndict 10 word 9,648 7468652073616d6520 func 6 207468652073616d6520\ndict 8 word 7,352 6d6f726e696e67 func 20 6d6f726e696e672e\n";
    }
    document.addEventListener("DOMContentLoaded", init);
    var wasm_callback = obj => {
@@ -273,6 +276,9 @@
                              var original_len = array_buffers_length(original_file);
                              var blob = new Blob(original_file, {type:"application/binary+div"});
                              var blobUrl = URL.createObjectURL(blob);
+                             if (el.firstChild) {
+                                 el.removeChild(el.firstChild);
+                             }
                              el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file_contents.length + " bytes)"));
                              el.href = blobUrl;
                          }
