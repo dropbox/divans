@@ -128,7 +128,7 @@
              ascii_string += String.fromCharCode(file[i]);
          }
          ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
-         help_text.appendChild(document.createTextNode("Example file; Drag and drop any file less than 2MiB above to compress/Decompress."));
+         help_text.appendChild(document.createTextNode("Example file; Choose a file less than 2MiB above to compress/decompress."));
          quality_dialog = makeQualityDialog();
          
          document.body.appendChild(help_text);
@@ -273,6 +273,9 @@
                              var original_len = array_buffers_length(original_file);
                              var blob = new Blob(original_file, {type:"application/binary+div"});
                              var blobUrl = URL.createObjectURL(blob);
+                             if (el.firstChild) {
+                                 el.removeChild(el.firstChild);
+                             }
                              el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file_contents.length + " bytes)"));
                              el.href = blobUrl;
                          }
