@@ -264,6 +264,7 @@ options_map = { // taken from ffi.h
 desired_option_list[desired_option_list.length] = {
    "quality": 2,
    "window_size": 22,
+   "lgblock": 22,
    "force_literal_context_mode": 0, //  lsb
    "literal_adaptation": 0, // just serialize the bits
    "brotli_literal_byte_score": 840,
@@ -271,6 +272,8 @@ desired_option_list[desired_option_list.length] = {
 desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "window_size": 22,
+   "lgblock": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 0, // lsb
    "literal_adaptation": 8, // 16,8192
    "brotli_literal_byte_score": 440, // ignored
@@ -279,6 +282,8 @@ desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "q9_5": 1,
    "window_size": 22,
+   "lgblock": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 3, // sign
    "literal_adaptation": 9, // 32,4096
    "brotli_literal_byte_score": 140,
@@ -287,13 +292,16 @@ desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "q9_5": 1,
    "window_size": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 3, // sign
    "literal_adaptation": 8, // 16,8192
    "brotli_literal_byte_score": 40,
 };
 desired_option_list[desired_option_list.length] = {
    "quality": 11,
-   "window_size": 18,
+   "window_size": 22,
+   "lgblock": 18,
+   "dynamic_context_mixing":2,
    "literal_adaptation": 8,
    "brotli_literal_byte_score": 840, // ignored
 };
@@ -301,6 +309,8 @@ desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "q9_5": 1,
    "window_size": 22,
+   "lgblock": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 0,
    "literal_adaptation": 1, // 2,1024
    "brotli_literal_byte_score": 340,
@@ -308,6 +318,8 @@ desired_option_list[desired_option_list.length] = {
 desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "window_size": 22,
+   "lgblock": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 0, //  lsb
    "literal_adaptation": 3, // 1,16384
    "brotli_literal_byte_score": 540, // ignored
@@ -316,6 +328,8 @@ desired_option_list[desired_option_list.length] = {
    "quality": 11,
    "q9_5": 1,
    "window_size": 22,
+   "lgblock": 22,
+   "dynamic_context_mixing":2,
    "force_literal_context_mode": 0, //  lsb
    "literal_adaptation": 8, // 1,16384
    "brotli_literal_byte_score": 40,

@@ -54,7 +54,7 @@
       if (workers.length !== 0) {
           return;
       }
-      if (isMobile()) {
+      if (isMobile() && desired_workers) {
         return;
       }
       for (var i = 0; i < num_workers; i += 1) {
