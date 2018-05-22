@@ -287,7 +287,6 @@
                                        console.log("SHOULD APPROVE " + blob_len + " vs " +cur_best_length);
                                    }
                                    if (blob_len < cur_best_length) {
-                                       cur_best_length = blob_len;
                                        approve_div_file(u8blob);
                                    }
                                 }
@@ -308,6 +307,7 @@
                          size_limit.style.display = "none";
                          approve_div_file = function (div_file) {
                              var dv_len = array_buffers_length(div_file);
+                             cur_best_length = dv_len;
                              var blob = new Blob(div_file, {type:"application/binary+div"});
                              var blobUrl = URL.createObjectURL(blob);
                              if (el.firstChild) {
@@ -316,9 +316,7 @@
                              el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + " bytes)"));
                              el.href = blobUrl;
                          }
-                         if(cur_best_length == file_orig_length || div_file.length < cur_best_length) {
-                             approve_div_file(div_file);
-                         }
+                         approve_div_file(div_file);
 
                          encodeBrotliAndShowResult(file_array_buffer, file_orig_length);
                      }
