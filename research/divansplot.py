@@ -9,20 +9,34 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd0', 'd4', 'zlib', 'z19')
+    return label in ('b11', 'b9', 'd1', 'd4', 'zlib', 'z19')
 def label_reassign(key):
     keymap = {
-        'b11': 'brotli-11',
-        'b9': 'brotli-9',
-        'd0': 'divans-11',
-        'd4': 'divans',
-        'z19': 'zstd',
+        'b11': 'Brotli\nq11',
+        'b9': 'Brotli\nq9',
+        'd1': 'DivANS\nq11',
+        'd4': 'DivANS\nq9',
+        'z19': 'Zstd',
         }
     if key in keymap:
         return keymap[key]
     return key
-colors = [[r for r in reversed(['#aaaaff','#8888cc','#4444aa','#000088',])],                        
-           [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])]]                       
+colors = [[r for r in reversed(['#aaaaff','#9999dd','#4444aa','#000088',])],                        
+           [r for r in reversed(['#ffffaa','#cccc88','#aaaa44','#999900',])],
+           [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])],
+           [r for r in reversed(['#aaffaa','#88cc88','#44aa44','#008800',])],
+]
+map_color = {
+    'd0':colors[0][3],
+    'd1':colors[0][3],
+    'd2':colors[0][3],
+    'd3':colors[0][3],
+    'd4':colors[0][2],
+    'b9':colors[1][0],
+    'b11':colors[1][1],
+    'z19':colors[2][1],
+    'zlib':colors[3][1],
+    }
 ylabel = {
     'savings_vs_zlib':'% saving vs zlib\n',
     'encode_speed': 'Encode (Mbps)',
@@ -31,9 +45,9 @@ ylabel = {
     }
 
 y_limits= {
-    #'savings_vs_zlib':[-.001, 28],
-    'encode_speed': [1,100],
-    'decode_speed': [10,2000],
+    'savings_vs_zlib':[0, 14.5],
+    'encode_speed': [1,250],
+    'decode_speed': [10,4000],
 #    'time_pct':
     }
 do_log = set(['decode_speed', 'encode_speed'])
@@ -59,13 +73,20 @@ def build_figure(key, ax, data, last=False):
             #    kwargs['transform'] = trans
             #if sub_index == 0:
             #    kwargs['label'] = key.replace('_', ' ')
-            if len(sub_items) != 1:
-                kwargs['color'] = colors[0][sub_index]
-            else:
-                kwargs['color'] = colors[0][-1]
+            kwargs['color'] = map_color[sub_items_key]
             axen.append(ax.bar(index + offset, sub_item, bar_width, **kwargs))
+            rect = axen[-1][-1]
+            height = rect.get_height()
+            if height > 100:
+                dat = '%.0f' %height
+            elif height > 20:
+                dat = '%.1f' % height
+            else:
+                dat = '%.2f' % height
+            ax.text(rect.get_x() + rect.get_width()/2.0, height, dat, ha='center', va='bottom')
         if index == 0 and len(sub_items) != 1:
             ax.legend(axen, ['p99.99', 'p99', 'p75', 'p50'], ncol=2)
+
     ax.set_xticks(np.arange(len(labels)) + offset + bar_width * .5)
     ax.set_xticklabels([label_reassign(l) for l in labels])
     ax.set_ylabel(ylabel[key])
