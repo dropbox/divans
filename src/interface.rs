@@ -60,6 +60,7 @@ pub enum ErrMsg {
     UnintendedCodecState(u8),
     MainFunctionCalledFromThread(u8),
     DecodingDecoderAlreadyFreed,
+    AdvContextMapNotBoolean(u8),
 }
 
 

@@ -45,7 +45,7 @@ ylabel = {
     }
 
 y_limits= {
-    'savings_vs_zlib':[0, 14.5],
+    'savings_vs_zlib':[0, 26],
     'encode_speed': [1,250],
     'decode_speed': [10,4000],
 #    'time_pct':

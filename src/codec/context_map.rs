@@ -15,6 +15,7 @@ use ::interface::{
     PredictionModeContextMap,
     u8_to_speed,
     MAX_LITERAL_CONTEXT_MAP_SIZE,
+    MAX_ADV_LITERAL_CONTEXT_MAP_SIZE,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
     NUM_MIXING_VALUES,
 };
@@ -83,7 +84,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
     }
     pub fn reset(&mut self, m8:&mut RepurposingAlloc<u8, AllocU8>) {
         if self.pm.literal_context_map.0.slice().len() == 0 {
-            let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
+            let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_ADV_LITERAL_CONTEXT_MAP_SIZE);
             self.pm = PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
                 literal_context_map:lit,
                 predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
@@ -183,17 +184,20 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    self.state = PredictionModeSubstate::DynamicContextMixing;
                },
                PredictionModeSubstate::DynamicContextMixing => {
-                   let mut beg_nib = superstate.bk.desired_context_mixing;
+                   let is_adv = in_cmd.get_is_adv_context_map();
+                   if (is_adv >> 1) != 0 {
+                       return return DivansResult::Failure(ErrMsg::AdvContextMapNotBoolean(is_adv));
+                   }
+                   assert_eq!(superstate.bk.desired_context_mixing >>3, 0);
+                   let mut beg_nib = superstate.bk.desired_context_mixing | (is_adv << 3);
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::DynamicContextMixingSpeed, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                        nibble_prob.blend(beg_nib, Speed::MED);
                    }
-                   let mut prediction_mode_nibble = self.pm.literal_prediction_mode();
-                   assert_eq!(prediction_mode_nibble.0 >> 6, 0);
-                   prediction_mode_nibble.0 |= (beg_nib + 1) << 6; // upper 2 bits
-                   self.pm.set_literal_prediction_mode(prediction_mode_nibble);
+                   self.pm.set_mixing_math(beg_nib & 3);
+                   self.pm.set_adv_context_map(beg_nib >> 2);
                    //FIXME: carry this in the PredictionMode
                    //superstate.bk.obs_dynamic_context_mixing(beg_nib, &mut superstate.mcdf16);
                    self.state = PredictionModeSubstate::PriorDepth(beg_nib != 0);
@@ -284,6 +288,16 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    if mnemonic_nibble == 14 {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
+                               if self.pm.get_is_adv_context_map() == 0 {
+                                   let (src, dst) = self.pm.literal_context_map.slice_mut().split_at_mut(MAX_LITERAL_CONTEXT_MAP_SIZE);
+                                   let mut dst_offset = 0;
+                                   while dst.len() != dst_offset {
+                                        let amt_to_copy = core::cmp::min(src.len(), dst.len() - dst_offset);
+                                        let (target, new_dst) = dst.split_at_mut(dst_offset).1.split_at_mut(amt_to_copy);
+                                        target.clone_from_slice(src.split_at(amt_to_copy).0);
+                                        dst_offset += amt_to_copy;
+                                   }
+                               }
                                superstate.bk.reset_context_map_lru(); // distance context map should start with 0..14 as lru
                                self.state = PredictionModeSubstate::ContextMapMnemonic(0, ContextMapType::Distance, combine_literal_predictions);
                            },
