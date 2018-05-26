@@ -865,6 +865,7 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<divans::DefaultCDF16>,
                                                          ItemVecAllocator<brotli::enc::util::floatX>,
                                                          ItemVecAllocator<brotli::enc::vectorization::Mem256f>,
+                                                         ItemVecAllocator<brotli::enc::PDF>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -934,6 +935,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::histogram::ContextType>::default(),
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
              ItemVecAllocator::<brotli::enc::ZopfliNode>::default(),
+             ItemVecAllocator::<brotli::enc::PDF>::default(),
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
