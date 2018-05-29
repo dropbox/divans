@@ -193,7 +193,8 @@ impl<AllocU8:Allocator<u8>,
             index_c = usize::from(byte_context.actual_context[HTraits::IS_HIGH as usize]);
         } else { // low nibble can depend on the upper half of the current byte
             index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context[HTraits::IS_HIGH as usize]));
-            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context[HTraits::IS_HIGH as usize] & opt_3_f_mask) << 4));
+            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context[HTraits::IS_HIGH as usize] & opt_3_f_mask) << 4)) & usize::from(
+                mm); // <-- cmap8192 experiment
         };
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
