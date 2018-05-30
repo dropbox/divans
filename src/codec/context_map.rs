@@ -267,8 +267,10 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        // encode nothing
                        14 // eof
                    } else {
-                       let target_val = cur_context_map[index as usize];
-
+                       let mut target_val = cur_context_map[index as usize];
+                       if index >= 64 * 256 {
+                           target_val = target_val.wrapping_sub(cur_context_map[index as usize - 64 * 256]);
+                       }
                        let mut res = 15u8; // fallback
                        for (index, val) in superstate.bk.cmap_lru.iter().enumerate() {
                            if *val == target_val {
@@ -324,6 +326,10 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        };
                        if (index as usize) < out_context_map.len() {
                            out_context_map[index as usize] = val;
+                           if index >= 256 * 64 {
+                               let tmp = out_context_map[index as usize - 256 * 64];
+                               out_context_map[index as usize] += tmp;
+                           }
                        } else {
                            return DivansResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
                        }
@@ -339,7 +345,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        // encode nothing
                        0
                    } else {
-                       cur_context_map[index as usize] >> 4
+                       cur_context_map[index as usize].wrapping_sub(if index >= 256 * 64 {cur_context_map[index as usize -  256 * 64]} else {0})>> 4
                    };
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
 
@@ -356,7 +362,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        // encode nothing
                        0
                    } else {
-                       cur_context_map[index as usize] & 0xf
+                       cur_context_map[index as usize].wrapping_sub(if index >= 256 * 64 {cur_context_map[index as usize - 256 * 64]} else {0})& 0xf
                    };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (0,));
@@ -371,6 +377,10 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    };
                    if (index as usize) < out_context_map.len() {
                        out_context_map[index as usize] = (most_significant_nibble << 4) | lsn_nib;
+                       if index >= 256 * 64 {
+                           let tmp = out_context_map[index as usize - 256 * 64];
+                           out_context_map[index as usize] += tmp;
+                       }
                    } else {
                        return DivansResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
                    }
