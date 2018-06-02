@@ -114,8 +114,25 @@ pub fn get_prev_word_context<Cdf16:CDF16,
     let cmap0_index = selected_context as usize + ((lbk.get_literal_block_type() as usize) << 6);
     let cmap1_index = selected_context as usize + ((lbk.get_literal_block_type() as usize) << 6) + 256 * 64;
     let actual_context0 = lbk.literal_context_map.slice()[cmap0_index as usize];
-    let actual_context1 = lbk.literal_context_map.slice()[cmap1_index as usize];
-    ByteContext{actual_context:[actual_context0, actual_context1], stride_bytes:lbk.last_8_literals, prev_byte: prev_byte}
+    let actual_context1 = [
+        lbk.literal_context_map.slice()[cmap1_index],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 2],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 3],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 4],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 5],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 6],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 7],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 8],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 9],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 10],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 11],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 12],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 13],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 14],
+        lbk.literal_context_map.slice()[cmap1_index + 256 * 64 * 15],
+    ];
+    ByteContext{actual_context:(actual_context1, actual_context0), stride_bytes:lbk.last_8_literals, prev_byte: prev_byte}
 }
 
 
@@ -167,7 +184,7 @@ impl<AllocU8:Allocator<u8>,
         // The mixing_mask is a lookup table that determines which priors are most relevant
         // for a particular actual_context. The table is also indexed by the
         // upper half of the current nibble, or the upper half of the previous nibble
-        let mut mixing_mask_index = usize::from(byte_context.actual_context[HTraits::IS_HIGH as usize]);
+        let mut mixing_mask_index = usize::from(if HTraits::IS_HIGH {byte_context.actual_context.1} else {byte_context.actual_context.0[0]});
         if !HTraits::IS_HIGH {
             mixing_mask_index |= usize::from(cur_byte_prior & 0xf) << 8;
             mixing_mask_index |= 4096;
@@ -190,10 +207,10 @@ impl<AllocU8:Allocator<u8>,
         let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - stride_offset)) as u8 & 0xff;
         if HTraits::IS_HIGH { // high nibble must depend only on the previous bytes
             index_b = usize::from(stride_selected_byte & mm & (!opt_3_f_mask));
-            index_c = usize::from(byte_context.actual_context[HTraits::IS_HIGH as usize]);
+            index_c = usize::from(byte_context.actual_context.1);
         } else { // low nibble can depend on the upper half of the current byte
-            index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context[HTraits::IS_HIGH as usize]));
-            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context[HTraits::IS_HIGH as usize] & opt_3_f_mask) << 4)) & usize::from(
+            index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context.0[cur_byte_prior as usize]));
+            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context.0[cur_byte_prior as usize] & opt_3_f_mask) << 4)) & usize::from(
                 mm); // <-- cmap8192 experiment
         };
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
@@ -215,12 +232,12 @@ impl<AllocU8:Allocator<u8>,
                 let cm_prob = if HTraits::IS_HIGH {
                     lbk.lit_cm_priors.get(LiteralCMPriorType::FirstNibble,
                                                     (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
-                                                     usize::from(byte_context.actual_context[HTraits::IS_HIGH as usize]),))
+                                                     usize::from(byte_context.actual_context.1),))
                 } else {
                     lbk.lit_cm_priors.get(LiteralCMPriorType::SecondNibble,
                                                     (0,//(byte_context.selected_context as i8 & -(bk.prior_depth as i8)) as usize,
                                                      usize::from(cur_byte_prior),
-                                                     usize::from(byte_context.actual_context[HTraits::IS_HIGH as usize])))
+                                                     usize::from(byte_context.actual_context.0[cur_byte_prior as usize])))
                 };
                 let prob = cm_prob.average(nibble_prob, lbk.model_weights[HTraits::IS_HIGH as usize].norm_weight() as u16 as i32);
                 let weighted_prob_range = local_coder.get_or_put_nibble(

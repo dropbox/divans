@@ -328,7 +328,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                            out_context_map[index as usize] = val;
                            if index >= 256 * 64 {
                                let tmp = out_context_map[index as usize - 256 * 64];
-                               out_context_map[index as usize] += tmp;
+                               out_context_map[index as usize] = out_context_map[index as usize].wrapping_add(tmp);
                            }
                        } else {
                            return DivansResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
@@ -379,7 +379,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        out_context_map[index as usize] = (most_significant_nibble << 4) | lsn_nib;
                        if index >= 256 * 64 {
                            let tmp = out_context_map[index as usize - 256 * 64];
-                           out_context_map[index as usize] += tmp;
+                           out_context_map[index as usize] = out_context_map[index as usize].wrapping_add(tmp);
                        }
                    } else {
                        return DivansResult::Failure(ErrMsg::IndexBeyondContextMapSize(index as u8, (index >> 8) as u8));
