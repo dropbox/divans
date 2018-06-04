@@ -20,8 +20,8 @@ use ::interface::{
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
     LITERAL_PREDICTION_MODE_LSB6,
-    MAX_ADV_LITERAL_CONTEXT_MAP_SIZE,
     NewWithAllocator,
+    MAX_LITERAL_CONTEXT_MAP_SIZE,
     EncoderOrDecoderRecoderSpecialization,
 };
 use super::priors::{
@@ -195,7 +195,7 @@ pub fn default_literal_speed() -> Speed {
 #[derive(Clone,Copy,Debug)]
 pub struct ByteContext {
   pub stride_bytes: u64,
-  pub actual_context: [u8;2],
+  pub actual_context: u8,
   pub prev_byte: u8,
 }
 
@@ -764,7 +764,7 @@ impl <AllocU8:Allocator<u8>,
         let cc_priors = mcdf16.alloc_cell(CrossCommandPriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let pred_priors = mcdf16.alloc_cell(PredictionModePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
-        let literal_context_map = m8.alloc_cell(MAX_ADV_LITERAL_CONTEXT_MAP_SIZE);
+        let literal_context_map = m8.alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
         CrossCommandState::<ArithmeticCoder,
                             Specialization,

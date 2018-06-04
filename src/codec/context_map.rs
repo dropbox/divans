@@ -15,7 +15,6 @@ use ::interface::{
     PredictionModeContextMap,
     u8_to_speed,
     MAX_LITERAL_CONTEXT_MAP_SIZE,
-    MAX_ADV_LITERAL_CONTEXT_MAP_SIZE,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
     NUM_MIXING_VALUES,
 };
@@ -84,7 +83,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
     }
     pub fn reset(&mut self, m8:&mut RepurposingAlloc<u8, AllocU8>) {
         if self.pm.literal_context_map.0.slice().len() == 0 {
-            let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_ADV_LITERAL_CONTEXT_MAP_SIZE);
+            let lit = m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
             self.pm = PredictionModeContextMap::<AllocatedMemoryPrefix<u8, AllocU8>> {
                 literal_context_map:lit,
                 predmode_speed_and_distance_context_map:m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(
@@ -288,16 +287,6 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    if mnemonic_nibble == 14 {
                        match context_map_type {
                            ContextMapType::Literal => { // switch to distance context map
-                               if self.pm.get_is_adv_context_map() == 0 {
-                                   let (src, dst) = self.pm.literal_context_map.slice_mut().split_at_mut(MAX_LITERAL_CONTEXT_MAP_SIZE);
-                                   let mut dst_offset = 0;
-                                   while dst.len() != dst_offset {
-                                        let amt_to_copy = core::cmp::min(src.len(), dst.len() - dst_offset);
-                                        let (target, new_dst) = dst.split_at_mut(dst_offset).1.split_at_mut(amt_to_copy);
-                                        target.clone_from_slice(src.split_at(amt_to_copy).0);
-                                        dst_offset += amt_to_copy;
-                                   }
-                               }
                                superstate.bk.reset_context_map_lru(); // distance context map should start with 0..14 as lru
                                self.state = PredictionModeSubstate::ContextMapMnemonic(0, ContextMapType::Distance, combine_literal_predictions);
                            },
