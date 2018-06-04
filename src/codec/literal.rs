@@ -173,11 +173,11 @@ impl<AllocU8:Allocator<u8>,
             mixing_mask_index |= (usize::from(byte_context.prev_byte) >> 4) << 8;
         }
         let mm_opts = lbk.mixing_mask[mixing_mask_index];
-
-        // if the mixing mask is not zero, the byte, stride distance prior, is a good prior
-        let mm = -((mm_opts != 0) as isize) as u8;
-        // mix 3 lets us examine just half of the previous byte in addition to the context
-        let opt_3_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
+        let fast_cm_prior_mask = (-((mm_opts != 3) as i8)) as u8;
+        // if the mixing mask is not zero or 3, the byte, stride distance prior, is a good prior
+        let mm = -((mm_opts != 0 && mm_opts != 3) as isize) as u8;
+        // mix 1 lets us examine just half of the previous byte in addition to the context
+        let opt_1_f_mask = ((-((mm_opts == 1) as i8)) & 0xf) as u8; // if mm_opts == 1 {0xf} else {0x0}
 
         // Choose the stride b based on the mixing mask. The stride offset is 0, 8, 16, 24 or 56 bits
         // this translates into actual strides of 1, 2, 3, 4 or 8 bytes
@@ -187,18 +187,18 @@ impl<AllocU8:Allocator<u8>,
         // pick the previous byte based on the chosen stride
         let stride_selected_byte = (byte_context.stride_bytes >> (0x38 - stride_offset)) as u8 & 0xff;
         if HTraits::IS_HIGH { // high nibble must depend only on the previous bytes
-            index_b = usize::from(stride_selected_byte & mm & (!opt_3_f_mask));
+            index_b = usize::from(stride_selected_byte & mm & (!opt_1_f_mask));
             index_c = usize::from(byte_context.actual_context);
         } else { // low nibble can depend on the upper half of the current byte
             index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context));
-            index_c = usize::from(cur_byte_prior | ((byte_context.actual_context & opt_3_f_mask) << 4));
+            index_c = usize::from((cur_byte_prior & fast_cm_prior_mask) | ((byte_context.actual_context & opt_1_f_mask) << 4));
         };
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)),
+                                         (usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)),
                                           index_b,
                                           index_c));
-        //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_3_f_mask >> 2)), index_b, index_c);
+        //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)), index_b, index_c);
         {
             let immutable_prior: Cdf16;
             let coder_prior: &Cdf16;
