@@ -20,6 +20,11 @@ crate-type=["cdylib", "rlib", "staticlib"]
 doc = false
 name = "divans"
 
+[[bin]]
+name = "ir_transform"
+doc = false
+
+
 [build-dependencies]
 vergen = "0.1"
 
