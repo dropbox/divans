@@ -16,6 +16,7 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
                                                          SubclassableAllocator<brotli::enc::PDF>,
+                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -42,6 +43,7 @@ pub enum CompressorState {
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
                                                          SubclassableAllocator<brotli::enc::PDF>,
+                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -201,6 +203,7 @@ impl CompressorState {
                                                SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::ZopfliNode>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::PDF>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::StaticCommand>::new(allocators.clone()),
                                            ))));
             
             }
