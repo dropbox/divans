@@ -26,6 +26,13 @@
           STACK_MAX: memory.buffer.byteLength
       }
    };
+   function roundToThousanths(val) {
+      val *= 1000;
+      val += 0.5;
+      val = Math.floor(val);
+      val /= 1000;
+      return val;
+   }
    function isMobile() {
        return ( navigator.userAgent.match(/Android/i)
            || navigator.userAgent.match(/webOS/i)
@@ -121,7 +128,39 @@
    var quality_dialog;
    progress_bar.src="progress.gif";
    progress_bar.style.display="none";
+   var brotliResultText = document.createElement('div');
    var brotliComparisonText = document.createElement('div');
+   brotliComparisonText.style.display="inline-block";
+   brotliComparisonText.style.padding="2px";
+
+   function computeSavingsMarker() {
+       function get_size(text) {
+          var end_size = text.indexOf(" bytes");
+          end_size = text.substr(0, end_size).lastIndexOf("/");
+          var start_size = text.substr(0, end_size).lastIndexOf(" ") + 1;
+          if (text.charAt(start_size) == "(") {
+             start_size += 1;
+          }
+          var sub_text = text.substr(start_size, end_size - start_size);
+          return parseFloat(sub_text);
+       }
+       var dv_sub = el.innerHTML;
+       var br_sub = brotliResultText.innerHTML;
+       var dv_size = get_size(dv_sub);
+       var br_size = get_size(br_sub);
+       if (dv_size && br_size) {
+          brotliComparisonText.removeChild(brotliComparisonText.firstChild);
+          if (dv_size > br_size) {
+              brotliComparisonText.style.backgroundColor = "#ff3333";
+              brotliComparisonText.style.color = "#000000";
+              brotliComparisonText.appendChild(document.createTextNode(roundToThousanths(dv_size / br_size * 100 - 100) + "% larger than Brotli"));
+          } else {
+              brotliComparisonText.style.backgroundColor = "#00ee00";
+              brotliComparisonText.style.color = "#111111";
+              brotliComparisonText.appendChild(document.createTextNode(roundToThousanths(100 - dv_size / br_size * 100) + "% savings over Brotli"));
+          }
+       }
+   }
    function init() {
          var ascii_string = "";
          for (var i =0;i < helper.length; i += 1) {
@@ -157,7 +196,9 @@
          document.body.appendChild(document.createElement("br"));
          document.body.appendChild(el);
          document.body.appendChild(document.createElement('br'));
-         brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"));
+         brotliResultText.appendChild(document.createTextNode("[Brotli processing]"));
+         brotliComparisonText.appendChild(document.createTextNode("[...]"));
+         document.body.appendChild(brotliResultText)
          document.body.appendChild(brotliComparisonText)
          document.body.appendChild(document.createElement("br"));
          var floatDiv = document.createElement("div");
@@ -192,10 +233,11 @@
                      window.brotliIR.value = brotli_ir;
                      window.brotliIR.style.visibility = "visible";
                      window.brotliSize.innerHTML = ""; // clear
-                     brotliComparisonText.removeChild(brotliComparisonText.firstChild);
-                     brotliComparisonText.appendChild(document.createTextNode("[Brotli compressed " + output_len + "/" + file_orig_length + " bytes]"))
+                     brotliResultText.removeChild(brotliResultText.firstChild);
+                     brotliResultText.appendChild(document.createTextNode("[Brotli compressed " + output_len + "/" + file_orig_length + " bytes]"))
                      window.brotliSize.appendChild(document.createTextNode(
                          "IR below"));
+                     computeSavingsMarker();
                  });
          }
          var file_buf = new ArrayBuffer(file.length);
@@ -219,8 +261,9 @@
              }
              var blob = new Blob(div_file, {type:"application/binary+div"});
              var blobUrl = URL.createObjectURL(blob);
-             el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file.length + "bytes)"));
+             el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file.length + " bytes)"));
              el.href = blobUrl;
+             computeSavingsMarker();
          } else {
              var original_file = decode(file, obj.instance.exports, should_debug);
              if (original_file.length == 0) {
@@ -230,7 +273,7 @@
                  var original_len = array_buffers_length(original_file);
                  var blob = new Blob(original_file, {type:"application/binary+div"});
                  var blobUrl = URL.createObjectURL(blob);
-                 el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file.length + "bytes)"));
+                 el.appendChild(document.createTextNode("Download Decompressed File (" + original_len+"/"+ file.length + " bytes)"));
                  el.href = blobUrl;
              }
          }
@@ -263,6 +306,8 @@
                  var fileReader = new FileReader();
                  function fileContentsCallback(file_array_buffer, file_contents) {
                      if (is_divans(file_contents)) {
+                         brotliResultText.removeChild(brotliResultText.firstChild);
+                         brotliResultText.appendChild(document.createTextNode(""))
                          brotliComparisonText.removeChild(brotliComparisonText.firstChild);
                          brotliComparisonText.appendChild(document.createTextNode(""))
                          pre.removeChild(pre.firstChild); // no more text
@@ -322,6 +367,7 @@
                              }
                              el.appendChild(document.createTextNode("Download Divans File (" + dv_len+"/"+ file_orig_length + " bytes)"));
                              el.href = blobUrl;
+                             computeSavingsMarker();
                          }
                          approve_div_file(div_file);
 
@@ -331,8 +377,10 @@
                  fileReaderCallback = function(event) {
                      var file_array_buffer = event.target.result;
                      var file_contents = new Uint8Array(file_array_buffer);
+                     brotliResultText.removeChild(brotliResultText.firstChild);
+                     brotliResultText.appendChild(document.createTextNode("[Brotli processing]"))
                      brotliComparisonText.removeChild(brotliComparisonText.firstChild);
-                     brotliComparisonText.appendChild(document.createTextNode("[Brotli processing...]"))
+                     brotliComparisonText.appendChild(document.createTextNode("[...]"))
                      pre.removeChild(pre.firstChild); // no more text
                      pre.appendChild(document.createTextNode("Your Custom file, length " + file_contents.length + " is being compressed"));
                      if (file_contents.length > 2048 * 1024 && size_limit.style.display == "none") {
