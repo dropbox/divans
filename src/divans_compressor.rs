@@ -26,6 +26,8 @@ use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use codec::io::DemuxerAndRingBuffer;
 use brotli;
+use brotli::InputReference;
+use brotli::interface::Freezable;
 pub use super::interface::{
     BlockSwitch,
     LiteralBlockSwitch,
@@ -45,7 +47,7 @@ pub use super::interface::{
     };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc, CommandArray, CommandSliceArray};
 use super::interface;
 use super::interface::{DivansOutputResult, DivansResult, ErrMsg};
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
@@ -127,21 +129,22 @@ pub fn make_header(window_size: u8) -> [u8; interface::HEADER_LENGTH] {
     retval[5] = window_size;
     retval
 }
-fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>], ring_buffer: &'a[u8], start_index:  usize, end_index: usize) -> [Command<slice_util::SliceReference<'a, u8>>; COMPRESSOR_CMD_BUFFER_SIZE] {
-   let mut ret : [Command<brotli::InputReference<'a>>; COMPRESSOR_CMD_BUFFER_SIZE] = [Command::<brotli::InputReference>::default(); COMPRESSOR_CMD_BUFFER_SIZE];
+fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>], ring_buffer: &'a[u8], start_index:  usize, end_index: usize) -> [Command<InputReference<'a>>; COMPRESSOR_CMD_BUFFER_SIZE] {
+   let mut ret : [Command<InputReference<'a>>; COMPRESSOR_CMD_BUFFER_SIZE] = [Command::<InputReference>::default(); COMPRESSOR_CMD_BUFFER_SIZE];
    for (thawed, frozen) in ret[start_index..end_index].iter_mut().zip(input[start_index..end_index].iter()) {
       *thawed = brotli::interface::thaw(frozen, ring_buffer);
    }
    ret
 }
+
 #[cfg(not(feature="external-literal-probability"))]
-fn freeze_dry<'a>(_item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
+fn freeze<'a>(_item: &FeatureFlagSliceType<InputReference<'a>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
     FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>::default()
 }
 
 #[cfg(feature="external-literal-probability")]
-fn freeze_dry<'a>(item: &FeatureFlagSliceType<slice_util::SliceReference<'a, u8>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
-    FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>(item.0.freeze_dry())
+fn freeze<'a>(item: &FeatureFlagSliceType<InputReference<'a>>) -> FeatureFlagSliceType<slice_util::SliceReference<'static, u8>> {
+    FeatureFlagSliceType::<slice_util::SliceReference<'static, u8>>(slice_util::SliceReference::<u8>::freeze(item.0.freeze()))
 }
 
 pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
@@ -170,6 +173,17 @@ pub fn write_header<CRC:Hasher>(header_progress: &mut usize,
 
 }
 
+struct InputReferenceCommandArray<'a>(&'a [Command<InputReference<'a>>]);
+
+impl<'a> CommandArray for InputReferenceCommandArray<'a> {
+    fn get_input_command(&self, offset:usize) -> Command<InputReference> {
+        self.0[offset]
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, AllocU8, AllocU32, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansOutputResult {
@@ -181,7 +195,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
                                     &mut unused,
                                     output,
                                     output_offset,
-                                    thawed_buffer.split_at(self.freeze_dried_cmd_end).0,
+                                    &InputReferenceCommandArray(thawed_buffer.split_at(self.freeze_dried_cmd_end).0),
                                     &mut self.freeze_dried_cmd_start) {
                DivansResult::Failure(m) => return DivansOutputResult::Failure(m),
                DivansResult::NeedsMoreInput | DivansResult::Success => {},
@@ -193,7 +207,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     fn freeze_dry<'a>(freeze_dried_cmd_array: &mut[Command<slice_util::SliceReference<'static, u8>>;COMPRESSOR_CMD_BUFFER_SIZE],
                       freeze_dried_cmd_start: &mut usize,
                       freeze_dried_cmd_end: &mut usize,
-                      input:&[Command<slice_util::SliceReference<'a, u8>>]) {
+                      input:&[Command<InputReference<'a>>]) {
         assert!(input.len() <= freeze_dried_cmd_array.len());
         *freeze_dried_cmd_start = 0;
         *freeze_dried_cmd_end = input.len();
@@ -201,15 +215,15 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             *frozen = match *leftover {
                 Command::Literal(ref lit) => {
                     Command::Literal(LiteralCommand::<slice_util::SliceReference<'static, u8>> {
-                        data: lit.data.freeze_dry(),
-                        prob: freeze_dry(&lit.prob),
+                        data: slice_util::SliceReference::<u8>::freeze(lit.data.freeze()),
+                        prob: freeze(&lit.prob),
                         high_entropy: lit.high_entropy,
                     })
                 },
                 Command::PredictionMode(ref pm) => {
                     Command::PredictionMode(PredictionModeContextMap::<slice_util::SliceReference<'static, u8>> {
-                        literal_context_map: pm.literal_context_map.freeze_dry(),
-                        predmode_speed_and_distance_context_map: pm.predmode_speed_and_distance_context_map.freeze_dry(),
+                        literal_context_map: slice_util::SliceReference::<u8>::freeze(pm.literal_context_map.freeze()),
+                        predmode_speed_and_distance_context_map: slice_util::SliceReference::<u8>::freeze(pm.predmode_speed_and_distance_context_map.freeze()),
                     })
                 },
                 Command::Copy(ref c) => {
@@ -276,8 +290,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         let literal_context_map = self.literal_context_map_backing.slice_mut();
         let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
         loop {
-            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
-                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
+            let mut temp_bs: [interface::Command<InputReference>;COMPRESSOR_CMD_BUFFER_SIZE] =
+                [interface::Command::<InputReference>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
             let command_decode_ret = self.cmd_assembler.stream(input, input_offset,
                                                                &mut temp_bs[..], &mut temp_cmd_offset,
@@ -299,7 +313,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         &mut zero,
                                                         output,
                                                         output_offset,
-                                                        temp_bs.split_at(temp_cmd_offset).0,
+                                                        &InputReferenceCommandArray(temp_bs.split_at(temp_cmd_offset).0),
                                                         &mut out_cmd_offset);
             match codec_ret {
                 DivansResult::NeedsMoreInput | DivansResult::Success => {
@@ -337,7 +351,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                     &mut unused,
                                     output,
                                     output_offset,
-                                    input,
+                                    &CommandSliceArray(input),
                                           input_offset) {
             DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
             DivansResult::NeedsMoreOutput => DivansOutputResult::NeedsMoreOutput,
@@ -361,8 +375,8 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
         loop {
             let literal_context_map_backing = self.literal_context_map_backing.slice_mut();
             let prediction_mode_backing = self.prediction_mode_backing.slice_mut();
-            let mut temp_bs: [interface::Command<slice_util::SliceReference<u8>>;COMPRESSOR_CMD_BUFFER_SIZE] =
-                [interface::Command::<slice_util::SliceReference<u8>>::default();COMPRESSOR_CMD_BUFFER_SIZE];
+            let mut temp_bs: [interface::Command<InputReference>;COMPRESSOR_CMD_BUFFER_SIZE] =
+                [interface::Command::<InputReference>::default();COMPRESSOR_CMD_BUFFER_SIZE];
             let mut temp_cmd_offset = 0;
             let command_flush_ret = self.cmd_assembler.flush(&mut temp_bs[..], &mut temp_cmd_offset, literal_context_map_backing, prediction_mode_backing);
             match command_flush_ret {
@@ -382,7 +396,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                                         &mut zero,
                                                         output,
                                                         output_offset,
-                                                        temp_bs.split_at(temp_cmd_offset).0,
+                                                        &InputReferenceCommandArray(temp_bs.split_at(temp_cmd_offset).0),
                                                         &mut out_cmd_offset);
             match codec_ret {
                 DivansResult::Success | DivansResult::NeedsMoreInput => {

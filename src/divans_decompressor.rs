@@ -125,12 +125,12 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
             }
             let mut unused_out = 0usize;
             let mut unused_in = 0usize;
-            match process.codec.as_mut().unwrap().encode_or_decode::<AllocU8::AllocatedMemory>(
+            match process.codec.as_mut().unwrap().encode_or_decode(
                 &[],
                 &mut unused_in,
                 &mut [],
                 &mut unused_out,
-                &[],
+                &codec::EmptyCommandArray::default(),
                 &mut unused) {
                 DivansResult::Success => {},
                 DivansResult::Failure(e) => return DivansResult::Failure(e),

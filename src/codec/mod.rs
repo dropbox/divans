@@ -49,6 +49,9 @@ pub use self::interface::{
     CrossCommandBookKeeping,
     NUM_ARITHMETIC_CODERS,
     CMD_CODER,
+    CommandArray,
+    EmptyCommandArray,
+    CommandSliceArray
 };
 use super::interface::{
     ArithmeticEncoderOrDecoder,
@@ -553,12 +556,12 @@ impl<AllocU8: Allocator<u8>,
         }
     }
     #[inline(always)]
-    pub fn encode_or_decode<ISl:SliceWrapper<u8>+Default>(&mut self,
+    pub fn encode_or_decode<Commands:CommandArray>(&mut self,
                                                           input_bytes: &[u8],
                                                           input_bytes_offset: &mut usize,
                                                           output_bytes: &mut [u8],
                                                           output_bytes_offset: &mut usize,
-                                                          input_commands: &[Command<ISl>],
+                                                          input_commands: &Commands,
                                                           input_command_offset: &mut usize) -> DivansResult {
         let adjusted_output_bytes = output_bytes.split_at_mut(*output_bytes_offset).1;
         let mut adjusted_output_bytes_offset = 0usize;
@@ -606,23 +609,20 @@ impl<AllocU8: Allocator<u8>,
             }
         }
     }
-    fn e_or_d_specialize<ISl:SliceWrapper<u8>+Default,
+    fn e_or_d_specialize<Commands:CommandArray,
                          CTraits:CodecTraits>(&mut self,
                                               checksum_input_info: &mut ReadableBytes,
                                               output_bytes: &mut [u8],
                                               output_bytes_offset: &mut usize,
-                                              input_commands: &[Command<ISl>],
+                                              input_commands: &Commands,
                                               input_command_offset: &mut usize,
                                               ctraits: &'static CTraits) -> (Option<DivansResult>, Option<CodecTraitSelector>) {
-        let i_cmd_backing = Command::<ISl>::nop();
         loop {
-            let in_cmd = self.cross_command_state.specialization.get_input_command(input_commands,
-                                                                                   *input_command_offset,
-                                                                                   &i_cmd_backing);
+            let in_cmd = input_commands.get_input_command(*input_command_offset);
             match self.encode_or_decode_one_command(checksum_input_info,
                                                     output_bytes,
                                                     output_bytes_offset,
-                                                    in_cmd,
+                                                    &in_cmd,
                                                     ctraits,
                                                     false /* not end*/) {
                 CodecTraitResult::Res(one_command_return) => match one_command_return {

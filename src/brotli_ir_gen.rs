@@ -17,6 +17,7 @@ use super::probability::CDF16;
 use super::brotli;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
+use codec::{CommandArray, CommandSliceArray};
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
@@ -128,7 +129,7 @@ impl<SelectedCDF:CDF16,
     fn do_panic(m:ErrMsg) {
         panic!(m)
     }
-    fn divans_encode_commands<SliceType:SliceWrapper<u8>+Default>(cmd:&[brotli::interface::Command<SliceType>],
+    fn divans_encode_commands<Commands:CommandArray>(cmd:&Commands,
                                                           header_progress: &mut usize,
                                                           data:&mut ResizableByteBuffer<u8, AllocU8>,
                                                           codec: &mut DivansCodec<ChosenEncoder,
@@ -186,13 +187,13 @@ impl<SelectedCDF:CDF16,
             let mut closure = |pm:&brotli::interface::PredictionModeContextMap<brotli::InputReference>,
                    a:&[brotli::interface::Command<brotli::SliceOffset>],
                    mb:brotli::InputPair| {
-                       Self::divans_encode_commands(&[brotli::interface::Command::PredictionMode(*pm)],
+                       Self::divans_encode_commands(&CommandSliceArray(&[brotli::interface::Command::PredictionMode(*pm)]),
                                                     header_progress_ref,
                                                     divans_data_ref,
                                                     divans_codec_ref,
                                                     window_size);
                        if a.len() != 0 {
-                           Self::divans_encode_commands(a,
+                           Self::divans_encode_commands(&ThawingSliceArray(a, mb),
                                                         header_progress_ref,
                                                         divans_data_ref,
                                                         divans_codec_ref,
@@ -385,7 +386,7 @@ impl<SelectedCDF:CDF16,
                                           &mut unused,
                                           output,
                                           output_offset,
-                                          input,
+                                          &CommandSliceArray(input),
                                           input_offset) {
             DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
             DivansResult::Failure(m) => DivansOutputResult::Failure(m),
@@ -600,3 +601,14 @@ impl<AllocU8:Allocator<u8>,
 }
 
 
+struct ThawingSliceArray<'a>(&'a [brotli::interface::Command<brotli::SliceOffset>],
+                             brotli::InputPair<'a>);
+
+impl<'a> CommandArray for ThawingSliceArray<'a> {
+    fn get_input_command(&self, offset:usize) -> Command<brotli::InputReference> {
+        brotli::thaw_pair(&self.0[offset], &self.1)
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}

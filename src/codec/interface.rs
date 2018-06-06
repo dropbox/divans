@@ -1,4 +1,6 @@
 use core;
+use brotli;
+use brotli::interface::Nop;
 use interface::{DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, DivansResult, WritableBytes};
 use ::cmd_to_raw::DivansRecodeState;
 use ::probability::{CDF16, Speed};
@@ -16,6 +18,7 @@ use ::interface::{
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
+    FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
@@ -907,3 +910,62 @@ pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
         }
     }
 }
+
+pub trait CommandArray {
+    fn get_input_command(&self, offset: usize) -> Command<brotli::InputReference>;
+    fn len(&self) -> usize;
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct EmptyCommandArray {}
+
+impl CommandArray for EmptyCommandArray {
+    fn get_input_command(&self, _offset: usize) -> Command<brotli::InputReference> {
+        Command::<brotli::InputReference<'static>>::nop()
+    }
+    fn len(&self) -> usize {
+        0
+    }
+}
+
+
+pub struct CommandSliceArray<'a, SliceType:SliceWrapper<u8>+'a>(pub &'a [Command<SliceType>]);
+
+impl<'a,SliceType:SliceWrapper<u8>+'a> CommandArray for CommandSliceArray<'a, SliceType> {
+    fn get_input_command(&self, offset: usize) -> Command<brotli::InputReference> {
+        match self.0[offset] {
+            Command::Literal(ref lit) => {
+                Command::Literal(LiteralCommand{
+                    data:brotli::InputReference{data:lit.data.slice(),orig_offset:0},
+                    prob:FeatureFlagSliceType::default(),
+                    high_entropy: lit.high_entropy,
+            })
+        },
+        Command::PredictionMode(ref pm) => {
+            Command::PredictionMode(PredictionModeContextMap{
+                literal_context_map:brotli::InputReference{data:pm.literal_context_map.slice(),orig_offset:0},
+                predmode_speed_and_distance_context_map:brotli::InputReference{data:pm.predmode_speed_and_distance_context_map.slice(), orig_offset:0},
+            })
+        },
+        Command::Dict(ref d) => {
+            Command::Dict(d.clone())
+        },
+        Command::Copy(ref c) => {
+            Command::Copy(c.clone())
+        },
+        Command::BlockSwitchCommand(ref c) => {
+            Command::BlockSwitchCommand(c.clone())
+        },
+        Command::BlockSwitchLiteral(ref c) => {
+            Command::BlockSwitchLiteral(c.clone())
+        },
+        Command::BlockSwitchDistance(ref c) => {
+            Command::BlockSwitchDistance(c.clone())
+        },
+        }
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
