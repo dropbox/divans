@@ -95,7 +95,7 @@ impl<'a, T:'a> SliceReference<'a, T> {
             len: self.len,
         }        
     }
-    pub fn freezexgoto(old: brotli::SliceOffset) -> SliceReference<'static, T> {
+    pub fn freeze(old: brotli::SliceOffset) -> SliceReference<'static, T> {
         SliceReference::<T> {
             data: &[],
             start: old.offset(),
