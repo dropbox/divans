@@ -187,6 +187,7 @@ impl<SelectedCDF:CDF16,
             let mut cb = |pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                           a:&mut [brotli::interface::Command<brotli::SliceOffset>],
                           mb:brotli::InputPair| {
+                              let final_length = super::ir_optimize::ir_optimize(pm, a, mb);
                               let tmp = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
                                   literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
                                   predmode_speed_and_distance_context_map:brotli::InputReference::from(&pm.predmode_speed_and_distance_context_map),
@@ -196,7 +197,7 @@ impl<SelectedCDF:CDF16,
                                                            divans_data_ref,
                                                            divans_codec_ref,
                                                            window_size);
-                              if a.len() != 0 {
+                              if final_length != 0 {
                                   Self::divans_encode_commands(&ThawingSliceArray(a, mb),
                                                                header_progress_ref,
                                                                divans_data_ref,
