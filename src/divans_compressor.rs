@@ -25,7 +25,7 @@ use super::slice_util;
 use super::alloc_util::RepurposingAlloc;
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 use codec::io::DemuxerAndRingBuffer;
-
+use brotli;
 pub use super::interface::{
     BlockSwitch,
     LiteralBlockSwitch,
@@ -128,27 +128,9 @@ pub fn make_header(window_size: u8) -> [u8; interface::HEADER_LENGTH] {
     retval
 }
 fn thaw_commands<'a>(input: &[Command<slice_util::SliceReference<'static, u8>>], ring_buffer: &'a[u8], start_index:  usize, end_index: usize) -> [Command<slice_util::SliceReference<'a, u8>>; COMPRESSOR_CMD_BUFFER_SIZE] {
-   let mut ret : [Command<slice_util::SliceReference<'a, u8>>; COMPRESSOR_CMD_BUFFER_SIZE] = [Command::<slice_util::SliceReference<u8>>::default(); COMPRESSOR_CMD_BUFFER_SIZE];
+   let mut ret : [Command<brotli::InputReference<'a>>; COMPRESSOR_CMD_BUFFER_SIZE] = [Command::<brotli::InputReference>::default(); COMPRESSOR_CMD_BUFFER_SIZE];
    for (thawed, frozen) in ret[start_index..end_index].iter_mut().zip(input[start_index..end_index].iter()) {
-      *thawed = *frozen;
-   }
-   for item in ret[start_index..end_index].iter_mut() {
-       match *item {
-           Command::Literal(ref mut lit) => {
-               lit.data = lit.data.thaw(ring_buffer);
-               assert_eq!(lit.prob.slice().len(), 0);
-           },
-           Command::PredictionMode(ref mut pm) => {
-               pm.literal_context_map = pm.literal_context_map.thaw(ring_buffer);
-               pm.predmode_speed_and_distance_context_map = pm.predmode_speed_and_distance_context_map.thaw(ring_buffer);
-           },
-           Command::Dict(_) |
-           Command::Copy(_) |
-           Command::BlockSwitchCommand(_) |
-           Command::BlockSwitchLiteral(_) |
-           Command::BlockSwitchDistance(_) => {}
-       }
-//       item.apply_array(|array_item:&mut slice_util::SliceReference<'a, u8>| *array_item = array_item.thaw(ring_buffer));
+      *thawed = brotli::interface::thaw(frozen, ring_buffer);
    }
    ret
 }

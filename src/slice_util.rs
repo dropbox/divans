@@ -12,6 +12,7 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 use core;
+use brotli;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
 #[derive(Copy,Clone,Default,Debug)]
@@ -70,6 +71,12 @@ impl<'a, T:'a> SliceReference<'a, T> {
             len: self.len,
         }        
     }
+}
+pub fn thaw_br<'a>(xself:&SliceReference<'a, u8>, slice:&'a [u8]) -> brotli::InputReference<'a> {
+    brotli::InputReference::<'a> {
+        data: slice.split_at(xself.start).1.split_at(xself.len).0,
+        orig_offset: xself.start,
+    }        
 }
 
 impl<'a, T:'a> SliceWrapper<T> for SliceReference<'a, T> {
