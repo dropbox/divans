@@ -74,6 +74,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
     brotli_data: ResizableByteBuffer<u8, AllocU8>,
     divans_data: ResizableByteBuffer<u8, AllocU8>,
     encoded_byte_offset: usize,
+    opt: super::interface::DivansCompressorOptions,
 }
 
 
@@ -179,15 +180,20 @@ impl<SelectedCDF:CDF16,
                               input:&[u8], input_offset: &mut usize,
                               is_end: bool) -> interface::DivansResult {
         let mut nothing : Option<usize> = None;
+        let mut cb_err:Result<(),ErrMsg> = Ok(());
         {
             let divans_data_ref = &mut self.divans_data;
             let divans_codec_ref = &mut self.codec;
             let header_progress_ref = &mut self.header_progress;
             let window_size = self.window_size;
+            let opt = self.opt;
             let mut cb = |pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                           a:&mut [brotli::interface::Command<brotli::SliceOffset>],
                           mb:brotli::InputPair| {
-                              let final_length = super::ir_optimize::ir_optimize(pm, a, mb, divans_codec_ref);
+                              let final_length = match super::ir_optimize::ir_optimize(pm, a, mb, divans_codec_ref, window_size, opt) {
+                                  Ok(len) => len,
+                                  Err(e) => {cb_err = Err(e); return;},
+                              };
                               let tmp = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
                                   literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
                                   predmode_speed_and_distance_context_map:brotli::InputReference::from(&pm.predmode_speed_and_distance_context_map),
@@ -246,6 +252,9 @@ impl<SelectedCDF:CDF16,
                     return DivansResult::NeedsMoreInput;
                 }
             }
+        }
+        if let Err(e) = cb_err {
+            return DivansResult::Failure(e);
         }
         if is_end && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
             return DivansResult::NeedsMoreOutput;
@@ -527,6 +536,7 @@ impl<AllocU8:Allocator<u8>,
                 opt.force_stride_value,
                 false,
             ),
+            opt:opt,
             header_progress: 0,
             window_size: window_size as u8,
         };

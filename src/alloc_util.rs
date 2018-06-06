@@ -121,6 +121,15 @@ impl<T, AllocT: Allocator<T>> RepurposingAlloc<T, AllocT> {
             cached_allocation: AllocT::AllocatedMemory::default(),
         }
     }
+    pub fn disassemble(self) -> (AllocT, AllocT::AllocatedMemory) {
+        (self.alloc, self.cached_allocation)
+    }
+    pub fn reassemble(data: (AllocT, AllocT::AllocatedMemory)) -> Self {
+        Self {
+            alloc:data.0,
+            cached_allocation:data.1,
+        }
+    }
     pub fn use_cached_allocation<'a, ClearCacheDecision: ShouldClearCacheOnAlloc<T>>(
         &'a mut self,
     ) -> CachedAllocator<'a, T, AllocT, ClearCacheDecision> {
