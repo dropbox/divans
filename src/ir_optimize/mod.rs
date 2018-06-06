@@ -59,7 +59,6 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                                                             opt.use_context_map,
                                                             opt.force_stride_value,
                                                             false);
-    /*
     {
         let immutable_pm = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
             literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
@@ -68,13 +67,13 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         let mut cmd_offset = 0usize;
         match actuary.encode_or_decode(&[], &mut unused, &mut[], &mut unused2,
                                             &codec::CommandSliceArray(&[immutable_pm]),&mut cmd_offset) {
-            DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {
+            DivansResult::NeedsMoreOutput => {
                 return Err(ErrMsg::DrainOrFillNeedsInput(2));
             },
             DivansResult::Failure(e) => {
                 return Err(e);
             }
-            DivansResult::Success => {
+            DivansResult::NeedsMoreInput | DivansResult::Success => {
                 if cmd_offset != 1 {
                     return Err(ErrMsg::DrainOrFillNeedsInput(3));                    
                 }
@@ -109,13 +108,13 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             let mut cmd_offset = 0usize;
             match actuary.encode_or_decode(&[], &mut unused, &mut[], &mut unused2,
                                            &OneCommandThawingArray(&eligible, &mb),&mut cmd_offset) {
-                DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {
+                DivansResult::NeedsMoreOutput => {
                     return Err(ErrMsg::DrainOrFillNeedsInput(4));
                 },
                 DivansResult::Failure(e) => {
                     return Err(e);
                 }
-                DivansResult::Success => {
+                DivansResult::NeedsMoreInput | DivansResult::Success => {
                     if cmd_offset != 1 {
                         return Err(ErrMsg::DrainOrFillNeedsInput(5));
                     }
@@ -128,21 +127,20 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         let cmd = &a[index];
         match actuary.encode_or_decode(&[], &mut unused, &mut[], &mut unused2,
                                        &OneCommandThawingArray(&cmd, &mb),&mut cmd_offset) {
-            DivansResult::NeedsMoreInput | DivansResult::NeedsMoreOutput => {
+            DivansResult::NeedsMoreOutput => {
                 return Err(ErrMsg::DrainOrFillNeedsInput(4));
             },
             DivansResult::Failure(e) => {
                 return Err(e);
             }
-            DivansResult::Success => {
+            DivansResult::NeedsMoreInput | DivansResult::Success => {
                 if cmd_offset != 1 {
                     return Err(ErrMsg::DrainOrFillNeedsInput(5));
                 }
             }
         }        
     }
-*/
-    eprintln!("Actuary estimate: total cost {} bits; {} bytes\n", total_billing_cost(&actuary), total_billing_cost(&actuary)/ 8.0);
+    //eprintln!("Actuary estimate: total cost {} bits; {} bytes\n", total_billing_cost(&actuary), total_billing_cost(&actuary)/ 8.0);
     let (retrieved_m8, retrieved_mcdf16) = actuary.free();
     codec.cross_command_state.thread_ctx = codec::ThreadContext::MainThread(
         codec::MainThreadContext::<SelectedCDF,
