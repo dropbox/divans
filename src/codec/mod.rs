@@ -51,7 +51,8 @@ pub use self::interface::{
     CMD_CODER,
     CommandArray,
     EmptyCommandArray,
-    CommandSliceArray
+    CommandSliceArray,
+    MainThreadContext,
 };
 use super::interface::{
     ArithmeticEncoderOrDecoder,

@@ -16,7 +16,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                    >(_pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                      a:&mut [brotli::interface::Command<brotli::SliceOffset>],
                      mb:brotli::InputPair,
-                     _codec:&mut codec::DivansCodec<ChosenEncoder,
+                     codec:&mut codec::DivansCodec<ChosenEncoder,
                                                    EncoderSpecialization,
                                                    DemuxerAndRingBuffer<AllocU8,
                                                                         DevNull<AllocU8>>,
@@ -27,6 +27,10 @@ pub fn ir_optimize<SelectedCDF:CDF16,
     if a.len() == 0 {
         return 0;
     }
+    let (m8, mcdf16, remainder) = match core::mem::replace(&mut codec.cross_command_state.thread_ctx, codec::ThreadContext::Worker) {
+        codec::ThreadContext::MainThread(main) => main.dismantle(),
+        codec::ThreadContext::Worker => panic!("Main Thread was none during encode"),
+    };
     let mut eligible_index = 0usize;
     for index in 1..a.len() {
         let (eligible_a, item_a) = a.split_at_mut(index);
@@ -49,5 +53,12 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         }
         
     }
+    codec.cross_command_state.thread_ctx = codec::ThreadContext::MainThread(
+        codec::MainThreadContext::<SelectedCDF,
+                                   AllocU8,
+                                   AllocCDF16,
+                                   ChosenEncoder>::reassemble((m8,
+                                                               mcdf16,
+                                                               remainder)));
     a.len()
 }
