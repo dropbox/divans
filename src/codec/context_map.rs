@@ -185,7 +185,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                PredictionModeSubstate::DynamicContextMixing => {
                    let is_adv = in_cmd.get_is_adv_context_map();
                    if (is_adv >> 1) != 0 {
-                       return return DivansResult::Failure(ErrMsg::AdvContextMapNotBoolean(is_adv));
+                       return DivansResult::Failure(ErrMsg::AdvContextMapNotBoolean(is_adv));
                    }
                    assert_eq!(superstate.bk.desired_context_mixing >>3, 0);
                    let mut beg_nib = superstate.bk.desired_context_mixing | (is_adv << 3);
