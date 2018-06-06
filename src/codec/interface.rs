@@ -624,6 +624,40 @@ pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<
     Worker,
 }
 impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+    pub fn dismantle(self) -> (
+        RepurposingAlloc<u8, AllocU8>,
+        AllocCDF16,
+        (
+            DivansRecodeState<AllocU8::AllocatedMemory>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            ArithmeticCoder,
+        )) {
+        (self.m8, self.mcdf16, (self.recoder, self.lbk, self.lit_low_priors, self.lit_high_priors, self.lit_coder))
+    }
+
+    pub fn reassemble(input:(
+        RepurposingAlloc<u8, AllocU8>,
+        AllocCDF16,
+        (
+            DivansRecodeState<AllocU8::AllocatedMemory>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            ArithmeticCoder,
+        ))) -> Self {
+        MainThreadContext::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+            m8:input.0,
+            mcdf16:input.1,
+            recoder:(input.2).0,
+            lbk:(input.2).1,
+            lit_low_priors:(input.2).2,
+            lit_high_priors:(input.2).3,
+            lit_coder:(input.2).4
+        }
+    }
+
     pub fn free(&mut self) {
         self.m8.free_cell(core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(core::mem::replace(&mut self.lbk.literal_context_map, AllocU8::AllocatedMemory::default()));

@@ -1,11 +1,29 @@
 use brotli;
 use core;
+use codec;
+use super::mux::{Mux,DevNull};
+use super::probability::CDF16;
+use codec::io::DemuxerAndRingBuffer;
+pub use super::cmd_to_divans::EncoderSpecialization;
 use brotli::interface::{Command, CopyCommand, Nop};
-use alloc::SliceWrapper;
+use alloc::{SliceWrapper, Allocator};
+pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator};
 
-pub fn ir_optimize(_pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
-                   a:&mut [brotli::interface::Command<brotli::SliceOffset>],
-                   mb:brotli::InputPair) -> usize {
+pub fn ir_optimize<SelectedCDF:CDF16,
+                   ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                   AllocU8:Allocator<u8>,
+                   AllocCDF16:Allocator<SelectedCDF>,
+                   >(_pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
+                     a:&mut [brotli::interface::Command<brotli::SliceOffset>],
+                     mb:brotli::InputPair,
+                     _codec:&mut codec::DivansCodec<ChosenEncoder,
+                                                   EncoderSpecialization,
+                                                   DemuxerAndRingBuffer<AllocU8,
+                                                                        DevNull<AllocU8>>,
+                                                   Mux<AllocU8>,
+                                                   SelectedCDF,
+                                                   AllocU8,
+                                                   AllocCDF16>) -> usize {
     if a.len() == 0 {
         return 0;
     }
