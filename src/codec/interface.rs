@@ -72,6 +72,10 @@ impl Default for StrideSelection {
 pub trait EncoderOrDecoderSpecialization {
     const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool;
     const IS_DECODING_FILE: bool;
+    #[inline(always)]
+    fn adapt_cdf(&self) -> bool {
+        true
+    }
     fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
                                                     len: usize) -> AllocatedMemoryPrefix<u8, AllocU8>;

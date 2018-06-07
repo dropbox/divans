@@ -670,7 +670,9 @@ impl<AllocU8: Allocator<u8>,
                             &mut command_type_code,
                             command_type_prob,
                             BillingDesignation::CrossCommand(CrossCommandBilling::FullSelection));
-                        command_type_prob.blend(command_type_code, Speed::ROCKET);
+                        if self.cross_command_state.specialization.adapt_cdf() {
+                            command_type_prob.blend(command_type_code, Speed::ROCKET);
+                        }
                     }
                     match self.update_command_state_from_nibble(command_type_code, is_end) {
                         DivansResult::Success => {},
