@@ -5,7 +5,7 @@ use super::mux::{Mux,DevNull};
 use super::probability::CDF16;
 use codec::io::DemuxerAndRingBuffer;
 pub use super::cmd_to_divans::EncoderSpecialization;
-use brotli::interface::{Command, CopyCommand, Nop, PredictionModeContextMap};
+use brotli::interface::{Command, LiteralCommand, CopyCommand, Nop, PredictionModeContextMap};
 use alloc_util;
 use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
@@ -13,6 +13,22 @@ mod statistics_tracking_codec;
 mod cache;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, ToggleProbabilityBlend,
                                       total_billing_cost, take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
+pub fn should_merge<SelectedCDF:CDF16,
+                    AllocU8:Allocator<u8>,
+                    AllocCDF16:Allocator<SelectedCDF>>(lit: &LiteralCommand<brotli::SliceOffset>,
+                                                       copy: &CopyCommand,
+                                                       mb: brotli::InputPair,
+                                                       actuary:&mut codec::DivansCodec<TallyingArithmeticEncoder,
+                                                                                       ToggleProbabilityBlend,
+                                                                                       DemuxerAndRingBuffer<AllocU8,
+                                                                                                            DevNull<AllocU8>>,
+                                                                                       DevNull<AllocU8>,
+                                                                                       SelectedCDF,
+                                                                                       AllocU8,
+                                                                                       AllocCDF16>,
+                                                       cache: &mut cache::Cache<AllocU8>) -> bool {
+    false
+}
 pub fn ir_optimize<SelectedCDF:CDF16,
                    ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                    AllocU8:Allocator<u8>,
@@ -40,7 +56,8 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         codec::ThreadContext::MainThread(main) => main.dismantle(),
         codec::ThreadContext::Worker => panic!("Main Thread was none during encode"),
     };
-    let (m8, cache) = re_m8.disassemble();
+    let (mut m8, reallocation_item) = re_m8.disassemble();
+    let mut distance_cache = cache::Cache::<AllocU8>::new(&codec.cross_command_state.bk.distance_lru, a.len(), &mut m8);
     let mut actuary = codec::DivansCodec::<TallyingArithmeticEncoder,
                                            ToggleProbabilityBlend,
                                            DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
@@ -81,7 +98,11 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             }
         }
     }
-    
+    for (index, cmd) in a.iter().enumerate() {
+        if let Command::Copy(ref copy) = *cmd {
+            distance_cache.populate(copy.distance, copy.num_bytes, index);
+        }
+    }
     let mut eligible_index = 0usize;
     for index in 1..a.len() {
         let (eligible_a, item_a) = a.split_at_mut(index);
@@ -91,12 +112,22 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             if let Command::Copy(ref mut copy) = item_a[0] {
                 let start = lit.data.offset();
                 let fin = start + lit.data.len() + copy.num_bytes as usize;
-                let mut should_merge = false;
+                let mut should_merge = should_merge(lit, copy, mb, &mut actuary, &mut distance_cache);
                 if should_merge && !(start < mb.0.len() && fin > mb.0.len()) {
                     lit.data.1 += copy.num_bytes;
                     core::mem::replace(copy, CopyCommand::nop());
                 } else {
                     step_command = true;
+                }
+            } else if let Command::Literal(cont_lit) = eligible {
+                let start = lit.data.offset();
+                let fin = start + lit.data.len() + cont_lit.data.len();
+                if start < mb.0.len() && fin > mb.0.len() {
+                    step_command = true; // we span a macroblock boundary
+                } else { // always merge adjacent literals if possible. There's rarely a benefit to keeping them apart
+                    assert_eq!(lit.data.0 + lit.data.1 as usize, cont_lit.data.0);
+                    lit.data.1 += cont_lit.data.1;
+                    core::mem::replace(&mut item_a[0], Command::Copy(CopyCommand::nop())); // replace with a copy
                 }
             } else {
                 step_command = true;
@@ -142,12 +173,13 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         }        
     }
     //eprintln!("Actuary estimate: total cost {} bits; {} bytes\n", total_billing_cost(&actuary), total_billing_cost(&actuary)/ 8.0);
-    let (retrieved_m8, retrieved_mcdf16) = actuary.free();
+    let (mut retrieved_m8, retrieved_mcdf16) = actuary.free();
+    distance_cache.free(&mut retrieved_m8);
     codec.cross_command_state.thread_ctx = codec::ThreadContext::MainThread(
         codec::MainThreadContext::<SelectedCDF,
                                    AllocU8,
                                    AllocCDF16,
-                                   ChosenEncoder>::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, cache)),
+                                   ChosenEncoder>::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, reallocation_item)),
                                                                retrieved_mcdf16,
                                                                remainder)));
     Ok(a.len())
