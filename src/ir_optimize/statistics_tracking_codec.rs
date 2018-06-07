@@ -5,11 +5,12 @@ use brotli;
 use codec::CommandArray;
 use core;
 use codec;
+use slice_util::AllocatedMemoryPrefix;
+use codec::{EncoderOrDecoderSpecialization};
 use mux::{Mux,DevNull};
-
 use codec::io::DemuxerAndRingBuffer;
 use cmd_to_divans::EncoderSpecialization;
-use brotli::interface::{Command, CopyCommand, Nop, PredictionModeContextMap};
+use brotli::interface::{Command, CopyCommand, Nop, PredictionModeContextMap, LiteralCommand, DictCommand};
 use alloc_util;
 
 
@@ -96,7 +97,6 @@ impl ArithmeticEncoderOrDecoder for TallyingArithmeticEncoder {
 
 }
 
-
 pub fn reset_billing_snapshot<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<SelectedCDF>,
@@ -175,4 +175,76 @@ impl<'a> CommandArray for OneCommandThawingArray<'a> {
     fn len(&self) -> usize {
         1
     }
+}
+
+pub struct ToggleProbabilityBlend {
+    pub will_it_blend: bool,
+    enc: EncoderSpecialization,
+}
+
+impl Default for ToggleProbabilityBlend {
+    fn default() -> Self {
+        ToggleProbabilityBlend {
+            will_it_blend: true,
+            enc: EncoderSpecialization::default(),
+        }
+    }
+}
+
+impl EncoderOrDecoderSpecialization for ToggleProbabilityBlend {
+    const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool = false;
+    const IS_DECODING_FILE: bool = false;
+    fn adapt_cdf(&self) -> bool {
+        self.will_it_blend
+    }
+    fn alloc_literal_buffer<AllocU8:Allocator<u8>>(&mut self,
+                                                   m8:&mut AllocU8,
+                                                   len: usize) -> AllocatedMemoryPrefix<u8, AllocU8> {
+        self.enc.alloc_literal_buffer(m8, len)
+    }
+    fn get_input_command<'a, ISlice:SliceWrapper<u8>>(&self,
+                                                      data:&'a [Command<ISlice>],
+                                                      offset: usize,
+                                                      backing:&'a Command<ISlice>) -> &'a Command<ISlice> {
+        self.enc.get_input_command(data, offset, backing)
+    }
+    fn get_output_command<'a, AllocU8:Allocator<u8>>(&self,
+                                                     data:&'a mut [Command<AllocatedMemoryPrefix<u8, AllocU8>>],
+                                                     offset: usize,
+                                                     backing:&'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>>) -> &'a mut Command<AllocatedMemoryPrefix<u8, AllocU8>> {
+        self.enc.get_output_command(data, offset, backing)
+    }
+    fn get_source_copy_command<'a, ISlice:SliceWrapper<u8>>(&self,
+                                                            data: &'a Command<ISlice>,
+                                                            backing: &'a CopyCommand) -> &'a CopyCommand {
+        self.enc.get_source_copy_command(data, backing)
+    }
+    fn get_source_literal_command<'a,
+                                  ISlice:SliceWrapper<u8>
+                                         +Default>(&self,
+                                                   data: &'a Command<ISlice>,
+                                                   backing: &'a LiteralCommand<ISlice>) -> &'a LiteralCommand<ISlice> {
+        self.enc.get_source_literal_command(data, backing)
+    }
+    fn get_source_dict_command<'a, ISlice:SliceWrapper<u8>>(&self,
+                                                            data: &'a Command<ISlice>,
+                                                            backing: &'a DictCommand) -> &'a DictCommand {
+        self.enc.get_source_dict_command(data, backing)
+    }
+    fn get_literal_byte<ISlice:SliceWrapper<u8>>(&self,
+                        in_cmd: &LiteralCommand<ISlice>,
+                        index: usize) -> u8 {
+        self.enc.get_literal_byte(in_cmd, index)
+    }
+    fn get_recoder_output<'a>(&'a mut self,
+                              passed_in_output_bytes: &'a mut [u8]) -> &'a mut[u8] {
+        self.enc.get_recoder_output(passed_in_output_bytes)
+    }
+    fn get_recoder_output_offset<'a>(&self,
+                                     passed_in_output_bytes: &'a mut usize,
+                                     backing: &'a mut usize) -> &'a mut usize {
+        self.enc.get_recoder_output_offset(passed_in_output_bytes, backing)
+    }
+                          
+
 }

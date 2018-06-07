@@ -11,7 +11,7 @@ use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
 mod statistics_tracking_codec;
 mod cache;
-use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray,
+use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, ToggleProbabilityBlend,
                                       total_billing_cost, take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
 pub fn ir_optimize<SelectedCDF:CDF16,
                    ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -42,7 +42,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
     };
     let (m8, cache) = re_m8.disassemble();
     let mut actuary = codec::DivansCodec::<TallyingArithmeticEncoder,
-                                           EncoderSpecialization,
+                                           ToggleProbabilityBlend,
                                            DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                            DevNull<AllocU8>,
                                            SelectedCDF,
@@ -51,7 +51,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                                                             mcdf16,
                                                             TallyingArithmeticEncoder::default(),
                                                             TallyingArithmeticEncoder::default(),
-                                                            EncoderSpecialization::new(),
+                                                            ToggleProbabilityBlend::default(),
                                                             DemuxerAndRingBuffer::<AllocU8, DevNull<AllocU8>>::default(),
                                                             usize::from(window_size),
                                                             opt.dynamic_context_mixing.unwrap_or(0),
