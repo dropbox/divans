@@ -36,11 +36,13 @@ impl super::SliceWrapper<u8> for ExRingBuffer {
 #[allow(unused)]
 fn make_ring_buffer_state() -> super::DivansRecodeState<ExRingBuffer>{
     super::DivansRecodeState{
-        total_offset:0,
-        input_sub_offset: 0,
+        state:super::RingBufferIndexState{
+            total_offset:0,
+            input_sub_offset: 0,
+            ring_buffer_decode_index:0,
+            ring_buffer_output_index:0,
+        },
         ring_buffer: ExRingBuffer::default(),
-        ring_buffer_decode_index:0,
-        ring_buffer_output_index:0,
     }
 }
 #[allow(unused)]
@@ -56,7 +58,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
         match ret {
             DivansOutputResult::Success => {
                 assert!(index < 5);
-                state.input_sub_offset = 0; // reset decode
+                state.state.input_sub_offset = 0; // reset decode
             },
             DivansOutputResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
@@ -107,7 +109,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
         match ret {
             DivansOutputResult::Success => {
                 assert!(index < 5);
-                state.input_sub_offset = 0;
+                state.state.input_sub_offset = 0;
             },
             DivansOutputResult::NeedsMoreOutput => assert_eq!(index, 5),
             _ => panic!("Unexpected code from dict parsing"),
@@ -152,7 +154,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
 #[allow(unused)]
 fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
              mut buffer: &mut [u8]) -> super::DivansRecodeState<ExRingBuffer> {
-    assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+    assert!(state.state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
     assert_state_equals_history_buffer(&state, buffer);
     let mut scratch_buffer = [0u8; TEST_RING_SIZE];
     let mut count = 0;
@@ -185,10 +187,10 @@ fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
 fn assert_state_equals_history_buffer(state: &super::DivansRecodeState<ExRingBuffer>,
                                       buffer: &[u8]) {
     for i in 0..TEST_RING_SIZE {
-        let ring_index = if (state.ring_buffer_decode_index as usize) <= i {
-            state.ring_buffer_decode_index as usize + state.ring_buffer.slice().len() - i - 1
+        let ring_index = if (state.state.ring_buffer_decode_index as usize) <= i {
+            state.state.ring_buffer_decode_index as usize + state.ring_buffer.slice().len() - i - 1
         } else {
-            state.ring_buffer_decode_index as usize - i - 1
+            state.state.ring_buffer_decode_index as usize - i - 1
         };
         let flat_index = TEST_RING_SIZE - 1 - i;
         assert_eq!(buffer[flat_index], state.ring_buffer.slice()[ring_index]);
@@ -197,7 +199,7 @@ fn assert_state_equals_history_buffer(state: &super::DivansRecodeState<ExRingBuf
 #[allow(unused)]
 fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
              buffer: &[u8]) {
-    assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+    assert!(state.state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
     assert_state_equals_history_buffer(&state, buffer);
     let mut scratch_buffer = [0u8; TEST_RING_SIZE];
     let mut count = 0;
@@ -228,7 +230,7 @@ fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
 #[allow(unused)]
 fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
              buffer: &[u8]) {
-    assert!(state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
+    assert!(state.state.ring_buffer_decode_index == 102); //thhis makes sure we test wraparound
     assert_state_equals_history_buffer(&state, buffer);
     let mut scratch_buffer = [0u8; TEST_RING_SIZE];
     let mut count = 0;

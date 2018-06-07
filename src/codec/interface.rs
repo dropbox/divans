@@ -2,7 +2,7 @@ use core;
 use brotli;
 use brotli::interface::Nop;
 use interface::{DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, DivansResult, WritableBytes};
-use ::cmd_to_raw::DivansRecodeState;
+use ::cmd_to_raw::{DivansRecodeState, RingBufferSnapshot};
 use ::probability::{CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -792,6 +792,10 @@ impl <AllocU8:Allocator<u8>,
             last_llen:self.bk.last_llen,
             last_dlen:self.bk.last_dlen,
             last_clen:self.bk.last_clen,
+            ring_buffer:match self.thread_ctx {
+                ThreadContext::MainThread(ref ctx)=>Some(ctx.recoder.snapshot_ringbuffer()),
+                ThreadContext::Worker => None,
+            },
         }
     }
     pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot) {
@@ -800,6 +804,12 @@ impl <AllocU8:Allocator<u8>,
         self.bk.last_llen = cs.last_llen;
         self.bk.last_dlen = cs.last_dlen;
         self.bk.last_clen = cs.last_clen;
+        if let Some(rb) = cs.ring_buffer {
+            match self.thread_ctx {
+                ThreadContext::MainThread(ref mut ctx)=> ctx.recoder.restore_ringbuffer_to_snapshot(rb),
+                ThreadContext::Worker => {},
+            }
+        }
     }
     fn free_internal(&mut self) {
         self.muxer.free_mux(self.thread_ctx.m8().unwrap().get_base_alloc());
@@ -1003,4 +1013,5 @@ pub struct CodecSnapshot {
     last_llen: u32,
     last_4_states: u8,
     distance_lru:[u32;4],
+    ring_buffer:Option<RingBufferSnapshot>,
 }
