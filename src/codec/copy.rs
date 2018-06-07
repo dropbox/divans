@@ -159,7 +159,7 @@ impl CopyState {
                     let mut beg_nib = if Specialization::IS_DECODING_FILE {
                         15 // we can't search for mnemonic in empty in_cmd (not yet decoded)
                     } else {
-                        superstate.bk.distance_mnemonic_code(in_cmd.distance)
+                        superstate.bk.distance_mnemonic_code(in_cmd.distance, self.cc.num_bytes)
                     };
                     //let index = 0;
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
@@ -170,10 +170,11 @@ impl CopyState {
                         nibble_prob.blend(beg_nib, Speed::SLOW);
                     }
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
+                    //eprintln!("M:{}", beg_nib);
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        let (dist, ok) = superstate.bk.get_distance_from_mnemonic_code(beg_nib);
+                        let (dist, ok) = superstate.bk.get_distance_from_mnemonic_code(beg_nib, self.cc.num_bytes);
                         self.cc.distance = dist;
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;

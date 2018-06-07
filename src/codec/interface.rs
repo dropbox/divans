@@ -41,6 +41,7 @@ use super::priors::{
 use ::priors::PriorCollection;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 4;
 
+
 pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
 pub const BLOCK_TYPE_DISTANCE_SWITCH:usize=2;
@@ -155,7 +156,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     pub distance_lru: [u32;4],
     pub btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
-    pub distance_cache:[[DistanceCacheEntry;3];32],
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
     //pub cm_prior_depth_mask: u8,
@@ -378,12 +378,6 @@ impl<
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
             command_count: 0,
-            distance_cache:[
-                [
-                    DistanceCacheEntry{
-                        distance:1,
-                        command_count:0,
-                    };3];32],
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
@@ -489,7 +483,7 @@ impl<
         DivansOpResult::Success
     }
     #[inline(always)]
-    pub fn get_distance_from_mnemonic_code(&self, code:u8) -> (u32, bool) {
+    pub fn get_distance_from_mnemonic_code(&self, code:u8, num_bytes:u32 ) -> (u32, bool) {
         /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
             0 => self.distance_lru[0],
             1 => self.distance_lru[1],
@@ -519,9 +513,9 @@ impl<
         let ret = (self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand;
         (ret as u32, ret > 0)
     }
-    pub fn distance_mnemonic_code(&self, d: u32) -> u8 {
+    pub fn distance_mnemonic_code(&self, d: u32, l:u32) -> u8 {
         for i in 0..15 {
-            let (item, ok) = self.get_distance_from_mnemonic_code(i as u8);
+            let (item, ok) = self.get_distance_from_mnemonic_code(i as u8, l);
             if item == d && ok {
                 return i as u8;
             }
@@ -560,21 +554,6 @@ impl<
         self.last_4_states |= 128;
     }
     pub fn obs_distance(&mut self, cc:&CopyCommand) {
-        if cc.num_bytes < self.distance_cache.len() as u32{
-            let nb = cc.num_bytes as usize;
-            let mut sub_index = if self.distance_cache[nb][1].command_count < self.distance_cache[nb][0].command_count {
-                1
-            } else {
-                0
-            };
-            if self.distance_cache[nb][2].command_count < self.distance_cache[nb][sub_index].command_count {
-                sub_index = 2;
-            }
-            self.distance_cache[nb][sub_index] = DistanceCacheEntry{
-                distance: 0,//cc.distance, we're copying it to here (ha!)
-                command_count:self.command_count,
-            };
-        }
         let distance = cc.distance;
         if distance == self.distance_lru[1] {
             self.distance_lru = [distance,
