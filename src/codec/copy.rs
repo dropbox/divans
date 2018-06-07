@@ -5,6 +5,7 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     round_up_mod_4,
+    get_distance_from_mnemonic_code,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -174,7 +175,7 @@ impl CopyState {
                     if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
-                        let (dist, ok) = superstate.bk.get_distance_from_mnemonic_code(beg_nib, self.cc.num_bytes);
+                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, beg_nib, self.cc.num_bytes);
                         self.cc.distance = dist;
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;

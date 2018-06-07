@@ -482,40 +482,10 @@ impl<
         }
         DivansOpResult::Success
     }
-    #[inline(always)]
-    pub fn get_distance_from_mnemonic_code(&self, code:u8, num_bytes:u32 ) -> (u32, bool) {
-        /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
-            0 => self.distance_lru[0],
-            1 => self.distance_lru[1],
-            2 => self.distance_lru[2],
-            3 => self.distance_lru[3],
-            4 => self.distance_lru[0] + 1,
-            5 => self.distance_lru[0].wrapping_sub(1),
-            6 => self.distance_lru[1] + 1,
-            7 => self.distance_lru[1].wrapping_sub(1),
-            8 => self.distance_lru[0] + 2,
-            9 => self.distance_lru[0].wrapping_sub(2),
-            10 => self.distance_lru[1] + 2,
-            11 => self.distance_lru[1].wrapping_sub(2),
-            12 => self.distance_lru[0] + 3,
-            13 => self.distance_lru[0].wrapping_sub(3),
-            14 => self.distance_lru[1] + 3,
-            15 => self.distance_lru[0], // logic error
-            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
-        }*/
-        if code < 4 {
-            return (self.distance_lru[code as usize], true); // less than four is a fetch
-        }
-        let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
-        // the value depending on if its an even or odd code
-        // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
-        let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
-        let ret = (self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand;
-        (ret as u32, ret > 0)
-    }
+
     pub fn distance_mnemonic_code(&self, d: u32, l:u32) -> u8 {
         for i in 0..15 {
-            let (item, ok) = self.get_distance_from_mnemonic_code(i as u8, l);
+            let (item, ok, _cache_index) = get_distance_from_mnemonic_code(&self.distance_lru, i as u8, l);
             if item == d && ok {
                 return i as u8;
             }
@@ -982,3 +952,36 @@ impl<'a,SliceType:SliceWrapper<u8>+'a> CommandArray for CommandSliceArray<'a, Sl
     }
 }
 
+
+#[inline(always)]
+pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, num_bytes:u32 ) -> (u32, bool, u8) {
+    /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
+    0 => self.distance_lru[0],
+    1 => self.distance_lru[1],
+    2 => self.distance_lru[2],
+    3 => self.distance_lru[3],
+    4 => self.distance_lru[0] + 1,
+    5 => self.distance_lru[0].wrapping_sub(1),
+    6 => self.distance_lru[1] + 1,
+    7 => self.distance_lru[1].wrapping_sub(1),
+    8 => self.distance_lru[0] + 2,
+    9 => self.distance_lru[0].wrapping_sub(2),
+    10 => self.distance_lru[1] + 2,
+    11 => self.distance_lru[1].wrapping_sub(2),
+    12 => self.distance_lru[0] + 3,
+    13 => self.distance_lru[0].wrapping_sub(3),
+    14 => self.distance_lru[1] + 3,
+    15 => self.distance_lru[0], // logic error
+    _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
+}*/
+    if code < 4 {
+        return (distance_lru[code as usize], true, code); // less than four is a fetch
+    }
+    let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
+    // the value depending on if its an even or odd code
+    // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
+    let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
+    let index = (code & 2) >> 1;
+    let ret = (distance_lru[index as usize] as i32) + signed_summand;
+    (ret as u32, ret > 0, index)
+}

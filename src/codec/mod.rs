@@ -53,6 +53,7 @@ pub use self::interface::{
     EmptyCommandArray,
     CommandSliceArray,
     MainThreadContext,
+    get_distance_from_mnemonic_code,
 };
 use super::interface::{
     ArithmeticEncoderOrDecoder,

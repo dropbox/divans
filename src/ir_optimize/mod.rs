@@ -10,6 +10,7 @@ use alloc_util;
 use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
 mod statistics_tracking_codec;
+mod cache;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray,
                                       total_billing_cost, take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
 pub fn ir_optimize<SelectedCDF:CDF16,
