@@ -120,12 +120,6 @@ pub enum ContextMapType {
 }
 
 
-#[derive(Copy,Clone)]
-pub struct DistanceCacheEntry {
-    pub distance:u32,
-    pub command_count:u64,
-}
-
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 
 pub struct LiteralBookKeeping<Cdf16:CDF16,
@@ -149,7 +143,6 @@ pub struct LiteralBookKeeping<Cdf16:CDF16,
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    //pub command_count:u32,
     //pub num_literals_coded: u32,
     pub lit_len_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub distance_context_map: AllocU8::AllocatedMemory,
@@ -174,7 +167,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub desired_context_mixing: u8,
-    pub command_count: u64,
 }
 
 #[inline(always)]
@@ -381,7 +373,6 @@ impl<
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
-            command_count: 0,
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
@@ -794,6 +785,22 @@ impl <AllocU8:Allocator<u8>,
             ),
         }
     }
+    pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot {
+        CodecSnapshot{
+            last_4_states:self.bk.last_4_states,
+            distance_lru:self.bk.distance_lru,
+            last_llen:self.bk.last_llen,
+            last_dlen:self.bk.last_dlen,
+            last_clen:self.bk.last_clen,
+        }
+    }
+    pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot) {
+        self.bk.last_4_states = cs.last_4_states;
+        self.bk.distance_lru = cs.distance_lru;
+        self.bk.last_llen = cs.last_llen;
+        self.bk.last_dlen = cs.last_dlen;
+        self.bk.last_clen = cs.last_clen;
+    }
     fn free_internal(&mut self) {
         self.muxer.free_mux(self.thread_ctx.m8().unwrap().get_base_alloc());
         self.demuxer.free_demux(self.thread_ctx.m8().unwrap().get_base_alloc());
@@ -988,4 +995,12 @@ pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, num_bytes
     let index = (code & 2) >> 1;
     let ret = (distance_lru[index as usize] as i32) + signed_summand;
     (ret as u32, ret > 0, index)
+}
+
+pub struct CodecSnapshot {
+    last_dlen: u8,
+    last_clen: u8,
+    last_llen: u32,
+    last_4_states: u8,
+    distance_lru:[u32;4],
 }

@@ -329,7 +329,6 @@ impl<AllocU8: Allocator<u8>,
     }
     #[inline(always)]
     fn update_command_state_from_nibble(&mut self, command_type_code:u8, is_end: bool) -> DivansResult{
-        self.cross_command_state.bk.command_count += 1;
         match command_type_code {
             1 => {
                 self.state_copy = copy::CopyState::begin();
