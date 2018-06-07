@@ -786,16 +786,26 @@ impl <AllocU8:Allocator<u8>,
         }
     }
     pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot {
+        let ring_buffer;
+        let last_8;
+        match self.thread_ctx {
+            ThreadContext::MainThread(ref ctx)=> {
+                ring_buffer = Some(ctx.recoder.snapshot_ringbuffer());
+                last_8 = ctx.lbk.last_8_literals;
+            },
+            ThreadContext::Worker => {
+                ring_buffer = None;
+                last_8 = 0u64;
+            },
+        }
         CodecSnapshot{
             last_4_states:self.bk.last_4_states,
             distance_lru:self.bk.distance_lru,
             last_llen:self.bk.last_llen,
             last_dlen:self.bk.last_dlen,
             last_clen:self.bk.last_clen,
-            ring_buffer:match self.thread_ctx {
-                ThreadContext::MainThread(ref ctx)=>Some(ctx.recoder.snapshot_ringbuffer()),
-                ThreadContext::Worker => None,
-            },
+            ring_buffer:ring_buffer,
+            last_8_literals:last_8,
         }
     }
     pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot) {
@@ -806,7 +816,10 @@ impl <AllocU8:Allocator<u8>,
         self.bk.last_clen = cs.last_clen;
         if let Some(rb) = cs.ring_buffer {
             match self.thread_ctx {
-                ThreadContext::MainThread(ref mut ctx)=> ctx.recoder.restore_ringbuffer_to_snapshot(rb),
+                ThreadContext::MainThread(ref mut ctx)=> {
+                    ctx.recoder.restore_ringbuffer_to_snapshot(rb);
+                    ctx.lbk.last_8_literals = cs.last_8_literals;
+                },
                 ThreadContext::Worker => {},
             }
         }
@@ -1010,8 +1023,9 @@ pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, num_bytes
 pub struct CodecSnapshot {
     last_dlen: u8,
     last_clen: u8,
-    last_llen: u32,
     last_4_states: u8,
-    distance_lru:[u32;4],
     ring_buffer:Option<RingBufferSnapshot>,
+    last_llen: u32,
+    distance_lru:[u32;4],
+    last_8_literals: u64,
 }
