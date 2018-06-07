@@ -98,10 +98,11 @@ impl ArithmeticEncoderOrDecoder for TallyingArithmeticEncoder {
 }
 
 pub fn reset_billing_snapshot<SelectedCDF:CDF16,
-                          AllocU8:Allocator<u8>,
-                          AllocCDF16:Allocator<SelectedCDF>,
+                              AllocU8:Allocator<u8>,
+                              AllocCDF16:Allocator<SelectedCDF>,
+                              Spc: EncoderOrDecoderSpecialization
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          EncoderSpecialization,
+                                                          Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
@@ -116,9 +117,10 @@ pub fn reset_billing_snapshot<SelectedCDF:CDF16,
 
 pub fn take_billing_snapshot<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
-                          AllocCDF16:Allocator<SelectedCDF>,
+                             AllocCDF16:Allocator<SelectedCDF>,
+                             Spc: EncoderOrDecoderSpecialization
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          EncoderSpecialization,
+                                                          Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
@@ -133,9 +135,10 @@ pub fn take_billing_snapshot<SelectedCDF:CDF16,
 
 pub fn billing_snapshot_delta<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
-                          AllocCDF16:Allocator<SelectedCDF>,
+                         AllocCDF16:Allocator<SelectedCDF>,
+                          Spc: EncoderOrDecoderSpecialization
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          EncoderSpecialization,
+                                                          Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
@@ -151,8 +154,9 @@ pub fn billing_snapshot_delta<SelectedCDF:CDF16,
 pub fn total_billing_cost<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<SelectedCDF>,
+                          Spc: EncoderOrDecoderSpecialization,
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          EncoderSpecialization,
+                                                          Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
@@ -174,6 +178,17 @@ impl<'a> CommandArray for OneCommandThawingArray<'a> {
     }
     fn len(&self) -> usize {
         1
+    }
+}
+
+pub struct TwoCommandThawingArray<'a>(pub [&'a brotli::interface::Command<brotli::SliceOffset>;2], pub &'a brotli::InputPair<'a>);
+
+impl<'a> CommandArray for TwoCommandThawingArray<'a> {
+    fn get_input_command(&self, offset:usize) -> brotli::interface::Command<brotli::InputReference> {
+        brotli::thaw_pair(self.0[offset], self.1)
+    }
+    fn len(&self) -> usize {
+        self.0.len()
     }
 }
 

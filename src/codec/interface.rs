@@ -1020,6 +1020,7 @@ pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, num_bytes
     (ret as u32, ret > 0, index)
 }
 
+#[derive(Clone)]
 pub struct CodecSnapshot {
     last_dlen: u8,
     last_clen: u8,
