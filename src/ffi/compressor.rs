@@ -161,6 +161,9 @@ impl CompressorState {
                 DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE => {
                     opts.force_literal_context_mode = Some(LiteralPredictionModeNibble(value as u8));
                 },
+                DIVANS_OPTION_IR_OPTIMIZER => {
+                    opts.divans_ir_optimizer = value as u8;
+                },
                 _ => return DIVANS_FAILURE,
             }
             return DIVANS_SUCCESS;

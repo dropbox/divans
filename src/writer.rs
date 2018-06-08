@@ -432,6 +432,7 @@ mod test {
                            speed_detection_quality: None,
                            stride_detection_quality: Some(2),
                            prior_bitmask_detection: 1,
+                           divans_ir_optimizer:1,
                        },
                        1);
     }
@@ -454,6 +455,7 @@ mod test {
                            speed_detection_quality: None,
                            prior_bitmask_detection: 0,
                            stride_detection_quality: None,
+                           divans_ir_optimizer:0,
                        },
                        4095);
     }
@@ -476,6 +478,7 @@ mod test {
                            speed_detection_quality: None,
                            prior_bitmask_detection: 1,
                            stride_detection_quality: None,
+                           divans_ir_optimizer:1,
                        },
                        4095);
     }
@@ -498,6 +501,7 @@ mod test {
                            force_stride_value: interface::StrideSelection::UseBrotliRec,
                            speed_detection_quality: None,
                            stride_detection_quality: Some(1),
+                           divans_ir_optimizer:0,
                        },
                        3);
     }

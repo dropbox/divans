@@ -12,7 +12,7 @@ pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansR
 mod statistics_tracking_codec;
 mod cache;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, TwoCommandThawingArray, ToggleProbabilityBlend,
-                                      total_billing_cost, take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
+                                      take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
 pub fn should_merge<SelectedCDF:CDF16,
                     AllocU8:Allocator<u8>,
                     AllocCDF16:Allocator<SelectedCDF>>(lit: &LiteralCommand<brotli::SliceOffset>,
@@ -30,6 +30,35 @@ pub fn should_merge<SelectedCDF:CDF16,
                                                        cache: &mut cache::Cache<AllocU8>) -> Result<bool, ErrMsg> {
     let codec_snapshot = actuary.cross_command_state.snapshot_literal_or_copy_state();
     actuary.cross_command_state.specialization.will_it_blend = false;
+
+    // lets see if the copy would hit the distance_lru cache
+    let code = actuary.cross_command_state.bk.distance_mnemonic_code(copy.distance, copy.num_bytes);
+    //let mut future_hit = -i32::from(code);
+    let entry = cache.get_cache_hit_log(copy_index);
+    if !entry.miss() { // this copy actually populated the cache for a future copy... lets setup the cache as if this copy would be serviced by it
+        if code == 15 { // this was a cache miss... lets see if this copy populates the cache for a future hit
+            let entry_id = entry.entry_id();
+            //future_hit = i32::from(entry_id);
+            match entry_id {
+                0 | 1 | 2 | 3 => actuary.cross_command_state.bk.distance_lru[entry_id as usize] = copy.distance,
+                4 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 1,
+                5 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 1,
+                6 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 1,
+                7 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance + 1,
+                8 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 2,
+                9 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 2,
+                10 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 2,
+                11 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance + 2,
+                12 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 3,
+                13 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 3,
+                14 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 3,
+                _ => {},
+            }
+        }
+    }
+    
+
+
     let mut cmd_offset = 0usize;
     let mut unused = 0usize;
     let mut unused2 = 0usize;
@@ -45,7 +74,7 @@ pub fn should_merge<SelectedCDF:CDF16,
             return Err(e);
         }
         DivansResult::NeedsMoreInput | DivansResult::Success => {
-            if cmd_offset != 2 {
+            if cmd_offset != 1 {
                 return Err(ErrMsg::DrainOrFillNeedsInput(7));
             }
         }
@@ -53,20 +82,6 @@ pub fn should_merge<SelectedCDF:CDF16,
     let combined_cost = billing_snapshot_delta(actuary);
     reset_billing_snapshot(actuary);
     actuary.cross_command_state.restore_literal_or_copy_snapshot(codec_snapshot.clone());
-    // lets see if the copy would hit the distance_lru cache
-    let code = actuary.cross_command_state.bk.distance_mnemonic_code(copy.distance, copy.num_bytes);
-    if code == 15 { // this was a cache miss... lets see if this copy populates the cache for a future hit
-        let entry = cache.get_cache_hit_log(copy_index);
-        if !entry.miss() { // this copy actually populated the cache for a future copy... lets setup the cache as if this copy would be serviced by it
-            let entry_id = entry.entry_id();
-            match entry_id {
-                0 | 1 | 2 | 3 => actuary.cross_command_state.bk.distance_lru[entry_id as usize] = copy.distance,
-                4 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 1,
-                _ => {},
-            }
-        }
-        
-    }
     cmd_offset = 0;
     match actuary.encode_or_decode(&[], &mut unused, &mut[], &mut unused2,
                                    &TwoCommandThawingArray([&Command::Literal(*lit), &Command::Copy(*copy)], &mb), &mut cmd_offset) {
@@ -85,7 +100,11 @@ pub fn should_merge<SelectedCDF:CDF16,
     let cur_cost = billing_snapshot_delta(actuary);
     actuary.cross_command_state.specialization.will_it_blend = true;
     actuary.cross_command_state.restore_literal_or_copy_snapshot(codec_snapshot);
-    Ok(false  && combined_cost < cur_cost)
+    reset_billing_snapshot(actuary);
+    /*let full_cost = total_billing_cost(actuary);
+    eprintln!("{}) At {} bits: Checking cost of Copy of d:{} l:{} (cur hit: {} future hit: {}) = {} vs combined longer literal at {}\n",
+              copy_index, full_cost, copy.distance, copy.num_bytes, code, future_hit, cur_cost, combined_cost);*/
+    Ok(combined_cost < cur_cost)
 }
 pub fn ir_optimize<SelectedCDF:CDF16,
                    ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
@@ -165,7 +184,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
     for index in 1..a.len() {
         let (eligible_a, item_a) = a.split_at_mut(index);
         let mut step_command = false;
-        let mut eligible = eligible_a[eligible_index];
+        let eligible = &mut eligible_a[eligible_index];
         if let Command::Literal(ref mut lit) = eligible {
             if let Command::Copy(ref mut copy) = item_a[0] {
                 let start = lit.data.offset();
@@ -180,7 +199,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                 } else {
                     step_command = true;
                 }
-            } else if let Command::Literal(cont_lit) = eligible {
+            } else if let Command::Literal(cont_lit) = item_a[0] {
                 let start = lit.data.offset();
                 let fin = start + lit.data.len() + cont_lit.data.len();
                 if start < mb.0.len() && fin > mb.0.len() {
@@ -233,6 +252,17 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             }
         }        
     }
+    eligible_index = 0;
+    for index in 0..a.len() {
+        let cmd = a[index].clone();
+        if let Command::Copy(ref copy) = cmd {
+            if copy.num_bytes == 0 {
+                continue;
+            }
+        }
+        a[eligible_index] = cmd;
+        eligible_index += 1;
+    }
     //eprintln!("Actuary estimate: total cost {} bits; {} bytes\n", total_billing_cost(&actuary), total_billing_cost(&actuary)/ 8.0);
     let (mut retrieved_m8, retrieved_mcdf16) = actuary.free();
     distance_cache.free(&mut retrieved_m8);
@@ -243,5 +273,5 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                                    ChosenEncoder>::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, reallocation_item)),
                                                                retrieved_mcdf16,
                                                                remainder)));
-    Ok(a.len())
+    Ok(eligible_index)
 }

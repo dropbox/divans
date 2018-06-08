@@ -28,6 +28,7 @@ fn main() {
                 speed_detection_quality: example_opts.speed_detection_quality,
                 stride_detection_quality: example_opts.stride_detection_quality,
                 prior_bitmask_detection: example_opts.prior_bitmask_detection,
+                divans_ir_optimizer:example_opts.divans_ir_optimizer,
             },
             4096, // internal buffer size
         );

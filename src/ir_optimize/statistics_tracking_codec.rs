@@ -3,15 +3,13 @@ use probability::{ProbRange, CDF16, LOG2_SCALE};
 use alloc::{SliceWrapper, Allocator};
 use brotli;
 use codec::CommandArray;
-use core;
 use codec;
 use slice_util::AllocatedMemoryPrefix;
 use codec::{EncoderOrDecoderSpecialization};
-use mux::{Mux,DevNull};
+use mux::DevNull;
 use codec::io::DemuxerAndRingBuffer;
 use cmd_to_divans::EncoderSpecialization;
-use brotli::interface::{Command, CopyCommand, Nop, PredictionModeContextMap, LiteralCommand, DictCommand};
-use alloc_util;
+use brotli::interface::{Command, CopyCommand, LiteralCommand, DictCommand};
 
 
 #[allow(non_camel_case_types)]
@@ -32,9 +30,8 @@ impl TallyingArithmeticEncoder {
     pub fn snapshot_delta(&self) -> floatY {
         self.cost - self.snapshot_cost
     }
-    pub fn reset_snapshot(&mut self) {
+    pub fn reset_cost_to_snapshot(&mut self) {
         self.cost = self.snapshot_cost;
-        self.snapshot_cost = 0.0;
     }
     pub fn total_cost(&self) ->floatY {
         self.cost
@@ -110,9 +107,9 @@ pub fn reset_billing_snapshot<SelectedCDF:CDF16,
                                                           AllocCDF16>) {
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => {},
-        codec::ThreadContext::MainThread(ref mut ctx) => ctx.lit_coder.reset_snapshot(),
+        codec::ThreadContext::MainThread(ref mut ctx) => ctx.lit_coder.reset_cost_to_snapshot(),
     }
-    codec.cross_command_state.coder.reset_snapshot()
+    codec.cross_command_state.coder.reset_cost_to_snapshot()
 }
 
 pub fn take_billing_snapshot<SelectedCDF:CDF16,
@@ -144,13 +141,14 @@ pub fn billing_snapshot_delta<SelectedCDF:CDF16,
                                                           SelectedCDF,
                                                           AllocU8,
                                                           AllocCDF16>) -> floatY {
-    let mut ret = codec.cross_command_state.coder.snapshot_delta();
+    let ret = codec.cross_command_state.coder.snapshot_delta();
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => ret,
         codec::ThreadContext::MainThread(ref ctx) => ret + ctx.lit_coder.snapshot_delta(),
     }
 }
 
+#[allow(dead_code)]
 pub fn total_billing_cost<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<SelectedCDF>,
@@ -162,7 +160,7 @@ pub fn total_billing_cost<SelectedCDF:CDF16,
                                                           SelectedCDF,
                                                           AllocU8,
                                                           AllocCDF16>) -> floatY {
-    let mut ret = codec.cross_command_state.coder.total_cost();
+    let ret = codec.cross_command_state.coder.total_cost();
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => ret,
         codec::ThreadContext::MainThread(ref ctx) => ret + ctx.lit_coder.total_cost(),
@@ -173,7 +171,7 @@ pub fn total_billing_cost<SelectedCDF:CDF16,
 pub struct OneCommandThawingArray<'a>(pub &'a brotli::interface::Command<brotli::SliceOffset>, pub &'a brotli::InputPair<'a>);
 
 impl<'a> CommandArray for OneCommandThawingArray<'a> {
-    fn get_input_command(&self, offset:usize) -> brotli::interface::Command<brotli::InputReference> {
+    fn get_input_command(&self, _offset:usize) -> brotli::interface::Command<brotli::InputReference> {
         brotli::thaw_pair(self.0, self.1)
     }
     fn len(&self) -> usize {

@@ -988,7 +988,7 @@ impl<'a,SliceType:SliceWrapper<u8>+'a> CommandArray for CommandSliceArray<'a, Sl
 
 
 #[inline(always)]
-pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, num_bytes:u32 ) -> (u32, bool, u8) {
+pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, _num_bytes:u32 ) -> (u32, bool, u8) {
     /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
     0 => self.distance_lru[0],
     1 => self.distance_lru[1],
