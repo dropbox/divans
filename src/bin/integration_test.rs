@@ -109,7 +109,7 @@ fn test_asyoulik() {
 
 
 fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, data: &[u8],
-             ratio: f64) {
+             ratio: f64, quality:f64) {
     let mut in_buffer = UnlimitedBuffer::new(data);
     let mut dv_buffer = UnlimitedBuffer::new(&[]);
     let mut rt_buffer = UnlimitedBuffer::new(&[]);
@@ -124,10 +124,10 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             use_context_map: use_serialized_priors,
                             force_stride_value: StrideSelection::UseBrotliRec, // force stride
                             prior_depth:Some(0),
-                            quality:Some(10u16), // quality
-                            q9_5:true,
-                            window_size:Some(16i32), // window size
-                            lgblock:Some(18u32), //lgblock
+                            quality:Some((quality + 0.5) as u16), // quality
+                            q9_5:quality > 9.0 && quality < 10.0 ,
+                            window_size:Some(22i32), // window size
+                            lgblock:Some(22u32), //lgblock
                             speed_detection_quality: None,
                             prior_bitmask_detection: 1,
                             stride_detection_quality: None,
@@ -161,27 +161,27 @@ fn test_e2e_ones_tinybuf() {
                 247u8, 252u8, 253u8, 254u8,244u8,251u8,252u8,254u8,250u8,251u8,216u8,231u8,183u8,243u8,234u8,
                 247u8, 252u8, 253u8, 254u8,244u8,
     ];
-    e2e_no_ir(1, false, false, &data[..], 0.99);
+    e2e_no_ir(1, false, false, &data[..], 0.99, 9.5);
 }
 #[test]
 fn test_e2e_empty_tinybuf() {
     let data = [];
-    e2e_no_ir(1, false, false, &data[..], 0.0);
+    e2e_no_ir(1, false, false, &data[..], 0.0, 9.5);
 }
 #[test]
 fn test_e2e_empty() {
     let data = [];
-    e2e_no_ir(65536, false, false, &data[..], 0.0);
+    e2e_no_ir(65536, false, false, &data[..], 0.0, 9.5);
 }
 #[test]
 fn test_e2e_empty_br_tinybuf() {
     let data = [];
-    e2e_no_ir(1, false, true, &data[..], 0.0);
+    e2e_no_ir(1, false, true, &data[..], 0.0, 9.5);
 }
 #[test]
 fn test_e2e_empty_br() {
     let data = [];
-    e2e_no_ir(65536, false, true, &data[..], 0.0);
+    e2e_no_ir(65536, false, true, &data[..], 0.0, 9.5);
 }
 #[test]
 fn test_e2e_empty_just_flush() {
@@ -227,11 +227,19 @@ fn test_e2e_empty_just_flush() {
     assert_eq!(rt_buffer.data, &[]);
     state.free();
 }
+#[test]
+fn e2e_aligned_clip() {
+    let buffer_size=4096;
+    let clip = include_bytes!("../../testdata/clip");
+   let raw_text_buffer = UnlimitedBuffer::new(&clip[..]);
+   e2e_no_ir(buffer_size, true, true, &raw_text_buffer.data[..], 0.34, 8.0);
+    
+}
 fn e2e_alice(buffer_size: usize, use_serialized_priors: bool) {
    let raw_text_slice = include_bytes!("../../testdata/alice29");
    let raw_text_buffer = UnlimitedBuffer::new(&raw_text_slice[..]);
-   e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34);
-   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.46);
+   e2e_no_ir(buffer_size, use_serialized_priors, true, &raw_text_buffer.data[..], 0.34, 9.5);
+   e2e_no_ir(buffer_size, use_serialized_priors, false, &raw_text_buffer.data[..], 0.46, 9.5);
    let ir_buffer = if use_serialized_priors {
        UnlimitedBuffer::new(include_bytes!("../../testdata/alice29-priors.ir"))
    } else {
