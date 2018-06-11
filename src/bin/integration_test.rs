@@ -131,6 +131,7 @@ fn e2e_no_ir(buffer_size: usize, use_serialized_priors: bool, use_brotli: bool, 
                             speed_detection_quality: None,
                             prior_bitmask_detection: 1,
                             stride_detection_quality: None,
+                            divans_ir_optimizer:1,
                         },
                         buffer_size,
                         use_brotli,
@@ -211,6 +212,7 @@ fn test_e2e_empty_just_flush() {
          ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
          ItemVecAllocator::<brotli::enc::ZopfliNode>::default(),
          ItemVecAllocator::<brotli::enc::PDF>::default(),
+         ItemVecAllocator::<brotli::enc::StaticCommand>::default(),
         ), 
     );
     let mut olim = 0usize;

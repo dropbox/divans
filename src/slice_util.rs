@@ -12,6 +12,7 @@
 //   See the License for the specific language governing permissions and
 //   limitations under the License.
 use core;
+use brotli;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 
 #[derive(Copy,Clone,Default,Debug)]
@@ -40,7 +41,38 @@ impl<T> SliceWrapper<T> for SlicePlaceholder32<T> {
 
 
 
+impl<'b> brotli::interface::Unfreezable for SliceReference<'b, u8> {
+    fn thaw<'a>(&self, data: &'a [u8]) -> brotli::InputReference<'a> {
+        brotli::InputReference{
+            data: data.split_at(self.start).1.split_at(self.len).0,
+            orig_offset: self.start,
+        }
+    }
+    fn thaw_mut<'a>(&self, data: &'a mut [u8]) -> brotli::interface::InputReferenceMut<'a> {
+        brotli::interface::InputReferenceMut{
+            data: data.split_at_mut(self.start).1.split_at_mut(self.len).0,
+            orig_offset: self.start,
+        }
+    }
+    fn thaw_pair<'a>(&self, pair: &brotli::InputPair<'a>) -> Result<brotli::InputReference<'a>, ()> {
+        if self.start >= pair.1.orig_offset {
+            return Ok(brotli::InputReference{
+                data: pair.1.data.split_at(self.start - pair.1.orig_offset).1.split_at(self.len).0,
+                orig_offset: self.start,
+            });
+        }
+        let offset = self.start - pair.0.orig_offset;
+        if offset + self.len as usize <= pair.0.data.len() { // overlap
+            Ok(brotli::InputReference{
+                data: pair.0.data.split_at(offset).1.split_at(self.len).0,
+                orig_offset: self.start,
+            })
+        } else {
+            Err(())
+        }
+    }
 
+}
 #[derive(Copy,Clone)]
 pub struct SliceReference<'a, T:'a> {
     data: &'a[T],
@@ -63,6 +95,13 @@ impl<'a, T:'a> SliceReference<'a, T> {
             len: self.len,
         }        
     }
+    pub fn freeze(old: brotli::SliceOffset) -> SliceReference<'static, T> {
+        SliceReference::<T> {
+            data: &[],
+            start: old.offset(),
+            len: old.len(),
+        }
+    }
     pub fn thaw(&self, slice:&'a [T]) -> SliceReference<'a, T> {
         SliceReference::<'a, T> {
             data: slice.split_at(self.start).1.split_at(self.len).0,
@@ -70,6 +109,12 @@ impl<'a, T:'a> SliceReference<'a, T> {
             len: self.len,
         }        
     }
+}
+pub fn thaw_br<'a>(xself:&SliceReference<'a, u8>, slice:&'a [u8]) -> brotli::InputReference<'a> {
+    brotli::InputReference::<'a> {
+        data: slice.split_at(xself.start).1.split_at(xself.len).0,
+        orig_offset: xself.start,
+    }        
 }
 
 impl<'a, T:'a> SliceWrapper<T> for SliceReference<'a, T> {

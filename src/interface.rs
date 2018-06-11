@@ -458,6 +458,7 @@ pub struct DivansCompressorOptions{
     pub prior_depth: Option<u8>,
     pub prior_bitmask_detection: u8,
     pub brotli_literal_byte_score: Option<u32>,
+    pub divans_ir_optimizer: u8,
 }
 impl Default for DivansCompressorOptions{
     fn default() ->Self {
@@ -477,6 +478,7 @@ impl Default for DivansCompressorOptions{
             prior_depth: None,
             prior_bitmask_detection: 1,
             brotli_literal_byte_score: None,
+            divans_ir_optimizer: 0,
         }
     }
 }

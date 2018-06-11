@@ -70,6 +70,7 @@ mod divans_compressor;
 mod divans_decompressor;
 mod parallel_decompressor;
 mod stub_parallel_decompressor;
+pub mod ir_optimize;
 pub mod mux;
 pub mod constants;
 pub mod threading;

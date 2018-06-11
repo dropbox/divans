@@ -17,6 +17,7 @@ use super::probability::CDF16;
 use super::brotli;
 use super::mux::{Mux,DevNull};
 use codec::io::DemuxerAndRingBuffer;
+use codec::{CommandArray, CommandSliceArray};
 pub use super::alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
@@ -45,6 +46,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
                             AllocF64: Allocator<brotli::enc::util::floatX>,
                             AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
                             AllocPDF: Allocator<brotli::enc::PDF>,
+                            AllocStaticCommand: Allocator<brotli::enc::StaticCommand>,
                             AllocHL: Allocator<brotli::enc::histogram::HistogramLiteral>,
                             AllocHC: Allocator<brotli::enc::histogram::HistogramCommand>,
                             AllocHD: Allocator<brotli::enc::histogram::HistogramDistance>,
@@ -61,6 +63,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
     mf64: AllocF64,
     mfv: AllocFV,
     mpdf: AllocPDF,
+    mc: AllocStaticCommand,
     mhl: AllocHL,
     mhc: AllocHC,
     mhd: AllocHD,
@@ -71,6 +74,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
     brotli_data: ResizableByteBuffer<u8, AllocU8>,
     divans_data: ResizableByteBuffer<u8, AllocU8>,
     encoded_byte_offset: usize,
+    opt: super::interface::DivansCompressorOptions,
 }
 
 
@@ -87,6 +91,7 @@ impl<SelectedCDF:CDF16,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
      AllocPDF: Allocator<brotli::enc::PDF>,
+     AllocStaticCommand: Allocator<brotli::enc::StaticCommand>,
      AllocHL: Allocator<brotli::enc::histogram::HistogramLiteral>,
      AllocHC: Allocator<brotli::enc::histogram::HistogramCommand>,
      AllocHD: Allocator<brotli::enc::histogram::HistogramDistance>,
@@ -106,6 +111,7 @@ impl<SelectedCDF:CDF16,
                                     AllocF64,
                                     AllocFV,
                                     AllocPDF,
+                                    AllocStaticCommand,
                                     AllocHL,
                                     AllocHC,
                                     AllocHD,
@@ -124,7 +130,7 @@ impl<SelectedCDF:CDF16,
     fn do_panic(m:ErrMsg) {
         panic!(m)
     }
-    fn divans_encode_commands<SliceType:SliceWrapper<u8>+Default>(cmd:&[brotli::interface::Command<SliceType>],
+    fn divans_encode_commands<Commands:CommandArray>(cmd:&Commands,
                                                           header_progress: &mut usize,
                                                           data:&mut ResizableByteBuffer<u8, AllocU8>,
                                                           codec: &mut DivansCodec<ChosenEncoder,
@@ -174,17 +180,40 @@ impl<SelectedCDF:CDF16,
                               input:&[u8], input_offset: &mut usize,
                               is_end: bool) -> interface::DivansResult {
         let mut nothing : Option<usize> = None;
+        let mut cb_err:Result<(),ErrMsg> = Ok(());
         {
             let divans_data_ref = &mut self.divans_data;
             let divans_codec_ref = &mut self.codec;
             let header_progress_ref = &mut self.header_progress;
             let window_size = self.window_size;
-            let mut closure = |a:&[brotli::interface::Command<brotli::InputReference>]| if a.len() != 0 {
-                Self::divans_encode_commands(a,
-                                             header_progress_ref,
-                                             divans_data_ref,
-                                             divans_codec_ref,
-                                             window_size);
+            let opt = self.opt;
+            let mut cb = |pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
+                          a:&mut [brotli::interface::Command<brotli::SliceOffset>],
+                          mb:brotli::InputPair| {
+                              let final_length = if opt.divans_ir_optimizer != 0 {
+                                  match super::ir_optimize::ir_optimize(pm, a, mb, divans_codec_ref, window_size, opt) {
+                                      Ok(len) => len,
+                                      Err(e) => {cb_err = Err(e); return;},
+                                  }
+                              } else {
+                                  a.len()
+                              };
+                              let tmp = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
+                                  literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
+                                  predmode_speed_and_distance_context_map:brotli::InputReference::from(&pm.predmode_speed_and_distance_context_map),
+                              });
+                              Self::divans_encode_commands(&CommandSliceArray(&[tmp]),
+                                                           header_progress_ref,
+                                                           divans_data_ref,
+                                                           divans_codec_ref,
+                                                           window_size);
+                              if final_length != 0 {
+                                  Self::divans_encode_commands(&ThawingSliceArray(&a[..final_length], mb),
+                                                               header_progress_ref,
+                                                               divans_data_ref,
+                                                               divans_codec_ref,
+                                                               window_size);
+                              }
             };
             {
                 let mut available_in = input.len() - *input_offset;
@@ -202,6 +231,7 @@ impl<SelectedCDF:CDF16,
                                                    &mut self.mf64,
                                                    &mut self.mfv,
                                                    &mut self.mpdf,
+                                                   &mut self.mc,
                                                    &mut self.mhl,
                                                    &mut self.mhc,
                                                    &mut self.mhd,
@@ -217,7 +247,7 @@ impl<SelectedCDF:CDF16,
                                                    brotli_buffer,
                                                    &mut brotli_out_offset,
                                                    &mut nothing,
-                                                   &mut closure) <= 0 {
+                                                   &mut cb) <= 0 {
                         return DivansResult::Failure(ErrMsg::BrotliCompressStreamFail(0xff, 0xff));
                     }
                 }
@@ -226,6 +256,9 @@ impl<SelectedCDF:CDF16,
                     return DivansResult::NeedsMoreInput;
                 }
             }
+        }
+        if let Err(e) = cb_err {
+            return DivansResult::Failure(e);
         }
         if is_end && BrotliEncoderIsFinished(&mut self.brotli_encoder) == 0 {
             return DivansResult::NeedsMoreOutput;
@@ -279,6 +312,7 @@ impl<SelectedCDF:CDF16,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
      AllocPDF: Allocator<brotli::enc::PDF>,
+     AllocStaticCommand: Allocator<brotli::enc::StaticCommand>,
      AllocHL: Allocator<brotli::enc::histogram::HistogramLiteral>,
      AllocHC: Allocator<brotli::enc::histogram::HistogramCommand>,
      AllocHD: Allocator<brotli::enc::histogram::HistogramDistance>,
@@ -298,6 +332,7 @@ impl<SelectedCDF:CDF16,
                                                    AllocF64,
                                                    AllocFV,
                                                    AllocPDF,
+                                                   AllocStaticCommand,
                                                    AllocHL,
                                                    AllocHC,
                                                    AllocHD,
@@ -369,7 +404,7 @@ impl<SelectedCDF:CDF16,
                                           &mut unused,
                                           output,
                                           output_offset,
-                                          input,
+                                          &CommandSliceArray(input),
                                           input_offset) {
             DivansResult::Success | DivansResult::NeedsMoreInput => DivansOutputResult::Success,
             DivansResult::Failure(m) => DivansOutputResult::Failure(m),
@@ -388,6 +423,7 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
      AllocPDF: Allocator<brotli::enc::PDF>,
+     AllocStaticCommand: Allocator<brotli::enc::StaticCommand>,
      AllocHL: Allocator<brotli::enc::histogram::HistogramLiteral>,
      AllocHC: Allocator<brotli::enc::histogram::HistogramCommand>,
      AllocHD: Allocator<brotli::enc::histogram::HistogramDistance>,
@@ -412,6 +448,7 @@ pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
     pg: PhantomData<AllocZN>,
     ph: PhantomData<AllocU64>,
     ppdf: PhantomData<AllocPDF>,
+    psc: PhantomData<AllocStaticCommand>,
 }
 
 impl<AllocU8:Allocator<u8>,
@@ -424,6 +461,7 @@ impl<AllocU8:Allocator<u8>,
      AllocF64: Allocator<brotli::enc::util::floatX>,
      AllocFV: Allocator<brotli::enc::vectorization::Mem256f>,
      AllocPDF: Allocator<brotli::enc::PDF>,
+     AllocStaticCommand: Allocator<brotli::enc::StaticCommand>,
      AllocHL: Allocator<brotli::enc::histogram::HistogramLiteral>,
      AllocHC: Allocator<brotli::enc::histogram::HistogramCommand>,
      AllocHD: Allocator<brotli::enc::histogram::HistogramDistance>,
@@ -433,7 +471,8 @@ impl<AllocU8:Allocator<u8>,
      AllocZN: Allocator<brotli::enc::ZopfliNode>,
      > interface::DivansCompressorFactory<AllocU8, AllocU32, AllocCDF16>
     for BrotliDivansHybridCompressorFactory<AllocU8, AllocU16, AllocU32, AllocI32, AllocU64, AllocCommand, AllocCDF16,
-                                            AllocF64, AllocFV, AllocPDF, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN> {
+                                            AllocF64, AllocFV, AllocPDF, AllocStaticCommand,
+                                            AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN> {
      type DefaultEncoder = DefaultEncoderType!();
      type ConstructedCompressor = BrotliDivansHybridCompressor<interface::DefaultCDF16,
                                                                Self::DefaultEncoder,
@@ -447,6 +486,7 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocF64,
                                                                AllocFV,
                                                                AllocPDF,
+                                                               AllocStaticCommand,
                                                                AllocHL,
                                                                AllocHC,
                                                                AllocHD,
@@ -456,7 +496,7 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocZN>;
       type AdditionalArgs = (AllocU8, AllocU16, AllocI32, AllocCommand,
                              AllocU64, AllocF64, AllocFV, AllocHL, AllocHC, AllocHD, AllocHP, AllocCT, AllocHT, AllocZN,
-                             AllocPDF,
+                             AllocPDF, AllocStaticCommand,
                              );
         fn new(mut m8: AllocU8, m32: AllocU32, mcdf16:AllocCDF16,
                opt: super::interface::DivansCompressorOptions,
@@ -476,6 +516,7 @@ impl<AllocU8:Allocator<u8>,
              mht: additional_args.12,
              mzn: additional_args.13,
              mpdf: additional_args.14,
+             mc: additional_args.15,
              brotli_data: ResizableByteBuffer::<u8, AllocU8>::new(),
              divans_data: ResizableByteBuffer::<u8, AllocU8>::new(),
              encoded_byte_offset:0, 
@@ -499,6 +540,7 @@ impl<AllocU8:Allocator<u8>,
                 opt.force_stride_value,
                 false,
             ),
+            opt:opt,
             header_progress: 0,
             window_size: window_size as u8,
         };
@@ -578,3 +620,14 @@ impl<AllocU8:Allocator<u8>,
 }
 
 
+struct ThawingSliceArray<'a>(&'a [brotli::interface::Command<brotli::SliceOffset>],
+                             brotli::InputPair<'a>);
+
+impl<'a> CommandArray for ThawingSliceArray<'a> {
+    fn get_input_command(&self, offset:usize) -> Command<brotli::InputReference> {
+        brotli::thaw_pair(&self.0[offset], &self.1)
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}

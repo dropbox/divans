@@ -143,6 +143,7 @@ type DivansBrotliFactory = ::BrotliDivansHybridCompressorFactory<HeapAlloc<u8>,
                                                          HeapAlloc<brotli::enc::util::floatX>,
                                                          HeapAlloc<brotli::enc::vectorization::Mem256f>,
                                                          HeapAlloc<brotli::enc::PDF>,
+                                                         HeapAlloc<brotli::enc::StaticCommand>,
                                                          HeapAlloc<brotli::enc::histogram::HistogramLiteral>,
                                                          HeapAlloc<brotli::enc::histogram::HistogramCommand>,
                                                          HeapAlloc<brotli::enc::histogram::HistogramDistance>,
@@ -204,6 +205,7 @@ impl<R:Read> DivansBrotliHybridCompressorReader<R> {
                                                HeapAlloc::<brotli::enc::entropy_encode::HuffmanTree>::new(brotli::enc::entropy_encode::HuffmanTree::default()),
                                                HeapAlloc::<brotli::enc::ZopfliNode>::new(brotli::enc::ZopfliNode::default()),
                                                HeapAlloc::<brotli::enc::PDF>::new(brotli::enc::PDF::default()),
+                                               HeapAlloc::<brotli::enc::StaticCommand>::new(brotli::enc::StaticCommand::default()),
                                            )),
                           buffer,
                           true,
@@ -460,6 +462,7 @@ mod test {
                            speed_detection_quality: None,
                            prior_bitmask_detection: 1,
                            stride_detection_quality: Some(2),
+                           divans_ir_optimizer:0,
                        },
                        1);
     }
@@ -482,6 +485,7 @@ mod test {
                            prior_bitmask_detection: 0,
                            speed_detection_quality: None,
                            stride_detection_quality: None,
+                           divans_ir_optimizer:1,
                        },
                        4095);
     }
@@ -504,6 +508,7 @@ mod test {
                            speed_detection_quality: None,
                            prior_bitmask_detection: 1,
                            stride_detection_quality: None,
+                           divans_ir_optimizer:0,
                        },
                        4095);
     }
@@ -526,6 +531,7 @@ mod test {
                            force_stride_value: interface::StrideSelection::UseBrotliRec,
                            stride_detection_quality: Some(1),
                            prior_bitmask_detection: 1,
+                           divans_ir_optimizer:1,
                        },
                        310000);
     }

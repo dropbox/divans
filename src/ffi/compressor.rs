@@ -16,6 +16,7 @@ type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
                                                          SubclassableAllocator<brotli::enc::PDF>,
+                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -42,6 +43,7 @@ pub enum CompressorState {
                                                          SubclassableAllocator<brotli::enc::util::floatX>,
                                                          SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
                                                          SubclassableAllocator<brotli::enc::PDF>,
+                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -159,6 +161,9 @@ impl CompressorState {
                 DIVANS_OPTION_FORCE_LITERAL_CONTEXT_MODE => {
                     opts.force_literal_context_mode = Some(LiteralPredictionModeNibble(value as u8));
                 },
+                DIVANS_OPTION_IR_OPTIMIZER => {
+                    opts.divans_ir_optimizer = value as u8;
+                },
                 _ => return DIVANS_FAILURE,
             }
             return DIVANS_SUCCESS;
@@ -201,6 +206,7 @@ impl CompressorState {
                                                SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::ZopfliNode>::new(allocators.clone()),
                                                SubclassableAllocator::<brotli::enc::PDF>::new(allocators.clone()),
+                                               SubclassableAllocator::<brotli::enc::StaticCommand>::new(allocators.clone()),
                                            ))));
             
             }

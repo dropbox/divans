@@ -866,6 +866,7 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                          ItemVecAllocator<brotli::enc::util::floatX>,
                                                          ItemVecAllocator<brotli::enc::vectorization::Mem256f>,
                                                          ItemVecAllocator<brotli::enc::PDF>,
+                                                         ItemVecAllocator<brotli::enc::StaticCommand>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramLiteral>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramCommand>,
                                                          ItemVecAllocator<brotli::enc::histogram::HistogramDistance>,
@@ -936,6 +937,7 @@ fn compress_raw<Reader:std::io::Read,
              ItemVecAllocator::<brotli::enc::entropy_encode::HuffmanTree>::default(),
              ItemVecAllocator::<brotli::enc::ZopfliNode>::default(),
              ItemVecAllocator::<brotli::enc::PDF>::default(),
+             ItemVecAllocator::<brotli::enc::StaticCommand>::default(),
             ), 
         );
         let mut free_closure = |state_to_free:<BrotliFactory as DivansCompressorFactory<ItemVecAllocator<u8>, ItemVecAllocator<u32>, ItemVecAllocator<divans::DefaultCDF16>>>::ConstructedCompressor| ->ItemVecAllocator<u8> {state_to_free.free().0};
@@ -1220,6 +1222,7 @@ fn main() {
     let mut do_compress = true;
     let mut raw_compress = true;
     let mut q9_5 = false;
+    let mut divans_ir_optimizer = false;
     let mut do_recode = false;
     let mut filenames = [std::string::String::new(), std::string::String::new()];
     let mut num_benchmarks = 1;
@@ -1450,6 +1453,12 @@ fn main() {
                     raw_compress = false;
                     continue;
                 }
+                if argument.starts_with("-O") {
+                    if argument != "-O0" {
+                        divans_ir_optimizer = true
+                    }
+                    continue;
+                }
                 if argument == "-c" {
                     do_compress = true;
                     raw_compress = true;
@@ -1619,6 +1628,7 @@ fn main() {
             speed_detection_quality: speed_detection_quality,
             prior_bitmask_detection: if prior_bitmask_detection {1} else {0},
             force_literal_context_mode: force_literal_context_mode,
+            divans_ir_optimizer: if divans_ir_optimizer {1} else {0},
         };
         if filenames[0] != "" {
             let mut input = match File::open(&Path::new(&filenames[0])) {

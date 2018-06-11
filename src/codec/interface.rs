@@ -1,6 +1,8 @@
 use core;
+use brotli;
+use brotli::interface::Nop;
 use interface::{DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, DivansResult, WritableBytes};
-use ::cmd_to_raw::DivansRecodeState;
+use ::cmd_to_raw::{DivansRecodeState, RingBufferSnapshot};
 use ::probability::{CDF16, Speed};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use ::slice_util::AllocatedMemoryPrefix;
@@ -16,6 +18,7 @@ use ::interface::{
     LiteralCommand,
     LiteralBlockSwitch,
     LiteralPredictionModeNibble,
+    FeatureFlagSliceType,
     LITERAL_PREDICTION_MODE_SIGN,
     LITERAL_PREDICTION_MODE_UTF8,
     LITERAL_PREDICTION_MODE_MSB6,
@@ -37,6 +40,7 @@ use super::priors::{
 };
 use ::priors::PriorCollection;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 4;
+
 
 pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
@@ -68,6 +72,10 @@ impl Default for StrideSelection {
 pub trait EncoderOrDecoderSpecialization {
     const DOES_CALLER_WANT_ORIGINAL_FILE_BYTES: bool;
     const IS_DECODING_FILE: bool;
+    #[inline(always)]
+    fn adapt_cdf(&self) -> bool {
+        true
+    }
     fn alloc_literal_buffer<AllocU8: Allocator<u8>>(&mut self,
                                                     m8: &mut AllocU8,
                                                     len: usize) -> AllocatedMemoryPrefix<u8, AllocU8>;
@@ -112,12 +120,6 @@ pub enum ContextMapType {
 }
 
 
-#[derive(Copy,Clone)]
-pub struct DistanceCacheEntry {
-    pub distance:u32,
-    pub command_count:u64,
-}
-
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 
 pub struct LiteralBookKeeping<Cdf16:CDF16,
@@ -141,7 +143,6 @@ pub struct LiteralBookKeeping<Cdf16:CDF16,
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF16:Allocator<Cdf16>> {
-    //pub command_count:u32,
     //pub num_literals_coded: u32,
     pub lit_len_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
     pub distance_context_map: AllocU8::AllocatedMemory,
@@ -152,7 +153,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     pub distance_lru: [u32;4],
     pub btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
-    pub distance_cache:[[DistanceCacheEntry;3];32],
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
     //pub cm_prior_depth_mask: u8,
@@ -167,7 +167,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub desired_context_mixing: u8,
-    pub command_count: u64,
 }
 
 #[inline(always)]
@@ -374,13 +373,6 @@ impl<
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
-            command_count: 0,
-            distance_cache:[
-                [
-                    DistanceCacheEntry{
-                        distance:1,
-                        command_count:0,
-                    };3];32],
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
@@ -485,40 +477,10 @@ impl<
         }
         DivansOpResult::Success
     }
-    #[inline(always)]
-    pub fn get_distance_from_mnemonic_code(&self, code:u8) -> (u32, bool) {
-        /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
-            0 => self.distance_lru[0],
-            1 => self.distance_lru[1],
-            2 => self.distance_lru[2],
-            3 => self.distance_lru[3],
-            4 => self.distance_lru[0] + 1,
-            5 => self.distance_lru[0].wrapping_sub(1),
-            6 => self.distance_lru[1] + 1,
-            7 => self.distance_lru[1].wrapping_sub(1),
-            8 => self.distance_lru[0] + 2,
-            9 => self.distance_lru[0].wrapping_sub(2),
-            10 => self.distance_lru[1] + 2,
-            11 => self.distance_lru[1].wrapping_sub(2),
-            12 => self.distance_lru[0] + 3,
-            13 => self.distance_lru[0].wrapping_sub(3),
-            14 => self.distance_lru[1] + 3,
-            15 => self.distance_lru[0], // logic error
-            _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
-        }*/
-        if code < 4 {
-            return (self.distance_lru[code as usize], true); // less than four is a fetch
-        }
-        let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
-        // the value depending on if its an even or odd code
-        // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
-        let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
-        let ret = (self.distance_lru[((code & 2) >> 1) as usize] as i32) + signed_summand;
-        (ret as u32, ret > 0)
-    }
-    pub fn distance_mnemonic_code(&self, d: u32) -> u8 {
+
+    pub fn distance_mnemonic_code(&self, d: u32, l:u32) -> u8 {
         for i in 0..15 {
-            let (item, ok) = self.get_distance_from_mnemonic_code(i as u8);
+            let (item, ok, _cache_index) = get_distance_from_mnemonic_code(&self.distance_lru, i as u8, l);
             if item == d && ok {
                 return i as u8;
             }
@@ -557,21 +519,6 @@ impl<
         self.last_4_states |= 128;
     }
     pub fn obs_distance(&mut self, cc:&CopyCommand) {
-        if cc.num_bytes < self.distance_cache.len() as u32{
-            let nb = cc.num_bytes as usize;
-            let mut sub_index = if self.distance_cache[nb][1].command_count < self.distance_cache[nb][0].command_count {
-                1
-            } else {
-                0
-            };
-            if self.distance_cache[nb][2].command_count < self.distance_cache[nb][sub_index].command_count {
-                sub_index = 2;
-            }
-            self.distance_cache[nb][sub_index] = DistanceCacheEntry{
-                distance: 0,//cc.distance, we're copying it to here (ha!)
-                command_count:self.command_count,
-            };
-        }
         let distance = cc.distance;
         if distance == self.distance_lru[1] {
             self.distance_lru = [distance,
@@ -621,6 +568,40 @@ pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<
     Worker,
 }
 impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+    pub fn dismantle(self) -> (
+        RepurposingAlloc<u8, AllocU8>,
+        AllocCDF16,
+        (
+            DivansRecodeState<AllocU8::AllocatedMemory>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            ArithmeticCoder,
+        )) {
+        (self.m8, self.mcdf16, (self.recoder, self.lbk, self.lit_low_priors, self.lit_high_priors, self.lit_coder))
+    }
+
+    pub fn reassemble(input:(
+        RepurposingAlloc<u8, AllocU8>,
+        AllocCDF16,
+        (
+            DivansRecodeState<AllocU8::AllocatedMemory>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            LiteralNibblePriors<Cdf16, AllocCDF16>,
+            ArithmeticCoder,
+        ))) -> Self {
+        MainThreadContext::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+            m8:input.0,
+            mcdf16:input.1,
+            recoder:(input.2).0,
+            lbk:(input.2).1,
+            lit_low_priors:(input.2).2,
+            lit_high_priors:(input.2).3,
+            lit_coder:(input.2).4
+        }
+    }
+
     pub fn free(&mut self) {
         self.m8.free_cell(core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(core::mem::replace(&mut self.lbk.literal_context_map, AllocU8::AllocatedMemory::default()));
@@ -804,6 +785,45 @@ impl <AllocU8:Allocator<u8>,
             ),
         }
     }
+    pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot {
+        let ring_buffer;
+        let last_8;
+        match self.thread_ctx {
+            ThreadContext::MainThread(ref ctx)=> {
+                ring_buffer = Some(ctx.recoder.snapshot_ringbuffer());
+                last_8 = ctx.lbk.last_8_literals;
+            },
+            ThreadContext::Worker => {
+                ring_buffer = None;
+                last_8 = 0u64;
+            },
+        }
+        CodecSnapshot{
+            last_4_states:self.bk.last_4_states,
+            distance_lru:self.bk.distance_lru,
+            last_llen:self.bk.last_llen,
+            last_dlen:self.bk.last_dlen,
+            last_clen:self.bk.last_clen,
+            ring_buffer:ring_buffer,
+            last_8_literals:last_8,
+        }
+    }
+    pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot) {
+        self.bk.last_4_states = cs.last_4_states;
+        self.bk.distance_lru = cs.distance_lru;
+        self.bk.last_llen = cs.last_llen;
+        self.bk.last_dlen = cs.last_dlen;
+        self.bk.last_clen = cs.last_clen;
+        if let Some(rb) = cs.ring_buffer {
+            match self.thread_ctx {
+                ThreadContext::MainThread(ref mut ctx)=> {
+                    ctx.recoder.restore_ringbuffer_to_snapshot(rb);
+                    ctx.lbk.last_8_literals = cs.last_8_literals;
+                },
+                ThreadContext::Worker => {},
+            }
+        }
+    }
     fn free_internal(&mut self) {
         self.muxer.free_mux(self.thread_ctx.m8().unwrap().get_base_alloc());
         self.demuxer.free_demux(self.thread_ctx.m8().unwrap().get_base_alloc());
@@ -906,4 +926,107 @@ pub fn drain_or_fill_static_buffer<AllocU8:Allocator<u8>,
             DivansResult::Success
         }
     }
+}
+
+pub trait CommandArray {
+    fn get_input_command(&self, offset: usize) -> Command<brotli::InputReference>;
+    fn len(&self) -> usize;
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct EmptyCommandArray {}
+
+impl CommandArray for EmptyCommandArray {
+    fn get_input_command(&self, _offset: usize) -> Command<brotli::InputReference> {
+        Command::<brotli::InputReference<'static>>::nop()
+    }
+    fn len(&self) -> usize {
+        0
+    }
+}
+
+
+pub struct CommandSliceArray<'a, SliceType:SliceWrapper<u8>+'a>(pub &'a [Command<SliceType>]);
+
+impl<'a,SliceType:SliceWrapper<u8>+'a> CommandArray for CommandSliceArray<'a, SliceType> {
+    fn get_input_command(&self, offset: usize) -> Command<brotli::InputReference> {
+        match self.0[offset] {
+            Command::Literal(ref lit) => {
+                Command::Literal(LiteralCommand{
+                    data:brotli::InputReference{data:lit.data.slice(),orig_offset:0},
+                    prob:FeatureFlagSliceType::default(),
+                    high_entropy: lit.high_entropy,
+            })
+        },
+        Command::PredictionMode(ref pm) => {
+            Command::PredictionMode(PredictionModeContextMap{
+                literal_context_map:brotli::InputReference{data:pm.literal_context_map.slice(),orig_offset:0},
+                predmode_speed_and_distance_context_map:brotli::InputReference{data:pm.predmode_speed_and_distance_context_map.slice(), orig_offset:0},
+            })
+        },
+        Command::Dict(ref d) => {
+            Command::Dict(d.clone())
+        },
+        Command::Copy(ref c) => {
+            Command::Copy(c.clone())
+        },
+        Command::BlockSwitchCommand(ref c) => {
+            Command::BlockSwitchCommand(c.clone())
+        },
+        Command::BlockSwitchLiteral(ref c) => {
+            Command::BlockSwitchLiteral(c.clone())
+        },
+        Command::BlockSwitchDistance(ref c) => {
+            Command::BlockSwitchDistance(c.clone())
+        },
+        }
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+
+#[inline(always)]
+pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, _num_bytes:u32 ) -> (u32, bool, u8) {
+    /*match code & 0xf { // old version: measured to make the entire decode process take 112% as long
+    0 => self.distance_lru[0],
+    1 => self.distance_lru[1],
+    2 => self.distance_lru[2],
+    3 => self.distance_lru[3],
+    4 => self.distance_lru[0] + 1,
+    5 => self.distance_lru[0].wrapping_sub(1),
+    6 => self.distance_lru[1] + 1,
+    7 => self.distance_lru[1].wrapping_sub(1),
+    8 => self.distance_lru[0] + 2,
+    9 => self.distance_lru[0].wrapping_sub(2),
+    10 => self.distance_lru[1] + 2,
+    11 => self.distance_lru[1].wrapping_sub(2),
+    12 => self.distance_lru[0] + 3,
+    13 => self.distance_lru[0].wrapping_sub(3),
+    14 => self.distance_lru[1] + 3,
+    15 => self.distance_lru[0], // logic error
+    _ => panic!("Logic error: nibble > 14 evaluated for nmemonic"),
+}*/
+    if code < 4 {
+        return (distance_lru[code as usize], true, code); // less than four is a fetch
+    }
+    let unsigned_summand = (code >> 2) as i32; // greater than four either adds or subtracts
+    // the value depending on if its an even or odd code
+    // mnemonic 1 are codes that have bit 2 set, mnemonic 0 are codes that don't have bit 2 set
+    let signed_summand = unsigned_summand - (((-(code as i32 & 1)) & unsigned_summand) << 1);
+    let index = (code & 2) >> 1;
+    let ret = (distance_lru[index as usize] as i32) + signed_summand;
+    (ret as u32, ret > 0, index)
+}
+
+#[derive(Clone)]
+pub struct CodecSnapshot {
+    last_dlen: u8,
+    last_clen: u8,
+    last_4_states: u8,
+    ring_buffer:Option<RingBufferSnapshot>,
+    last_llen: u32,
+    distance_lru:[u32;4],
+    last_8_literals: u64,
 }

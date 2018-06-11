@@ -15,6 +15,7 @@
 use core;
 mod hash_match;
 use self::hash_match::HashMatch;
+use brotli::InputReference;
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
 pub use super::slice_util::SliceReference;
 pub use interface::{DivansResult, DivansOutputResult};
@@ -54,7 +55,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
     pub fn stream<'a>(&'a mut self,
                       input:&[u8],
                       input_offset:&mut usize,
-                      output: &mut [Command<SliceReference<'a, u8>>],
+                      output: &mut [Command<InputReference<'a>>],
                       output_offset:&mut usize,
                       literal_context_map: &'a mut[u8],
                       prediction_mode_backing:&'a mut[u8],
@@ -103,7 +104,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
     }
     pub fn flush<'a>(
               &'a mut self,
-              output: &mut [Command<SliceReference<'a, u8>>],
+              output: &mut [Command<InputReference<'a>>],
               output_offset:&mut usize,
               literal_context_map: &'a mut[u8],
               prediction_mode_backing:&'a mut[u8]) -> DivansOutputResult {
@@ -123,9 +124,15 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
                 *item = 4;
             }
             output[*output_offset] = Command::PredictionMode(
-                PredictionModeContextMap::<SliceReference<'a, u8> >{
-                    literal_context_map: SliceReference::<u8>::new(literal_context_map, 0, 64),
-                        predmode_speed_and_distance_context_map: SliceReference::<u8>::new(prediction_mode_backing, 0, super::interface::DISTANCE_CONTEXT_MAP_OFFSET + 4),
+                PredictionModeContextMap::<InputReference<'a> >{
+                    literal_context_map: InputReference{
+                        data:&literal_context_map[..64],
+                        orig_offset:0,
+                    },
+                    predmode_speed_and_distance_context_map: InputReference{
+                        data:&prediction_mode_backing[..super::interface::DISTANCE_CONTEXT_MAP_OFFSET + 4],
+                        orig_offset:0,
+                    },
                     });
             *output_offset += 1;
             if *output_offset == output.len() {
@@ -136,11 +143,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            let max_copy = self.ring_buffer.slice().len() - self.ring_buffer_output_index as usize;
            if max_copy != 0 {
                output[*output_offset] = Command::Literal(
-                   LiteralCommand::<SliceReference<'a, u8> >{
-                       data: SliceReference::<u8>::new(self.ring_buffer.slice(),
-                                                       self.ring_buffer_output_index as usize,
-                                                       max_copy),
-                       prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
+                   LiteralCommand::<InputReference<'a> >{
+                       data: InputReference{
+                           data:self.ring_buffer.slice().split_at(self.ring_buffer_output_index as usize).1.split_at(max_copy).0,
+                           orig_offset:self.ring_buffer_output_index as usize,
+                       },
+                       prob: FeatureFlagSliceType::<InputReference>::default(),
                        high_entropy: false,
                    });
                *output_offset += 1;
@@ -156,11 +164,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>, AllocU32:Allocator<u32>
            }
            let max_copy = self.ring_buffer_decode_index as usize - self.ring_buffer_output_index as usize;
            output[*output_offset] = Command::Literal(
-               LiteralCommand::<SliceReference<'a, u8>>{
-                   data: SliceReference::<u8>::new(self.ring_buffer.slice(),
-                                                   self.ring_buffer_output_index as usize,
-                                                   max_copy),
-                   prob: FeatureFlagSliceType::<SliceReference<u8>>::default(),
+               LiteralCommand::<InputReference<'a>>{
+                   data: InputReference{
+                       data:self.ring_buffer.slice().split_at(self.ring_buffer_output_index as usize).1.split_at(max_copy).0,
+                       orig_offset:self.ring_buffer_output_index as usize,
+                   },
+                   prob: FeatureFlagSliceType::<InputReference>::default(),
                    high_entropy: false,
                });
            *output_offset += 1;

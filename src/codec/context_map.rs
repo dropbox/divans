@@ -173,7 +173,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Only, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                       nibble_prob.blend(beg_nib, Speed::MED);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(beg_nib, Speed::MED);
+                       }
                    }
                    let pred_mode = match LiteralPredictionModeNibble::new(beg_nib) {
                       Err(x) => return DivansResult::Failure(ErrMsg::PredictionModeFail(x)),
@@ -193,7 +195,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::DynamicContextMixingSpeed, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                       nibble_prob.blend(beg_nib, Speed::MED);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(beg_nib, Speed::MED);
+                       }
                    }
                    self.pm.set_mixing_math(beg_nib & 3);
                    self.pm.set_adv_context_map(beg_nib >> 2);
@@ -207,7 +211,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::PriorDepth, (0,));
                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
-                       nibble_prob.blend(beg_nib, Speed::FAST);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(beg_nib, Speed::FAST);
+                       }
                    }
                    superstate.bk.obs_prior_depth(beg_nib); // FIXME: this is not persisted in the command
                    self.state = PredictionModeSubstate::AdaptationSpeed(0, [(0,0);4], combine_literal_predictions);
@@ -229,7 +235,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::ContextMapSpeedPalette,
                                                                              (palette_type as usize,));
                    superstate.coder.get_or_put_nibble(&mut nibble, nibble_prob, billing);
-                   nibble_prob.blend(nibble, Speed::FAST);
+                   if superstate.specialization.adapt_cdf() {
+                       nibble_prob.blend(nibble, Speed::FAST);
+                   }
                    if palette_type == 0 {
                        out_adapt_speed[speed_index].0 |= nibble<<3;
                    }
@@ -282,7 +290,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
                        superstate.coder.get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
-                       nibble_prob.blend(mnemonic_nibble, Speed::MED);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(mnemonic_nibble, Speed::MED);
+                       }
                    }
                    if mnemonic_nibble == 14 {
                        match context_map_type {
@@ -333,7 +343,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
 
                    superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
-                   nibble_prob.blend(msn_nib, Speed::MED);
+                   if superstate.specialization.adapt_cdf() {
+                       nibble_prob.blend(msn_nib, Speed::MED);
+                   }
                    self.state = PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, msn_nib, combine_literal_predictions);
                },
                PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, most_significant_nibble, combine_literal_predictions) => {
@@ -352,7 +364,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);
-                       nibble_prob.blend(lsn_nib, Speed::MED);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(lsn_nib, Speed::MED);
+                       }
                    }
                    let mut out_context_map = match context_map_type {
                        ContextMapType::Literal => self.pm.literal_context_map.slice_mut(),
@@ -383,7 +397,9 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::PriorMixingValue, (0,));
                        superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
-                       nibble_prob.blend(mixing_nib, Speed::PLANE);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(mixing_nib, Speed::PLANE);
+                       }
                    }
                    self.pm.get_mixing_values_mut()[index] = mixing_nib;
                    if index + 1 == NUM_MIXING_VALUES {
