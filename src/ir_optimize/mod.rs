@@ -28,6 +28,9 @@ pub fn should_merge<SelectedCDF:CDF16,
                                                                                        AllocU8,
                                                                                        AllocCDF16>,
                                                        cache: &mut cache::Cache<AllocU8>) -> Result<bool, ErrMsg> {
+    if lit.data.0 + lit.data.1 as usize + copy.num_bytes as usize > mb.0.orig_offset + mb.0.len() as usize && lit.data.0 < mb.0.orig_offset + mb.0.len() as usize {
+        return Ok(false); // can't merge: would wrap the metablock
+    }
     let codec_snapshot = actuary.cross_command_state.snapshot_literal_or_copy_state();
     actuary.cross_command_state.specialization.will_it_blend = false;
 
@@ -194,6 +197,7 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                     Err(msg) => return Err(msg),
                 };
                 if should_merge && !(start < mb.0.len() && fin > mb.0.len()) {
+                    //eprintln!("Merging {},{} into {},{} with mb.0 {} and mb.1 {}", lit.data.0, lit.data.1, lit.data.0, lit.data.1 + copy.num_bytes,mb.0.len(), mb.1.len());
                     lit.data.1 += copy.num_bytes;
                     core::mem::replace(copy, CopyCommand::nop());
                 } else {
@@ -206,6 +210,8 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                     step_command = true; // we span a macroblock boundary
                 } else { // always merge adjacent literals if possible. There's rarely a benefit to keeping them apart
                     assert_eq!(lit.data.0 + lit.data.1 as usize, cont_lit.data.0);
+                    //eprintln!("Merging {},{} into {},{} with mb.0 {} and mb.1 {}", lit.data.0, lit.data.1, lit.data.0, lit.data.1 + cont_lit.data.1,mb.0.len(), mb.1.len());
+
                     lit.data.1 += cont_lit.data.1;
                     core::mem::replace(&mut item_a[0], Command::Copy(CopyCommand::nop())); // replace with a copy
                 }
