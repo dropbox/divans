@@ -76,18 +76,18 @@ for line in sys.stdin:
     num_rows += 1
     candidate = [0,0,0]
     rule = ['d12', 'd13', 'd20', 'd21', 'd1', 'd1']
-    if zlib_ratio > .93:
+    if zlib_ratio > .99:
         candidate = row[rule[5]]
-    elif zlib_ratio > .92:
+    elif zlib_ratio > .96:
         candidate = row[rule[4]]
-    elif zlib_ratio > .89:
+    elif zlib_ratio > .92: # .85
         candidate = row[rule[3]]
-    elif zlib_ratio > .86:
+    elif zlib_ratio > .89: # .25
         candidate = row[rule[2]]
-    elif zlib_ratio > .82:
+    elif zlib_ratio > .85: # .22
         candidate = row[rule[1]]
     else:
-        candidate = row[rule[0]]
+        candidate = row[rule[0]] #1
     row['dX'] = candidate
     for (key, value) in row.iteritems():
         if key not in total:

@@ -9,14 +9,15 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd1', 'dX', 'zlib', 'z19', 'lzma', 'bz')
+    return label in ('b11', 'b9', 'd0', 'd5', 'zlib', 'z19', 'lzma', 'bz')
 def label_reassign(key):
     keymap = {
         'b11': 'Brotli\nq11',
         'b9': 'Brotli\nq9',
-        'd1': u'DivANS  .\nq11',
+        'd0': u'DivANS  .\nq11',
         'dX': u'DivANS\nq9',
-        'z19': 'Zstd',
+        'd5': u'DivANS\nq9',
+        'z19': 'Zstd\nq19',
         'lzma': '7zip',
         'bz': 'bz2',
         }
@@ -27,6 +28,7 @@ colors = [[r for r in reversed(['#aaaaff','#9999dd','#4444aa','#000088',])],
            [r for r in reversed(['#ffffaa','#cccc88','#aaaa44','#999900',])],
            [r for r in reversed(['#ffaaaa','#cc8888','#aa4444','#880000',])],
            [r for r in reversed(['#aaffaa','#88cc88','#44aa44','#008800',])],
+           [r for r in reversed(['#666666','#666666','#666666','#666666',])],
 ]
 map_color = {
     'd0':colors[0][3],
@@ -35,10 +37,11 @@ map_color = {
     'd3':colors[0][2],
     'd4':colors[0][2],
     'dX':colors[0][2],
+    'd5':colors[0][2],
     'b9':colors[1][0],
     'b11':colors[1][1],
     'z19':colors[2][1],
-    'zlib':colors[3][1],
+    'zlib':colors[4][1],
     'bz':colors[3][1],
     'lzma':colors[3][1],
     }
@@ -50,9 +53,9 @@ ylabel = {
     }
 
 y_limits= {
-    'savings_vs_zlib':[0, 7],
-    'encode_speed': [1,250],
-    'decode_speed': [10,4000],
+    'savings_vs_zlib':[0, 10],
+    'encode_speed': [1,400],
+    'decode_speed': [10,5000],
 #    'time_pct':
     }
 do_log = set(['decode_speed', 'encode_speed'])
@@ -65,7 +68,7 @@ def build_figure(key, ax, data, last=False):
     trans = transforms.blended_transform_factory(
         ax.transData, ax.transAxes)
     offset = .5
-    for (index, sub_items_key) in enumerate([x for x in sorted(data.keys(), key=lambda v: v.replace('d','a').replace('z1','c1').replace('z2','c2').replace('bz','ez')) if on_whitelist(key, x)]):
+    for (index, sub_items_key) in enumerate([x for x in sorted(data.keys(), key=lambda v: v.replace('d','a').replace('z1','c1').replace('z2','c2').replace('bz','mz')) if on_whitelist(key, x)]):
         labels.append(sub_items_key)
         bar_width = 0.35
         sub_items = data[sub_items_key]
@@ -105,13 +108,38 @@ def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
     rcParams['pdf.fonttype'] = 42
     rcParams['ps.fonttype'] = 42
     rcParams['pgf.rcfonts'] = False
-
     fig, [ax1, ax2, ax3] = plt.subplots(3, 1, sharex=True, figsize=(6, 6))
+    plt.suptitle("Dropbox recent uploads")
+    #build_figure('time_pct', ax1, decode_pct, last=True)
+    build_figure('decode_speed', ax2, decode_avg, last=True)
+    build_figure('encode_speed', ax3, encode_avg)
+    build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
+    #fig.subplots_adjust(bottom=0.15, right=.99, top=0.99, hspace=0.03)
+    plt.savefig('compression_comparison_ratio_speed_time.pdf')
+    plt.savefig('compression_comparison_ratio_speed_time.png')
+    fig.clear()
+
+    rcParams['pdf.fonttype'] = 42
+    rcParams['ps.fonttype'] = 42
+    rcParams['pgf.rcfonts'] = False
+    fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, figsize=(6, 4.5))
+    plt.suptitle("Dropbox recent uploads timing")
     #build_figure('time_pct', ax1, decode_pct, last=True)
     build_figure('decode_speed', ax1, decode_avg, last=True)
     build_figure('encode_speed', ax2, encode_avg)
-    build_figure('savings_vs_zlib', ax3, ratio_vs_zlib)
     #fig.subplots_adjust(bottom=0.15, right=.99, top=0.99, hspace=0.03)
-    plt.savefig('compression_comparison_ratio_speed_time.pdf')
+    plt.savefig('compression_comparison_speed_time.pdf')
+    plt.savefig('compression_comparison_speed_time.png')
+    fig.clear()
+
+    rcParams['pdf.fonttype'] = 42
+    rcParams['ps.fonttype'] = 42
+    rcParams['pgf.rcfonts'] = False
+    fig, ax1 = plt.subplots(1, 1, sharex=True, figsize=(6, 2.7))
+    plt.suptitle("Dropbox recent uploads compression ratio")
+    build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
+    fig.subplots_adjust(bottom=0.2, right=.99, top=.9, hspace=0.03)
+    plt.savefig('compression_comparison_ratio.pdf')
+    plt.savefig('compression_comparison_ratio.png')
     fig.clear()
 
