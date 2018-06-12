@@ -40,8 +40,37 @@ var inputOffset;
 var outputLen = 0;
 var stdErr = '';
 var pmOrigin = null;
-
+function translate(hex) {
+   var ret = ["\""];
+   for (var i =0; i < hex.length; i += 2) {
+       var intVal = parseInt(hex.substr(i, 2), 16);
+       var val;
+       
+       if (intVal >= 128 || intVal <= 0xa) {
+           val = " ";
+       } else {
+           val = String.fromCharCode(intVal);
+       }
+       ret[ret.length] = val;
+       
+   }
+   ret[ret.length] = "\"";
+   return ret.join('');
+}
 function finishOutput() {
+    cmds = stdErr.split("\n")
+    for (var i = 0;i < cmds.length; i+= 1) {
+        var cmd = cmds[i].split(" ");
+        if (cmd[0] == "insert") {
+           cmd[2] = translate(cmd[2]);
+        }
+        if (cmd[0] == "dict") {
+           cmd[4] = translate(cmd[4]);
+           cmd[7] = translate(cmd[7]);
+        }
+        cmds[i] = cmd.join(" ");
+    }
+    stdErr = cmds.join("\n");
     parent.postMessage(["brotli-finished", outputLen, stdErr], pmOrigin,
             [inputArrBuffer]);
     /*console.log("FINISHED", outputLen, stdErr);*/
