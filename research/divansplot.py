@@ -9,14 +9,16 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd1', 'd4', 'zlib', 'z19')
+    return label in ('b11', 'b9', 'd1', 'dX', 'zlib', 'z19', 'lzma', 'bz')
 def label_reassign(key):
     keymap = {
         'b11': 'Brotli\nq11',
         'b9': 'Brotli\nq9',
-        'd1': 'DivANS\nq11',
-        'd4': 'DivANS\nq9',
+        'd1': u'DivANS  .\nq11',
+        'dX': u'DivANS\nq9',
         'z19': 'Zstd',
+        'lzma': '7zip',
+        'bz': 'bz2',
         }
     if key in keymap:
         return keymap[key]
@@ -30,12 +32,15 @@ map_color = {
     'd0':colors[0][3],
     'd1':colors[0][3],
     'd2':colors[0][3],
-    'd3':colors[0][3],
+    'd3':colors[0][2],
     'd4':colors[0][2],
+    'dX':colors[0][2],
     'b9':colors[1][0],
     'b11':colors[1][1],
     'z19':colors[2][1],
     'zlib':colors[3][1],
+    'bz':colors[3][1],
+    'lzma':colors[3][1],
     }
 ylabel = {
     'savings_vs_zlib':'% saving vs zlib\n',
@@ -45,7 +50,7 @@ ylabel = {
     }
 
 y_limits= {
-    'savings_vs_zlib':[0, 26],
+    'savings_vs_zlib':[0, 7],
     'encode_speed': [1,250],
     'decode_speed': [10,4000],
 #    'time_pct':
@@ -60,7 +65,7 @@ def build_figure(key, ax, data, last=False):
     trans = transforms.blended_transform_factory(
         ax.transData, ax.transAxes)
     offset = .5
-    for (index, sub_items_key) in enumerate([x for x in sorted(data.keys(), key=lambda v: v.replace('d','a')) if on_whitelist(key, x)]):
+    for (index, sub_items_key) in enumerate([x for x in sorted(data.keys(), key=lambda v: v.replace('d','a').replace('z1','c1').replace('z2','c2').replace('bz','ez')) if on_whitelist(key, x)]):
         labels.append(sub_items_key)
         bar_width = 0.35
         sub_items = data[sub_items_key]

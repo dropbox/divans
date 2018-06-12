@@ -14,13 +14,14 @@ def prec(x, scale=100000.0):
     return int(x * scale +.5)/scale
 
 def summarize(show_results=True):
-    print "Summary for",num_rows,'Processed ',(uncut * 100.)/(cut + uncut),'%'
+    print "Summary for",num_rows,'Processed ',(uncut * 100.)/(cut + uncut),'%', raw_size / 1000.**4
     ratio_vs_zlib = {}
     ratio_vs_raw = {}
     encode_avg = {}
     decode_avg = {}
     decode_st_avg = {}
     decode_pct = {}
+    
     for key in sorted(total.keys()):
         temp = [total[key][0] * 100. /total['zlib'][0],
                 total[key][3]/max(total[key][1], 1),
@@ -61,14 +62,29 @@ for line in sys.stdin:
     except Exception:
         traceback.print_exc()
         continue
-    if row['zlib'][0] / float(row['~raw']) > float(sys.argv[2])/100.:
+    zlib_ratio = row['zlib'][0] / float(row['~raw'])
+    if zlib_ratio > float(sys.argv[2])/100.:
         cut += row['zlib'][0]
         continue
     uncut += row['zlib'][0]
     raw_size += row['~raw']
     mb_size = row['~raw']/1024./1024.
     num_rows += 1
-
+    candidate = [0,0,0]
+    rule = ['d12', 'd13', 'd20', 'd21', 'd1', 'd1']
+    if zlib_ratio > .93:
+        candidate = row[rule[5]]
+    elif zlib_ratio > .92:
+        candidate = row[rule[4]]
+    elif zlib_ratio > .89:
+        candidate = row[rule[3]]
+    elif zlib_ratio > .86:
+        candidate = row[rule[2]]
+    elif zlib_ratio > .82:
+        candidate = row[rule[1]]
+    else:
+        candidate = row[rule[0]]
+    row['dX'] = candidate
     for (key, value) in row.iteritems():
         if key not in total:
             total[key] = [0,0,0,0,0]
