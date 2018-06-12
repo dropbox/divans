@@ -63,7 +63,11 @@ for line in sys.stdin:
         traceback.print_exc()
         continue
     zlib_ratio = row['zlib'][0] / float(row['~raw'])
-    if zlib_ratio > float(sys.argv[2])/100.:
+    if sys.argv[2] == "image":
+        if row['zlib'][0] == row['~raw']:
+            cut += row['zlib'][0]
+            continue
+    elif zlib_ratio > float(sys.argv[2])/100.:
         cut += row['zlib'][0]
         continue
     uncut += row['zlib'][0]
