@@ -80,18 +80,21 @@
            0x61, 0x69, 0x6e, 0x65, 0x64, 0x2c, 0x20, 0x61, 0x6e, 0x64, 0x20, 0x68,
            0x61, 0x69, 0x6c, 0x65, 0x64, 0x20, 0x74, 0x68, 0x65, 0x20, 0x73, 0x61,
            0x6d, 0x65, 0x20, 0x6d, 0x6f, 0x72, 0x6e, 0x69, 0x6e, 0x67, 0x2e, 0x0a];
-   var file = new Uint8Array(10000);
-   var count = 0;
-   for (var i= 0; i + 3 < file.length; i+= 4) {
-      file[i] = i & 0xff;
-      file[i + 1] = (i >> 8) & 0xff;
-      file[i + 2] = (i >> 16) & 0xff;
-      file[i + 3] = (i >> 24) & 0xff;
+   for (var count = 0; count < 10000; count += 1) {
+       var gap = ",";
+       if (count %2000 == 1999) {
+           gap = "\n";
+        }
+        var current_number = count + gap;
+        for (var j = 0; j < current_number.length; j+= 1) {
+            helper[helper.length] = current_number.charCodeAt(j)
+        }
    }
+   var file = new Uint8Array(helper.length);
    for (var i = 0; i < helper.length; i+= 1) {
       file[i] = helper[i];
    }
-         // example divans file
+   // example divans file
    var _example_dv_file = [0xff, 0xe5, 0x8c, 0x9f, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
              0x00, 0x00, 0x00, 0x00, 0x00, 0x2b, 0x00, 0xd5, 0xbe, 0x98, 0x84, 0x91,
              0x0a, 0x00, 0x00, 0x22, 0x12, 0x07, 0xb2, 0xf6, 0x07, 0x08, 0x00, 0x65,
@@ -162,18 +165,18 @@
        }
    }
    function init() {
-         var ascii_string = "";
+         var ascii_example_file = "";
          for (var i =0;i < helper.length; i += 1) {
-             ascii_string += String.fromCharCode(file[i]);
+             ascii_example_file += String.fromCharCode(file[i]);
          }
-         ascii_string += "\nFollowed by 32 bit byte offsets from 48 to 10000\n";
+         ascii_example_file += "\n";
          help_text.appendChild(document.createTextNode("Example file; Choose a file less than 2MiB above to compress/decompress."));
          quality_dialog = makeQualityDialog();
          
          document.body.appendChild(help_text);
          document.body.appendChild(quality_dialog)
          pre.style.backgroundColor = "#EBECE4";
-         pre.appendChild(document.createTextNode(ascii_string));
+         pre.appendChild(document.createTextNode(ascii_example_file));
          document.body.appendChild(pre);
          input_dialog.type = "file";
          input_dialog.id = "files";
