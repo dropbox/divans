@@ -288,7 +288,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        res
                    };
                    {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (0,));
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::Mnemonic, (context_map_type as usize,));
                        superstate.coder.get_or_put_nibble(&mut mnemonic_nibble, nibble_prob, billing);
                        if superstate.specialization.adapt_cdf() {
                            nibble_prob.blend(mnemonic_nibble, Speed::MED);
@@ -340,13 +340,13 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    } else {
                        cur_context_map[index as usize] >> 4
                    };
-                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (0,));
+                   let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::FirstNibble, (context_map_type as usize,));
 
                    superstate.coder.get_or_put_nibble(&mut msn_nib, nibble_prob, billing);
                    if superstate.specialization.adapt_cdf() {
                        nibble_prob.blend(msn_nib, Speed::MED);
                    }
-                   self.state = PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, msn_nib, combine_literal_predictions);
+                   self.state = PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, msn_nib, combine_literal_predictions, );
                },
                PredictionModeSubstate::ContextMapSecondNibble(index, context_map_type, most_significant_nibble, combine_literal_predictions) => {
                    let cur_context_map = match context_map_type {
@@ -360,7 +360,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        cur_context_map[index as usize] & 0xf
                    };
                    {
-                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (0,));
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(PredictionModePriorType::SecondNibble, (context_map_type as usize,));
                        // could put first_nibble as ctx instead of 0, but that's probably not a good idea since we never see
                        // the same nibble twice in all likelihood if it was covered by the mnemonic--unless we want random (possible?)
                        superstate.coder.get_or_put_nibble(&mut lsn_nib, nibble_prob, billing);

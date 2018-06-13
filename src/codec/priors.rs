@@ -125,6 +125,9 @@ pub enum PredictionModePriorType {
 define_prior_struct!(PredictionModePriors, PredictionModePriorType,
                      (PredictionModePriorType::Only, 1),
                      (PredictionModePriorType::LiteralSpeed, 1),
+                     (PredictionModePriorType::FirstNibble, 2),
+                     (PredictionModePriorType::SecondNibble, 2),
+                     (PredictionModePriorType::Mnemonic, 4),
                      (PredictionModePriorType::PriorMixingValue, 17),
                      (PredictionModePriorType::ContextMapSpeedPalette, 4)
                      );

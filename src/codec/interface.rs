@@ -115,8 +115,8 @@ impl <T:EncoderOrDecoderSpecialization> EncoderOrDecoderRecoderSpecialization fo
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ContextMapType {
-    Literal,
-    Distance
+    Literal = 0,
+    Distance = 1,
 }
 
 
