@@ -392,10 +392,14 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    } else {
                        0
                    };
-                       
+                   let mut prior = if index >= 256 && self.pm.has_context_speeds() {
+                       self.pm.get_mixing_values()[index-256] as usize & 0xf
+                   } else {
+                       16
+                   };
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
-                           PredictionModePriorType::PriorMixingValue, (0,));
+                           PredictionModePriorType::PriorMixingValue, (prior,));
                        superstate.coder.get_or_put_nibble(&mut mixing_nib, nibble_prob, billing);
                        if superstate.specialization.adapt_cdf() {
                            nibble_prob.blend(mixing_nib, Speed::PLANE);
