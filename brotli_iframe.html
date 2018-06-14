@@ -46,10 +46,24 @@ function translate(hex) {
        var intVal = parseInt(hex.substr(i, 2), 16);
        var val;
        
-       if (intVal >= 128 || intVal <= 0xa) {
-           val = " ";
+       if (intVal >= 127 || intVal < 0x20) {
+           if (intVal == 0xa) {
+             val = "\\n";
+           } else if (intVal == 0xd) {
+             val = "\\r";
+           } else if (intVal == 0x9) {
+             val = "\\t";
+           } else {
+             val = "\\x" + (intVal >> 4).toString(16) + (intVal & 0xf).toString(16);
+           }
        } else {
            val = String.fromCharCode(intVal);
+           if (val == "\"") {
+              val = "\\\"";
+           }
+           if (val == "\\") {
+              val = "\\\\";
+           }
        }
        ret[ret.length] = val;
        
