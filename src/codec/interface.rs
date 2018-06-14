@@ -136,7 +136,6 @@ pub struct LiteralBookKeeping<Cdf16:CDF16,
     pub literal_lut1:[u8;256],
     pub mixing_mask:[u8; 8192],
     pub model_weights: [super::weights::Weights;2],
-    pub materialized_context_map: bool,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
 }
 
@@ -161,7 +160,6 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub last_clen: u8,
     pub last_llen: u32,
     pub last_4_states: u8,
-    pub materialized_context_map: bool,
     pub desired_prior_depth: u8,
     pub desired_literal_adaptation: Option<[Speed;4]>,
     pub desired_do_context_map: bool,
@@ -247,7 +245,6 @@ impl<
                                                AllocCDF16> {
     fn new(literal_context_map:AllocU8::AllocatedMemory) -> Self {
         LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
-            //materialized_context_map: false,
             combine_literal_predictions: false,
             last_8_literals: 0,
             stride: 0,
@@ -260,7 +257,6 @@ impl<
             btype_last:0,
             model_weights:[super::weights::Weights::default(),
                            super::weights::Weights::default()],
-            materialized_context_map: false,
             lit_cm_priors: LiteralCommandPriorsCM {
                 priors: AllocCDF16::AllocatedMemory::default()
             },
@@ -314,7 +310,6 @@ impl<
         // self.distance_context_map.slice_mut().clone_from_slice(pm.distance_context_map()); // FIXME: this was done during parsing of the pm
         for item in self.literal_context_map.slice().iter() {
             if *item != 0 {
-                self.materialized_context_map = true;
                 break;
             }
         }
@@ -376,7 +371,6 @@ impl<
             last_dlen: 1,
             last_llen: 1,
             last_clen: 1,
-            materialized_context_map: false,
             // FIXME combine_literal_predictions: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
@@ -405,9 +399,6 @@ impl<
             desired_do_context_map: do_context_map,
             desired_force_stride:force_stride,
         }
-    }
-    pub fn materialized_prediction_mode(&self) -> bool {
-        self.materialized_context_map
     }
     /* DEPRECATED
     pub fn obs_mixing_value(&mut self, index: usize, value: u8) -> DivansOpResult {
@@ -446,9 +437,6 @@ impl<
         }
     }
     pub fn obs_context_map_for_lru(&mut self, context_map_type: ContextMapType, index : u32, val: u8) -> DivansOpResult {
-        if val != 0 {
-            self.materialized_context_map = true;
-        }
         match self.cmap_lru.iter().enumerate().find(|x| *x.1 == val) {
             Some((index, _)) => {
                 if index != 0 {

@@ -383,7 +383,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    self.state = PredictionModeSubstate::ContextMapMnemonic(index + 1, context_map_type, combine_literal_predictions);
                },
                PredictionModeSubstate::MixingValues(index, combine_literal_predictions) => {
-                   let mut mixing_nib = if !superstate.bk.materialized_context_map {
+                   let mut mixing_nib = if !superstate.bk.desired_do_context_map {
                        4
                    } else if !combine_literal_predictions {
                        0
