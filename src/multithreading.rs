@@ -134,8 +134,12 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MultiWorker<A
         return ret;        
     }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mcommand: &mut AllocCommand) {
-        let &(ref lock, ref _cvar) = &*self.queue;
+        let &(ref lock, ref cvar) = &*self.queue;
         let mut worker = lock.lock().unwrap();
+        if worker.waiters != 0 {
+            worker.broadcast_err_internal(ErrMsg::UnexpectedEof);
+            cvar.notify_one();
+        }
         worker.free(m8, mcommand);
     }
 }

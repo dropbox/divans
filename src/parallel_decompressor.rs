@@ -140,6 +140,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
         }
     }
     pub fn free_ref(&mut self) {
+        self.worker.broadcast_err(ErrMsg::UnexpectedEof); // in case we still have a worker holding the lock, not done
         if let Some(ref mut codec) = *self.codec.lock().unwrap() {
             let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
             if let Some(ld) = lit_decoder {
@@ -152,6 +153,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
     }
     pub fn free(mut self) -> (AllocU8, AllocCDF16, AllocCommand) {
         use codec::NUM_ARITHMETIC_CODERS;
+        self.worker.broadcast_err(ErrMsg::UnexpectedEof); // in case we still have a worker holding the lock, not done
         if let Some(mut codec) = core::mem::replace(&mut *self.codec.lock().unwrap(), None) {
             let lit_decoder = core::mem::replace(&mut self.literal_decoder, None);
             if let Some(ld) = lit_decoder {
