@@ -141,20 +141,20 @@ const SCALE_MASK:u64 = ((1u64 << LOG2_SCALE) - 1);
 #[derive(Debug, Clone)]
 pub struct ANSDecoder {
     state_a: u64,
-    state_b: u64,
+    //state_b: u64,
     sym_count: u16, // FIXME: this may be able to be a u16
     buffer_a_bytes_required: u8, // needs 8 to start with
-    buffer_b_bytes_required: u8, // needs 8 to start with
+    //buffer_b_bytes_required: u8, // needs 8 to start with
 }
 
 impl Default for ANSDecoder {
     fn default() -> Self {
         let ret = ANSDecoder{
             state_a: 0,
-            state_b: 0,
+            //state_b: 0,
             sym_count: 0,
             buffer_a_bytes_required: 8, // this will load both buffers
-            buffer_b_bytes_required: 0,
+            //buffer_b_bytes_required: 0,
         };
         assert!((1 << (mem::size_of_val(&ret.sym_count) * 8)) >= NUM_SYMBOLS_BEFORE_FLUSH);
         ret
@@ -174,17 +174,17 @@ impl ANSDecoder {
         if self.buffer_a_bytes_required < 16 && self.buffer_a_bytes_required > 4 { // initial setup
             self.sym_count = 0;
             self.state_a = 0;
-            self.state_b = 0;
-            if data.len() >= 16 {
+            //self.state_b = 0;
+            if data.len() >= 8 {
                 self.state_a = u64::from(data[0])|(u64::from(data[1]) << 8)|(u64::from(data[2]) << 16) | (u64::from(data[3]) << 24) |
                     (u64::from(data[4]) << 32)|(u64::from(data[5]) << 40)|(u64::from(data[6]) << 48) | (u64::from(data[7]) << 56);
-                self.state_b = u64::from(data[8])|(u64::from(data[9]) << 8)|(u64::from(data[10]) << 16) | (u64::from(data[11]) << 24) |
-                    (u64::from(data[12]) << 32)|(u64::from(data[13]) << 40)|(u64::from(data[14]) << 48) | (u64::from(data[15]) << 56);
+                //self.state_b = u64::from(data[8])|(u64::from(data[9]) << 8)|(u64::from(data[10]) << 16) | (u64::from(data[11]) << 24) |
+                //(u64::from(data[12]) << 32)|(u64::from(data[13]) << 40)|(u64::from(data[14]) << 48) | (u64::from(data[15]) << 56);
                 self.buffer_a_bytes_required = 0;
                 //perror!("Full load buffer_a {} buffer_b {}\n", self.state_a, self.state_b);
-                return 16;
+                return 8;
             } else {
-                self.buffer_a_bytes_required = 16;
+                self.buffer_a_bytes_required = 8;
             }
         }
         self.helper_push_data_really_rare_cases(data)
@@ -205,14 +205,14 @@ impl ANSDecoder {
             }
             return bytes_to_copy;
         }
-        assert!(self.buffer_a_bytes_required >= 16);
+        assert!(self.buffer_a_bytes_required >= 8);
         let bytes_to_copy = cmp::min(data.len(), 32 - self.buffer_a_bytes_required as usize);
         for i in 0..bytes_to_copy {
-            let shift = (self.buffer_a_bytes_required - 16 + i as u8) << 3;
+            let shift = (self.buffer_a_bytes_required - 8 + i as u8) << 3;
             if shift < 64 {
                 self.state_a |= u64::from(data[i]) << shift;
             } else {
-                self.state_b |= u64::from(data[i]) << (shift - 64);
+                //self.state_b |= u64::from(data[i]) << (shift - 64);
             }
         }
         self.buffer_a_bytes_required += bytes_to_copy as u8;
@@ -231,15 +231,14 @@ impl ANSDecoder {
         //perror!("inn:{:?} {} {}", self, start, freq);
         //perror!("decode_proc:x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} start = {}", self.state_a, x, start, freq, (freq as u64) * (self.state_a >> LOG2_SCALE), self.state_a, x, (self.state_a & SCALE_MASK), (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK), start);
         
-        self.buffer_a_bytes_required = self.buffer_b_bytes_required;
+        //self.buffer_a_bytes_required = self.buffer_b_bytes_required;
         // if we've run out of symbols to decode, we don't care what buffer_a's value is, we just clear state and start fresh
         self.buffer_a_bytes_required |= ((u64::from(self.sym_count) == u64::from(NUM_SYMBOLS_BEFORE_FLUSH - 1)) as u8) << 3;
         let x = (freq as u64) * (self.state_a >> LOG2_SCALE) + (self.state_a & SCALE_MASK) - start as u64;
         self.sym_count = self.sym_count.wrapping_add(1);
         // if we ran out of data in our state, we setup buffer_b to require pull from our wordstream
-        self.buffer_b_bytes_required = (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
-        self.state_a = self.state_b;
-        self.state_b = x;
+        self.buffer_a_bytes_required |= (x < NORMALIZATION_INTERVAL) as u8; // mark to need 4 bytes to continue
+        self.state_a = x;
         //perror!("out:{:?}, {} {}", self, start, freq);
     }
     #[inline(always)]
@@ -301,7 +300,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
     }
     fn reverse_put_sym(&mut self,
             state_a: &mut ANSState,
-            state_b: &mut ANSState,
+                       //state_b: &mut ANSState,
             start: Prob,
             freq: Prob) {
         debug_assert!(start >= 0);
@@ -323,8 +322,8 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
         }
         let xstate_a = ((state / freq as u64) << LOG2_SCALE) + (state % freq as u64) + start as u64;
         //perror!("encode_proc: x = {} x1 = {} bs = {} ls = {} xmax = {} r = {} x1 = {} x1%ls = {} bs+x1%ls = {} x1/ls<<BITS = {}", *state_a, state, start, freq, rescale_lim, xstate_a, state, state%(freq as u64), (start as u64).wrapping_add(state % (freq as u64)), ((state / freq as u64)<<LOG2_SCALE)); // x1/ls << BITS
-        *state_a = *state_b;
-        *state_b = xstate_a;
+        //*state_a = *state_b;
+        *state_a = xstate_a;
         //perror!("out:[{} {}] {} {}", state_a, state_b, start, freq);
     }
             
@@ -338,7 +337,7 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
         assert!(len <= NUM_SYMBOLS_BEFORE_FLUSH as usize);
         let mut index = 0;
         let mut state_a = ENC_START_STATE;
-        let mut state_b = ENC_START_STATE;
+        //let mut state_b = ENC_START_STATE;
         while index < len {
             let start: Prob;
             let freq: Prob;
@@ -348,13 +347,13 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
                 freq = Prob::from(start_freq[index * 4 +2]) | (Prob::from(start_freq[index* 4 + 3]) << 8);
                 //perror!("frepush {} {}\n",  start, freq);
             }
-            self.reverse_put_sym(&mut state_a, &mut state_b, start, freq);
+            self.reverse_put_sym(&mut state_a, start, freq);
             index += 1;
         }
         //if (len & 1) == 0 { // odd number of symbols, flip state_a and state_b
-            mem::swap(&mut state_a, &mut state_b);
+        //mem::swap(&mut state_a, &mut state_b);
         //}
-        let state_ab:[u8;16] = [
+        let state_ab:[u8;8] = [
             (state_a & 0xff) as u8,
             ((state_a >> 8) & 0xff) as u8,
             ((state_a >> 16) & 0xff) as u8,
@@ -363,14 +362,14 @@ impl<AllocU8:Allocator<u8> > ANSEncoder<AllocU8> {
             ((state_a >> 40) & 0xff) as u8,
             ((state_a >> 48) & 0xff) as u8,
             ((state_a >> 56) & 0xff) as u8,
-            (state_b & 0xff) as u8,
+/*            (state_b & 0xff) as u8,
             ((state_b >> 8) & 0xff) as u8,
             ((state_b >> 16) & 0xff) as u8,
             ((state_b >> 24) & 0xff) as u8,
             ((state_b >> 32) & 0xff) as u8,
             ((state_b >> 40) & 0xff) as u8,
             ((state_b >> 48) & 0xff) as u8,
-            ((state_b >> 56) & 0xff) as u8,
+            ((state_b >> 56) & 0xff) as u8,*/
         ];
         //perror!("efinal: [{} {}]", state_a, state_b);
         self.q.stack_data(&state_ab[..]);
@@ -415,10 +414,10 @@ impl ByteQueue for ANSDecoder {
         if self.buffer_a_bytes_required <= 5 {
             return 5 - self.buffer_a_bytes_required as usize;
         }
-        if self.buffer_a_bytes_required >= 16 {
-            return 32 - self.buffer_a_bytes_required as usize;
+        if self.buffer_a_bytes_required >= 8 {
+            return 16 - self.buffer_a_bytes_required as usize;
         }
-        16
+        8
     }
     #[inline(always)]
     fn num_pop_bytes_avail(&self) -> usize {
