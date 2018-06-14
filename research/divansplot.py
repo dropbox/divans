@@ -9,7 +9,7 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd0', 'd5', 'zlib', 'z19', 'lzma', 'bz')
+    return label in ('b11', 'b9', 'd0', 'dX', 'zlib', 'z19', 'lzma', 'bz')
 def label_reassign(key):
     keymap = {
         'b11': 'Brotli\nq11',
@@ -17,6 +17,7 @@ def label_reassign(key):
         'd0': u'DivANS  .\nq11',
         'dX': u'DivANS\nq9',
         'd5': u'DivANS\nq9',
+        'd35': u'DivANS\nq9',
         'z19': 'Zstd\nq19',
         'lzma': '7zip',
         'bz': 'bz2',
@@ -38,6 +39,7 @@ map_color = {
     'd4':colors[0][2],
     'dX':colors[0][2],
     'd5':colors[0][2],
+    'd35':colors[0][2],
     'b9':colors[1][0],
     'b11':colors[1][1],
     'z19':colors[2][1],

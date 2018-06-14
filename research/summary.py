@@ -53,7 +53,39 @@ def summarize(show_results=True):
             show_results = False
     if show_results:
         divansplot.draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct)
-
+gopts_map = {
+    'd1':[['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+          ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
+           '-sign', '-speed=32,4096'],
+          ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+          ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+          ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
+           '-lsb', '-speed=2,1024']],
+    'd12':[['-O2', '-q9.5', '-w22', '-defaultprior', '-lgwin22', '-mixing=2', '-bytescore=340']],
+    'd13':[ ['-O2', '-q9.5', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-speed=2,2048', '-bytescore=540'],
+            ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-bytescore=140', '-speed=32,4096']],
+    'd15':[['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-speed=2,2048', '-bytescore=840'],
+           ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-bytescore=340'],
+           ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-bytescore=140', '-speed=32,4096']],
+    'd20':[['-O2', '-q10', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+           ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
+            '-sign', '-speed=32,4096'],
+           ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=40',
+            '-sign', '-speed=16,8192'],
+           ['-O2', '-q10', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+           ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
+            '-lsb', '-speed=2,1024']],
+    'd21':[['-q9', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=140'],
+           ['-q9', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=340'],
+           ['-q9', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=840', "-speed=16,8192"]],
+    'd29':[['-q9', '-defaultprior', '-nocm', '-w22', '-lgwin22', '-mixing=0', '-bytescore=340']],
+    'd35':[ ['-q7', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=40'],
+            ['-q7', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=340'],
+            ['-q7', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=540'],
+            ['-q7', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=840', '-speed=1,16384']],
+    'd38':[['-q5', '-defaultprior', '-w22', '-lgwin22', '-mixing=2', '-bytescore=340']],
+    
+    }
 for line in sys.stdin:
     if sys.argv[1] == '--cut':
         line = line[line.find(':') + 1:]
@@ -75,7 +107,12 @@ for line in sys.stdin:
     mb_size = row['~raw']/1024./1024.
     num_rows += 1
     candidate = [0,0,0]
-    rule = ['d12', 'd13', 'd20', 'd21', 'd1', 'd1']
+    rule = ['d12',
+            'd13',
+            'd20',
+            'd21',
+            'd1',
+            'd1']
     if zlib_ratio > .99:
         candidate = row[rule[5]]
     elif zlib_ratio > .96:
@@ -88,6 +125,16 @@ for line in sys.stdin:
         candidate = row[rule[1]]
     else:
         candidate = row[rule[0]] #1
+    row['dY'] = candidate
+    if zlib_ratio > .97:
+        candidate = row['d29'] # fast to encode fast to decode
+    #elif zlib_ratio > .9:
+    #    candidate = row['d38'] # fastest to encode slow to decode
+    elif zlib_ratio > .5:
+        candidate = row['d35'] # fast to encode and slow to decode
+    else:
+        candidate = row['d15'] # slow to encode fast to decode
+    #    candidate = row['d1'] # slowest to encode fat to decoed
     row['dX'] = candidate
     for (key, value) in row.iteritems():
         if key not in total:
