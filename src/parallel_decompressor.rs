@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use divans_decompressor::HeaderParser;
 use super::mux::{Mux,DevNull};
 use codec::decoder::{DecoderResult, DivansDecoderCodec};
-use threading::{ThreadToMainDemuxer};
+use threading::{ThreadToMainDemuxer, ThreadToMain};
 use multithreading::{BufferedMultiWorker, MultiWorker};
 
 use ::interface::{DivansResult, DivansInputResult, ErrMsg};
@@ -117,8 +117,10 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                         &mut unused) {
                         DivansResult::Success => break, // DONE
                         DivansResult::Failure(e) => {
-                            unimplemented!(); // HANDLE FAILURE BY TELLING MAIN THREAD
-                    },
+                            
+                            process_codec.demuxer().broadcast_err(e); // HANDLE FAILURE BY TELLING MAIN THREAD
+                            return;
+                        },
                         DivansResult::NeedsMoreInput => {
                             //eprintln!("W_RETRY_PULL");//unimplemented!(); // we should block here--- maybe this is an error
                         },

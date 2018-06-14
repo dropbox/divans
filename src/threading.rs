@@ -11,6 +11,7 @@ pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
     Yield,
     Eof,
+    Err(ErrMsg)
 }
 pub type StaticCommand = Command<SlicePlaceholder32<u8>>;
 pub const NUM_DATA_BUFFERED:usize = 2;
@@ -31,7 +32,7 @@ pub fn empty_prediction_mode_context_map<ISl:SliceWrapper<u8>+Default>() -> Pred
 pub enum CommandResult {
     Ok,
     Eof,
-    Err(ErrMsg)
+    Err(ErrMsg),
 }
 pub trait PullAllocatedCommand<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> {
     fn pull_command_buf(&mut self,
@@ -51,6 +52,7 @@ pub trait MainToThread<AllocU8:Allocator<u8>> {
             output:&mut Self::CommandOutputType,
             consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
             pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult;
+    fn broadcast_err(&mut self, err:ErrMsg);
 }
 
 pub trait ThreadToMain<AllocU8:Allocator<u8>> {
@@ -81,6 +83,7 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     fn push_eof(
         &mut self,
     ) -> DivansOutputResult;
+    fn broadcast_err(&mut self, err:ErrMsg);
 }
 pub const NUM_SERIAL_COMMANDS_BUFFERED: usize = 256;
 pub struct SerialWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
@@ -93,13 +96,18 @@ pub struct SerialWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticComm
     result_cm: [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2],
     pub waiters: u8,
     eof_present_in_result: CommandResult, // retriever should try to get everything
+    pub err: Option<ErrMsg>,
 }
 impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<AllocU8, AllocCommand> {
+    pub fn broadcast_err_internal(&mut self, err: ErrMsg) {
+        self.eof_present_in_result = CommandResult::Err(err);
+        self.err = Some(err);
+    }
     pub fn result_ready(&self) -> bool {
-        if let CommandResult::Eof = self.eof_present_in_result {
-            return true;
+        if let CommandResult::Ok = self.eof_present_in_result {
+            return self.result.1 != 0 || self.result_data[0].0.len() != 0;
         }
-        self.result.1 != 0 || self.result_data[0].0.len() != 0
+        true
     }
     pub fn result_space_ready(&self) -> bool {
         self.result.0.len() > self.result.1 as usize
@@ -130,6 +138,12 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
             self.eof_present_in_result = CommandResult::Eof; // don't want to override errors here
         }
     }
+    #[cold]
+    #[inline(never)]
+    fn get_failure(&self) -> DivansOutputResult {
+        DivansOutputResult::Failure(self.err.unwrap())
+    }
+
     // returns the old space
     pub fn insert_results(&mut self,
                           cmds:&mut AllocatedMemoryPrefix<StaticCommand, AllocCommand>,
@@ -169,6 +183,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
                         empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>()],
             result_data:[AllocatedMemoryRange::<u8, AllocU8>::default(),
                          AllocatedMemoryRange::<u8, AllocU8>::default()],
+            err: None,
         }
     }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc:&mut AllocCommand) {
@@ -232,6 +247,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
         core::mem::swap(pm, &mut self.result_cm);
         self.eof_present_in_result
     }
+    fn broadcast_err(&mut self, err:ErrMsg) {
+        self.err = Some(err);
+    }
 }
 type NopUsize = usize;
 pub struct ThreadToMainDemuxer<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>>{
@@ -278,6 +296,9 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
                     self.slice = array
                 },
                 ThreadData::Yield => {},
+                ThreadData::Err(e) => {
+                    return DivansOutputResult::Failure(e);
+                }
             }
         }
         DivansOutputResult::Success
@@ -378,6 +399,9 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     ) -> DivansOutputResult {
         self.worker.push_eof()
     }
+    fn broadcast_err(&mut self, err:ErrMsg) {
+        self.worker.broadcast_err(err);
+    }
 }
 
 impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<AllocU8>> MainToThread<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
@@ -397,6 +421,9 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
             consumed_data:&mut [AllocatedMemoryRange<u8, AllocU8>;NUM_DATA_BUFFERED],
             pm:&mut [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>; 2]) -> CommandResult {    
         self.worker.pull(output, consumed_data, pm)
+    }
+    fn broadcast_err(&mut self, err:ErrMsg) {
+        <WorkerInterface as ThreadToMain<AllocU8>>::broadcast_err(&mut self.worker, err);
     }
 
 }
@@ -424,6 +451,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
     const ISOLATED:bool = true;
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
+        if self.err.is_some() {
+            return ThreadData::Err(self.err.unwrap());
+        }
         if self.data_len == 0 {
             return ThreadData::Yield;
         }
@@ -437,6 +467,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
     #[inline(always)]
     fn pull_context_map(&mut self,
                         _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
+        if self.err.is_some() {
+            return Err(());
+        }
         if self.cm_len == 0 {
             return Err(());
         }
@@ -458,6 +491,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _output:&mut [u8],
         _output_offset: &mut usize,
     ) -> DivansOutputResult {
+        if self.err.is_some() {
+            return self.get_failure();
+        }
         if (self.result.1 as usize) < self.result.0.len() {
             let (static_cmd, mut opt_cm) = downcast_command(cmd);
             if let Some(ref mut cm) = opt_cm {
@@ -484,6 +520,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
                     data:&mut AllocatedMemoryRange<u8, AllocU8>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
+        if self.err.is_some() {
+            return self.get_failure();
+        }
         if self.result_data[0].0.len() == 0 {
            core::mem::swap(&mut self.result_data[0], data); 
         } else if self.result_data[1].0.len() == 0 {
@@ -497,6 +536,12 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
     fn push_eof(&mut self,
     ) -> DivansOutputResult {
         self.set_eof_hint();
+        if self.err.is_some() {
+            return self.get_failure();
+        }
         DivansOutputResult::Success
+    }
+    fn broadcast_err(&mut self, err: ErrMsg) {
+        self.broadcast_err_internal(err);
     }
 }

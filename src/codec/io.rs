@@ -5,6 +5,7 @@ use ::interface::{
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
     MAX_LITERAL_CONTEXT_MAP_SIZE,
     EncoderOrDecoderRecoderSpecialization,
+    ErrMsg,
 };
 use codec::interface::CMD_CODER;
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
@@ -17,8 +18,11 @@ use threading::{ThreadToMain,ThreadData};
 
 
 pub struct DemuxerAndRingBuffer<AllocU8:Allocator<u8>,
-                                LinearInputBytes:StreamDemuxer<AllocU8>>(
-    LinearInputBytes, core::marker::PhantomData<AllocU8>);
+                                LinearInputBytes:StreamDemuxer<AllocU8>>{
+    input: LinearInputBytes,
+    phantom: core::marker::PhantomData<AllocU8>,
+    err: DivansOutputResult,
+}
 
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>+Default> Default for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
   fn default() ->Self {
@@ -27,46 +31,50 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>+Default> Def
 }
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     fn new(demuxer: LinearInputBytes) -> Self {
-        DemuxerAndRingBuffer::<AllocU8, LinearInputBytes>(demuxer, core::marker::PhantomData::<AllocU8>::default())
+        DemuxerAndRingBuffer::<AllocU8, LinearInputBytes>{
+            input:demuxer,
+            phantom:core::marker::PhantomData::<AllocU8>::default(),
+            err: DivansOutputResult::Success,
+        }
     }
 }
 
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemuxer<AllocU8> for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     #[inline(always)]
     fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
-        self.0.write_linear(data, m8)
+        self.input.write_linear(data, m8)
     }
     #[inline(always)]
     fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
-        self.0.read_buffer()
+        self.input.read_buffer()
     }
     #[inline(always)]
     fn data_ready(&self, stream_id:StreamID) -> usize {
-        self.0.data_ready(stream_id)
+        self.input.data_ready(stream_id)
     }
     #[inline(always)]
     fn peek(&self, stream_id: StreamID) -> &[u8] {
-        self.0.peek(stream_id)
+        self.input.peek(stream_id)
     }
     #[inline(always)]
     fn edit(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
-        self.0.edit(stream_id)
+        self.input.edit(stream_id)
     }
     #[inline(always)]
     fn consume(&mut self, stream_id: StreamID, count: usize) {
-        self.0.consume(stream_id, count)
+        self.input.consume(stream_id, count)
     }
     #[inline(always)]
     fn consumed_all_streams_until_eof(&self) -> bool {
-        self.0.consumed_all_streams_until_eof()
+        self.input.consumed_all_streams_until_eof()
     }
     #[inline(always)]
     fn encountered_eof(&self) -> bool {
-        self.0.encountered_eof()
+        self.input.encountered_eof()
     }
     #[inline(always)]
     fn free_demux(&mut self, m8: &mut AllocU8) {
-        self.0.free_demux(m8)
+        self.input.free_demux(m8)
     }
 }
 
@@ -75,7 +83,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
     const COOPERATIVE:bool = false;
     const ISOLATED:bool = false;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
-        ThreadData::Data(core::mem::replace(self.0.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
+        ThreadData::Data(core::mem::replace(self.input.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
     }
     fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         match m8 {
@@ -93,14 +101,17 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
         }
     }
     fn push_eof(&mut self) -> DivansOutputResult {
-        DivansOutputResult::Success
+        self.err
     }
     fn push_consumed_data(&mut self,
         data: &mut AllocatedMemoryRange<u8, AllocU8>,
         mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
         m8.as_mut().unwrap().free_cell(core::mem::replace(&mut data.0, AllocU8::AllocatedMemory::default()));
-        DivansOutputResult::Success
+        self.err
+    }
+    fn broadcast_err(&mut self, err:ErrMsg) {
+        self.err = DivansOutputResult::Failure(err);
     }
     fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
         &mut self,
@@ -119,12 +130,18 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
                                                        specialization.get_recoder_output(output),
                                                        tmp_output_offset_bytes);
         match ret {
-            DivansOutputResult::Success | DivansOutputResult::Failure(_) =>
+            DivansOutputResult::Success => {
                 free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
-                        UninitializedOnAlloc>()),
-            _ => {},
+                        UninitializedOnAlloc>());
+                self.err
+            },
+            DivansOutputResult::Failure(_) => {
+                free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<
+                        UninitializedOnAlloc>());
+                ret
+            }
+            _ => ret,
         }
-        return ret;
     }
 
 }

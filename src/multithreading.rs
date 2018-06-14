@@ -7,7 +7,7 @@ use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 use alloc_util::RepurposingAlloc;
 use cmd_to_raw::DivansRecodeState;
-use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOutputResult};
+use interface::{PredictionModeContextMap, EncoderOrDecoderRecoderSpecialization, Command, DivansOpResult, DivansOutputResult, ErrMsg};
 use std::time::{SystemTime, Duration};
 use threading::{StaticCommand, PullAllocatedCommand, downcast_command};
 #[cfg(feature="threadlog")]
@@ -32,6 +32,7 @@ enum ThreadEventType {
     M_PUSH_EMPTY_DATA,
     M_FAIL_PUSH_DATA,
     M_PULL_COMMAND_RESULT,
+    M_BROADCAST_ERR,
     M_WAIT_PULL_COMMAND_RESULT,
     W_PULL_DATA,
     W_WAIT_PULL_DATA,
@@ -44,7 +45,8 @@ enum ThreadEventType {
     W_PUSH_CONSUMED_DATA,
     W_WAIT_PUSH_CONSUMED_DATA,
     W_PUSH_EOF,
-    W_WAIT_PUSH_EOF
+    W_WAIT_PUSH_EOF,
+    W_BROADCAST_ERR,
 }
 #[derive(Debug, Clone, Copy)]
 struct ThreadEvent(ThreadEventType, u32, Duration);
@@ -120,6 +122,17 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MultiWorker<A
             queue: Arc::new((Mutex::new(SerialWorker::<AllocU8, AllocCommand>::new(mcommand)), Condvar::new())),
         }
     }
+    fn broadcast_err_internal(&mut self, err: ErrMsg, _thread_event_type: ThreadEventType) {
+        let _elapsed = unguarded_debug_time!(self);
+        let &(ref lock, ref cvar) = &*self.queue;
+        let mut worker = lock.lock().unwrap();
+        if worker.waiters != 0 {
+            cvar.notify_one();
+        }
+        let ret = worker.broadcast_err_internal(err);
+        thread_debug!(_thread_event_type, output.len(), self, _elapsed);
+        return ret;        
+    }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mcommand: &mut AllocCommand) {
         let &(ref lock, ref _cvar) = &*self.queue;
         let mut worker = lock.lock().unwrap();
@@ -183,6 +196,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
             },
         }
     }
+
     #[inline(always)]
     fn pull(&mut self,
             output:&mut Self::CommandOutputType,
@@ -199,14 +213,20 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MainToThread<
                 let ret = worker.pull(output, consumed_data, pm);
                 thread_debug!(ThreadEventType::M_PULL_COMMAND_RESULT, output.len(), self, _elapsed);
                 return ret;
-            } else {
+            } else if worker.err.is_none() {
                 thread_debug!(ThreadEventType::M_WAIT_PULL_COMMAND_RESULT, 0, self, _elapsed);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
                 //return CommandResult::ProcessedData(AllocatedMemoryRange::<u8, AllocU8>::default()); // FIXME: busy wait
-            } 
+            } else {
+                return CommandResult::Err(worker.err.unwrap());
+            }
         }
+    }
+    fn broadcast_err(&mut self,
+                     err:ErrMsg) {
+        self.broadcast_err_internal(err, ThreadEventType::M_BROADCAST_ERR);
     }
 }
 
@@ -325,6 +345,10 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
             }
         }
     }
+    fn broadcast_err(&mut self, err: ErrMsg
+    ) {
+        self.broadcast_err_internal(err, ThreadEventType::W_BROADCAST_ERR);
+    }
 }
 
 pub struct BufferedMultiWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
@@ -351,7 +375,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             buffer: AllocatedMemoryPrefix::realloc(mc.alloc_cell(NUM_SERIAL_COMMANDS_BUFFERED), 0),
         }
     }
-    fn force_push(&mut self, eof_inside: bool, data: &mut AllocatedMemoryRange<u8, AllocU8>, pm: Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) {
+    fn force_push(&mut self, eof_inside: bool, data: &mut AllocatedMemoryRange<u8, AllocU8>, pm: Option<&mut PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>>) -> DivansOpResult {
         if self.min_buffer_push_len * 2 < self.buffer.max_len(){
             self.min_buffer_push_len <<= 2;
         }
@@ -394,12 +418,14 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
                     self.min_buffer_push_len = core::cmp::max(self.min_buffer_push_len >> 1, 4);
                 }
                 self.buffer.1 = 0;
-                return;
-            } else {
+                return DivansOpResult::Success;
+            } else if worker.err.is_none() {
                 thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, self.buffer.1, self.worker, _elapsed);
                 worker.waiters += 1;
                 let _ign = cvar.wait(worker);
                 _ign.unwrap().waiters -= 1;
+            } else {
+                return DivansOpResult::Failure(worker.err.unwrap());
             }
         }
     }
@@ -433,24 +459,28 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         self.buffer.0.slice_mut()[self.buffer.1 as usize] = static_command;
         self.buffer.1 += 1;
         if pm.is_some() {
-            self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), pm);
+            DivansOutputResult::from(self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), pm))
         } else if self.buffer.1 as usize == self.buffer.0.len() || self.buffer.1 as usize == self.min_buffer_push_len {
-            self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None);
+            DivansOutputResult::from(self.force_push(false, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None))
+        } else {
+            //FIXME: why does this case not do anything
+            DivansOutputResult::Success
         }
-        DivansOutputResult::Success
     }
     #[inline(always)]
     fn push_consumed_data(&mut self,
                     data:&mut AllocatedMemoryRange<u8, AllocU8>,
                     _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
-        self.force_push(false, data, None);
-        DivansOutputResult::Success
+        DivansOutputResult::from(self.force_push(false, data, None))
     }
    #[inline(always)]
     fn push_eof(&mut self,
     ) -> DivansOutputResult {
-        self.force_push(true, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None);
-        DivansOutputResult::Success
+        DivansOutputResult::from(self.force_push(true, &mut AllocatedMemoryRange::<u8, AllocU8>::default(), None))
+    }
+   #[inline(always)]
+    fn broadcast_err(&mut self, err: ErrMsg) {
+        self.worker.broadcast_err_internal(err, ThreadEventType::W_BROADCAST_ERR)
     }
 }
