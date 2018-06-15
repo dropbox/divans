@@ -5,7 +5,7 @@ use super::mux::{Mux,DevNull};
 use super::probability::CDF16;
 use codec::io::DemuxerAndRingBuffer;
 pub use super::cmd_to_divans::EncoderSpecialization;
-use brotli::interface::{Command, LiteralCommand, CopyCommand, Nop, PredictionModeContextMap};
+use brotli::interface::{Command, LiteralCommand, CopyCommand, Nop, PredictionModeContextMap, StaticCommand};
 use alloc_util;
 use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
@@ -109,12 +109,13 @@ pub fn should_merge<SelectedCDF:CDF16,
               copy_index, full_cost, copy.distance, copy.num_bytes, code, future_hit, cur_cost, combined_cost);*/
     Ok(combined_cost < cur_cost)
 }
-pub fn ir_optimize<SelectedCDF:CDF16,
+pub fn ir_optimize<'a, SelectedCDF:CDF16,
                    ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                    AllocU8:Allocator<u8>,
                    AllocCDF16:Allocator<SelectedCDF>,
+                   AllocCommand: Allocator<StaticCommand>
                    >(pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
-                     a:&mut [brotli::interface::Command<brotli::SliceOffset>],
+                     orig_buf:&'a mut [brotli::interface::Command<brotli::SliceOffset>],
                      mb:brotli::InputPair,
                      codec:&mut codec::DivansCodec<ChosenEncoder,
                                                    EncoderSpecialization,
@@ -126,18 +127,20 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                                                    AllocCDF16>,
                      window_size: u8,
                      opt: super::interface::DivansCompressorOptions,
-) -> Result<usize, ErrMsg> {
+                     mc: &'a mut AllocCommand,
+                     buf: &'a mut AllocCommand::AllocatedMemory,
+) -> Result<&'a [brotli::interface::Command<brotli::SliceOffset>], ErrMsg> {
     let mut unused = 0usize;
     let mut unused2 = 0usize;
-    if a.len() == 0 {
-        return Ok(0);
+    if orig_buf.len() == 0 {
+        return Ok(orig_buf);
     }
     let (re_m8, mcdf16, remainder) = match core::mem::replace(&mut codec.cross_command_state.thread_ctx, codec::ThreadContext::Worker) {
         codec::ThreadContext::MainThread(main) => main.dismantle(),
         codec::ThreadContext::Worker => panic!("Main Thread was none during encode"),
     };
     let (mut m8, reallocation_item) = re_m8.disassemble();
-    let mut distance_cache = cache::Cache::<AllocU8>::new(&codec.cross_command_state.bk.distance_lru, a.len(), &mut m8);
+    let mut distance_cache = cache::Cache::<AllocU8>::new(&codec.cross_command_state.bk.distance_lru, orig_buf.len(), &mut m8);
     let mut actuary = codec::DivansCodec::<TallyingArithmeticEncoder,
                                            ToggleProbabilityBlend,
                                            DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
@@ -178,14 +181,14 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             }
         }
     }
-    for (index, cmd) in a.iter().enumerate() {
+    for (index, cmd) in orig_buf.iter().enumerate() {
         if let Command::Copy(ref copy) = *cmd {
             distance_cache.populate(copy.distance, copy.num_bytes, index);
         }
     }
     let mut eligible_index = 0usize;
-    for index in 1..a.len() {
-        let (eligible_a, item_a) = a.split_at_mut(index);
+    for index in 1..orig_buf.len() {
+        let (eligible_a, item_a) = orig_buf.split_at_mut(index);
         let mut step_command = false;
         let eligible = &mut eligible_a[eligible_index];
         if let Command::Literal(ref mut lit) = eligible {
@@ -240,9 +243,9 @@ pub fn ir_optimize<SelectedCDF:CDF16,
             }
         }
     }
-    for index in eligible_index..a.len() {
+    for index in eligible_index..orig_buf.len() {
         let mut cmd_offset = 0usize;
-        let cmd = &a[index];
+        let cmd = &orig_buf[index];
         match actuary.encode_or_decode(&[], &mut unused, &mut[], &mut unused2,
                                        &OneCommandThawingArray(&cmd, &mb),&mut cmd_offset) {
             DivansResult::NeedsMoreOutput => {
@@ -259,14 +262,14 @@ pub fn ir_optimize<SelectedCDF:CDF16,
         }        
     }
     eligible_index = 0;
-    for index in 0..a.len() {
-        let cmd = a[index].clone();
+    for index in 0..orig_buf.len() {
+        let cmd = orig_buf[index].clone();
         if let Command::Copy(ref copy) = cmd {
             if copy.num_bytes == 0 {
                 continue;
             }
         }
-        a[eligible_index] = cmd;
+        orig_buf[eligible_index] = cmd;
         eligible_index += 1;
     }
     //eprintln!("Actuary estimate: total cost {} bits; {} bytes\n", total_billing_cost(&actuary), total_billing_cost(&actuary)/ 8.0);
@@ -279,5 +282,5 @@ pub fn ir_optimize<SelectedCDF:CDF16,
                                    ChosenEncoder>::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, reallocation_item)),
                                                                retrieved_mcdf16,
                                                                remainder)));
-    Ok(eligible_index)
+    Ok(&orig_buf[..eligible_index])
 }

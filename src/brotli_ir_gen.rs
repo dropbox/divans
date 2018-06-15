@@ -189,30 +189,39 @@ impl<SelectedCDF:CDF16,
             let opt = self.opt;
             let mut cb = |pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                           a:&mut [brotli::interface::Command<brotli::SliceOffset>],
-                          mb:brotli::InputPair| {
-                              let final_length = if opt.divans_ir_optimizer != 0 {
-                                  match super::ir_optimize::ir_optimize(pm, a, mb, divans_codec_ref, window_size, opt) {
-                                      Ok(len) => len,
-                                      Err(e) => {cb_err = Err(e); return;},
-                                  }
-                              } else {
-                                  a.len()
-                              };
-                              let tmp = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
-                                  literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
-                                  predmode_speed_and_distance_context_map:brotli::InputReference::from(&pm.predmode_speed_and_distance_context_map),
-                              });
-                              Self::divans_encode_commands(&CommandSliceArray(&[tmp]),
-                                                           header_progress_ref,
-                                                           divans_data_ref,
-                                                           divans_codec_ref,
-                                                           window_size);
-                              if final_length != 0 {
-                                  Self::divans_encode_commands(&ThawingSliceArray(&a[..final_length], mb),
+                          mb:brotli::InputPair,
+                          mfv:&mut AllocFV,
+                          mpdf:&mut AllocPDF,
+                          mc:&mut AllocStaticCommand| {
+                              let mut expanded_buffer  = AllocStaticCommand::AllocatedMemory::default();
+                              {
+                                  let final_cmd = if opt.divans_ir_optimizer != 0 {
+                                      match super::ir_optimize::ir_optimize(pm, a, mb, divans_codec_ref, window_size, opt, mc, &mut  expanded_buffer) {
+                                          Ok(buf) => buf,
+                                          Err(e) => {cb_err = Err(e); return;},
+                                      }
+                                  } else {
+                                      a
+                                  };
+                                  let tmp = Command::PredictionMode(PredictionModeContextMap::<brotli::InputReference>{
+                                      literal_context_map:brotli::InputReference::from(&pm.literal_context_map),
+                                      predmode_speed_and_distance_context_map:brotli::InputReference::from(&pm.predmode_speed_and_distance_context_map),
+                                  });
+                                  Self::divans_encode_commands(&CommandSliceArray(&[tmp]),
                                                                header_progress_ref,
                                                                divans_data_ref,
                                                                divans_codec_ref,
                                                                window_size);
+                                  if final_cmd.len() != 0 {
+                                      Self::divans_encode_commands(&ThawingSliceArray(final_cmd, mb),
+                                                                   header_progress_ref,
+                                                                   divans_data_ref,
+                                                                   divans_codec_ref,
+                                                                   window_size);
+                                  }
+                              }
+                              if expanded_buffer.len() != 0 {
+                                  mc.free_cell(expanded_buffer);
                               }
             };
             {
