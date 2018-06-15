@@ -211,6 +211,8 @@ impl CopyState {
                         self.state = CopySubstate::DistanceLengthGreater14Less25;
                     } else if beg_nib == 15 {
                         self.cc.distance = superstate.bk.distance_lru[1].wrapping_sub(3);
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
                     } else {
                         superstate.bk.last_dlen = beg_nib + 1;

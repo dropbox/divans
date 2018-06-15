@@ -42,7 +42,7 @@ def summarize(show_results=True):
             p95 = vlen * 95 // 100
             p75 = vlen * 75//100
             p50 = vlen // 2
-            print str(key) + ': P50:' + str(prec(val[p50],dig5)) + ' P75:' + str(prec(val[p75], dig5)) +' P99:' + str(prec(val[p99], dig5)) + ' P9999:' + str(prec(val[p9999], dig5))
+            print str(key) + ': ' + str(total[key][0]) + '/' + str(total['zlib'][0]) + ' vs raw ' + str(total[key][0]) + '/' + str(total['~raw'][0])
             decode_pct[key] = [1000 * val[p9999], 1000 * val[p99], 1000 * val[p75], 1000 * val[p50]]
     if show_results:
         try:
