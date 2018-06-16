@@ -198,13 +198,13 @@ impl<AllocU8:Allocator<u8>,
         };
         let index_mid: usize;
         if first {
-            index_mid = (stride_selected_byte as usize) >> (HTraits::IS_HIGH as usize * 4);
+            index_mid = usize::from(stride_selected_byte);
         }else {
-            index_mid = 17;//usize::from(cur_byte_prior);
+            index_mid = 0;
         }
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (stride_selected_byte as usize >> 5,
+                                         ((first as usize) * 16 + (stride_selected_byte as usize >> 5),
                                           index_mid,
                                           usize::from(cur_byte_prior)));
         //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)), index_b, index_c);
