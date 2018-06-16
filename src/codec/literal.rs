@@ -307,7 +307,7 @@ impl<AllocU8:Allocator<u8>,
                                                              lbk,
                                                              lit_high_priors,
                                                              specialization,
-                                                             start_byte_index==0);
+                                                             start_byte_index + byte_offset ==0);
                let byte_pull_status = drain_or_fill_static_buffer(LIT_CODER,
                                                                   local_coder,
                                                                   demuxer,
@@ -347,7 +347,7 @@ impl<AllocU8:Allocator<u8>,
                                                      lbk,
                                                      lit_low_priors,
                                                      specialization,
-                                                     start_byte_index==0
+                                                     start_byte_index + byte_offset ==0
                                                      );
            let cur_byte = l_nibble | (h_nibble << 4);
            lbk.push_literal_byte(cur_byte);
