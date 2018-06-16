@@ -75,7 +75,7 @@ const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES, 2),
-                     (CopyCommandNibblePriorType::DistanceLastNib, NUM_BLOCK_TYPES, 1),
+                     (CopyCommandNibblePriorType::DistanceLastNib, NUM_BLOCK_TYPES, 8),
                      (CopyCommandNibblePriorType::DistanceMantissaNib, NUM_BLOCK_TYPES, 5),
                      (CopyCommandNibblePriorType::CountSmall, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::CountBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
