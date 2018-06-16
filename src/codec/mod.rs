@@ -698,6 +698,7 @@ impl<AllocU8: Allocator<u8>,
                                                       ) {
                         DivansResult::Success => {
                             self.cross_command_state.bk.obs_distance(&self.state_copy.cc);
+                            self.cross_command_state.bk.byte_index  += self.state_copy.cc.num_bytes as u64;
                             self.state_populate_ring_buffer = Command::Copy(self.state_copy.cc.clone());
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },
@@ -717,6 +718,7 @@ impl<AllocU8: Allocator<u8>,
                                                      output_bytes_offset,
                                                      ctraits) {
                         DivansResult::Success => {
+                            self.cross_command_state.bk.byte_index  += self.state_lit.lc.len() as u64;
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
@@ -798,6 +800,7 @@ impl<AllocU8: Allocator<u8>,
                                                       output_bytes_offset
                                                       ) {
                         DivansResult::Success => {
+                            self.cross_command_state.bk.byte_index += self.state_dict.dc.final_size as u64;
                             self.state_populate_ring_buffer = Command::Dict(self.state_dict.dc.clone());
                             self.state = EncodeOrDecodeState::PopulateRingBuffer;
                         },

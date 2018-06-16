@@ -165,6 +165,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub desired_context_mixing: u8,
+    pub byte_index: u64,
 }
 
 #[inline(always)]
@@ -365,6 +366,7 @@ impl<
             },
         }
         CrossCommandBookKeeping{
+            byte_index:0,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
