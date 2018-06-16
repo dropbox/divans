@@ -93,7 +93,7 @@ impl CopyState {
                 },
                 CopySubstate::CountSmall => {
                     let index = (self.early_mnemonic == 0x0) as usize * 4 + (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
-                    let mut shortcut_nib = if self.early_mnemonic == 0x0 && in_cmd.num_bytes == 2 {3} else if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
+                    let mut shortcut_nib = if self.early_mnemonic == 0x0 && in_cmd.num_bytes == 1 {3} else if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
@@ -107,9 +107,9 @@ impl CopyState {
                     } else if shortcut_nib == 1 {
                         self.state = CopySubstate::CountLengthGreater18Less25;
                     } else if shortcut_nib == 3 {
-                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,self.early_mnemonic, 2);
+                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,self.early_mnemonic, 1);
                         self.cc.distance = dist;
-                        self.cc.num_bytes = 2;
+                        self.cc.num_bytes = 1;
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
@@ -120,8 +120,11 @@ impl CopyState {
                     }
                 },
                 CopySubstate::CountLengthFirst => {
-                    let index = (self.early_mnemonic == 0x0) as usize * 4 + (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
+                    if shortcut_nib == 1 {
+                        eprintln!("short copy from cache {} {}\n", shortcut_nib, self.early_mnemonic);
+                    }
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountBegNib, (ctype, index));
