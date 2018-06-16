@@ -32,6 +32,7 @@ pub enum CopySubstate {
 pub struct CopyState {
    pub cc:CopyCommand,
    pub state: CopySubstate,
+   pub early_mnemonic: u8,
 }
 
 
@@ -44,6 +45,7 @@ impl CopyState {
                 num_bytes:0,
             },
             state:CopySubstate::Begin,
+            early_mnemonic:0xfe,
         }
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
@@ -82,7 +84,12 @@ impl CopyState {
             });
             match self.state {
                 CopySubstate::Begin => {
-                    self.state = CopySubstate::CountSmall;
+                    if self.early_mnemonic != 0xff {
+                        self.state = CopySubstate::DistanceLengthMnemonic;
+                    } else {
+                        self.state = CopySubstate::CountSmall;
+                    }
+                        
                 },
                 CopySubstate::CountSmall => {
                     let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
@@ -171,7 +178,20 @@ impl CopyState {
                     }
                 },
                 CopySubstate::CountDecoded => {
-                    self.state = CopySubstate::DistanceLengthMnemonic;
+                    if self.early_mnemonic == 0xff {
+                        self.state = CopySubstate::DistanceLengthMnemonic;
+                    } else if self.early_mnemonic == 0xf {
+                        self.state = CopySubstate::DistanceLengthFirst;
+                    } else {
+                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, self.early_mnemonic, self.cc.num_bytes);
+                        self.cc.distance = dist;
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
+                        if !ok {
+                            return DivansResult::Failure(ErrMsg::CopyDistanceMnemonicCodeBad(dist as u8, (dist >> 8) as u8));
+                        }
+                        self.state = CopySubstate::FullyDecoded;                        
+                    }
                 },
                 CopySubstate::DistanceLengthMnemonic => {
                     let mut beg_nib = if Specialization::IS_DECODING_FILE {
@@ -179,6 +199,12 @@ impl CopyState {
                     } else {
                         superstate.bk.distance_mnemonic_code(in_cmd.distance, self.cc.num_bytes)
                     };
+                    if self.early_mnemonic == 0xfe {
+                        assert_eq!(self.cc.num_bytes, 0);
+                        if beg_nib >= 4 {
+                            beg_nib = 15;
+                        }
+                    }
                     //let index = 0;
                     let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                     {
@@ -191,7 +217,10 @@ impl CopyState {
                     }
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     //eprintln!("M:{}", beg_nib);
-                    if beg_nib == 15 {
+                    if self.early_mnemonic == 0xfe {
+                        self.early_mnemonic = beg_nib;
+                        self.state = CopySubstate::CountSmall;                        
+                    }else if beg_nib == 15 {
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
                         let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, beg_nib, self.cc.num_bytes);
