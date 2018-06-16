@@ -111,7 +111,7 @@ impl CopyState {
                     }
                 },
                 CopySubstate::CountLengthFirst => {
-                    let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let index = (self.early_mnemonic == 0x0) as usize * 4 + (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
