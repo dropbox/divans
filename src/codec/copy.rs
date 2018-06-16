@@ -94,6 +94,7 @@ impl CopyState {
             let billing = BillingDesignation::CopyCommand(match self.state {
                 CopySubstate::CountMantissaNibbles(_, _, _) => CopySubstate::CountMantissaNibbles(0, 0, 0),
                 CopySubstate::DistanceMantissaNibbles(_, _, _, _) => CopySubstate::DistanceMantissaNibbles(0, 0, 0, 0),
+                CopySubstate::DistanceLengthGreater14Less25(_) => CopySubstate::DistanceLengthGreater14Less25(0),
                 _ => self.state
             });
             match self.state {
@@ -240,7 +241,7 @@ impl CopyState {
                             CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize, ((superstate.bk.last_llen < 8) as usize)));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         if superstate.specialization.adapt_cdf() {
-                            nibble_prob.blend(beg_nib, Speed::new(128,16384));
+                            nibble_prob.blend(beg_nib, Speed::new(512,16384));
                         }
                     }
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
@@ -279,7 +280,7 @@ impl CopyState {
                         CopyCommandNibblePriorType::DistanceLastNib, (upper_slot as usize, index));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
-                        nibble_prob.blend(last_nib, Speed::ROCKET);
+                        nibble_prob.blend(last_nib, Speed::new(32,4096));
                     }
                     let o_dist_slot = (upper_slot << 4) | last_nib;
                     superstate.bk.last_dlen = o_dist_slot as u8;
@@ -317,7 +318,7 @@ impl CopyState {
                                 CopySubstate::DistanceMantissaNibbles(0, 0, 0, 0)));
                             next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
                             if superstate.specialization.adapt_cdf() {
-                                nibble_prob.blend(last_nib, Speed::new(16, 8192));
+                                nibble_prob.blend(last_nib, Speed::new(64, 16384));
                             }
                         }
                         match superstate.drain_or_fill_internal_buffer_cmd(output_bytes, output_offset) {
