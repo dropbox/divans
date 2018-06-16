@@ -76,7 +76,7 @@ pub enum CopyCommandNibblePriorType {
 const NUM_COPY_COMMAND_ORGANIC_PRIORS: usize = 64;
 define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::DistanceBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
-                     (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES, 2),
+                     (CopyCommandNibblePriorType::DistanceMnemonic, NUM_BLOCK_TYPES, 4),
                      (CopyCommandNibblePriorType::DistanceLastNib, NUM_BLOCK_TYPES, 8),
                      (CopyCommandNibblePriorType::DistanceAlignNib, 1),
                      (CopyCommandNibblePriorType::DistanceDirectNib, 64, 64),
