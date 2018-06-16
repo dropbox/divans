@@ -162,7 +162,8 @@ impl<AllocU8:Allocator<u8>,
                                                       AllocU8,
                                                       AllocCDF16>,
                      lit_priors:&'a mut LiteralNibblePriors<Cdf16, AllocCDF16>,
-                     specialization:&Specialization) -> (u8, Option<&'a mut Cdf16>) {
+                     specialization:&Specialization,
+                     first:bool) -> (u8, Option<&'a mut Cdf16>) {
 
         // The mixing_mask is a lookup table that determines which priors are most relevant
         // for a particular actual_context. The table is also indexed by the
@@ -195,11 +196,17 @@ impl<AllocU8:Allocator<u8>,
             index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context));
             index_c = usize::from((cur_byte_prior & fast_cm_prior_mask) | ((byte_context.actual_context & opt_1_f_mask) << 4));
         };
+        let index_mid: usize;
+        if first {
+            index_mid = (stride_selected_byte as usize) >> (HTraits::IS_HIGH as usize * 4);
+        }else {
+            index_mid = 17;//usize::from(cur_byte_prior);
+        }
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         (usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)),
-                                          index_b,
-                                          index_c));
+                                         (stride_selected_byte as usize >> 5,
+                                          index_mid,
+                                          usize::from(cur_byte_prior)));
         //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)), index_b, index_c);
         {
             let immutable_prior: Cdf16;
@@ -233,7 +240,7 @@ impl<AllocU8:Allocator<u8>,
                 ];
                 lbk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
                 if specialization.adapt_cdf() {
-                    cm_prob.blend(cur_nibble, lbk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
+                    cm_prob.blend(cur_nibble, Speed::new(4,1024));
                 }
             } else {
                 // actually code (or decode) the byte from the file
@@ -299,7 +306,8 @@ impl<AllocU8:Allocator<u8>,
                                                              local_coder,
                                                              lbk,
                                                              lit_high_priors,
-                                                             specialization);
+                                                             specialization,
+                                                             start_byte_index==0);
                let byte_pull_status = drain_or_fill_static_buffer(LIT_CODER,
                                                                   local_coder,
                                                                   demuxer,
@@ -311,7 +319,7 @@ impl<AllocU8:Allocator<u8>,
                h_nibble = cur_nibble;
                if let Some(prob) = cur_prob {
                    if specialization.adapt_cdf() {
-                       prob.blend(cur_nibble, lbk.literal_adaptation[0]);
+                       prob.blend(cur_nibble, Speed::new(4,1024));
                    }
                }
                if NibbleArrayType::FULLY_SAFE {
@@ -339,13 +347,14 @@ impl<AllocU8:Allocator<u8>,
                                                      lbk,
                                                      lit_low_priors,
                                                      specialization,
+                                                     start_byte_index==0
                                                      );
            let cur_byte = l_nibble | (h_nibble << 4);
            lbk.push_literal_byte(cur_byte);
            *lc_target = cur_byte;
            if let Some(prob) = l_prob {
                if specialization.adapt_cdf() {
-                   prob.blend(l_nibble, lbk.literal_adaptation[0]);
+                   prob.blend(l_nibble, Speed::new(4,1024));
                }
            }
 
