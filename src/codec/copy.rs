@@ -153,7 +153,7 @@ impl CopyState {
                     let index = superstate.bk.byte_index as usize &3;//if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountMantissaNib, (ctype, index));
+                        CopyCommandNibblePriorType::CountMantissaNib, (ctype, index  * 0x10 + (0xf & (decoded_so_far as usize >> 4))));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
                     if superstate.specialization.adapt_cdf() {
