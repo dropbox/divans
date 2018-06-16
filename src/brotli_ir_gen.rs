@@ -190,8 +190,8 @@ impl<SelectedCDF:CDF16,
             let mut cb = |pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                           a:&mut [brotli::interface::Command<brotli::SliceOffset>],
                           mb:brotli::InputPair,
-                          mfv:&mut AllocFV,
-                          mpdf:&mut AllocPDF,
+                          _mfv:&mut AllocFV,
+                          _mpdf:&mut AllocPDF,
                           mc:&mut AllocStaticCommand| {
                               let mut expanded_buffer  = AllocStaticCommand::AllocatedMemory::default();
                               {

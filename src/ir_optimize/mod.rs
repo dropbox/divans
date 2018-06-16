@@ -127,8 +127,8 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
                                                    AllocCDF16>,
                      window_size: u8,
                      opt: super::interface::DivansCompressorOptions,
-                     mc: &'a mut AllocCommand,
-                     buf: &'a mut AllocCommand::AllocatedMemory,
+                     _mc: &'a mut AllocCommand,
+                     _buf: &'a mut AllocCommand::AllocatedMemory,
 ) -> Result<&'a [brotli::interface::Command<brotli::SliceOffset>], ErrMsg> {
     let mut unused = 0usize;
     let mut unused2 = 0usize;
