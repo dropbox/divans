@@ -35,6 +35,18 @@ pub struct CopyState {
    pub early_mnemonic: u8,
 }
 
+#[inline(always)]
+fn get_dist_slot(dist: u32) -> u32 {
+    fn get_dist_slot2(dist:u32) -> u32 {
+        let i = 31 - dist.leading_zeros();
+        (i + i) + ((dist >> (i - 1)) & 1)
+    }
+    if dist <= 4 {
+        dist
+    } else {
+        get_dist_slot2(dist)
+    }
+}
 
 
 impl CopyState {
@@ -69,6 +81,10 @@ impl CopyState {
                                                      output_offset: &mut usize) -> DivansResult {
         let dlen: u8 = (core::mem::size_of_val(&in_cmd.distance) as u32 * 8 - in_cmd.distance.leading_zeros()) as u8;
         let clen: u8 = (core::mem::size_of_val(&in_cmd.num_bytes) as u32 * 8 - in_cmd.num_bytes.leading_zeros()) as u8;
+        let dist_slot = get_dist_slot(in_cmd.distance);
+        let footer_bits = (dist_slot >> 1).wrapping_sub(1);
+        let base = (2 | (dist_slot  & 1)) << footer_bits;
+        let dist_reduced = in_cmd.distance.wrapping_sub(base);
         if dlen ==0 {
             return DivansResult::Failure(ErrMsg::Distance0NotAllowed); // not allowed to copy from 0 distance
         }
@@ -255,8 +271,8 @@ impl CopyState {
                     if superstate.bk.distance_lru[1].wrapping_sub(3) == in_cmd.distance {
                         beg_nib = 15
                     }
-                    let index = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8 - self.cc.num_bytes.leading_zeros()) as usize >> 2;
-                    let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
+                    let index = core::cmp::min(self.cc.num_bytes as usize, 5);
+                    let actual_prior = 0;//superstate.bk.get_distance_prior(self.cc.num_bytes);
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::DistanceBegNib, (actual_prior as usize, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
