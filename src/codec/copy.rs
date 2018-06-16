@@ -92,8 +92,8 @@ impl CopyState {
                         
                 },
                 CopySubstate::CountSmall => {
-                    let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
-                    let mut shortcut_nib = if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
+                    let index = (self.early_mnemonic == 0x0) as usize * 4 + (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let mut shortcut_nib = if self.early_mnemonic == 0x0 && in_cmd.num_bytes == 2 {3} else if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
@@ -106,6 +106,15 @@ impl CopyState {
                         self.state = CopySubstate::CountLengthFirst;
                     } else if shortcut_nib == 1 {
                         self.state = CopySubstate::CountLengthGreater18Less25;
+                    } else if shortcut_nib == 3 {
+                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,self.early_mnemonic, 2);
+                        self.cc.distance = dist;
+                        self.cc.num_bytes = 2;
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
+                        superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
+                                                   - (self.cc.num_bytes).leading_zeros()) as u8;
+                        self.state = CopySubstate::FullyDecoded;
                     } else {
                         self.state = CopySubstate::CountMantissaNibbles(0, 8, 0);
                     }
