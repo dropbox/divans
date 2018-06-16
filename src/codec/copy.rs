@@ -86,17 +86,37 @@ impl CopyState {
                 },
                 CopySubstate::CountSmall => {
                     let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
-                    let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
+                    let mut shortcut_nib = if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
+                    superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
+                    if superstate.specialization.adapt_cdf() {
+                        nibble_prob.blend(shortcut_nib, Speed::new(512,16384));
+                    }
+
+                    if shortcut_nib == 0 {
+                        self.state = CopySubstate::CountLengthFirst;
+                    } else if shortcut_nib == 1 {
+                        self.state = CopySubstate::CountLengthGreater18Less25;
+                    } else {
+                        self.state = CopySubstate::CountMantissaNibbles(0, 8, 0);
+                    }
+                },
+                CopySubstate::CountLengthFirst => {
+                    let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
+                    let ctype = superstate.bk.get_command_block_type();
+                    let mut nibble_prob = superstate.bk.copy_priors.get(
+                        CopyCommandNibblePriorType::CountBegNib, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(shortcut_nib, Speed::new(128,16384));
                     }
 
                     if shortcut_nib == 10 {
-                        self.state = CopySubstate::CountLengthFirst;
+                        self.state = CopySubstate::CountLengthGreater18Less25;
+                        unreachable!();
                     } else {
                         self.cc.num_bytes = u32::from(shortcut_nib);
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
@@ -104,39 +124,26 @@ impl CopyState {
                         self.state = CopySubstate::CountDecoded;
                     }
                 },
-                CopySubstate::CountLengthFirst => {
+                CopySubstate::CountLengthGreater18Less25 => {
                     // at this point, num_bytes is at least 15, so clen is at least 4.
                     let mut beg_nib = core::cmp::min(10, in_cmd.num_bytes.wrapping_sub(9)) as u8;
                     let index = superstate.bk.byte_index as usize &3;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountBegNib, (ctype, index));
+                        CopyCommandNibblePriorType::CountLastNib, (ctype, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(beg_nib, Speed::new(512,16384));
                     }
                     if beg_nib == 10 {
                         self.state = CopySubstate::CountMantissaNibbles(0, 8, 0);
+                        unreachable!();
                     } else {
                         self.cc.num_bytes = u32::from(beg_nib) + 9;
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
                                                    - (self.cc.num_bytes).leading_zeros()) as u8;
                         self.state = CopySubstate::CountDecoded;
                     }
-                },
-                CopySubstate::CountLengthGreater18Less25 => {
-                    unreachable!();
-                    let mut last_nib = clen.wrapping_sub(19);
-                    let index = 0;
-                    let ctype = superstate.bk.get_command_block_type();
-                    let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountLastNib, (ctype, index));
-                    superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
-                    if superstate.specialization.adapt_cdf() {
-                        nibble_prob.blend(last_nib, Speed::FAST);
-                    }
-                    superstate.bk.last_clen = last_nib + 19;
-                    self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(last_nib + 18), 1 << (last_nib + 18));
                 },
                 CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
