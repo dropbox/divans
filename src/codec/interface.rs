@@ -139,33 +139,117 @@ pub struct LiteralBookKeeping<Cdf16:CDF16,
     pub lit_cm_priors: LiteralCommandPriorsCM<Cdf16, AllocCDF16>,
 }
 
+#[repr(u8)]
+#[derive(Copy,Clone)]
+pub enum StateSummary{
+	STATE_LIT_LIT = 0,
+	STATE_MATCH_LIT_LIT = 1,
+	STATE_REP_LIT_LIT = 2,
+	STATE_SHORTREP_LIT_LIT = 3,
+	STATE_MATCH_LIT = 4,
+	STATE_REP_LIT = 5,
+	STATE_SHORTREP_LIT = 6,
+	STATE_LIT_MATCH = 7,
+	STATE_LIT_LONGREP = 8,
+	STATE_LIT_SHORTREP =9 ,
+	STATE_NONLIT_MATCH = 10,
+	STATE_NONLIT_REP = 11,
+}
+const NUM_LIT_STATES:StateSummary = StateSummary::STATE_LIT_MATCH;
+const NUM_STATE_SUMMARY:u8 = 12;
+impl Default for StateSummary {
+    fn default() ->Self {
+        StateSummary::STATE_LIT_LIT
+    }
+}
+
+impl StateSummary {
+    fn from_u8(data:u8) -> Result<StateSummary, ()> {
+        let states = [StateSummary::STATE_LIT_LIT,
+                      StateSummary::STATE_MATCH_LIT_LIT,
+                      StateSummary::STATE_REP_LIT_LIT,
+                      StateSummary::STATE_SHORTREP_LIT_LIT,
+                      StateSummary::STATE_MATCH_LIT,
+                      StateSummary::STATE_REP_LIT,
+                      StateSummary::STATE_SHORTREP_LIT,
+                      StateSummary::STATE_LIT_MATCH,
+                      StateSummary::STATE_LIT_LONGREP,
+                      StateSummary::STATE_LIT_SHORTREP,
+                      StateSummary::STATE_NONLIT_MATCH,
+                      StateSummary::STATE_NONLIT_REP,
+        ];
+        for i in 0..usize::from(NUM_STATE_SUMMARY) {
+            assert_eq!(i as u8, states[i] as u8);
+        }
+        assert_eq!(states.len(), usize::from(NUM_STATE_SUMMARY));
+        if data < states.len() as u8 {
+            return Ok(states[usize::from(data)]);
+        }
+        Err(())
+    }
+    pub fn obs_literal(&mut self) {
+        if (*self as u8) <= 3 {
+            *self = StateSummary::STATE_LIT_LIT
+        } else if (*self as u8) <= (StateSummary::STATE_LIT_SHORTREP as u8) {
+            *self = StateSummary::from_u8(*self as u8 - 3).unwrap()
+        } else {
+            *self = StateSummary::from_u8(*self as u8 - 6).unwrap();
+        }
+    }
+    pub fn obs_match(&mut self) {
+        if self.is_literal_state() {
+            *self = StateSummary::STATE_LIT_MATCH;
+        } else {
+            *self = StateSummary::STATE_NONLIT_MATCH;
+        }
+    }
+    pub fn obs_long_rep(&mut self) {
+        if self.is_literal_state() {
+            *self = StateSummary::STATE_LIT_LONGREP;
+        } else {
+            *self = StateSummary::STATE_NONLIT_REP;
+        }
+    }
+    pub fn obs_short_rep(&mut self) {
+        if self.is_literal_state() {
+            *self = StateSummary::STATE_LIT_SHORTREP;
+        } else {
+            *self = StateSummary::STATE_NONLIT_REP;
+        }
+    }
+    pub fn is_literal_state(&self) -> bool {
+        (*self as u8) < NUM_LIT_STATES as u8
+    }
+}
+
 pub struct CrossCommandBookKeeping<Cdf16:CDF16,
                                    AllocU8:Allocator<u8>,
                                    AllocCDF16:Allocator<Cdf16>> {
     //pub num_literals_coded: u32,
     pub lit_len_priors: LiteralCommandPriors<Cdf16, AllocCDF16>,
-    pub distance_context_map: AllocU8::AllocatedMemory,
     pub cc_priors: CrossCommandPriors<Cdf16, AllocCDF16>,
     pub copy_priors: CopyCommandPriors<Cdf16, AllocCDF16>,
     pub dict_priors: DictCommandPriors<Cdf16, AllocCDF16>,
     pub prediction_priors: PredictionModePriors<Cdf16, AllocCDF16>,
-    pub cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
+    pub distance_context_map: AllocU8::AllocatedMemory,
+    pub byte_index: u64,
+    pub last_llen: u32,
     pub distance_lru: [u32;4],
     pub btype_priors: BlockTypePriors<Cdf16, AllocCDF16>,
+    pub cmap_lru: [u8; CONTEXT_MAP_CACHE_SIZE],
     pub btype_lru: [[u8;2];3],
     pub btype_max_seen: [u8;3],
     //pub cm_prior_depth_mask: u8,
     //pub prior_bytes_depth_mask: u8,
     pub last_dlen: u8,
     pub last_clen: u8,
-    pub last_llen: u32,
     pub last_4_states: u8,
+    pub state_summary: StateSummary,
     pub desired_prior_depth: u8,
-    pub desired_literal_adaptation: Option<[Speed;4]>,
+    pub desired_context_mixing: u8,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
-    pub desired_context_mixing: u8,
-    pub byte_index: u64,
+    pub desired_literal_adaptation: Option<[Speed;4]>,
 }
 
 #[inline(always)]
@@ -375,6 +459,7 @@ impl<
             last_clen: 1,
             // FIXME combine_literal_predictions: false,
             last_4_states: 3 << (8 - LOG_NUM_COPY_TYPE_PRIORS),
+            state_summary:StateSummary::default(),
             cmap_lru: [0u8; CONTEXT_MAP_CACHE_SIZE],
             lit_len_priors: LiteralCommandPriors {
                 priors: lit_len_prior,

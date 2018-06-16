@@ -110,6 +110,7 @@ impl CopyState {
                         let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,self.early_mnemonic, 1);
                         self.cc.distance = dist;
                         self.cc.num_bytes = 1;
+                        superstate.bk.state_summary.obs_short_rep();
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
                                                    - self.cc.distance.leading_zeros()) as u8;
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
@@ -193,8 +194,10 @@ impl CopyState {
                     if self.early_mnemonic == 0xff {
                         self.state = CopySubstate::DistanceLengthMnemonic;
                     } else if self.early_mnemonic == 0xf {
+                        superstate.bk.state_summary.obs_match();
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
+                        superstate.bk.state_summary.obs_long_rep();
                         let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, self.early_mnemonic, self.cc.num_bytes);
                         self.cc.distance = dist;
                         superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
@@ -233,6 +236,7 @@ impl CopyState {
                         self.early_mnemonic = beg_nib;
                         self.state = CopySubstate::CountSmall;                        
                     }else if beg_nib == 15 {
+                        superstate.bk.state_summary.obs_match();
                         self.state = CopySubstate::DistanceLengthFirst;
                     } else {
                         let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, beg_nib, self.cc.num_bytes);

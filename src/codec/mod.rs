@@ -719,6 +719,13 @@ impl<AllocU8: Allocator<u8>,
                                                      ctraits) {
                         DivansResult::Success => {
                             self.cross_command_state.bk.byte_index  += self.state_lit.lc.data.1 as u64;
+                            self.cross_command_state.bk.state_summary.obs_literal();
+                            if self.state_lit.lc.data.1 > 1 {
+                                self.cross_command_state.bk.state_summary.obs_literal();
+                            }
+                            if self.state_lit.lc.data.1 > 2 {
+                                self.cross_command_state.bk.state_summary.obs_literal();
+                            }
                             self.state_populate_ring_buffer = Command::Literal(
                                 core::mem::replace(&mut self.state_lit.lc,
                                                    LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()));
