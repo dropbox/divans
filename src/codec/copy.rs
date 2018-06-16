@@ -140,7 +140,7 @@ impl CopyState {
                 },
                 CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
-                    let last_nib_as_u32 = ((in_cmd.num_bytes - 18) ^ decoded_so_far) >> next_len_remaining;
+                    let last_nib_as_u32 = ((in_cmd.num_bytes.wrapping_sub(18)) ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
                     let index = superstate.bk.byte_index as usize &3;//if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };

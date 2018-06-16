@@ -204,9 +204,9 @@ impl<AllocU8:Allocator<u8>,
         }
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         ((first as usize) * 16 + (stride_selected_byte as usize >> 5),
+                                         ((first as usize),
                                           index_mid,
-                                          usize::from(cur_byte_prior)));
+                                          usize::from(cur_byte_prior) | ((stride_selected_byte as usize >> 5)<< 4)));
         //eprintln!("Literal index {} {} {}\n", usize::from((mm >> 7) ^ (opt_1_f_mask >> 2)), index_b, index_c);
         {
             let immutable_prior: Cdf16;
