@@ -85,8 +85,8 @@ impl CopyState {
                     self.state = CopySubstate::CountSmall;
                 },
                 CopySubstate::CountSmall => {
-                    let index = ((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
-                    let mut shortcut_nib = core::cmp::min(15, in_cmd.num_bytes) as u8;
+                    let index = 0;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountSmall, (ctype, index));
@@ -95,7 +95,7 @@ impl CopyState {
                         nibble_prob.blend(shortcut_nib, Speed::new(32,4096));
                     }
 
-                    if shortcut_nib == 15 {
+                    if shortcut_nib == 10 {
                         self.state = CopySubstate::CountLengthFirst;
                     } else {
                         self.cc.num_bytes = u32::from(shortcut_nib);
@@ -106,7 +106,7 @@ impl CopyState {
                 },
                 CopySubstate::CountLengthFirst => {
                     // at this point, num_bytes is at least 15, so clen is at least 4.
-                    let mut beg_nib = core::cmp::min(15, clen.wrapping_sub(4));
+                    let mut beg_nib = core::cmp::min(10, in_cmd.num_bytes.wrapping_sub(9)) as u8;
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -115,14 +115,17 @@ impl CopyState {
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(beg_nib, Speed::new(512,16384));
                     }
-                    if beg_nib == 15 {
-                        self.state = CopySubstate::CountLengthGreater18Less25;
+                    if beg_nib == 10 {
+                        self.state = CopySubstate::CountMantissaNibbles(0, 8, 0);
                     } else {
-                        superstate.bk.last_clen = beg_nib + 4;
-                        self.state = CopySubstate::CountMantissaNibbles(0, round_up_mod_4(beg_nib + 4 - 1), 1 << (beg_nib + 4 - 1));
+                        self.cc.num_bytes = u32::from(beg_nib) + 9;
+                        superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
+                                                   - (self.cc.num_bytes).leading_zeros()) as u8;
+                        self.state = CopySubstate::CountDecoded;
                     }
                 },
                 CopySubstate::CountLengthGreater18Less25 => {
+                    unreachable!();
                     let mut last_nib = clen.wrapping_sub(19);
                     let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
@@ -137,10 +140,10 @@ impl CopyState {
                 },
                 CopySubstate::CountMantissaNibbles(len_decoded, len_remaining, decoded_so_far) => {
                     let next_len_remaining = len_remaining - 4;
-                    let last_nib_as_u32 = (in_cmd.num_bytes ^ decoded_so_far) >> next_len_remaining;
+                    let last_nib_as_u32 = ((in_cmd.num_bytes - 18) ^ decoded_so_far) >> next_len_remaining;
                     // debug_assert!(last_nib_as_u32 < 16); only for encoding
                     let mut last_nib = last_nib_as_u32 as u8;
-                    let index = if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
+                    let index = 0;//if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountMantissaNib, (ctype, index));
@@ -151,7 +154,7 @@ impl CopyState {
                     }
 
                     if next_len_remaining == 0 {
-                        self.cc.num_bytes = next_decoded_so_far;
+                        self.cc.num_bytes = next_decoded_so_far + 18;
                         self.state = CopySubstate::CountDecoded;
                     } else {
                         self.state  = CopySubstate::CountMantissaNibbles(
