@@ -327,9 +327,9 @@ impl CopyState {
                                 } else{
                                     billing = CopySubstate::DistanceMantissaNibbles(2, 0, 0, 0);
                                     speed = if len_decoded != 0 {
-                                        0
+                                        128
                                     } else {
-                                        4
+                                        128
                                     };
                                     superstate.bk.copy_priors.get(
                                         CopyCommandNibblePriorType::DistanceDirectNib, (dist_slot as usize - 14, ((len_decoded + 3) >>2) as usize))
