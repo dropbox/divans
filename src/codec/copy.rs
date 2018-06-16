@@ -302,7 +302,6 @@ impl CopyState {
                     let footer_bits = (dist_slot >> 1).wrapping_sub(1);
                     let base = (2 | (dist_slot  & 1)) << footer_bits;
                     let dist_reduced = in_cmd.distance.wrapping_sub(base + 1);
-
                     for next_len_remaining_sr2 in (0..((start_len_remaining as usize + 3) >> 2)).rev() {
                         let next_len_remaining = (next_len_remaining_sr2 as u8) << 2;
                         let actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
@@ -311,14 +310,36 @@ impl CopyState {
                         let index = if len_decoded == 0 { ((superstate.bk.last_dlen & 3) + 1) as usize } else { 0usize };
                         let four_if_0_or_1_64_if_2_3_or_4 = 0x4 << ((index & 6) << ((index & 2)>>1));
                         let next_decoded_so_far;
+                        let speed;
                         {
-                            let mut nibble_prob = superstate.bk.copy_priors.get(
-                                CopyCommandNibblePriorType::DistanceMantissaNib, (actual_prior, index));
-                            superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, BillingDesignation::CopyCommand(
-                                CopySubstate::DistanceMantissaNibbles(0, 0, 0, 0)));
+                            let billing;
+                            let mut nibble_prob = if dist_slot < 14 {
+                                billing = CopySubstate::DistanceMantissaNibbles(0, 0, 0, 0);
+                                speed = 512;
+                                superstate.bk.copy_priors.get(
+                                    CopyCommandNibblePriorType::DistanceMantissaNib, ( (base - dist_slot + decoded_so_far) as usize, next_len_remaining_sr2))
+                            } else {
+                                if next_len_remaining_sr2 == 0 {
+                                    billing = CopySubstate::DistanceMantissaNibbles(1, 0, 0, 0);
+                                    speed = 128;
+                                    superstate.bk.copy_priors.get(
+                                        CopyCommandNibblePriorType::DistanceAlignNib, (0,))
+                                } else{
+                                    billing = CopySubstate::DistanceMantissaNibbles(2, 0, 0, 0);
+                                    speed = if len_decoded != 0 {
+                                        0
+                                    } else {
+                                        4
+                                    };
+                                    superstate.bk.copy_priors.get(
+                                        CopyCommandNibblePriorType::DistanceDirectNib, (dist_slot as usize - 14, ((len_decoded + 3) >>2) as usize))
+                                }
+                            };
+                                superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, BillingDesignation::CopyCommand(
+                                billing));
                             next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
                             if superstate.specialization.adapt_cdf() {
-                                nibble_prob.blend(last_nib, Speed::new(64, 16384));
+                                nibble_prob.blend(last_nib, Speed::new(speed, 16384));
                             }
                         }
                         match superstate.drain_or_fill_internal_buffer_cmd(output_bytes, output_offset) {
