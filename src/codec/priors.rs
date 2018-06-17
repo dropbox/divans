@@ -33,7 +33,7 @@ pub enum LiteralNibblePriorType {
 }
 
 define_prior_struct!(LiteralNibblePriors, LiteralNibblePriorType,
-                     (LiteralNibblePriorType::CombinedNibble, 3, 256, NUM_BLOCK_TYPES)
+                     (LiteralNibblePriorType::CombinedNibble, 6, 256, NUM_BLOCK_TYPES)
                      );
                      
 define_prior_struct!(LiteralCommandPriors, LiteralCommandPriorType,
