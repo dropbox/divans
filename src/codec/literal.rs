@@ -243,7 +243,7 @@ impl<AllocU8:Allocator<u8>,
                 ];
                 lbk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
                 if specialization.adapt_cdf() {
-                    cm_prob.blend(cur_nibble, Speed::new(4,1024));
+                    cm_prob.blend(cur_nibble, lbk.literal_adaptation[0]);
                 }
             } else {
                 // actually code (or decode) the byte from the file
@@ -322,7 +322,7 @@ impl<AllocU8:Allocator<u8>,
                h_nibble = cur_nibble;
                if let Some(prob) = cur_prob {
                    if specialization.adapt_cdf() {
-                       prob.blend(cur_nibble, Speed::new(4,1024));
+                       prob.blend(cur_nibble, lbk.literal_adaptation[0]);
                    }
                }
                if NibbleArrayType::FULLY_SAFE {
@@ -357,7 +357,7 @@ impl<AllocU8:Allocator<u8>,
            *lc_target = cur_byte;
            if let Some(prob) = l_prob {
                if specialization.adapt_cdf() {
-                   prob.blend(l_nibble, Speed::new(4,1024));
+                   prob.blend(l_nibble, lbk.literal_adaptation[0]);
                }
            }
 
