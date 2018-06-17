@@ -84,7 +84,7 @@ define_prior_struct!(CopyCommandPriors, CopyCommandNibblePriorType,
                      (CopyCommandNibblePriorType::CountSmall, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::CountBegNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
                      (CopyCommandNibblePriorType::CountLastNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS),
-                     (CopyCommandNibblePriorType::CountMantissaNib, NUM_BLOCK_TYPES, NUM_COPY_COMMAND_ORGANIC_PRIORS));
+                     (CopyCommandNibblePriorType::CountMantissaNib, NUM_BLOCK_TYPES, 2*NUM_COPY_COMMAND_ORGANIC_PRIORS));
 #[derive(PartialEq, Debug, Clone)]
 pub enum DictCommandNibblePriorType {
     SizeBegNib,

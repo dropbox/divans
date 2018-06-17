@@ -108,7 +108,7 @@ impl CopyState {
                 },
                 CopySubstate::CountSmall => {
                     // FIXME: this should somehow lean on the state_summary according to lzma
-                    let index =  (self.early_mnemonic == 0x0) as usize * 4 + (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
+                    let index =  (superstate.bk.byte_index as usize&3);//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = if self.early_mnemonic == 0x0 && in_cmd.num_bytes == 1 {3} else if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
@@ -131,6 +131,7 @@ impl CopyState {
                         superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
                                                    - (self.cc.num_bytes).leading_zeros()) as u8;
                         self.state = CopySubstate::FullyDecoded;
+                        unreachable!();// no longer an active codepath
                     } else {
                         self.state = CopySubstate::CountMantissaNibbles(0, 8, 0);
                     }
@@ -188,7 +189,7 @@ impl CopyState {
                     let index = superstate.bk.byte_index as usize &3;//if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountMantissaNib, (ctype, index  * 0x10 + (0xf & (decoded_so_far as usize >> 4))));
+                        CopyCommandNibblePriorType::CountMantissaNib, (ctype,(len_decoded == 0) as usize * 0x40 +  index  * 0x10 + (0xf & (decoded_so_far as usize >> 4))));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
                     if superstate.specialization.adapt_cdf() {
