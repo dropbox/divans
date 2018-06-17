@@ -112,7 +112,7 @@ impl CopyState {
                     let mut shortcut_nib = if self.early_mnemonic == 0x0 && in_cmd.num_bytes == 1 {3} else if in_cmd.num_bytes >= 18 {2} else {(in_cmd.num_bytes > 9) as u8};
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountSmall, (ctype, index));
+                        CopyCommandNibblePriorType::CountSmall, ((self.early_mnemonic != 0xf) as usize,ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(shortcut_nib, Speed::new(512,16384));
@@ -139,12 +139,9 @@ impl CopyState {
                 CopySubstate::CountLengthFirst => {
                     let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
-                    if shortcut_nib == 1 {
-                        eprintln!("short copy from cache {} {}\n", shortcut_nib, self.early_mnemonic);
-                    }
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountBegNib, (ctype, index));
+                        CopyCommandNibblePriorType::CountBegNib, ((self.early_mnemonic != 0xf) as usize,ctype, index));
                     superstate.coder.get_or_put_nibble(&mut shortcut_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(shortcut_nib, Speed::new(128,16384));
@@ -166,7 +163,7 @@ impl CopyState {
                     let index = superstate.bk.byte_index as usize &3;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountLastNib, (ctype, index));
+                        CopyCommandNibblePriorType::CountLastNib, ((self.early_mnemonic != 0xf) as usize,ctype, index));
                     superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                     if superstate.specialization.adapt_cdf() {
                         nibble_prob.blend(beg_nib, Speed::new(512,16384));
@@ -189,7 +186,7 @@ impl CopyState {
                     let index = superstate.bk.byte_index as usize &3;//if len_decoded == 0 { ((superstate.bk.last_clen % 4) + 1) as usize } else { 0usize };
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
-                        CopyCommandNibblePriorType::CountMantissaNib, (ctype,(len_decoded == 0) as usize * 0x40 +  index  * 0x10 + (0xf & (decoded_so_far as usize >> 4))));
+                        CopyCommandNibblePriorType::CountMantissaNib, ((self.early_mnemonic != 0xf) as usize,ctype,(len_decoded == 0) as usize * 0x40 +  index  * 0x10 + (0xf & (decoded_so_far as usize >> 4))));
                     superstate.coder.get_or_put_nibble(&mut last_nib, nibble_prob, billing);
                     let next_decoded_so_far = decoded_so_far | (u32::from(last_nib) << next_len_remaining);
                     if superstate.specialization.adapt_cdf() {
