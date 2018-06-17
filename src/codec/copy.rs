@@ -284,7 +284,7 @@ impl CopyState {
                             CopyCommandNibblePriorType::DistanceShortRep, (actual_prior as usize, superstate.bk.byte_index as usize&3/*((superstate.bk.last_llen < 8) as usize))*/));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         if superstate.specialization.adapt_cdf() {
-                            nibble_prob.blend(beg_nib, Speed::new(128,16384));
+                            nibble_prob.blend(beg_nib, Speed::new(512,16384));
                         }
                     }
                     if beg_nib == 1 {
