@@ -24,6 +24,7 @@ pub enum CopySubstate {
     CountMantissaNibbles(u8, u8, u32), //nibble count, intermediate result
     CountDecoded,
     DistanceLengthMnemonic, // references a recent distance cached value
+    DistanceIsShortRepeat, // references a recent distance cached value
     DistanceLengthFirst,
     DistanceLengthGreater14Less25(u8), // lower 4 bits of dist_slot
     DistanceMantissaNibbles(u32, u8, u8, u32), // nibble count (up to 6), intermediate result
@@ -139,9 +140,6 @@ impl CopyState {
                 CopySubstate::CountLengthFirst => {
                     let index = superstate.bk.byte_index as usize&3;//((superstate.bk.last_4_states >> 4) & 3) as usize + 4 * core::cmp::min(superstate.bk.last_llen - 1, 3) as usize;
                     let mut shortcut_nib = core::cmp::min(10, in_cmd.num_bytes) as u8;
-                    if shortcut_nib == 1 {
-                        eprintln!("short copy from cache {} {}\n", shortcut_nib, self.early_mnemonic);
-                    }
                     let ctype = superstate.bk.get_command_block_type();
                     let mut nibble_prob = superstate.bk.copy_priors.get(
                         CopyCommandNibblePriorType::CountBegNib, (ctype, index));
@@ -234,9 +232,6 @@ impl CopyState {
                         if beg_nib >= 4 {
                             beg_nib = 15;
                         }
-                        if beg_nib == 0 && in_cmd.num_bytes == 1 {
-                            beg_nib = 4;
-                        }
                     }
                     //let index = 0;
                     let actual_prior = usize::from(superstate.bk.state_summary as u8);//superstate.bk.get_distance_prior(self.cc.num_bytes);
@@ -251,7 +246,10 @@ impl CopyState {
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     //eprintln!("M:{}", beg_nib);
                     if self.early_mnemonic == 0xfe {
-                        if beg_nib == 4 {
+                        if beg_nib == 0 {
+                            self.early_mnemonic = beg_nib;
+                            self.state = CopySubstate::DistanceIsShortRepeat;                            
+                        } else if beg_nib == 4 {
                             // early exit
                             let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,0, 1);
                             self.cc.distance = dist;
@@ -278,6 +276,30 @@ impl CopyState {
                         self.state = CopySubstate::FullyDecoded;
                     }
                 },
+                CopySubstate::DistanceIsShortRepeat => {
+                    let mut beg_nib = (in_cmd.num_bytes == 1) as u8;
+                    let actual_prior = usize::from(superstate.bk.state_summary as u8);//superstate.bk.get_distance_prior(self.cc.num_bytes);
+                    {
+                        let mut nibble_prob = superstate.bk.copy_priors.get(
+                            CopyCommandNibblePriorType::DistanceShortRep, (actual_prior as usize, superstate.bk.byte_index as usize&3/*((superstate.bk.last_llen < 8) as usize))*/));
+                        superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                        if superstate.specialization.adapt_cdf() {
+                            nibble_prob.blend(beg_nib, Speed::new(128,16384));
+                        }
+                    }
+                    if beg_nib == 1 {
+                        let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,0, 1);
+                        self.cc.distance = dist;
+                        self.cc.num_bytes = 1;
+                        superstate.bk.state_summary.obs_short_rep();
+                        superstate.bk.last_dlen = get_dist_slot(self.cc.distance) as u8;
+                        superstate.bk.last_clen = (core::mem::size_of_val(&self.cc.num_bytes) as u32 * 8
+                                                       - (self.cc.num_bytes).leading_zeros()) as u8;
+                        self.state = CopySubstate::FullyDecoded;
+                    } else {
+                        self.state = CopySubstate::CountSmall;
+                    }
+                }
                 CopySubstate::DistanceLengthFirst => {
                     let mut beg_nib = (i_dist_slot >> 4) as u8;
                     let index = core::cmp::min(self.cc.num_bytes as usize, 5);
