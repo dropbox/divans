@@ -237,11 +237,11 @@ impl CopyState {
                     };
                     if self.early_mnemonic == 0xfe {
                         assert_eq!(self.cc.num_bytes, 0);
-                        if beg_nib >= 4 {
+                        if beg_nib == 14 {
                             beg_nib = 15;
                         }
                         if beg_nib == 0 && in_cmd.num_bytes == 1 {
-                            beg_nib = 4;
+                            beg_nib = 14;
                         }
                     }
                     //let index = 0;
@@ -257,7 +257,7 @@ impl CopyState {
                     //println_stderr!("D {},{} => {} as {}", dtype, distance_map_index, actual_prior, beg_nib);
                     //eprintln!("M:{}", beg_nib);
                     if self.early_mnemonic == 0xfe {
-                        if beg_nib == 4 {
+                        if beg_nib == 14 {
                             // early exit
                             let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru,0, 1);
                             self.cc.distance = dist;
