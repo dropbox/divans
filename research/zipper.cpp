@@ -56,7 +56,7 @@ int main(int argc, char ** argv) {
     std::vector<std::string>::const_iterator f0 = f0vec.begin();
     std::vector<std::string>::const_iterator f1 = f1vec.begin();
     while (f0 != f0vec.end() || f1 != f1vec.end()) {
-        if (((f0count >= f1count) && f1 != f1vec.end()) || f0 == f0vec.end()) {
+        if (((f0count >= f1count) && f1 != f1vec.end()) || (f0 == f0vec.end() && f1 != f1vec.end())) {
             const std::string &line = *f1;
             ++f1;
             if (on_whitelist1(line)) {
@@ -64,7 +64,7 @@ int main(int argc, char ** argv) {
             }
             f1count += byte_size(line);
         }
-        if (((f0count < f1count) && f0 != f0vec.end()) || f1 == f1vec.end()) {
+        if (((f0count < f1count) && f0 != f0vec.end()) || (f1 == f1vec.end() && f0 != f0vec.end())) {
             const std::string &line = *f0;
             ++f0;
             if (on_whitelist0(line)) {

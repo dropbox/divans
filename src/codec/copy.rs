@@ -237,7 +237,7 @@ impl CopyState {
                     };
                     if self.early_mnemonic == 0xfe {
                         assert_eq!(self.cc.num_bytes, 0);
-                        if beg_nib == 14 {
+                        if beg_nib >= 4 {
                             beg_nib = 15;
                         }
                         if beg_nib == 0 && in_cmd.num_bytes == 1 {
