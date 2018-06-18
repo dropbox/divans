@@ -13,6 +13,7 @@
 //   limitations under the License.
 
 use core;
+use std::io;
 use super::{SliceWrapperMut,SliceWrapper};
 use super::alloc;
 pub struct DynBuffer(Box<[u8]>);
@@ -158,4 +159,128 @@ impl<T: core::clone::Clone> alloc::Allocator<T> for HeapAllocator<T> {
     Rebox::<T> { b: b }
   }
   fn free_cell(self: &mut HeapAllocator<T>, _data: Rebox<T>) {}
+}
+
+
+
+fn hex_to_nibble(byte: u8) -> Result<u8, ()> {
+    if byte >= b'A' && byte <= b'F' {
+        Ok(byte - b'A' + 10)
+    } else if byte >= b'a' && byte <= b'f' {
+        Ok(byte - b'a' + 10)
+    } else if byte >= b'0' && byte <= b'9' {
+        Ok(byte - b'0')
+    } else {
+        Err(())
+    }
+}
+fn quoted_slice_to_vec(s: &[u8]) -> Result<Vec<u8>, io::Error> {
+    if s.len() < 2 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap()));
+    }
+    let mut output = Vec::<u8>::with_capacity(s.len() - 2);
+    let mut must_end = false;
+    let mut escaped = false;
+    let mut hexed = false;
+    let mut upper: Option<u8> = None;
+    
+    for byte_ref in s.iter().skip(1) {
+        let byte = *byte_ref;
+        if must_end {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap())); 
+        }
+        if byte ==  b'\"' && !escaped {
+            must_end = true;
+            continue;
+        }
+        
+        if byte == b'\\' && !escaped {
+            escaped = true;
+            continue;
+        }
+        if escaped {
+            if hexed {
+                if let Ok(nib) = hex_to_nibble(byte) {
+                    if let Some(unib) = upper {
+                        output.push((unib << 4) | nib);
+                        hexed = false;
+                        escaped = false;
+                        upper = None;
+                    } else {
+                        upper = Some(nib);
+                    }
+                } else {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap())); 
+                }
+            } else if byte == b'x' {
+                hexed = true;
+            } else if byte == b'n' {
+                output.push(b'\n');
+                escaped = false;
+            } else if byte == b'r' {
+                output.push(b'\r');
+                escaped = false;
+            } else if byte == b't' {
+                output.push(b'\t');
+                escaped = false;
+            } else if byte == b'\\' {
+                output.push(b'\\');
+                escaped = false;
+            } else if byte == b'\'' {
+                output.push(b'\'');
+                escaped = false;
+            } else if byte == b'\"' {
+                output.push(b'\"');
+                escaped = false;
+            } else if byte == b'?' {
+                output.push(b'?');
+                escaped = false;
+            } else {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap()));
+            }
+        } else {
+            output.push(byte);
+        }
+    }
+    if hexed || escaped || !must_end {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap()));
+    }
+    return Ok(output);
+}
+
+pub fn literal_slice_to_vec(s: &[u8]) -> Result<Vec<u8>, io::Error> {
+    if s.len() == 0 {
+        return Ok(Vec::<u8>::new());
+    }
+    if *s.iter().next().unwrap() == b'\"' {
+        quoted_slice_to_vec(s)
+    } else {
+        hex_slice_to_vec(s)
+    }
+}
+pub fn hex_slice_to_vec(s: &[u8]) -> Result<Vec<u8>, io::Error> {
+    let mut output = Vec::with_capacity(s.len() >> 1);
+    let mut rem = 0;
+    let mut buf : u8 = 0;
+    for byte_ref in s.iter() {
+        let byte = *byte_ref;
+        if let Ok(b) = hex_to_nibble(byte) {
+            buf <<= 4;
+            buf |= b;
+        } else if byte == b'\n'|| byte == b'\t'|| byte == b'\r' {
+            continue;
+        } else {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, core::str::from_utf8(s).unwrap()));
+        }
+        rem += 1;
+        if rem == 2 {
+            rem = 0;
+            output.push(buf);
+        }
+    }
+    if rem != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                  "String must have an even number of digits"));
+    }
+    Ok(output)
 }

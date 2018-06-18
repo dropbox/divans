@@ -85,37 +85,8 @@ fn is_divans(header:&[u8]) -> bool {
 }
 
 use std::path::Path;
-fn hex_string_to_vec(s: &str) -> Result<Vec<u8>, io::Error> {
-    let mut output = Vec::with_capacity(s.len() >> 1);
-    let mut rem = 0;
-    let mut buf : u8 = 0;
-    for byte in s.bytes() {
-        if byte >= b'A' && byte <= b'F' {
-            buf <<= 4;
-            buf |= byte - b'A' + 10;
-        } else if byte >= b'a' && byte <= b'f' {
-            buf <<= 4;
-            buf |= byte - b'a' + 10;
-        } else if byte >= b'0' && byte <= b'9' {
-            buf <<= 4;
-            buf |= byte - b'0';
-        } else if byte == b'\n'|| byte == b'\t'|| byte == b'\r' {
-                continue;
-            } else {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, s));
-        }
-        rem += 1;
-        if rem == 2 {
-            rem = 0;
-            output.push(buf);
-        }
-    }
-    if rem != 0 {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput,
-                                  "String must have an even number of digits"));
-    }
-    Ok(output)
-}
+
+
 
 #[derive(Copy,Clone,Debug)]
 struct DivansErrMsg(pub divans::ErrMsg);
@@ -481,9 +452,9 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         if expected_len ==  0 {
             return Ok(None);
         }
-        let data = try!(hex_string_to_vec(command_vec[2]));
-        let probs = if command_vec.len() > 3 {
-            let prob = try!(hex_string_to_vec(command_vec[3]));
+        let data = try!(util::literal_slice_to_vec(&s.as_bytes()[command_vec[0].len() + command_vec[1].len() + 2..]));
+        let probs = if command_vec.len() > 3 && command_vec[2].len() != 0 && command_vec[2].bytes().next().unwrap() != b'\"' {
+            let prob = try!(util::hex_slice_to_vec(command_vec[3].as_bytes()));
             assert!(prob.len() == expected_len * 8);
             prob
         } else {
