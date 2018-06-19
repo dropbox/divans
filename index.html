@@ -429,10 +429,13 @@
 </script>
 </head>
 <body>
-  DivANS is meant to be used for generic data compression. The
-  algorithm has been tuned to significantly favor gains in compression
+  <span style="color:#AA8866;font-weight:bold">DivANS</span> is an open source generic data compression algorithm implemented in native
+  safe/no-stdlib <span style="color:#884422">Rust</span> and compiled to <span style="color:#6666aa">WASM</span> for this page.<br>It uses SIMD
+  computations, threading and allows for a pluggable memory allocator.<br>The
+  algorithm favors compression
   ratio over performance, operating at line speeds of 150 Mbit/s. <br>
   The name originates from "divided-ANS" since the intermediate
-  representation is divided from the ANS codec. <br><a href="https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/">Learn more here.</a>
+  representation is divided from the ANS
+  codec. <br><a href="https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/">Learn more about the algorithm and collaborating here.</a>
 </body>
 </html>
