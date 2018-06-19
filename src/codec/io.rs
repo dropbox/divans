@@ -75,7 +75,6 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
     #[inline(always)]
     fn free_demux(&mut self, m8: &mut AllocU8) {
         self.input.free_demux(m8);
-        self.free_worker(m8);
     }
 }
 
@@ -144,8 +143,4 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             _ => ret,
         }
     }
-    fn free_worker(&mut self, m8: &mut AllocU8) {
-        self.input.free_demux(m8);
-    }
-
 }

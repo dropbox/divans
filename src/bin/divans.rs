@@ -104,24 +104,15 @@ impl error::Error for DivansErrMsg {
 }
 
 #[derive(Debug)]
-pub struct ItemVec<Item:Sized+Default>(Vec<Item>, bool);
+pub struct ItemVec<Item:Sized+Default>(Vec<Item>);
 impl<Item:Sized+Default> Default for ItemVec<Item> {
     fn default() -> Self {
-        ItemVec(Vec::<Item>::new(), false)
+        ItemVec(Vec::<Item>::new())
     }
 }
 impl<Item:Sized+Default> alloc::SliceWrapper<Item> for ItemVec<Item> {
     fn slice(&self) -> &[Item] {
         &self.0[..]
-    }
-}
-
-impl<Item:Sized+Default> Drop for ItemVec<Item> {
-    fn drop(&mut self) {
-        if self.0.len() != 0 && self.1 == false{
-            eprintln!("Leaking {} elements of {} size each",
-                      self.0.len(), core::mem::size_of::<Item>());
-        }
     }
 }
 
@@ -153,16 +144,9 @@ impl<Item:Sized+Default+Clone> alloc::Allocator<Item> for ItemVecAllocator<Item>
     type AllocatedMemory = ItemVec<Item>;
     fn alloc_cell(&mut self, size:usize) ->ItemVec<Item>{
         //eprint!("A:{}\n", size);
-        if size == 512 && core::mem::size_of::<Item>() == 1 {
-            eprint!("OK\n");
-        }
-        ItemVec(vec![Item::default();size], false)
+        ItemVec(vec![Item::default();size])
     }
-    fn free_cell(&mut self, mut _bv:ItemVec<Item>) {
-        if _bv.len() == 512 && core::mem::size_of::<Item>() == 1 {
-            eprint!("Freeing key mem\n");
-        }
-        _bv.1 = true;
+    fn free_cell(&mut self, _bv:ItemVec<Item>) {
         //eprint!("F:{}\n", _bv.slice().len());
     }
 }
@@ -484,7 +468,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         match deserialize_external_probabilities(&probs) {
             Ok(external_probs) => {
                 return Ok(Some(Command::Literal(LiteralCommand{
-                    data:ItemVec(data, false),
+                    data:ItemVec(data),
                     high_entropy:cmd == "rndins",
                     prob:external_probs,
                          })));

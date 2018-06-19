@@ -95,11 +95,15 @@ int main(int argc, char**argv) {
     if (find_first_arg(argc, argv)) {
         FILE * fp = fopen(find_first_arg(argc, argv), "rb");
         if (fp != NULL) {
+            size_t ret;
             (void)fseek(fp, 0, SEEK_END);
             len = ftell(fp);
             (void)fseek(fp, 0, SEEK_SET);
             to_free = malloc(len);
-            (void)fread(to_free, 1, len, fp);
+            ret = fread(to_free, 1, len, fp);
+            if  (ret == 0) {
+                return -1;
+            }
             data = to_free;
             (void)fclose(fp);
         }
@@ -139,19 +143,47 @@ int main(int argc, char**argv) {
                (long)len, (long)divans_file.size,(double)divans_file.size * 100.0 / (double)len);
 #else
         char buf[512];
-        (void)write(1, "File length ", strlen("File Length "));
+        int ret;
+        ret = write(1, "File length ", strlen("File Length "));
+        if (ret <= 0) {
+            return ret;
+        }
         custom_atoi(buf, len);
-        (void)write(1, buf, strlen(buf));
-        (void)write(1, " reduced to ", strlen(" reduced to "));
+        ret = write(1, buf, strlen(buf));
+        if (ret <= 0) {
+            return ret;
+        }
+        ret = write(1, " reduced to ", strlen(" reduced to "));
+        if (ret <= 0) {
+            return ret;
+        }
         custom_atoi(buf, divans_file.size);
-        (void)write(1, buf, strlen(buf));
-        (void)write(1, ", ", strlen(", "));
+        ret = write(1, buf, strlen(buf));
+        if (ret <= 0) {
+            return ret;
+        }
+        ret = write(1, ", ", strlen(", "));
+        if (ret <= 0) {
+            return ret;
+        }
         custom_atoi(buf, divans_file.size * 100 / len);
-        (void)write(1, buf, strlen(buf));
-        (void)write(1, ".", strlen("."));
+        ret = write(1, buf, strlen(buf));
+        if (ret <= 0) {
+            return ret;
+        }
+        ret = write(1, ".", strlen("."));
+        if (ret <= 0) {
+            return ret;
+        }
         custom_atoi(buf, ((divans_file.size * 1000000 + len/2)/ len) % 10000 + 10000);
-        (void)write(1, buf + 1, strlen(buf) - 1);
-        (void)write(1, "%\n", strlen("%\n"));
+        ret = write(1, buf + 1, strlen(buf) - 1);
+        if (ret <= 0) {
+            return ret;
+        }
+        ret = write(1, "%\n", strlen("%\n"));
+        if (ret <= 0) {
+            return ret;
+        }
 #endif
         release_vec_u8(&divans_file);
         release_vec_u8(&rt_file);

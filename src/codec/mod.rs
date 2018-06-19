@@ -316,7 +316,8 @@ impl<AllocU8: Allocator<u8>,
     pub fn demuxer(&mut self) -> &mut LinearInputBytes{
         &mut self.cross_command_state.demuxer
     }
-    pub fn free(self) -> (AllocU8, AllocCDF16) {
+    pub fn free(mut self) -> (AllocU8, AllocCDF16) {
+        self.free_ref();
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
