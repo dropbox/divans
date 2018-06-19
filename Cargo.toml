@@ -13,6 +13,7 @@ keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
 build = "build.rs"
 autobins = false
+include = ["src/**", "testdata/*", "Cargo.toml", "LICENSE", "README.md", "AUTHORS", "build.rs"]
 
 [lib]
 crate-type=["cdylib", "rlib", "staticlib"]
