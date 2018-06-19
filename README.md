@@ -5,7 +5,10 @@ The `divANS` crate is meant to be used for generic data compression.
 The algorithm has been tuned to significantly favor gains in compression ratio
 over performance, operating at line speeds of 150 Mbit/s.
 
-The name originates from "divisionless-ANS" since idiv is not used in the core loop.
+The name originates from "divided-ANS" since the intermediate representation is divided from the ANS codec
+
+More information at <https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/>
+
 
 Divans should primarily be considered for cold storage and compression research.
 The compression algorithm is highly modular and new algorithms only need to be

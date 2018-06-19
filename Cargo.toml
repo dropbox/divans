@@ -7,6 +7,7 @@ authors = [
     "Anatoly Yakovenko <anatoly@dropbox.com>"
 ]
 license = "Apache"
+description = "DivANS is a new way of structuring compression programs to make them more open to innovation in the wider community, by separating compression into multiple stages that can each be improved independently"
 documentation = "https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
