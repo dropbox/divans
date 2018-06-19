@@ -6,8 +6,8 @@ authors = [
     "Jongmin Baek <jongmin@dropbox.com>",
     "Anatoly Yakovenko <anatoly@dropbox.com>"
 ]
-license = "BSD-3-Clause/MIT or Apache"
-documentation = "tbd"
+license = "Apache"
+documentation = "https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/"
 keywords = ["brotli", "decompression", "lz77", "huffman", "nostd"]
 readme = "README.md"
 build = "build.rs"
