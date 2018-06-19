@@ -142,6 +142,15 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> MultiWorker<A
         }
         worker.free(m8, mcommand);
     }
+    pub fn free_m8_only(&mut self, m8: &mut AllocU8) {
+        let &(ref lock, ref cvar) = &*self.queue;
+        let mut worker = lock.lock().unwrap();
+        if worker.waiters != 0 {
+            worker.broadcast_err_internal(ErrMsg::UnexpectedEof);
+            cvar.notify_one();
+        }
+        worker.free_m8_only(m8);
+    }
 }
 impl<AllocU8:Allocator<u8>, AllocCommand: Allocator<StaticCommand>> PullAllocatedCommand<AllocU8, AllocCommand> for MultiWorker<AllocU8, AllocCommand> {
     fn pull_command_buf(&mut self,
@@ -353,6 +362,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
     ) {
         self.broadcast_err_internal(err, ThreadEventType::W_BROADCAST_ERR);
     }
+    fn free_worker(&mut self, m8: &mut AllocU8) {
+        self.free_m8_only(m8);
+    }
 }
 
 pub struct BufferedMultiWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
@@ -434,6 +446,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
         }
     }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc: &mut AllocCommand) {
+        mc.free_cell(core::mem::replace(&mut self.buffer.0,
+                                        AllocCommand::AllocatedMemory::default()));
         self.worker.free(m8, mc);
     }
 }
@@ -486,5 +500,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
    #[inline(always)]
     fn broadcast_err(&mut self, err: ErrMsg) {
         self.worker.broadcast_err_internal(err, ThreadEventType::W_BROADCAST_ERR)
+    }
+    fn free_worker(&mut self, m8: &mut AllocU8) {
+        self.worker.free_worker(m8);  // FIXME: buffered work
     }
 }

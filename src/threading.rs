@@ -5,7 +5,6 @@ use ::interface::{DivansOutputResult, ErrMsg};
 use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix, SlicePlaceholder32};
 use alloc::{SliceWrapper, SliceWrapperMut, Allocator};
 use alloc_util::RepurposingAlloc;
-use ::alloc_util::UninitializedOnAlloc;
 use cmd_to_raw::DivansRecodeState;
 pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
@@ -84,6 +83,7 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
         &mut self,
     ) -> DivansOutputResult;
     fn broadcast_err(&mut self, err:ErrMsg);
+    fn free_worker(&mut self, m8: &mut AllocU8);
 }
 pub const NUM_SERIAL_COMMANDS_BUFFERED: usize = 256;
 pub struct SerialWorker<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> {
@@ -186,19 +186,31 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
             err: None,
         }
     }
-    pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc:&mut AllocCommand) {
-        mc.free_cell(core::mem::replace(&mut self.result.0, AllocCommand::AllocatedMemory::default()));
-        self.result.1 = 0;
+    pub fn free_m8_only(&mut self, m8: &mut AllocU8) {
+        for item in self.data.iter_mut() {
+            if let ThreadData::Data(ref mut buf) = *item {
+                m8.free_cell(core::mem::replace(buf, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+            }
+        }
+        for item in self.result_data.iter_mut() {
+            m8.free_cell(core::mem::replace(item, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+        }
         for item in self.cm.iter_mut() {
             let cur_item = core::mem::replace(item, empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>());
-            free_cmd(&mut Command::PredictionMode(cur_item),
-                     &mut m8.use_cached_allocation::<UninitializedOnAlloc>());
+            m8.free_cell(cur_item.literal_context_map.0);
+            m8.free_cell(cur_item.predmode_speed_and_distance_context_map.0);
         }
         for item in self.result_cm.iter_mut() {
             let cur_item = core::mem::replace(item, empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>());
-            free_cmd(&mut Command::PredictionMode(cur_item),
-                     &mut m8.use_cached_allocation::<UninitializedOnAlloc>());
+            m8.free_cell(cur_item.literal_context_map.0);
+            m8.free_cell(cur_item.predmode_speed_and_distance_context_map.0);
         }
+
+    }
+    pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc:&mut AllocCommand) {
+        mc.free_cell(core::mem::replace(&mut self.result.0, AllocCommand::AllocatedMemory::default()));
+        self.result.1 = 0;
+        self.free_m8_only(m8.get_base_alloc());
     }
 }
 
@@ -356,10 +368,12 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.eof && self.slice.slice().len() == 0
     }
     #[inline(always)]
-    fn free_demux(&mut self, _m8: &mut AllocU8){
+    fn free_demux(&mut self, m8: &mut AllocU8){
         if self.slice.0.slice().len() != 0 {
             self.worker.push_consumed_data(&mut self.slice, None);
         }
+        m8.free_cell(core::mem::replace(&mut self.slice.0, AllocU8::AllocatedMemory::default()));
+        self.worker.free_worker(m8);
     }
 }
 
@@ -401,6 +415,9 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     }
     fn broadcast_err(&mut self, err:ErrMsg) {
         self.worker.broadcast_err(err);
+    }
+    fn free_worker(&mut self, m8:&mut AllocU8) {
+        self.worker.free_worker(m8);
     }
 }
 
@@ -449,6 +466,9 @@ pub fn downcast_command<AllocU8:Allocator<u8>>(cmd: &mut Command<AllocatedMemory
 impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<AllocU8> for SerialWorker<AllocU8, AllocCommand> {
     const COOPERATIVE:bool = true;
     const ISOLATED:bool = true;
+     fn free_worker(&mut self, m8: &mut AllocU8) {
+        self.free_m8_only(m8);
+    }
     #[inline(always)]
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
         if self.err.is_some() {

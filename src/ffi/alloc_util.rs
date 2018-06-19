@@ -77,6 +77,9 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
             for item in slice_ref.iter_mut() {
                 unsafe{core::ptr::write(item, Ty::default())};
             }
+            if size == 512 && 1 == core::mem::size_of::<Ty>() {
+                eprintln!("OK\n");
+            }
             return MemoryBlock(unsafe{Box::from_raw(slice_ref)})
         }
         MemoryBlock(vec![Ty::default();size].into_boxed_slice())

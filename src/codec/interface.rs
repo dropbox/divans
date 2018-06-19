@@ -845,6 +845,7 @@ impl <AllocU8:Allocator<u8>,
         match self.thread_ctx {
             ThreadContext::MainThread(ref mut ctx) => {
                 ctx.lit_coder.free(ctx.m8.get_base_alloc());
+                ctx.m8.free_ref();
                 ctx.free()
             },
             ThreadContext::Worker => {},
@@ -852,7 +853,6 @@ impl <AllocU8:Allocator<u8>,
     }
     pub fn free_ref(&mut self) {
         self.free_internal();
-        self.thread_ctx.m8().unwrap().free_ref();
     }
     pub fn free(mut self) -> (AllocU8, AllocCDF16) {
         self.free_internal();
