@@ -17,13 +17,13 @@ use super::crc32_table::TABLE16;
 pub fn crc32c_init() -> u32 {
     0
 }
-#[cfg(not(all(feature="simd", any(target_arch="x86", target_arch="x86_64"))))]
+#[cfg(not(all(feature="simd", not(feature="portable-simd"), not(feature="safe"), any(target_arch="x86", target_arch="x86_64"))))]
 #[inline(always)]
 pub fn crc32c_update(crc:u32, buf: &[u8]) -> u32 {
     fallback_crc32c_update(crc, buf)
 }
 
-#[cfg(all(feature="simd", any(target_arch="x86", target_arch="x86_64")))]
+#[cfg(all(feature="simd", not(feature="portable-simd"), not(feature="safe"), any(target_arch="x86", target_arch="x86_64")))]
 #[inline(always)]
 pub fn crc32c_update(crc:u32, buf: &[u8]) -> u32 {
     if is_x86_feature_detected!("sse4.2") {

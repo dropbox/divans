@@ -62,7 +62,6 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
     pub pred_buffer: [PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>;2],
 }
 
-
 impl<Cdf16:CDF16,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<Cdf16>,
@@ -100,6 +99,19 @@ impl<Cdf16:CDF16,
             pred_buffer: [empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>(),
                           empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>()],
         }
+    }
+    pub fn free(&mut self, mcommand: &mut AllocCommand) {
+        mcommand.free_cell(core::mem::replace(&mut self.cmd_buffer.0,
+                                              AllocCommand::AllocatedMemory::default()));
+        self.ctx.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.state_lit.lc.data.0,
+                                                                  AllocU8::AllocatedMemory::default()));
+        self.demuxer.free_demux(self.ctx.m8.get_base_alloc());
+        for item in self.pred_buffer.iter_mut() {
+            free_cmd(&mut Command::PredictionMode(core::mem::replace(item,
+                                                                     empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>())),
+                     &mut self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
+        }
+        self.ctx.m8.free_ref();
     }
     pub fn commands_or_data_to_receive(&self) -> bool {
         self.outstanding_buffer_count > 0 || ( // if we have outstanding buffer

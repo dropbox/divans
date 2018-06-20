@@ -274,11 +274,11 @@ impl<AllocU8: Allocator<u8>,
 
         free_cmd(&mut decoder.state_populate_ring_buffer, &mut decoder.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>());
         self.crc = decoder.crc;
-        decoder.ctx.m8.use_cached_allocation::<
-                UninitializedOnAlloc>().free_cell(core::mem::replace(&mut self.state_lit.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default()));
+        decoder.free(mcommand);
+        //ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(core::mem::replace(&mut self.state_lit.lc.data, AllocatedMemoryPrefix::<u8, AllocU8>::default()));
         self.skip_checksum = decoder.skip_checksum;
         self.frozen_checksum = decoder.frozen_checksum;
-        decoder.demuxer.free(&mut decoder.ctx.m8.get_base_alloc());
+        //decoder.demuxer.free(&mut decoder.ctx.m8.get_base_alloc());
         mcommand.free_cell(decoder.cmd_buffer.0);
         let p0 = core::mem::replace(&mut decoder.pred_buffer[0], empty_prediction_mode_context_map());
         let p1 = core::mem::replace(&mut decoder.pred_buffer[1], empty_prediction_mode_context_map());
@@ -316,7 +316,8 @@ impl<AllocU8: Allocator<u8>,
     pub fn demuxer(&mut self) -> &mut LinearInputBytes{
         &mut self.cross_command_state.demuxer
     }
-    pub fn free(self) -> (AllocU8, AllocCDF16) {
+    pub fn free(mut self) -> (AllocU8, AllocCDF16) {
+        self.free_ref();
         self.cross_command_state.free()
     }
     pub fn free_ref(&mut self) {
@@ -325,6 +326,7 @@ impl<AllocU8: Allocator<u8>,
             core::mem::replace(&mut self.state_lit.lc,
                                LiteralCommand::<AllocatedMemoryPrefix<u8, AllocU8>>::nop()).data);
 
+        self.state_prediction_mode.free(self.cross_command_state.thread_ctx.m8().unwrap());
         self.cross_command_state.free_ref()
     }
     #[inline(always)]

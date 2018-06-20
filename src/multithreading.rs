@@ -434,6 +434,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
         }
     }
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc: &mut AllocCommand) {
+        mc.free_cell(core::mem::replace(&mut self.buffer.0,
+                                        AllocCommand::AllocatedMemory::default()));
         self.worker.free(m8, mc);
     }
 }

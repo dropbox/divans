@@ -189,6 +189,14 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     pub fn free(&mut self, m8: &mut RepurposingAlloc<u8, AllocU8>, mc:&mut AllocCommand) {
         mc.free_cell(core::mem::replace(&mut self.result.0, AllocCommand::AllocatedMemory::default()));
         self.result.1 = 0;
+        for item in self.data.iter_mut() {
+            if let ThreadData::Data(ref mut buf) = *item {
+                m8.get_base_alloc().free_cell(core::mem::replace(buf, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+            }
+        }
+        for item in self.result_data.iter_mut() {
+            m8.get_base_alloc().free_cell(core::mem::replace(item, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+        }
         for item in self.cm.iter_mut() {
             let cur_item = core::mem::replace(item, empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>());
             free_cmd(&mut Command::PredictionMode(cur_item),
@@ -356,9 +364,10 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.eof && self.slice.slice().len() == 0
     }
     #[inline(always)]
-    fn free_demux(&mut self, _m8: &mut AllocU8){
+    fn free_demux(&mut self, m8: &mut AllocU8){
         if self.slice.0.slice().len() != 0 {
             self.worker.push_consumed_data(&mut self.slice, None);
+            m8.free_cell(core::mem::replace(&mut self.slice.0, AllocU8::AllocatedMemory::default()));
         }
     }
 }

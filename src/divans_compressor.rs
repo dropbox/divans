@@ -249,6 +249,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     }
     pub fn free_ref(&mut self) {
         self.cmd_assembler.free(&mut self.m32);
+        self.codec.get_m8().as_mut().unwrap().get_base_alloc().free_cell(core::mem::replace(&mut self.cmd_assembler.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.codec.get_m8().as_mut().unwrap().free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
         self.codec.get_m8().as_mut().unwrap().free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         self.codec.free_ref();
@@ -256,6 +257,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
     pub fn free(mut self) -> (AllocU8, AllocU32, AllocCDF16) {
         let (mut m8, mcdf16) = self.codec.free();
         self.cmd_assembler.free(&mut self.m32);
+        m8.free_cell(core::mem::replace(&mut self.cmd_assembler.ring_buffer, AllocU8::AllocatedMemory::default()));
         m8.free_cell(core::mem::replace(&mut self.literal_context_map_backing, AllocU8::AllocatedMemory::default()));
         m8.free_cell(core::mem::replace(&mut self.prediction_mode_backing, AllocU8::AllocatedMemory::default()));
         (m8, self.m32, mcdf16)
