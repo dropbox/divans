@@ -30,26 +30,7 @@ fn main() {
             stdin,
             4096, // buffer size
         );
-        let mut buf = [0u8; 4096];
-        loop {
-            match reader.read(&mut buf[..]) {
-                Err(e) => {
-                    if let io::ErrorKind::Interrupted = e.kind() {
-                        continue;
-                    }
-                    panic!(e);
-                }
-                Ok(size) => {
-                    if size == 0 {
-                        break;
-                    }
-                    match io::stdout().write_all(&buf[..size]) {
-                        Err(e) => panic!(e),
-                        Ok(_) => {},
-                    }
-                }
-            }
-        }
+        io::copy(&mut reader, &mut io::stdout()).unwrap();
     }   
 }
 ```
@@ -76,34 +57,8 @@ fn main() {
             },
             4096, // internal buffer size
         );
-        let mut buf = [0u8; 4096];
-        loop {
-            match io::stdin().read(&mut buf[..]) {
-                Err(e) => {
-                    if let io::ErrorKind::Interrupted = e.kind() {
-                        continue;
-                    }
-                    panic!(e);
-                }
-                Ok(size) => {
-                    if size == 0 {
-                        match writer.flush() {
-                            Err(e) => {
-                                if let io::ErrorKind::Interrupted = e.kind() {
-                                    continue;
-                                }
-                                panic!(e)
-                            }
-                            Ok(_) => break,
-                        }
-                    }
-                    match writer.write_all(&buf[..size]) {
-                        Err(e) => panic!(e),
-                        Ok(_) => {},
-                    }
-                }
-            }
-        }
+        io::copy(&mut io::stdin(), &mut writer).unwrap();
+        writer.flush().unwrap();
     }
 }
 ```
