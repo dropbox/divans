@@ -249,7 +249,7 @@ impl<AllocU8:Allocator<u8>,
                 ];
                 lbk.model_weights[HTraits::IS_HIGH as usize].update(model_probs, weighted_prob_range.freq);
                 if specialization.adapt_cdf() {
-                    cm_prob.blend(cur_nibble, lbk.literal_adaptation[0]);
+                    cm_prob.blend(cur_nibble, lbk.literal_adaptation[2 | HTraits::IS_HIGH as usize].clone());
                 }
             } else {
                 // actually code (or decode) the byte from the file
@@ -575,20 +575,7 @@ impl<AllocU8:Allocator<u8>,
                     self.state = LiteralSubstate::LiteralCountSmall(false);
                 },
                 LiteralSubstate::LiteralCountSmall(high_entropy_flag) => {
-                    let mut index = usize::from(superstate.bk.state_summary as u8);
-                    if index >= 1 && index <= 3 {
-                        index = 1;
-                    }
-                    if index >= 4 && index <= 6 {
-                        index = 4;
-                    }
-                    if index >= 7 && index <= 9 {
-                        index = 7;
-                    }
-                    if index >= 10 {
-                        index = 10;
-                    }
-                    index = 0; //FIXME: not sure why this doesn't have any meaning here
+                    let index = 0;
                     let ctype = superstate.bk.get_command_block_type();
                     let mut shortcut_nib = core::cmp::min(NUM_LITERAL_LENGTH_MNEMONIC, literal_len.wrapping_sub(1)) as u8;
                     if in_cmd.high_entropy && !high_entropy_flag {

@@ -135,3 +135,45 @@ define_prior_struct!(PredictionModePriors, PredictionModePriorType,
                      (PredictionModePriorType::PriorMixingValue, 17),
                      (PredictionModePriorType::ContextMapSpeedPalette, 4)
                      );
+
+pub struct PriorAlgorithm(u8);
+impl PriorAlgorithm {
+    pub fn serialize(&self) -> u8 {
+        self.0
+    }
+    pub fn deserialize(&mut self, data:u8) {
+        self.0 = data;
+    }
+    pub fn use_lzma_command_type(&self) -> bool {
+        (self.0 & 1) != 0
+    }
+    pub fn set_lzma_command_type(&mut self) {
+        self.0 |= 1;
+    }
+
+    pub fn use_lzma_distance_order(&self) -> bool {
+        (self.0 & 2) != 0
+    }
+    pub fn set_lzma_distance_order(&mut self) {
+        self.0 |= 2;
+    }
+
+    pub fn use_lzma_copy_prior(&self) -> bool {
+        (self.0 & 4) != 0
+    }
+    pub fn set_lzma_copy_prior(&mut self) {
+        self.0 |= 4;
+    }
+    pub fn use_lzma_distance_prior(&self) -> bool {
+        (self.0 & 8) != 0
+    }
+    pub fn set_lzma_distance_prior(&mut self) {
+        self.0 |= 8;
+    }
+}
+
+impl Default for PriorAlgorithm {
+    fn default() -> Self {
+        PriorAlgorithm(0)
+    }
+}

@@ -37,6 +37,7 @@ use super::priors::{
     PredictionModePriors,
     BlockTypePriors,
     NUM_BLOCK_TYPES,
+    PriorAlgorithm,
 };
 use ::priors::PriorCollection;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 4;
@@ -245,6 +246,7 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub last_clen: u8,
     pub last_4_states: u8,
     pub state_summary: StateSummary,
+    pub prior_algorithm: PriorAlgorithm,
     pub desired_prior_depth: u8,
     pub desired_context_mixing: u8,
     pub desired_do_context_map: bool,
@@ -450,6 +452,7 @@ impl<
             },
         }
         CrossCommandBookKeeping{
+            prior_algorithm:PriorAlgorithm::default(),
             byte_index:0,
             desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
