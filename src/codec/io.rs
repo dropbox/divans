@@ -1,5 +1,5 @@
 use core;
-use interface::{Command, PredictionModeContextMap, free_cmd, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS};
+use interface::{Command, PredictionModeContextMap, free_cmd};
 use ::interface::{
     DivansOutputResult,
     MAX_PREDMODE_SPEED_AND_DISTANCE_CONTEXT_MAP_SIZE,
@@ -12,6 +12,7 @@ use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix};
 
 use alloc::{Allocator};
 use alloc_util::{RepurposingAlloc, UninitializedOnAlloc};
+use mux::{StreamDemuxer, ReadableBytes, StreamID};
 use cmd_to_raw::DivansRecodeState;
 
 use threading::{ThreadToMain,ThreadData};
@@ -41,28 +42,28 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> DemuxerAndR
 
 impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemuxer<AllocU8> for DemuxerAndRingBuffer<AllocU8, LinearInputBytes> {
     #[inline(always)]
-    fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
-        self.input.write_linear(data, m8)
+    fn deserialize(&mut self, data:&[u8], m8: &mut AllocU8) -> usize {
+        self.input.deserialize(data, m8)
     }
     #[inline(always)]
-    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
-        self.input.read_buffer()
+    fn read_buffer(&mut self, stream_id: StreamID) -> ReadableBytes {
+        self.input.read_buffer(stream_id)
     }
     #[inline(always)]
-    fn data_ready(&self, stream_id:StreamID) -> usize {
-        self.input.data_ready(stream_id)
+    fn data_len(&self, stream_id:StreamID) -> usize {
+        self.input.data_len(stream_id)
     }
     #[inline(always)]
-    fn peek(&self, stream_id: StreamID) -> &[u8] {
-        self.input.peek(stream_id)
+    fn data(&self, stream_id: StreamID) -> &[u8] {
+        self.input.data(stream_id)
     }
     #[inline(always)]
-    fn edit(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
-        self.input.edit(stream_id)
+    fn editable_data(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
+        self.input.editable_data(stream_id)
     }
     #[inline(always)]
-    fn consume(&mut self, stream_id: StreamID, count: usize) {
-        self.input.consume(stream_id, count)
+    fn consume_data(&mut self, stream_id: StreamID, count: usize) {
+        self.input.consume_data(stream_id, count)
     }
     #[inline(always)]
     fn consumed_all_streams_until_eof(&self) -> bool {
@@ -73,8 +74,12 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> StreamDemux
         self.input.encountered_eof()
     }
     #[inline(always)]
-    fn free_demux(&mut self, m8: &mut AllocU8) {
-        self.input.free_demux(m8);
+    fn free(&mut self, m8: &mut AllocU8) {
+        self.input.free(m8);
+    }
+    #[inline(always)]
+    fn n_stream(&self) -> usize {
+        self.input.n_stream()
     }
 }
 
@@ -83,7 +88,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
     const COOPERATIVE:bool = false;
     const ISOLATED:bool = false;
     fn pull_data(&mut self) -> ThreadData<AllocU8> {
-        ThreadData::Data(core::mem::replace(self.input.edit(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
+        ThreadData::Data(core::mem::replace(self.input.editable_data(CMD_CODER as StreamID), AllocatedMemoryRange::<u8, AllocU8>::default()))
     }
     fn pull_context_map(&mut self, mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()> {
         match m8 {
@@ -107,7 +112,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
         data: &mut AllocatedMemoryRange<u8, AllocU8>,
         mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
     ) -> DivansOutputResult {
-        m8.as_mut().unwrap().free_cell(core::mem::replace(&mut data.0, AllocU8::AllocatedMemory::default()));
+        m8.as_mut().unwrap().free_cell(core::mem::replace(&mut data.mem, AllocU8::AllocatedMemory::default()));
         self.err
     }
     fn broadcast_err(&mut self, err:ErrMsg) {

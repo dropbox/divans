@@ -1,0 +1,8 @@
+[package]
+name = "lepton-mux"
+version = "0.0.1"
+authors = ["Daniel Reiter Horn <danielrh@dropbox.com>", "The Lepton Mux Authors"]
+license = "BSD-3-Clause OR Apache-2.0"
+
+[dependencies]
+"alloc-no-stdlib" = "~1.3"

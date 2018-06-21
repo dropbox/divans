@@ -1,14 +1,14 @@
 // This file contains a threaded decoder
 use core;
 use core::hash::Hasher;
-use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, StreamDemuxer, StreamID, ErrMsg};
-use mux::DevNull;
+use interface::{DivansOpResult, DivansResult, DivansOutputResult, DivansInputResult, ErrMsg};
 use ::probability::{CDF16};
 use ::slice_util::{AllocatedMemoryPrefix, AllocatedMemoryRange};
 use ::alloc_util::UninitializedOnAlloc;
 use ::divans_to_raw::DecoderSpecialization;
 use super::literal::{LiteralState, LiteralSubstate};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use mux::{DevNull, StreamDemuxer, StreamID};
 use super::crc32::{crc32c_init,crc32c_update};
 use super::interface::{
     MainThreadContext,
@@ -105,7 +105,7 @@ impl<Cdf16:CDF16,
                                               AllocCommand::AllocatedMemory::default()));
         self.ctx.m8.get_base_alloc().free_cell(core::mem::replace(&mut self.state_lit.lc.data.0,
                                                                   AllocU8::AllocatedMemory::default()));
-        self.demuxer.free_demux(self.ctx.m8.get_base_alloc());
+        self.demuxer.free(self.ctx.m8.get_base_alloc());
         for item in self.pred_buffer.iter_mut() {
             free_cmd(&mut Command::PredictionMode(core::mem::replace(item,
                                                                      empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>())),
@@ -115,7 +115,7 @@ impl<Cdf16:CDF16,
     }
     pub fn commands_or_data_to_receive(&self) -> bool {
         self.outstanding_buffer_count > 0 || ( // if we have outstanding buffer
-            self.demuxer.encountered_eof() && self.demuxer.data_ready(CMD_CODER as StreamID) == 0) // or we have flushed everything we will have
+            self.demuxer.encountered_eof() && self.demuxer.data_len(CMD_CODER as StreamID) == 0) // or we have flushed everything we will have
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn decode_process_input<Worker: MainToThread<AllocU8>>(&mut self,
@@ -124,7 +124,7 @@ impl<Cdf16:CDF16,
                                                                input_offset: &mut usize) -> DivansInputResult {
         {
             let adjusted_input_bytes = input.split_at(*input_offset).1;
-            let adjusted_input_bytes_offset = self.demuxer.write_linear(
+            let adjusted_input_bytes_offset = self.demuxer.deserialize(
                 adjusted_input_bytes,
                 self.ctx.m8.get_base_alloc());
             if !self.skip_checksum {
@@ -140,14 +140,14 @@ impl<Cdf16:CDF16,
             self.deserialized_crc_count += amt_to_copy as u8;
             *input_offset += amt_to_copy;
         }
-        if self.demuxer.data_ready(CMD_CODER as StreamID) != 0 {
-            match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
+        if self.demuxer.data_len(CMD_CODER as StreamID) != 0 {
+            match worker.push(self.demuxer.editable_data(CMD_CODER as StreamID)) {
                 Ok(_) => {
                     self.outstanding_buffer_count += 1;
                 },
                 Err(_) => {
                     if self.outstanding_buffer_count == 0 && self.eof == false && (
-                        self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
+                        self.demuxer.data_len(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
                         return DivansInputResult::NeedsMoreInput;
                     }
                 }, // too full
@@ -300,12 +300,12 @@ impl<Cdf16:CDF16,
                 }
                 let mut need_input = false;
                 for dat in consumed_data.iter_mut() {
-                    if dat.0.len() == 0 {
+                    if dat.mem.len() == 0 {
                         continue; //FIXME: should we yield here?
                         // assert_eq!(Worker::COOPERATIVE_MAIN, true);
                     }
                     self.outstanding_buffer_count -= 1;
-                    match worker.push(self.demuxer.edit(CMD_CODER as StreamID)) {
+                    match worker.push(self.demuxer.editable_data(CMD_CODER as StreamID)) {
                         Ok(_) => {
                             self.outstanding_buffer_count += 1;
                         },
@@ -315,22 +315,22 @@ impl<Cdf16:CDF16,
                             // to the cmd stream
                             // then we need to signal to our caller that we need input for the worker
                             if self.outstanding_buffer_count == 0 && self.eof == false && (
-                                self.demuxer.data_ready(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
+                                self.demuxer.data_len(CMD_CODER as StreamID) != 0 || !self.demuxer.encountered_eof()) {
                                 need_input = true;
                             }
                         },
                     }
-                    let possible_replacement = self.demuxer.edit(CMD_CODER as StreamID);
-                    let possible_replacement_len = possible_replacement.0.slice().len();
+                    let possible_replacement = self.demuxer.editable_data(CMD_CODER as StreamID);
+                    let possible_replacement_len = possible_replacement.mem.slice().len();
                     if possible_replacement_len == 0 { // FIXME: do we want to replace, if twice as big?
-                        core::mem::swap(&mut possible_replacement.0, &mut dat.0);
+                        core::mem::swap(&mut possible_replacement.mem, &mut dat.mem);
                     } else {
-                        if false && possible_replacement_len * 2 <= dat.0.slice().len() {
-                            dat.0.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.0.slice());
-                            core::mem::swap(&mut possible_replacement.0, &mut dat.0);
+                        if false && possible_replacement_len * 2 <= dat.mem.slice().len() {
+                            dat.mem.slice_mut()[..possible_replacement_len].clone_from_slice(possible_replacement.mem.slice());
+                            core::mem::swap(&mut possible_replacement.mem, &mut dat.mem);
                         }
                         //self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().free_cell(AllocatedMemoryPrefix(dat.0, 0));
-                        self.ctx.m8.free_cell(core::mem::replace(&mut dat.0, AllocU8::AllocatedMemory::default()));
+                        self.ctx.m8.free_cell(core::mem::replace(&mut dat.mem, AllocU8::AllocatedMemory::default()));
                     }
                 }
                 match status {
@@ -371,7 +371,7 @@ impl<Cdf16:CDF16,
                     | (u64::from(last_8[5])<<0x28)
                     | (u64::from(last_8[6])<<0x30)
                     | (u64::from(last_8[7])<<0x38);
-                let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
+                let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer(LIT_CODER as StreamID).bytes_avail());
                 self.state_lit.state = new_state;
                 if Worker::COOPERATIVE_MAIN {
                     return DecoderResult::Yield;

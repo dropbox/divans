@@ -1,6 +1,7 @@
 use core;
 use alloc::Allocator;
-use interface::{DivansResult, ErrMsg, StreamMuxer, StreamDemuxer};
+use mux::{StreamMuxer, StreamDemuxer};
+use interface::{DivansResult, ErrMsg};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,

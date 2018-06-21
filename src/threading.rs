@@ -1,11 +1,12 @@
 use core;
 #[allow(unused_imports)]
-use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, StreamDemuxer, ReadableBytes, StreamID, NUM_STREAMS, EncoderOrDecoderRecoderSpecialization};
+use interface::{DivansCompressorFactory, BlockSwitch, LiteralBlockSwitch, Command, Compressor, CopyCommand, Decompressor, DictCommand, LiteralCommand, Nop, NewWithAllocator, ArithmeticEncoderOrDecoder, LiteralPredictionModeNibble, PredictionModeContextMap, free_cmd, FeatureFlagSliceType, EncoderOrDecoderRecoderSpecialization};
 use ::interface::{DivansOutputResult, ErrMsg};
-use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix, SlicePlaceholder32};
+use slice_util::{AllocatedMemoryRange, AllocatedMemoryPrefix, SlicePlaceholder};
 use alloc::{SliceWrapper, SliceWrapperMut, Allocator};
 use alloc_util::RepurposingAlloc;
 use ::alloc_util::UninitializedOnAlloc;
+use mux::{StreamDemuxer, ReadableBytes, StreamID};
 use cmd_to_raw::DivansRecodeState;
 pub enum ThreadData<AllocU8:Allocator<u8>> {
     Data(AllocatedMemoryRange<u8, AllocU8>),
@@ -13,7 +14,7 @@ pub enum ThreadData<AllocU8:Allocator<u8>> {
     Eof,
     Err(ErrMsg)
 }
-pub type StaticCommand = Command<SlicePlaceholder32<u8>>;
+pub type StaticCommand = Command<SlicePlaceholder<u8>>;
 pub const NUM_DATA_BUFFERED:usize = 2;
 
 impl<AllocU8:Allocator<u8>> Default for ThreadData<AllocU8> {
@@ -105,7 +106,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
     }
     pub fn result_ready(&self) -> bool {
         if let CommandResult::Ok = self.eof_present_in_result {
-            return self.result.1 != 0 || self.result_data[0].0.len() != 0;
+            return self.result.1 != 0 || self.result_data[0].mem.len() != 0;
         }
         true
     }
@@ -128,7 +129,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         self.data_len != 0
     }
     pub fn returned_data_space_ready(&self) -> bool {
-        self.result_data[NUM_DATA_BUFFERED -1].0.len() == 0
+        self.result_data[NUM_DATA_BUFFERED -1].mem.len() == 0
     }
     pub fn set_error(&mut self, m:ErrMsg) {
         self.eof_present_in_result = CommandResult::Err(m);
@@ -191,11 +192,11 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> SerialWorker<
         self.result.1 = 0;
         for item in self.data.iter_mut() {
             if let ThreadData::Data(ref mut buf) = *item {
-                m8.get_base_alloc().free_cell(core::mem::replace(buf, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+                m8.get_base_alloc().free_cell(core::mem::replace(buf, AllocatedMemoryRange::<u8, AllocU8>::default()).mem);
             }
         }
         for item in self.result_data.iter_mut() {
-            m8.get_base_alloc().free_cell(core::mem::replace(item, AllocatedMemoryRange::<u8, AllocU8>::default()).0);
+            m8.get_base_alloc().free_cell(core::mem::replace(item, AllocatedMemoryRange::<u8, AllocU8>::default()).mem);
         }
         for item in self.cm.iter_mut() {
             let cur_item = core::mem::replace(item, empty_prediction_mode_context_map::<AllocatedMemoryPrefix<u8, AllocU8>>());
@@ -283,7 +284,7 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
     }
     #[inline(always)]
     fn send_any_empty_data_buffer_to_main(&mut self) -> DivansOutputResult {
-            if self.slice.slice().len() == 0 && self.slice.0.slice().len() != 0 {
+            if self.slice.slice().len() == 0 && self.slice.mem.slice().len() != 0 {
                 return self.worker.push_consumed_data(&mut self.slice, None);
             }
             DivansOutputResult::Success
@@ -320,39 +321,43 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>+MainToThread<
 }
 
 impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer<AllocU8> for ThreadToMainDemuxer<AllocU8, WorkerInterface> {
-    fn write_linear(&mut self, _data:&[u8], _m8: &mut AllocU8) -> usize {
+    fn deserialize(&mut self, _data:&[u8], _m8: &mut AllocU8) -> usize {
         unimplemented!();
     }
     #[inline(always)]
-    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS] {
+    fn read_buffer(&mut self, stream_id: StreamID) -> ReadableBytes {
         self.pull_if_necessary();
-        let data = self.slice.0.slice().split_at(self.slice.1.end).0;
-        [ReadableBytes{data:data, read_offset:&mut self.slice.1.start},
-         ReadableBytes{data:&[], read_offset:&mut self.unused},
-         ]
+        if stream_id == 0 {
+            let data = self.slice.mem.slice().split_at(self.slice.range.end).0;
+            ReadableBytes{data:data, read_offset:&mut self.slice.range.start}
+        } else if stream_id == 1{
+            ReadableBytes{data:&[], read_offset:&mut self.unused}
+        } else {
+            unreachable!()
+        }
     }
     #[inline(always)]
-    fn data_ready(&self, stream_id:StreamID) -> usize {
+    fn data_len(&self, stream_id:StreamID) -> usize {
         if stream_id != 0 {
             return 0;
         }
         self.slice.slice().len()
     }
     #[inline(always)]
-    fn peek(&self, stream_id: StreamID) -> &[u8] {
+    fn data(&self, stream_id: StreamID) -> &[u8] {
         assert_eq!(stream_id, 0);
         self.slice.slice()
     }
     #[inline(always)]
-    fn edit(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
+    fn editable_data(&mut self, stream_id: StreamID) -> &mut AllocatedMemoryRange<u8, AllocU8> {
         assert_eq!(stream_id, 0);
         self.pull_if_necessary();
         &mut self.slice
     }
     #[inline(always)]
-    fn consume(&mut self, stream_id: StreamID, count: usize) {
+    fn consume_data(&mut self, stream_id: StreamID, count: usize) {
         assert_eq!(stream_id, 0);
-        self.slice.1.start += count;
+        self.slice.range.start += count;
         self.send_any_empty_data_buffer_to_main();
     }
     #[inline(always)]
@@ -364,11 +369,15 @@ impl<AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> StreamDemuxer
         self.eof && self.slice.slice().len() == 0
     }
     #[inline(always)]
-    fn free_demux(&mut self, m8: &mut AllocU8){
-        if self.slice.0.slice().len() != 0 {
+    fn free(&mut self, m8: &mut AllocU8){
+        if self.slice.mem.slice().len() != 0 {
             self.worker.push_consumed_data(&mut self.slice, None);
-            m8.free_cell(core::mem::replace(&mut self.slice.0, AllocU8::AllocatedMemory::default()));
+            m8.free_cell(core::mem::replace(&mut self.slice.mem, AllocU8::AllocatedMemory::default()));
         }
+    }
+    #[inline(always)]
+    fn n_stream(&self) -> usize {
+        1
     }
 }
 
@@ -448,7 +457,7 @@ pub fn downcast_command<AllocU8:Allocator<u8>>(cmd: &mut Command<AllocatedMemory
         &mut Command::Dict(d) => return (Command::Dict(d), None),
         &mut Command::Copy(c) => return (Command::Copy(c), None),
         &mut Command::Literal(ref l) => return (Command::Literal(LiteralCommand{
-            data:SlicePlaceholder32::<u8>::new(l.data.len() as u32),
+            data:SlicePlaceholder::<u8>::new(l.data.len()),
             prob:FeatureFlagSliceType::default(),
             high_entropy: l.high_entropy,
         }), None),
@@ -532,9 +541,9 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         if self.err.is_some() {
             return self.get_failure();
         }
-        if self.result_data[0].0.len() == 0 {
+        if self.result_data[0].mem.len() == 0 {
            core::mem::swap(&mut self.result_data[0], data); 
-        } else if self.result_data[1].0.len() == 0 {
+        } else if self.result_data[1].mem.len() == 0 {
             core::mem::swap(&mut self.result_data[1], data); 
         } else {
             return DivansOutputResult::NeedsMoreOutput;

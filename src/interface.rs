@@ -13,7 +13,7 @@
 //   limitations under the License.
 
 use alloc::{SliceWrapper, Allocator};
-use super::slice_util;
+use mux::{ReadableBytes, WritableBytes};
 use super::probability::interface::{CDF16, ProbRange};
 use super::probability;
 use super::codec::copy::CopySubstate;
@@ -232,62 +232,6 @@ impl<SliceType:SliceWrapper<u8>+Default+Clone> Clone for Command<SliceType> {
     }
 }
  */
-pub const NUM_STREAMS: usize = 2;
-pub const STREAM_ID_MASK: StreamID = 0x1;
-pub type StreamID = u8;
-
-pub struct ReadableBytes<'a> {
-    pub data: &'a [u8],
-    pub read_offset: &'a mut usize,
-}
-
-impl<'a> ReadableBytes<'a> {
-    #[inline(always)]
-    pub fn bytes_avail(&self) -> usize {
-        self.data.len() - *self.read_offset
-    }
-}
-pub struct WritableBytes<'a> {
-    pub data: &'a mut [u8],
-    pub write_offset: &'a mut usize,
-}
-
-pub trait StreamMuxer<AllocU8: Allocator<u8> > {
-    #[inline(always)]
-    fn write(&mut self, stream_id: StreamID, data:&[u8], m8: &mut AllocU8) -> usize;
-    #[inline(always)]
-    fn write_buffer(&mut self, m8: &mut AllocU8) -> [WritableBytes; NUM_STREAMS];
-    #[inline(always)]
-    fn can_linearize() ->  bool {true}
-    #[inline(always)]
-    fn linearize(&mut self, output:&mut[u8]) -> usize;
-    #[inline(always)]
-    fn flush(&mut self, output:&mut[u8]) -> usize;
-    #[inline(always)]
-    fn wrote_eof(&self) -> bool;
-    #[inline(always)]
-    fn free_mux(&mut self, m8: &mut AllocU8);
-}
-pub trait StreamDemuxer<AllocU8: Allocator<u8> > {
-    #[inline(always)]
-    fn write_linear(&mut self, data:&[u8], m8: &mut AllocU8) -> usize;
-    #[inline(always)]
-    fn read_buffer(&mut self) -> [ReadableBytes; NUM_STREAMS];
-    #[inline(always)]
-    fn data_ready(&self, stream_id:StreamID) -> usize;
-    #[inline(always)]
-    fn peek(&self, stream_id: StreamID) -> &[u8];
-    #[inline(always)]
-    fn edit(&mut self, stream_id: StreamID) -> &mut slice_util::AllocatedMemoryRange<u8, AllocU8>;
-    #[inline(always)]
-    fn consume(&mut self, stream_id: StreamID, count: usize);
-    #[inline(always)]
-    fn consumed_all_streams_until_eof(&self) -> bool;
-    #[inline(always)]
-    fn encountered_eof(&self) -> bool;
-    #[inline(always)]
-    fn free_demux(&mut self, m8: &mut AllocU8);
-}
 
 pub trait Compressor {
     fn encode(&mut self,

@@ -388,7 +388,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> BufferedMulti
             let &(ref lock, ref cvar) = &*self.worker.queue;
             let mut worker = lock.lock().unwrap();
             let mut did_notify = false;
-            if data.0.len() != 0 { // before we get to sending commands, lets make sure data is taken care of
+            if data.mem.len() != 0 { // before we get to sending commands, lets make sure data is taken care of
                 match worker.push_consumed_data(data, None) {
                     DivansOutputResult::Success => {
                         thread_debug!(ThreadEventType::W_PUSH_CONSUMED_DATA, data.0.len() as u32, self.worker, _elapsed);

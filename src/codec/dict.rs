@@ -1,10 +1,11 @@
 use core;
-use interface::{DivansResult, ErrMsg, StreamMuxer, StreamDemuxer};
+use interface::{DivansResult, ErrMsg};
 use alloc::Allocator;
 use brotli::transform::TransformDictionaryWord;
 use brotli::interface::Nop;
 use ::priors::PriorCollection;
 use brotli::dictionary::{kBrotliMaxDictionaryWordLength, kBrotliDictionary};
+use mux::{StreamMuxer, StreamDemuxer};
 use ::probability::{CDF16, Speed};
 use super::interface::{
     EncoderOrDecoderSpecialization,

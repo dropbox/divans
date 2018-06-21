@@ -1,5 +1,5 @@
-use interface::{DivansResult, StreamMuxer, StreamDemuxer};
 use alloc::Allocator;
+use mux::{StreamMuxer, StreamDemuxer};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
@@ -10,6 +10,7 @@ use ::interface::{
     BillingDesignation,
     CrossCommandBilling,
     BlockSwitch,
+    DivansResult, 
     LiteralBlockSwitch,
 };
 use ::probability::{Speed, CDF16};

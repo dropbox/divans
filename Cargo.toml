@@ -27,6 +27,7 @@ vergen = "0.1"
 [dependencies]
 "alloc-no-stdlib" = "~1.3"
 "brotli" = {version = "~2.5"}
+"lepton-mux" = { path = "subcrates/mux" }
 
 [features]
 

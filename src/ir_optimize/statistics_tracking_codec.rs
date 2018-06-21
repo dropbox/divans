@@ -1,4 +1,4 @@
-pub use ::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ReadableBytes, WritableBytes};
+pub use ::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult};
 use probability::{ProbRange, CDF16, LOG2_SCALE};
 use alloc::{SliceWrapper, Allocator};
 use brotli;
@@ -6,7 +6,7 @@ use codec::CommandArray;
 use codec;
 use slice_util::AllocatedMemoryPrefix;
 use codec::{EncoderOrDecoderSpecialization};
-use mux::DevNull;
+use mux::{DevNull, ReadableBytes, WritableBytes};
 use codec::io::DemuxerAndRingBuffer;
 use cmd_to_divans::EncoderSpecialization;
 use brotli::interface::{Command, CopyCommand, LiteralCommand, DictCommand};

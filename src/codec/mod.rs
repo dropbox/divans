@@ -16,9 +16,9 @@
 use core;
 use core::hash::Hasher;
 use alloc::{SliceWrapper, Allocator};
-use interface::{DivansResult, DivansOutputResult, DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
+use interface::{DivansResult, DivansOutputResult, DivansOpResult, ErrMsg};
 use ::alloc_util::UninitializedOnAlloc;
-use mux::Mux;
+use mux::{Mux, StreamMuxer, StreamDemuxer, StreamID, ReadableBytes};
 pub const CMD_BUFFER_SIZE: usize = 16;
 use ::alloc_util::RepurposingAlloc;
 use super::interface::{
@@ -571,7 +571,7 @@ impl<AllocU8: Allocator<u8>,
         if !LinearInputBytes::ISOLATED {
             if let Some(ref mut m8) = self.cross_command_state.thread_ctx.m8() {
                 let adjusted_input_bytes = input_bytes.split_at(*input_bytes_offset).1;
-                let adjusted_input_bytes_offset = self.cross_command_state.demuxer.write_linear(
+                let adjusted_input_bytes_offset = self.cross_command_state.demuxer.deserialize(
                     adjusted_input_bytes,
                     m8.get_base_alloc());
                 if Specialization::IS_DECODING_FILE && !self.skip_checksum {

@@ -1,9 +1,10 @@
 use core;
-use interface::{DivansResult, ErrMsg, DivansOpResult, StreamMuxer, StreamDemuxer};
+use interface::{DivansResult, ErrMsg, DivansOpResult};
 use super::interface::ContextMapType;
 use super::priors::{PredictionModePriorType};
 use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
 use alloc_util::{RepurposingAlloc, AllocatedMemoryPrefix, UninitializedOnAlloc};
+use mux::{StreamMuxer, StreamDemuxer};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,

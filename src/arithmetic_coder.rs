@@ -13,8 +13,9 @@
 //   limitations under the License.
 use core;
 use core::default::Default;
+use mux::{ReadableBytes, WritableBytes};
 use probability::{CDF16, ProbRange};
-use interface::{ArithmeticEncoderOrDecoder, ReadableBytes, WritableBytes};
+use interface::ArithmeticEncoderOrDecoder;
 use super::DivansResult;
 pub trait ByteQueue {
     #[inline(always)]
@@ -227,8 +228,8 @@ macro_rules! arithmetic_encoder_or_decoder_methods(
                 self.get_internal_buffer().num_pop_bytes_avail() != 0
             }
             fn drain_or_fill_internal_buffer_unchecked(&mut self,
-                                             _input: &mut ::interface::ReadableBytes,
-                                             output: &mut ::interface::WritableBytes,
+                                             _input: &mut ::mux::ReadableBytes,
+                                             output: &mut ::mux::WritableBytes,
                                              ) -> DivansResult {
                 let ibuffer = self.get_internal_buffer_mut();
                 let push_count = ibuffer.pop_data(output.data.split_at_mut(*output.write_offset).1);

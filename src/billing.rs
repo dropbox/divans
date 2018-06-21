@@ -17,9 +17,10 @@ use core::mem;
 use core::iter::FromIterator;
 use core::marker::PhantomData;
 use alloc::{Allocator};
-use interface::{ArithmeticEncoderOrDecoder, BillingDesignation, NewWithAllocator, BillingCapability};
+use mux::{ReadableBytes, WritableBytes};
+use interface::{ArithmeticEncoderOrDecoder, BillingCapability, BillingDesignation,
+                DivansResult, NewWithAllocator};
 use super::probability::{CDF16, ProbRange};
-use interface::{DivansResult, ReadableBytes, WritableBytes};
 
 #[cfg(feature="billing")]
 mod billing {

@@ -1,10 +1,11 @@
 use core;
-use interface::{DivansResult, StreamMuxer, StreamDemuxer};
+use interface::DivansResult;
 use ::probability::{CDF16, Speed, ExternalProbCDF16};
 use super::priors::{LiteralNibblePriorType, LiteralCommandPriorType, LiteralCMPriorType};
 
 use alloc_util::{RepurposingAlloc, AllocatedMemoryPrefix, UninitializedOnAlloc};
 use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
+use mux::{StreamMuxer, StreamDemuxer};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
@@ -313,7 +314,7 @@ impl<AllocU8:Allocator<u8>,
                                                                   output_bytes,
                                                                   output_offset,
                                                                   &mut Some(m8));
-               low_buffer_warning = demuxer.data_ready(LIT_CODER as u8) < 16;
+               low_buffer_warning = demuxer.data_len(LIT_CODER as u8) < 16;
                h_nibble = cur_nibble;
                if let Some(prob) = cur_prob {
                    if specialization.adapt_cdf() {
@@ -361,7 +362,7 @@ impl<AllocU8:Allocator<u8>,
                   retval = DivansResult::NeedsMoreInput;
                }
                let new_state = self.state_literal_nibble_index((new_byte_index << 1) as u32,
-                                                               demuxer.data_ready(LIT_CODER as u8));
+                                                               demuxer.data_len(LIT_CODER as u8));
                self.state = new_state;
                break;
             }
@@ -379,7 +380,7 @@ impl<AllocU8:Allocator<u8>,
                   DivansResult::Success => {},
                   need_something => {
                       let new_state = self.state_literal_nibble_index(((start_byte_index + byte_offset) << 1) as u32 + 2,
-                                                                       demuxer.data_ready(LIT_CODER as u8));
+                                                                       demuxer.data_len(LIT_CODER as u8));
                       self.state = new_state;
                       if start_byte_index + byte_offset + 1 != last_llen as usize {
                           retval = need_something;
@@ -591,7 +592,7 @@ impl<AllocU8:Allocator<u8>,
                             None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.data_ready(LIT_CODER as u8));
+                                                                superstate.demuxer.data_len(LIT_CODER as u8));
                     }
                 },
                 LiteralSubstate::LiteralCountFirst => {
@@ -613,7 +614,7 @@ impl<AllocU8:Allocator<u8>,
                             None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.data_ready(LIT_CODER as u8));
+                                                                superstate.demuxer.data_len(LIT_CODER as u8));
                     } else {
                         self.state = LiteralSubstate::LiteralCountMantissaNibbles(round_up_mod_4(beg_nib - 1),
                                                                                   1 << (beg_nib - 1));
@@ -653,7 +654,7 @@ impl<AllocU8:Allocator<u8>,
                             None => self.lc.data.1 = num_bytes as u32,
                         }
                         self.state = self.get_nibble_code_state(0, in_cmd,
-                                                                superstate.demuxer.data_ready(LIT_CODER as u8));
+                                                                superstate.demuxer.data_len(LIT_CODER as u8));
                     } else {
                         self.state  = LiteralSubstate::LiteralCountMantissaNibbles(next_len_remaining,
                                                                                    next_decoded_so_far);
