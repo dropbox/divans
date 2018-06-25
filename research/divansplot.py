@@ -9,12 +9,13 @@ from matplotlib.ticker import ScalarFormatter
 def on_whitelist(key, label):
     #if 'key' == 'time_pct':
     #    return label in ('b11, d0')
-    return label in ('b11', 'b9', 'd0', 'dX', 'zlib', 'z19', 'lzma', 'bz')
+    return label in ('b11', 'b9', 'd1', 'dX', 'zlib', 'z19', 'lzma', 'bz')
 def label_reassign(key):
     keymap = {
         'b11': 'Brotli\nq11',
         'b9': 'Brotli\nq9',
         'd0': u'DivANS  .\nq11',
+        'd1': u'DivANS  .\nq11',
         'dX': u'DivANS\nq9',
         'd5': u'DivANS\nq9',
         'd35': u'DivANS\nq9',
@@ -55,7 +56,7 @@ ylabel = {
     }
 
 y_limits= {
-    'savings_vs_zlib':[0, 10],
+    'savings_vs_zlib':[0, 14],
     'encode_speed': [1,400],
     'decode_speed': [10,5000],
 #    'time_pct':
@@ -89,7 +90,7 @@ def build_figure(key, ax, data, last=False):
             height = rect.get_height()
             if height > 100:
                 dat = '%.0f' %height
-            elif height > 20:
+            elif height > 5:
                 dat = '%.1f' % height
             else:
                 dat = '%.2f' % height
@@ -138,7 +139,7 @@ def draw(ratio_vs_raw, ratio_vs_zlib, encode_avg, decode_avg, decode_pct):
     rcParams['ps.fonttype'] = 42
     rcParams['pgf.rcfonts'] = False
     fig, ax1 = plt.subplots(1, 1, sharex=True, figsize=(6, 2.7))
-    plt.suptitle("Dropbox recent uploads compression ratio")
+    plt.suptitle("          Dropbox uploads compression ratio for uncompressed files")
     build_figure('savings_vs_zlib', ax1, ratio_vs_zlib)
     fig.subplots_adjust(bottom=0.2, right=.99, top=.9, hspace=0.03)
     plt.savefig('compression_comparison_ratio.pdf')
