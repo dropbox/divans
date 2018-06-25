@@ -223,7 +223,9 @@
          var graph = document.getElementById("graph");
          graph.parentNode.removeChild(graph);
          document.body.appendChild(graph);
-         if (!isMobile()) {
+         if (isMobile()) {
+          graph.style.display="none";
+         } else {
           graph.style.display="block";
          }
    }
@@ -445,7 +447,7 @@
   representation is divided from the ANS
   codec.<br><br><a href="https://blogs.dropbox.com/tech/2018/06/building-better-compression-together-with-divans/">Read
   the blog post and analysis here.</a><br><br>
-  <div id="graph" style="display:none">For this experiment, to see how well DivANS performs on uncompressed data.
+  <div id="graph">For this experiment, to see how well DivANS performs on uncompressed data.
   We sampled 130,000 random chunks being uploaded to Dropbox.
   We measured the sizes and compression (encode) and decompression (decode) rates of DivANS, and several alternative algorithms (zlib, Brotli, Zstd, 7zip, bz2).
   For DivANS and Brotli, we compared 2 different compression levels (q9 and q11). For zlib, 7zip, bz2 and Zstd, we used maximum settings.
