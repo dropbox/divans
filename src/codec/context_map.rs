@@ -33,6 +33,7 @@ pub enum PredictionModeSubstate {
     Begin,
     DynamicContextMixing,
     PriorDepth(bool),
+    PriorAlgorithm(u32, u16, bool),
     AdaptationSpeed(u32, [(u8,u8);4], bool),
     ContextMapMnemonic(u32, ContextMapType, bool),
     ContextMapFirstNibble(u32, ContextMapType, bool),
@@ -206,7 +207,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                    self.state = PredictionModeSubstate::PriorDepth(beg_nib != 0);
                },
                PredictionModeSubstate::PriorDepth(combine_literal_predictions) => {
-                   let mut beg_nib = superstate.bk.desired_prior_depth;
+                   let mut beg_nib = superstate.bk.desired_prior_algorithm.non_default() as u8;
                    {
                        let mut nibble_prob = superstate.bk.prediction_priors.get(
                            PredictionModePriorType::PriorDepth, (0,));
@@ -216,8 +217,31 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
                        }
                    }
                    superstate.bk.obs_prior_depth(beg_nib); // FIXME: this is not persisted in the command
-                   self.state = PredictionModeSubstate::AdaptationSpeed(0, [(0,0);4], combine_literal_predictions);
-               }
+                   if beg_nib == 0 {
+                       superstate.bk.obs_prior_algorithm(0);
+                       self.state = PredictionModeSubstate::AdaptationSpeed(0, [(0,0);4], combine_literal_predictions);
+                   } else {
+                       self.state = PredictionModeSubstate::PriorAlgorithm(0,0, combine_literal_predictions);
+                   }
+               },
+               PredictionModeSubstate::PriorAlgorithm(index, partial, combine_literal_predictions) => {
+                   let mut beg_nib = (superstate.bk.desired_prior_algorithm.serialize() >> (12 - 4 * index)) as u8 & 0xf;
+                   {
+                       let mut nibble_prob = superstate.bk.prediction_priors.get(
+                           PredictionModePriorType::PriorAlgorithm, (index as usize,));
+                       superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
+                       if superstate.specialization.adapt_cdf() {
+                           nibble_prob.blend(beg_nib, Speed::FAST);
+                       }
+                   }
+                   let new_partial = (partial << 4) | beg_nib as u16;
+                   if index == 3 {
+                       superstate.bk.obs_prior_algorithm(new_partial);
+                       self.state = PredictionModeSubstate::AdaptationSpeed(0, [(0,0);4], combine_literal_predictions);
+                   } else {
+                       self.state = PredictionModeSubstate::PriorAlgorithm(index + 1, new_partial, combine_literal_predictions);
+                   }
+               },
                PredictionModeSubstate::AdaptationSpeed(index, mut out_adapt_speed, combine_literal_predictions) => {
                    let speed_index = index as usize >> 2;
                    let cur_speed = desired_speeds[speed_index].to_f8_tuple();

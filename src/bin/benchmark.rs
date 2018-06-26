@@ -132,7 +132,7 @@ fn init_shuffle_384(src: &mut [u8]) -> u8 {
 trait TestSelection : Clone + Copy {
     fn size(&self) -> usize;
     fn use_context_map(&self) -> bool;
-    fn prior_depth(&self) -> Option<u8>;
+    fn prior_algorithm(&self) -> Option<u16>;
     fn stride_selection(&self) -> divans::StrideSelection;
     fn adaptive_context_mixing(&self) -> bool;
     fn prediction_mode(&self) -> LiteralPredictionModeNibble;
@@ -157,7 +157,7 @@ impl TestSelection for TestContextMixing {
     fn size(&self) -> usize {self.size}
     fn use_context_map(&self) -> bool {true}
     fn stride_selection(&self) -> divans::StrideSelection {divans::StrideSelection::PriorDisabled}
-    fn prior_depth(&self) -> Option<u8> {
+    fn prior_algorithm(&self) -> Option<u16> {
         Some(0)
     }
     fn adaptive_context_mixing(&self) -> bool {true}
@@ -167,7 +167,7 @@ impl TestSelection for TestContextMixing {
 }
 
 impl TestSelection for TestContextMixingPureAverage {
-    fn prior_depth(&self) -> Option<u8> {
+    fn prior_algorithm(&self) -> Option<u16> {
         Some(0)
     }
     fn size(&self) -> usize {self.size}
@@ -180,7 +180,7 @@ impl TestSelection for TestContextMixingPureAverage {
 }
 
 impl TestSelection for TestAdapt {
-    fn prior_depth(&self) -> Option<u8> {
+    fn prior_algorithm(&self) -> Option<u16> {
         Some(0)
     }
     fn size(&self) -> usize {self.size}
@@ -193,7 +193,7 @@ impl TestSelection for TestAdapt {
 }
 
 impl TestSelection for TestSimple {
-    fn prior_depth(&self) -> Option<u8> {
+    fn prior_algorithm(&self) -> Option<u16> {
         Some(0)
     }
     fn size(&self) -> usize {self.size}
@@ -336,7 +336,7 @@ fn bench_no_ir<Run: Runner,
     let mut rt_buffer = LimitedBuffer::new(rt_backing_buffer.slice_mut());//UnlimitedBuffer::new(&[]);//LimitedBuffer::new(rt_backing_buffer.slice_mut());
     let mut opts = divans::DivansCompressorOptions::default();
     opts.dynamic_context_mixing = Some(ts.adaptive_context_mixing() as u8 * 2);
-    opts.prior_depth = ts.prior_depth();
+    opts.prior_algorithm = ts.prior_algorithm();
     opts.use_context_map = ts.use_context_map();
     opts.force_stride_value = ts.stride_selection();
     opts.literal_adaptation = None;//Some([Speed::MUD,Speed::SLOW, Speed::GLACIAL, Speed::GEOLOGIC]);

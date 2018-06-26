@@ -1209,7 +1209,7 @@ fn main() {
     let mut speed_detection_quality: Option<u8> = None;
     let mut dynamic_context_mixing: Option<u8> = Some(1);
     let mut buffer_size:usize = 65_536;
-    let mut force_prior_depth: Option<u8> = None;
+    let mut force_prior_algorithm: Option<u16> = None;
     let mut set_low = false;
     let mut brotli_literal_byte_score: Option<u32> = None;
     let mut doubledash = false;
@@ -1346,7 +1346,7 @@ fn main() {
                         't').trim_matches(
                         'h').trim_matches(
                     '=').parse::<i32>().unwrap();
-                    force_prior_depth=Some(fs as u8);
+                    force_prior_algorithm=Some(fs as u16);
                     continue;
                 }
                 if argument.starts_with("-w") || argument.starts_with("-window=") {
@@ -1590,7 +1590,7 @@ fn main() {
             dynamic_context_mixing: dynamic_context_mixing.clone(),
             literal_adaptation: literal_adaptation.clone(),
             use_context_map: use_context_map,
-            prior_depth: force_prior_depth,
+            prior_algorithm: force_prior_algorithm,
             force_stride_value: force_stride_value,
             quality: quality,
             q9_5: q9_5,

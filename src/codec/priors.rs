@@ -118,6 +118,7 @@ pub enum PredictionModePriorType {
     Only,
     DynamicContextMixingSpeed,
     PriorDepth,
+    PriorAlgorithm,
     PriorMixingValue,
     LiteralSpeed,
     Mnemonic,
@@ -127,6 +128,7 @@ pub enum PredictionModePriorType {
 }
 
 define_prior_struct!(PredictionModePriors, PredictionModePriorType,
+                     (PredictionModePriorType::PriorAlgorithm, 4),
                      (PredictionModePriorType::Only, 1),
                      (PredictionModePriorType::LiteralSpeed, 1),
                      (PredictionModePriorType::FirstNibble, 2),
@@ -136,13 +138,16 @@ define_prior_struct!(PredictionModePriors, PredictionModePriorType,
                      (PredictionModePriorType::ContextMapSpeedPalette, 4)
                      );
 
-pub struct PriorAlgorithm(u8);
+pub struct PriorAlgorithm(u16);
 impl PriorAlgorithm {
-    pub fn serialize(&self) -> u8 {
+    pub fn serialize(&self) -> u16 {
         self.0
     }
-    pub fn deserialize(&mut self, data:u8) {
-        self.0 = data;
+    pub fn deserialize(data:u16) -> PriorAlgorithm {
+        PriorAlgorithm(data)
+    }
+    pub fn non_default(&self) -> bool {
+       self.0 != 0
     }
     pub fn use_lzma_command_type(&self) -> bool {
         (self.0 & 1) != 0

@@ -21,7 +21,7 @@ fn main() {
                 quality:example_opts.quality, // the quality of brotli commands
                 q9_5:example_opts.q9_5,
                 dynamic_context_mixing:example_opts.dynamic_context_mixing, // if we want to mix together the stride prediction and the context map
-                prior_depth:example_opts.prior_depth,
+                prior_algorithm:example_opts.prior_algorithm,
                 use_brotli:example_opts.use_brotli, // ignored
                 use_context_map:example_opts.use_context_map, // whether we should use the brotli context map in addition to the last 8 bits of each byte as a prior
                 force_stride_value: example_opts.force_stride_value, // if we should use brotli to decide on the stride

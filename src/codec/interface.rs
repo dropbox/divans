@@ -247,11 +247,11 @@ pub struct CrossCommandBookKeeping<Cdf16:CDF16,
     pub last_4_states: u8,
     pub state_summary: StateSummary,
     pub prior_algorithm: PriorAlgorithm,
-    pub desired_prior_depth: u8,
     pub desired_context_mixing: u8,
     pub desired_do_context_map: bool,
     pub desired_force_stride: StrideSelection,
     pub desired_literal_adaptation: Option<[Speed;4]>,
+    pub desired_prior_algorithm: PriorAlgorithm,
 }
 
 #[inline(always)]
@@ -440,7 +440,7 @@ impl<
            btype_prior: AllocCDF16::AllocatedMemory,
            distance_context_map: AllocU8::AllocatedMemory,
            mut dynamic_context_mixing: u8,
-           prior_depth: u8,
+           desired_prior_algorithm: PriorAlgorithm,
            literal_adaptation_speed:Option<[Speed;4]>,
            do_context_map: bool,
            force_stride: StrideSelection) -> Self {
@@ -453,8 +453,8 @@ impl<
         }
         CrossCommandBookKeeping{
             prior_algorithm:PriorAlgorithm::default(),
+            desired_prior_algorithm:desired_prior_algorithm,
             byte_index:0,
-            desired_prior_depth:prior_depth,
             desired_literal_adaptation: literal_adaptation_speed,
             desired_context_mixing:dynamic_context_mixing,
             last_dlen: 1,
@@ -628,6 +628,9 @@ impl<
     }
     pub fn obs_btyped(&mut self, btype:u8) {
         self._obs_btype_helper(BLOCK_TYPE_DISTANCE_SWITCH, btype);
+    }
+    pub fn obs_prior_algorithm(&mut self, algo: u16) {
+        self.prior_algorithm = PriorAlgorithm::deserialize(algo);
     }
 }
 
@@ -810,7 +813,7 @@ impl <AllocU8:Allocator<u8>,
                linear_input_bytes: LinearInputBytes,
                ring_buffer_size: usize,
                dynamic_context_mixing: u8,
-               prior_depth:u8,
+               desired_prior_algorithm:PriorAlgorithm,
                literal_adaptation_rate: Option<[Speed;4]>,
                do_context_map:bool,
                force_stride: StrideSelection) -> Self {
@@ -856,7 +859,7 @@ impl <AllocU8:Allocator<u8>,
                                             dict_priors, pred_priors, btype_priors,
                                             distance_context_map,
                                             dynamic_context_mixing,
-                                            prior_depth,
+                                            desired_prior_algorithm,
                                             literal_adaptation_rate,
                                             do_context_map,
                                             force_stride,

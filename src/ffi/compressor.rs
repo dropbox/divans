@@ -152,8 +152,8 @@ impl CompressorState {
                         },
                     }
                 },
-                DIVANS_OPTION_PRIOR_DEPTH => {
-                    opts.prior_depth = Some(value as u8);
+                DIVANS_OPTION_PRIOR_ALGORITHM => {
+                    opts.prior_algorithm = Some(value as u16);
                 },
                 DIVANS_OPTION_Q9_5 => {
                     opts.q9_5 = value as u8 != 0;
