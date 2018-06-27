@@ -202,11 +202,11 @@ impl<AllocU8:Allocator<u8>,
             index_b = usize::from((mm & stride_selected_byte) | (!mm & byte_context.actual_context));
             index_c = usize::from((cur_byte_prior & fast_cm_prior_mask) | ((byte_context.actual_context & opt_1_f_mask) << 4));
         };
-        let index_mid: usize;
+        let _index_mid: usize;
         if first {
-            index_mid = usize::from(stride_selected_byte);
+            _index_mid = usize::from(stride_selected_byte);
         }else {
-            index_mid = 0;
+            _index_mid = 0;
         }
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,

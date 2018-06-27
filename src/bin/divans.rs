@@ -705,7 +705,7 @@ fn compress_inner<Reader:std::io::BufRead,
             }
         }
     }
-    let mut m8 = state.free().0;
+    let _m8 = state.free().0;
     Ok(())
 }
 fn compress_raw_inner<Compressor: divans::interface::Compressor,

@@ -61,6 +61,7 @@ pub enum ErrMsg {
     MainFunctionCalledFromThread(u8),
     DecodingDecoderAlreadyFreed,
     AdvContextMapNotBoolean(u8),
+    InternalInconsistencyInCopyLenSubstateCode(u8),
 }
 
 
