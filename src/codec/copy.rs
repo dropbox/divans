@@ -295,6 +295,7 @@ impl CopyState {
                     };
                     let mut actual_prior;
                     let secondary_prior;
+                    let speed;
                     if self.early_mnemonic == 0xfe || self.early_mnemonic == 0xfd {
                         assert_eq!(self.cc.num_bytes, 0);
                         if beg_nib >= 4 && self.early_mnemonic == 0xfe {
@@ -308,16 +309,18 @@ impl CopyState {
                         }
                         actual_prior = usize::from(superstate.bk.state_summary as u8);
                         secondary_prior = superstate.bk.byte_index as usize & 3;
+                        speed = Speed::new(128,16384);
                     } else {
                         actual_prior = superstate.bk.get_distance_prior(self.cc.num_bytes);
                         secondary_prior = (superstate.bk.last_llen < 8) as usize;
+                        speed = Speed::SLOW;
                     }
                     {
                         let mut nibble_prob = superstate.bk.copy_priors.get(
                             CopyCommandNibblePriorType::DistanceMnemonic, (actual_prior as usize, secondary_prior));
                         superstate.coder.get_or_put_nibble(&mut beg_nib, nibble_prob, billing);
                         if superstate.specialization.adapt_cdf() {
-                            nibble_prob.blend(beg_nib, Speed::new(128,16384));
+                            nibble_prob.blend(beg_nib, speed);
                         }
                     }
                     if self.early_mnemonic == 0xfe || self.early_mnemonic == 0xfd {
@@ -341,7 +344,8 @@ impl CopyState {
                     } else {
                         let (dist, ok, _cache_index) = get_distance_from_mnemonic_code(&superstate.bk.distance_lru, beg_nib, self.cc.num_bytes);
                         self.cc.distance = dist;
-                        superstate.bk.last_dlen = get_dist_slot(dist) as u8;
+                        superstate.bk.last_dlen = (core::mem::size_of_val(&self.cc.distance) as u32 * 8
+                                                   - self.cc.distance.leading_zeros()) as u8;
                         if !ok {
                             return DivansResult::Failure(ErrMsg::CopyDistanceMnemonicCodeBad(dist as u8, (dist >> 8) as u8));
                         }

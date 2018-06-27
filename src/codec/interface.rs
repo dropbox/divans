@@ -576,9 +576,15 @@ impl<
     }
     pub fn get_command_type_prob(&mut self) -> &mut Cdf16 {
         //let last_8 = self.cross_command_state.recoder.last_8_literals();
-        self.cc_priors.get(CrossCommandBilling::FullSelection,
-                           (usize::from(self.state_summary as u8),//((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
-                           0)) // FIXME <-- improve this prior now that we are missing literals
+        if self.prior_algorithm.use_lzma_command_type() {
+            self.cc_priors.get(CrossCommandBilling::FullSelection,
+                               (usize::from(self.state_summary as u8),//((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
+                                0)) // FIXME <-- improve this prior now that we are missing literals
+        } else {
+            self.cc_priors.get(CrossCommandBilling::FullSelection,
+                               ((self.last_4_states as usize) >> (8 - LOG_NUM_COPY_TYPE_PRIORS),
+                                0)) // FIXME <-- improve this prior now that we are missing literals
+        }
     }
     fn next_state(&mut self) {
         self.last_4_states >>= 2;

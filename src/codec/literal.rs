@@ -210,7 +210,7 @@ impl<AllocU8:Allocator<u8>,
         }
         // select the probability out of a 3x256x256 array of 32 byte nibble-CDFs
         let nibble_prob = lit_priors.get(LiteralNibblePriorType::CombinedNibble,
-                                         ((usize::from((mm >> 7) ^ (opt_1_f_mask >> 2))) + (first as usize * 3),
+                                         ((usize::from((mm >> 7) ^ (opt_1_f_mask >> 2))),// + (first as usize * 3),
                                           index_b,
                                           index_c)/*
                                          ((first as usize),
