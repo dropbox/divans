@@ -687,16 +687,46 @@ fn compress_inner<Reader:std::io::BufRead,
                 }
 
                 if count == 0 || metablock_complete {
-                    let mut i_read_index = 0usize;
-                    let mut thawed:[Command<brotli::InputReference>;CMD_BUFFER_SIZE] = [Command::BlockSwitchCommand(BlockSwitch::new(0));CMD_BUFFER_SIZE];
-                    while i_read_index < ibuffer.len() {
-                        let to_copy = core::cmp::min(thawed.len(), ibuffer.len() - i_read_index);
-                        for (icommand, frozen) in thawed[..to_copy].iter_mut().zip(ibuffer[..].split_at(i_read_index).1.split_at(to_copy).0.iter()) {
-                            *icommand = brotli::interface::thaw(frozen, &literal_buffer[..]);
+                    {
+                        let to_write;
+                        if ibuffer.len() > 1 { // we can optimize
+                            let pred_mode;
+                            let rest;
+                            if let Command::PredictionMode(x) = ibuffer[1] {
+                                {
+                                    let mut thawed = [brotli::interface::thaw(&ibuffer[0], &literal_buffer[..])];
+                                    try!(recode_cmd_buffer(&mut state, &thawed, w,
+                                                           &mut obuffer[..]));
+                                }
+                                pred_mode = Some(x);
+                                rest = &ibuffer[2..];
+                            } else if let Command::PredictionMode(x) = ibuffer[0] {
+                                pred_mode = Some(x);
+                                rest = &ibuffer[1..];
+                            } else {
+                                pred_mode = None;
+                                rest = &ibuffer[..];
+                            }
+                            if let Some(ref pm) = pred_mode {
+                                let mut thawed_pm = [brotli::interface::thaw(&Command::PredictionMode(*pm), &literal_buffer[..])];
+                                try!(recode_cmd_buffer(&mut state, &thawed_pm, w,
+                                                       &mut obuffer[..]));
+                            }
+                            to_write = rest;
+                        } else {
+                            to_write = &ibuffer[..]
                         }
-                        try!(recode_cmd_buffer(&mut state, thawed.split_at(to_copy).0, w,
-                                               &mut obuffer[..]));
-                        i_read_index += to_copy;
+                        let mut i_read_index = 0usize;
+                        let mut thawed:[Command<brotli::InputReference>;CMD_BUFFER_SIZE] = [Command::BlockSwitchCommand(BlockSwitch::new(0));CMD_BUFFER_SIZE];
+                        while i_read_index < ibuffer.len() {
+                            let to_copy = core::cmp::min(thawed.len(), ibuffer.len() - i_read_index);
+                            for (icommand, frozen) in thawed[..to_copy].iter_mut().zip(ibuffer[..].split_at(i_read_index).1.split_at(to_copy).0.iter()) {
+                                *icommand = brotli::interface::thaw(frozen, &literal_buffer[..]);
+                            }
+                            try!(recode_cmd_buffer(&mut state, thawed.split_at(to_copy).0, w,
+                                                   &mut obuffer[..]));
+                            i_read_index += to_copy;
+                        }
                     }
                     ibuffer.clear();
                 }
