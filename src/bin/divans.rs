@@ -53,7 +53,6 @@ use divans::Compressor;
 use divans::Decompressor;
 use divans::Speed;
 use divans::CMD_BUFFER_SIZE;
-use divans::free_cmd;
 
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
@@ -187,13 +186,34 @@ fn deserialize_external_probabilities(probs: &std::vec::Vec<u8>) -> Result<Featu
 
 
 
+#[cfg(not(feature="external-literal-probability"))]
+fn deserialize_ref_probabilities(probs: brotli::SliceOffset) -> Result<FeatureFlagSliceType<brotli::SliceOffset>, io::Error> {
+    if probs.len() != 0 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput,
+            "To parse nonzero external probabiltiy flags, compile with feature flag external-literal-probability"));
+    }
+    Ok(FeatureFlagSliceType::<brotli::SliceOffset>::default())
+}
+#[cfg(feature="external-literal-probability")]
+fn deserialize_ref_probabilities(probs: brotli::SliceOffset) -> Result<FeatureFlagSliceType<brotli::SliceOffset>, io::Error> {
+    Ok(FeatureFlagSliceType::<brotli::SliceOffset>(ItemVec(probs)))
+}
 
-fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
+
+
+
+fn command_parse(s : &str, literal_buffer: &mut Vec<u8>) -> Result<Option<Command<brotli::SliceOffset>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.is_empty() {
         panic!("Unexpected");
     }
     let cmd = command_vec[0];
+    if cmd.starts_with("#") {
+        return Ok(None);
+    }
+    if cmd.starts_with("//") {
+        return Ok(None);
+    }
     if cmd == "window" {
             // FIXME validate
             return Ok(None);
@@ -316,7 +336,16 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         ret.set_context_map_speed(cm_stride_mix_speed[0]);
         ret.set_stride_context_speed(cm_stride_mix_speed[1]);
         ret.set_combined_stride_context_speed(cm_stride_mix_speed[2]);
-        return Ok(Some(Command::PredictionMode(ret)));
+        let first_marker = literal_buffer.len();
+        literal_buffer.extend(ret.literal_context_map.slice());
+        let second_marker = literal_buffer.len();
+        literal_buffer.extend(ret.predmode_speed_and_distance_context_map.slice());
+
+        return Ok(Some(Command::PredictionMode(PredictionModeContextMap::<brotli::SliceOffset>{
+            literal_context_map:brotli::SliceOffset(first_marker, ret.literal_context_map.len() as u32),
+            predmode_speed_and_distance_context_map:brotli::SliceOffset(second_marker,
+                                                                        ret.predmode_speed_and_distance_context_map.len() as u32),
+        })));
     } else if cmd == "ctype" || cmd == "ltype" || cmd == "dtype" {
         if command_vec.len() != 2 && (command_vec.len() != 3 || cmd != "ltype") {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
@@ -452,6 +481,7 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         if expected_len ==  0 {
             return Ok(None);
         }
+
         let data = try!(util::literal_slice_to_vec(&s.as_bytes()[command_vec[0].len() + command_vec[1].len() + 2..]));
         let probs = if command_vec.len() > 3 && command_vec[2].len() != 0 && command_vec[2].bytes().next().unwrap() != b'\"' {
             let prob = try!(util::hex_slice_to_vec(command_vec[3].as_bytes()));
@@ -460,7 +490,10 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         } else {
             Vec::<u8>::new()
         };
-
+        let marker0 = literal_buffer.len();
+        literal_buffer.extend(&data[..]);
+        let marker1 = literal_buffer.len();
+        literal_buffer.extend(&probs[..]);
         if data.len() != expected_len {
             return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                       String::from("Length does not match ") + s))
@@ -468,9 +501,9 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
         match deserialize_external_probabilities(&probs) {
             Ok(external_probs) => {
                 return Ok(Some(Command::Literal(LiteralCommand{
-                    data:ItemVec(data),
+                    data:brotli::SliceOffset(marker0, data.len() as u32),
                     high_entropy:cmd == "rndins",
-                    prob:external_probs,
+                    prob:deserialize_ref_probabilities(brotli::SliceOffset(marker1, external_probs.len() as u32)).unwrap(),
                          })));
             },
             Err(external_probs_err) => {
@@ -483,8 +516,9 @@ fn command_parse(s : &str) -> Result<Option<Command<ItemVec<u8>>>, io::Error> {
 }
 
 fn recode_cmd_buffer<RState:divans::interface::Compressor,
-                     Writer:std::io::Write,>(state: &mut RState,
-                                             cmd_buffer:&[Command<ItemVec<u8>>],
+                     Writer:std::io::Write,
+                     ISl:SliceWrapper<u8>+Default>(state: &mut RState,
+                                             cmd_buffer:&[Command<ISl>],
                                              w: &mut Writer,
                                              output_scratch:&mut [u8]) -> Result<usize, io::Error> {
     let mut i_processed_index = 0usize;
@@ -531,22 +565,9 @@ fn recode_inner<Reader:std::io::BufRead,
     w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = vec![0u8; 65_536];
-    let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop()];
+    let mut literal_buffer = Vec::<u8>::new();
+
+    let mut tbuffer = [Command::<brotli::SliceOffset>::nop(); CMD_BUFFER_SIZE];
 
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
@@ -560,7 +581,11 @@ fn recode_inner<Reader:std::io::BufRead,
                 return Err(e)
             },
             Ok(count) => {
-                if i_read_index == ibuffer.len() || count == 0 {
+                if i_read_index == tbuffer.len() || count == 0 {
+                    let mut ibuffer:[Command<brotli::InputReference>;CMD_BUFFER_SIZE] = [Command::BlockSwitchCommand(BlockSwitch::new(0));CMD_BUFFER_SIZE];
+                    for (icommand, frozen) in ibuffer[..i_read_index].iter_mut().zip(tbuffer[..i_read_index].iter()) {
+                        *icommand = brotli::interface::thaw(frozen, &literal_buffer[..]);
+                    }
                     recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
                                       &mut obuffer[..]).unwrap();
                     i_read_index = 0
@@ -569,10 +594,10 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                match command_parse(&line).unwrap() {
+                match command_parse(&line, &mut literal_buffer).unwrap() {
                     None => {},
                     Some(c) => {
-                        ibuffer[i_read_index] = c;
+                        tbuffer[i_read_index] = c;
                         i_read_index += 1;
                     }
                 }
@@ -607,7 +632,7 @@ fn recode_inner<Reader:std::io::BufRead,
     Ok(())
 }
 
-fn allowed_command(_cmd: &Command<ItemVec<u8>>, _last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
+fn allowed_command<ISl:SliceWrapper<u8>+Default>(_cmd: &Command<ISl>, _last_literal_switch: &mut divans::LiteralBlockSwitch) -> bool {
     true
 }
 
@@ -625,26 +650,10 @@ fn compress_inner<Reader:std::io::BufRead,
     w:&mut Writer) -> io::Result<()> {
     let mut buffer = String::new();
     let mut obuffer = vec![0u8; 65_536];
-    let mut ibuffer:[Command<ItemVec<u8>>; CMD_BUFFER_SIZE] = [Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop(),
-                                                           Command::<ItemVec<u8>>::nop()];
+    let mut literal_buffer = Vec::<u8>::new();
+    let mut ibuffer = Vec::<Command<brotli::SliceOffset>>::new();
 
-    let mut i_read_index = 0usize;
     let mut last_literal_switch = LiteralBlockSwitch::new(0, 0);
-    let mut m8 = ItemVecAllocator::<u8>::default();
     loop {
         buffer.clear();
         match r.read_line(&mut buffer) {
@@ -655,28 +664,47 @@ fn compress_inner<Reader:std::io::BufRead,
                 return Err(e)
             },
             Ok(count) => {
-                if i_read_index == ibuffer.len() || count == 0 {
-                    try!(recode_cmd_buffer(&mut state, ibuffer.split_at(i_read_index).0, w,
-                                               &mut obuffer[..]));
-
-                    for item in &mut ibuffer {
-                       free_cmd(item, &mut m8);
+                let mut metablock_complete = false;
+                let to_be_pushed;
+                if count != 0 {
+                    let line = buffer.trim().to_string();
+                    match try!(command_parse(&line, &mut literal_buffer)) {
+                        None => to_be_pushed = None,
+                        Some(c) => {
+                            if allowed_command(&c,
+                                               &mut last_literal_switch) {
+                                if let Command::PredictionMode(_) = c {
+                                    metablock_complete = true;
+                                }
+                                to_be_pushed = Some(c);
+                            } else {
+                                to_be_pushed = None;
+                            }
+                        }
                     }
-                    i_read_index = 0
+                } else {
+                    to_be_pushed = None;
+                }
+
+                if count == 0 || metablock_complete {
+                    let mut i_read_index = 0usize;
+                    let mut thawed:[Command<brotli::InputReference>;CMD_BUFFER_SIZE] = [Command::BlockSwitchCommand(BlockSwitch::new(0));CMD_BUFFER_SIZE];
+                    while i_read_index < ibuffer.len() {
+                        let to_copy = core::cmp::min(thawed.len(), ibuffer.len() - i_read_index);
+                        for (icommand, frozen) in thawed[..to_copy].iter_mut().zip(ibuffer[..].split_at(i_read_index).1.split_at(to_copy).0.iter()) {
+                            *icommand = brotli::interface::thaw(frozen, &literal_buffer[..]);
+                        }
+                        try!(recode_cmd_buffer(&mut state, thawed.split_at(to_copy).0, w,
+                                               &mut obuffer[..]));
+                        i_read_index += to_copy;
+                    }
+                    ibuffer.clear();
+                }
+                if let Some(c) = to_be_pushed {
+                    ibuffer.push(c);
                 }
                 if count == 0 {
                     break;
-                }
-                let line = buffer.trim().to_string();
-                match try!(command_parse(&line)) {
-                    None => {},
-                    Some(c) => {
-                        if allowed_command(&c,
-                                           &mut last_literal_switch) {
-                            ibuffer[i_read_index] = c;
-                            i_read_index += 1;
-                        }
-                    }
                 }
             }
         }
