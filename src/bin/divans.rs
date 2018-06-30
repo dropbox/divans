@@ -55,6 +55,7 @@ use divans::DivansOutputResult;
 use divans::Compressor;
 use divans::Decompressor;
 use divans::Speed;
+use divans::ir_optimize;
 use divans::CMD_BUFFER_SIZE;
 
 use divans::DivansCompressor;
@@ -696,6 +697,8 @@ fn compress_inner<Reader:std::io::BufRead,
     r:&mut Reader,
     w:&mut Writer,
     opts: &divans::DivansCompressorOptions,) -> io::Result<()> {
+    let mut expanded_buffer  = ItemVec::<Command<brotli::SliceOffset>>::default();
+    let mut mc = ItemVecAllocator::<Command<brotli::SliceOffset>>::default();
     let mut buffer = String::new();
     let mut obuffer = vec![0u8; 65_536];
     let backref_len = (1u64 << opts.window_size.unwrap() as u32) as usize;
@@ -717,22 +720,51 @@ fn compress_inner<Reader:std::io::BufRead,
                 let line = buffer.trim().to_string();
                 if (count == 0 || is_pred_mode(&line) || literal_cursor >= literal_buffer.len()) && ibuffer.len() != 0 {
                     {
+                    let mut rest;
                     let to_write;
                     if let Command::PredictionMode(x) = ibuffer[0] {
                         let pred_mode = x;
-                        let rest = &ibuffer[1..];
+                        rest = &mut ibuffer[1..];
                         let mut thawed_pm = match brotli::interface::thaw(&Command::PredictionMode(pred_mode), &predmode_buffer[..]) {
                             Command::PredictionMode(x) => x,
                             _ => panic!("Thawed predctionmode is not a predictionmode"),
                         };
-                        let mut_pred_mode = PredictionModeContextMap::<ItemVec<u8>>{
-                            literal_context_map:ItemVec(thawed_pm.literal_context_map.slice().to_vec()),
-                            predmode_speed_and_distance_context_map:ItemVec(thawed_pm.predmode_speed_and_distance_context_map.slice().to_vec()),
+                        let mut literal_context_map_mut = thawed_pm.literal_context_map.slice().to_vec();
+                        let mut distance_context_map_mut = thawed_pm.predmode_speed_and_distance_context_map.slice().to_vec();
+                        let mut pred_mode_mut = PredictionModeContextMap::<brotli::InputReferenceMut>{
+                            literal_context_map:brotli::InputReferenceMut{
+                                data:&mut literal_context_map_mut[..],
+                                orig_offset:0,
+                            },
+                            predmode_speed_and_distance_context_map:brotli::InputReferenceMut{
+                                data:&mut distance_context_map_mut[..],
+                                orig_offset:0,
+                            }
                         };
-                        //OPTIMIZE HERE
-                        try!(recode_cmd_buffer(&mut state, &[Command::PredictionMode(mut_pred_mode)], w,
+                        let final_cmd = if opts.divans_ir_optimizer != 0 {
+                            match ir_optimize::ir_optimize(&mut pred_mode_mut,
+                                                           &mut rest,
+                                                           brotli::InputPair(brotli::InputReference{
+                                                               data:&literal_buffer[..],
+                                                               orig_offset:0,
+                                                           },brotli::InputReference{
+                                                               data:&[],
+                                                               orig_offset:literal_buffer.len(),
+                                                           }),
+                                                           state.get_codec_mut(),
+                                                           opts.window_size.unwrap() as u8,
+                                                           *opts,
+                                                           &mut mc, &mut expanded_buffer) {
+                                Ok(buf) => buf,
+                                Err(e) => {return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                                                     e));},
+                            }
+                        } else {
+                            rest
+                        };
+                        try!(recode_cmd_buffer(&mut state, &[Command::PredictionMode(pred_mode_mut)], w,
                                                &mut obuffer[..]));
-                        to_write = rest;
+                        to_write = final_cmd;
                     } else {
                         to_write = &ibuffer[..]
                     }

@@ -244,6 +244,12 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, All
             };
         }
     }
+    pub fn get_codec_mut(&mut self) -> &mut DivansCodec<DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16> {
+        &mut self.codec
+    }
+    pub fn get_codec(&mut self) -> &DivansCodec<DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16> {
+        &self.codec
+    }
     pub fn get_m8(&mut self) -> Option<&mut RepurposingAlloc<u8, AllocU8>> {
        self.codec.get_m8()
     }
