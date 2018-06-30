@@ -218,7 +218,8 @@ fn is_pred_mode(s:&str) -> bool {
     s.starts_with("prediction ")
 }
 
-fn command_parse(s : &str, literal_buffer: &mut Vec<u8>, cursor: &mut usize) -> Result<Option<Command<brotli::SliceOffset>>, io::Error> {
+fn command_parse(s : &str, literal_buffer: &mut Vec<u8>, cursor: &mut usize,
+                 strict_ring_buffer: bool) -> Result<Option<Command<brotli::SliceOffset>>, io::Error> {
     let command_vec : Vec<&str>= s.split(' ').collect();
     if command_vec.is_empty() {
         panic!("Unexpected");
@@ -429,15 +430,17 @@ fn command_parse(s : &str, literal_buffer: &mut Vec<u8>, cursor: &mut usize) -> 
         if *cursor + expected_len as usize > literal_buffer.len() {
             literal_buffer.resize(*cursor + expected_len as usize, 0);
         }
-        if *cursor < distance as usize {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput,
+        if strict_ring_buffer {
+            if *cursor < distance as usize {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput,
                                           "Copy distance before input start"));
+            }
+            for (i, j) in (*cursor..(*cursor+expected_len as usize)).zip((*cursor - distance as usize)..(*cursor - distance as usize + expected_len as usize)) {
+                let tmp = literal_buffer[j];
+                literal_buffer[i] = tmp;
+            }
+            *cursor += expected_len as usize;
         }
-        for (i, j) in (*cursor..(*cursor+expected_len as usize)).zip((*cursor - distance as usize)..(*cursor - distance as usize + expected_len as usize)) {
-            let tmp = literal_buffer[j];
-            literal_buffer[i] = tmp;
-        }
-        *cursor += expected_len as usize;
         return Ok(Some(Command::Copy(CopyCommand{distance:distance, num_bytes:expected_len})));
     } else if cmd == "dict" {
         if command_vec.len() < 6 {
@@ -490,17 +493,19 @@ fn command_parse(s : &str, literal_buffer: &mut Vec<u8>, cursor: &mut usize) -> 
                     final_size:expected_len,
                     transform:transform
                 };
-                let copy_len = u32::from(dict_cmd.word_size);
-                let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
-                let word_index = (dict_cmd.word_id * copy_len) + word_len_category_index;
-                let dict = &kBrotliDictionary;
-                let word = &dict[(word_index as usize)..(word_index as usize + copy_len as usize)];
-                let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
-                let final_len = TransformDictionaryWord(&mut transformed_word[..],
-                                                        &word[..],
-                                                        copy_len as i32,
-                                                        i32::from(dict_cmd.transform));
-                expand_or_extend(literal_buffer, &transformed_word[..final_len as usize], cursor);
+                if strict_ring_buffer{
+                    let copy_len = u32::from(dict_cmd.word_size);
+                    let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
+                    let word_index = (dict_cmd.word_id * copy_len) + word_len_category_index;
+                    let dict = &kBrotliDictionary;
+                    let word = &dict[(word_index as usize)..(word_index as usize + copy_len as usize)];
+                    let mut transformed_word = [0u8;kBrotliMaxDictionaryWordLength as usize + 13];
+                    let final_len = TransformDictionaryWord(&mut transformed_word[..],
+                                                            &word[..],
+                                                            copy_len as i32,
+                                                            i32::from(dict_cmd.transform));
+                    expand_or_extend(literal_buffer, &transformed_word[..final_len as usize], cursor);
+                }
                 return Ok(Some(Command::Dict(dict_cmd)));
             }
         }
@@ -613,6 +618,7 @@ fn recode_inner<Reader:std::io::BufRead,
 
     let mut i_read_index = 0usize;
     let mut state = divans::DivansRecodeState::<RingBuffer>::default();
+    let mut cursor = 0usize;
     loop {
         buffer.clear();
         match r.read_line(&mut buffer) {
@@ -636,8 +642,7 @@ fn recode_inner<Reader:std::io::BufRead,
                     break;
                 }
                 let line = buffer.trim().to_string();
-                let mut zero = 0usize;
-                match command_parse(&line, &mut literal_buffer, &mut zero).unwrap() {
+                match command_parse(&line, &mut literal_buffer, &mut cursor, false).unwrap() {
                     None => {},
                     Some(c) => {
                         tbuffer[i_read_index] = c;
@@ -758,10 +763,10 @@ fn compress_inner<Reader:std::io::BufRead,
                     break;
                 }
                 if is_pred_mode(&line) {
-                    if let Some(c) = try!(command_parse(&line, &mut predmode_buffer, &mut predmode_cursor)) {
+                    if let Some(c) = try!(command_parse(&line, &mut predmode_buffer, &mut predmode_cursor, true)) {
                         ibuffer.push(c);
                     }
-                } else if let Some(c) = try!(command_parse(&line, &mut literal_buffer, &mut literal_cursor)) {
+                } else if let Some(c) = try!(command_parse(&line, &mut literal_buffer, &mut literal_cursor, true)) {
                     ibuffer.push(c);
                 }
             }
