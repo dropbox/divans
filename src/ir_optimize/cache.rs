@@ -33,8 +33,6 @@ impl<'a> CacheHitReference<'a> {
     }
 }
 
-
-
 #[derive(Debug,Copy,Clone)]
 pub struct CacheEntry {
     dist:u32,
@@ -73,7 +71,7 @@ impl<AllocU8:Allocator<u8>> Cache<AllocU8> {
         }
         CacheHitReferenceMut(self.hitlist.slice_mut().split_at_mut(index).1)
     }
-    fn forward_reference_hitlist(&mut self, code: u8, cache_index: u8, cmd_offset: usize) {
+    fn forward_reference_hitlist(&mut self, code: u8, cache_index: u8, cmd_offset: usize, _dist:u32) {
         let origin = self.cache[usize::from(cache_index)].origin_offset;
         self.cache[usize::from(cache_index)].origin_offset = cmd_offset; // bump the "next use" of the cache
         let mut log = self.get_cache_hit_log_mut(origin);
@@ -85,7 +83,7 @@ impl<AllocU8:Allocator<u8>> Cache<AllocU8> {
             let (cache_dist, ok, cache_index) = get_distance_from_mnemonic_code(&cur_cache, code as u8, copy_len);
             if dist == cache_dist && ok {
                 // we have a hit
-                self.forward_reference_hitlist(code, cache_index, cmd_offset);
+                self.forward_reference_hitlist(code, cache_index, cmd_offset, dist);
                 break;
             }
         }

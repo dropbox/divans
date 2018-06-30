@@ -13,6 +13,21 @@ mod statistics_tracking_codec;
 mod cache;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, TwoCommandThawingArray, ToggleProbabilityBlend,
                                       take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
+
+
+
+// sometimes we can't simulate a future cache hit by putting a value N less into the cache
+// because that value would make for an impossible (negative) recently cached distance
+// instead we simply add the value--which is not a perfectly accurate representation, but likely
+// follows a similar distribution in aggregate
+fn sub_or_add(input: u32, val: u32) -> u32 {
+    if input > val {
+        input - val
+    } else {
+        input + val
+    }
+}
+
 pub fn should_merge<SelectedCDF:CDF16,
                     AllocU8:Allocator<u8>,
                     AllocCDF16:Allocator<SelectedCDF>>(lit: &LiteralCommand<brotli::SliceOffset>,
@@ -44,17 +59,17 @@ pub fn should_merge<SelectedCDF:CDF16,
             //future_hit = i32::from(entry_id);
             match entry_id {
                 0 | 1 | 2 | 3 => actuary.cross_command_state.bk.distance_lru[entry_id as usize] = copy.distance,
-                4 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 1,
+                4 => actuary.cross_command_state.bk.distance_lru[0] = sub_or_add(copy.distance, 1),
                 5 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 1,
-                6 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 1,
+                6 => actuary.cross_command_state.bk.distance_lru[1] = sub_or_add(copy.distance, 1),
                 7 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance + 1,
-                8 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 2,
+                8 => actuary.cross_command_state.bk.distance_lru[0] = sub_or_add(copy.distance, 2),
                 9 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 2,
-                10 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 2,
+                10 => actuary.cross_command_state.bk.distance_lru[1] = sub_or_add(copy.distance, 2),
                 11 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance + 2,
-                12 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance - 3,
+                12 => actuary.cross_command_state.bk.distance_lru[0] = sub_or_add(copy.distance, 3),
                 13 => actuary.cross_command_state.bk.distance_lru[0] = copy.distance + 3,
-                14 => actuary.cross_command_state.bk.distance_lru[1] = copy.distance - 3,
+                14 => actuary.cross_command_state.bk.distance_lru[1] = sub_or_add(copy.distance, 3),
                 _ => {},
             }
         }
