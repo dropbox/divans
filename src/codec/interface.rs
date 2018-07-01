@@ -557,7 +557,7 @@ impl<
     }
 
     pub fn distance_mnemonic_code(&self, d: u32, l:u32) -> u8 {
-        for i in 0..14 {
+        for i in 0..15 {
             let (item, ok, _cache_index) = get_distance_from_mnemonic_code(&self.distance_lru, i as u8, l);
             if item == d && ok {
                 return i as u8;
