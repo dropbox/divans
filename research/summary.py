@@ -107,35 +107,35 @@ for line in sys.stdin:
     mb_size = row['~raw']/1024./1024.
     num_rows += 1
     candidate = [0,0,0]
-    rule = ['d12',
-            'd13',
-            'd20',
-            'd21',
-            'd1',
-            'd1']
-    if zlib_ratio > .99:
-        candidate = row[rule[5]]
-    elif zlib_ratio > .96:
-        candidate = row[rule[4]]
-    elif zlib_ratio > .92: # .85
-        candidate = row[rule[3]]
-    elif zlib_ratio > .89: # .25
-        candidate = row[rule[2]]
-    elif zlib_ratio > .85: # .22
-        candidate = row[rule[1]]
-    else:
-        candidate = row[rule[0]] #1
-    row['dY'] = candidate
-    if zlib_ratio > .97:
-        candidate = row['d29'] # fast to encode fast to decode
+    #rule = ['d12',
+    #        'd13',
+    #        'd20',
+    #        'd21',
+    #        'd1',
+    #        'd1']
+    #if zlib_ratio > .99:
+    #    candidate = row[rule[5]]
+    #elif zlib_ratio > .96:
+    #    candidate = row[rule[4]]
+    #elif zlib_ratio > .92: # .85
+    #    candidate = row[rule[3]]
+    #elif zlib_ratio > .89: # .25
+    #    candidate = row[rule[2]]
+    #elif zlib_ratio > .85: # .22
+    #    candidate = row[rule[1]]
+    #else:
+    #    candidate = row[rule[0]] #1
+    #row['dY'] = candidate
+    #if zlib_ratio > .97:
+    #    candidate = row['d29'] # fast to encode fast to decode
     #elif zlib_ratio > .9:
     #    candidate = row['d38'] # fastest to encode slow to decode
-    elif zlib_ratio > .5:
-        candidate = row['d35'] # fast to encode and slow to decode
-    else:
-        candidate = row['d15'] # slow to encode fast to decode
+    #elif zlib_ratio > .5:
+    #    candidate = row['d35'] # fast to encode and slow to decode
+    #else:
+    #    candidate = row['d15'] # slow to encode fast to decode
     #    candidate = row['d1'] # slowest to encode fat to decoed
-    row['dX'] = candidate
+    #row['dX'] = candidate
     for (key, value) in row.iteritems():
         if key not in total:
             total[key] = [0,0,0,0,0]

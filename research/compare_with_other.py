@@ -53,44 +53,125 @@ brotlistride = '-w22'
 gopts = []
 
 gopts.append([ #0
-    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+    ['-O2', '-q9.5', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
      '-sign', '-speed=32,4096'],
-    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
-    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q9.5', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
      '-lsb', '-speed=2,1024'],
 ])
 
 gopts.append([ #1
-    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+    ['-O2', '-q9.5', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
      '-sign', '-speed=32,4096'],
-    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
-    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q9.5', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
      '-lsb', '-speed=2,1024'],
 ])
 
 gopts.append([ #2
-    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+    ['-O2', '-q9.5', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
      '-sign', '-speed=32,4096'],
-    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
-    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q9.5', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
      '-lsb', '-speed=2,1024'],
 ])
 
 gopts.append([ #3
-    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048'],
+    ['-O2', '-q9.5', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
      '-sign', '-speed=32,4096'],
-    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
-    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=16,8192'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q9.5', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
      '-lsb', '-speed=2,1024'],
 ])
+
+gopts.append([ #4
+    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
+     '-sign', '-speed=32,4096'],
+    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
+     '-lsb', '-speed=2,1024'],
+])
+
+gopts.append([ #5
+    ['-O2', '-q11', '-w22', '-lsb', '-lgwin22', '-mixing=1', '-findprior', '-speed=2,2048', '-bytescore=40'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140',
+     '-sign', '-speed=32,4096'],
+    ['-O2', '-q10', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-sign', '-speed=16,8192'],
+    ['-O2', '-q11', '-w22', '-lgwin18', '-mixing=1', '-findprior', '-speed=32,4096', '-bytescore=840'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340',
+     '-lsb', '-speed=2,1024'],
+])
+
+gopts.append([ #6
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+])
+
+gopts.append([ #7
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+])
+
+
+gopts.append([ #8
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+])
+
+gopts.append([ #9
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+])
+
+gopts.append([ #10
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+])
+
+gopts.append([ #11
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
+])
+
+gopts.append([ #12
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
+])
+
+gopts.append([ #13
+    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
+])
+
+gopts.append([ #14
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
+])
+
+gopts.append([ #15
+    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
+])
+
+
 
 lock = threading.Lock()
 brotli_divans_hybrid = 0
@@ -132,22 +213,27 @@ def get_best_ir_size(path, all_irs, brotli_ir, output_files, output_times):
                 zipped_irs.append(subprocess.check_output([zipper, ir0.name, ir1.name]))
     for index in range(len(all_irs)):
         args = ['-i']
-        if index == 0:
-            args.append('-priordepth=65535')
         threads.append(start_ir_thread(path,
                                         divans,
                                        all_irs[index],
                                        output_files,
                                        output_times,
-                                       args,
+                                       args + (['-priordepth=65535'] if index == 0 else []),
                                        index))
         threads.append(start_ir_thread(path,
                                         divans,
                                        zipped_irs[index],
                                        output_files,
                                        output_times,
-                                       args,
+                                       args + (['-priordepth=65535'] if index == 0 else []),
                                        index + len(all_irs)))
+        threads.append(start_ir_thread(path,
+                                        divans,
+                                       all_irs[index],
+                                       output_files,
+                                       output_times,
+                                       args + ['-priordepth=65535'],
+                                       index + 2 * len(all_irs)))
     for t in threads:
         t.join()
     #with open('/home/danielrh/dev/rust-divans/sfc3.dv') as fff:
@@ -378,8 +464,10 @@ def process_file(path, data, baseline_compression, weight=1):
         check_uncompressed = False
         dec_time = time.time()
         if (opt_index & 1) != 0:
-            ir_output_files = ['','','','']
-            ir_output_times = [0,0,0,0]
+            ir_output_files = ['','','','', '', '']
+            ir_output_times = [0,0,0,0, 0, 0]
+            assert brotli_stderr['lzma']
+            assert brotli_stderr['z19']
             get_best_ir_size(path, [brotli_stderr['lzma'], brotli_stderr['z19']], brotli_stderr['b11'], ir_output_files, ir_output_times)
             output_files.extend(ir_output_files)
             output_times.extend(ir_output_times)
