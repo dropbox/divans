@@ -105,6 +105,9 @@ for line in sys.stdin:
     uncut += row['zlib'][0]
     raw_size += row['~raw']
     mb_size = row['~raw']/1024./1024.
+    if mb_size < .01:
+        cut += row['zlib'][0]
+        continue
     num_rows += 1
     candidate = [0,0,0]
     #rule = ['d12',
@@ -136,6 +139,7 @@ for line in sys.stdin:
     #    candidate = row['d15'] # slow to encode fast to decode
     #    candidate = row['d1'] # slowest to encode fat to decoed
     #row['dX'] = candidate
+    
     for (key, value) in row.iteritems():
         if key not in total:
             total[key] = [0,0,0,0,0]
@@ -146,7 +150,7 @@ for line in sys.stdin:
             continue
         total[key][0] += value[0]
         decode_hist[key].append(value[2])
-        if mb_size >= 1 or True:
+        if mb_size >  .01:
             total[key][1] += value[1]
             total[key][2] += value[2]
             total[key][3] += mb_size
