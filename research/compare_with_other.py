@@ -7,9 +7,9 @@ import threading
 import time
 import traceback
 import zlib
-
+from itertools import chain
 from collections import defaultdict, namedtuple
-
+from stat import S_ISDIR, S_ISREG
 import json
 CompressCommand = namedtuple('CompressCommand',
                              ['name',
@@ -120,9 +120,9 @@ gopts.append([ #7
     ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
 ])
 
-
 gopts.append([ #8
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
+    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
     ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
     ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
     ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
@@ -130,14 +130,6 @@ gopts.append([ #8
 ])
 
 gopts.append([ #9
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
-    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
-    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
-])
-
-gopts.append([ #10
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
     ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
     ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
@@ -146,30 +138,6 @@ gopts.append([ #10
     ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
 ])
 
-gopts.append([ #11
-    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=340'],
-    ['-O2', '-q9.5', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=840'],
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=140'],
-    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
-    ['-O2', '-q7', '-w22', '-lgwin22', '-mixing=1', '-findprior', '-bytescore=540'],
-])
-
-gopts.append([ #12
-    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
-])
-
-gopts.append([ #13
-    ['-O2', '-q8', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
-])
-
-gopts.append([ #14
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
-])
-
-gopts.append([ #15
-    ['-O2', '-q9', '-w22', '-lgwin22', '-mixing=2', '-findprior', '-bytescore=340'],
-])
 
 
 
@@ -293,14 +261,26 @@ def start_ir_thread(path,
     return t
 
 def main():
-    for root, subdirs, files in os.walk(walk_dir):
+    file_list_root = ""
+    stdin_files = []
+    for file in sys.stdin:
+        stdin_files.append(file.strip())
+    insecure_random.shuffle(stdin_files)
+    for root, subdirs, files in chain([(file_list_root, [], stdin_files)], os.walk(walk_dir)):
         for filename in files:
             path = os.path.join(root, filename)
+            sys.stderr.write('working '+path+'\n')
+            sys.stderr.flush()
             try:
                 metadata = os.stat(path)
+                if S_ISDIR(metadata.st_mode):
+                    continue
+                if not S_ISREG(metadata.st_mode):
+                    continue
                 if metadata.st_size <  1024:
                     continue
             except Exception:
+                traceback.print_exc()
                 continue
             try:
                 with open(path) as fff:
@@ -326,6 +306,35 @@ def rand_half(data):
         return data[:]
     start = insecure_random.randrange(0, len(data) - new_len - 1)
     return data[start:start + new_len]
+
+def determine_brotli_trunc_best(other, data, quality, name, proc_map, compress_map, timing_map, frac):
+    index = 0
+    best_index = 0
+    trials =('40','140','240','340','440','540','640','840');
+    trial_proc_map = {}
+    for bytescore in trials:
+        trial_proc_map[bytescore] = subprocess.Popen(
+            [other, quality, '-c', '/dev/stdin', '-bytescore=' + bytescore],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE)
+    time.sleep(1)
+    trunc_data = data
+    if len(data) > 16384:
+        trunc_data = data[len(data)//2 - len(data)//(frac * 2):len(data)//2 + (len(data) + 7)//(frac*2)]
+    start = time.time()
+    for bytescore in trials:
+        pcompressed, pstderr = trial_proc_map[bytescore].communicate(trunc_data)
+        if name not in compress_map or len(pcompressed) < len(compress_map[name]):
+            compress_map[name] = pcompressed
+            best_index = index
+        index += 1
+    proc_map[name] = subprocess.Popen(
+        [other, quality, '-c', '/dev/stdin', '-bytescore=' + trials[best_index]],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE)
+    pcompressed, pstderr = proc_map[name].communicate(data)
+    compress_map[name] = pcompressed
+    timing_map[name] = time.time() - start
 
 def process_file(path, data, baseline_compression, weight=1):
     global lock
@@ -400,6 +409,26 @@ def process_file(path, data, baseline_compression, weight=1):
             if len(pcompressed) < len(compressed['b96']):
                 compressed['b96'] = pcompressed
                 brotli_timing['b96'] = time.time() - start
+            compressed['b91'] = uncompressed_proxy
+            start = time.time()
+            for bytescore in ('40','140','240','340','440','540','640','840'):
+                start = time.time()
+                brotli_process['b91'] = subprocess.Popen(
+                    [other, '-q9', '-c', '/dev/stdin', '-bytescore=' + bytescore],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE)
+                pcompressed, pstderr = brotli_process['b91'].communicate(data)
+                if len(pcompressed) < len(compressed['b91']):
+                    compressed['b91'] = pcompressed
+                    brotli_timing['b91'] = time.time() - start
+            brotli_timing['b91'] = time.time() - start
+            determine_brotli_trunc_best(other, data, '-q8', 'b81e', brotli_process, compressed, brotli_timing, 4)
+            determine_brotli_trunc_best(other, data, '-q9', 'b91e', brotli_process, compressed, brotli_timing, 4)
+            determine_brotli_trunc_best(other, data, '-q9.5', 'b95e', brotli_process, compressed, brotli_timing, 4)
+
+            determine_brotli_trunc_best(other, data, '-q8', 'b81t', brotli_process, compressed, brotli_timing, 8)
+            determine_brotli_trunc_best(other, data, '-q9', 'b91t', brotli_process, compressed, brotli_timing, 8)
+            determine_brotli_trunc_best(other, data, '-q9.5', 'b95t', brotli_process, compressed, brotli_timing, 8)
 
         if q_arg_list.darglist[0] == other:
             with tempfile.NamedTemporaryFile(dir='/dev/shm', delete=True) as brotf:
@@ -422,6 +451,13 @@ def process_file(path, data, baseline_compression, weight=1):
             brotli_dtiming[n] = dend - dstart
         if n=='b95':
             brotli_dtiming['b96'] = dend - dstart
+            brotli_dtiming['b91t'] = dend - dstart
+            brotli_dtiming['b81t'] = dend - dstart
+            brotli_dtiming['b95t'] = dend - dstart
+            brotli_dtiming['b91e'] = dend - dstart
+            brotli_dtiming['b81e'] = dend - dstart
+            brotli_dtiming['b95e'] = dend - dstart
+            brotli_dtiming['b91'] = dend - dstart
     raw_output_data = []
     data_half = rand_half(data)
     data_fourth = rand_half(data_half)
@@ -500,7 +536,7 @@ def process_file(path, data, baseline_compression, weight=1):
                 min_item = uncompressed
             provisional_dtiming = time.time() - dec_time
         else:
-            provisional_dtiming = time.time() - dec_time
+            provisional_dtiming = baseline_compression / 1000000000.0 + .001
         divans_timing[opt_index] = dec_time - start
         divans_dtiming[opt_index] = provisional_dtiming
         divans_stiming[opt_index] = divans_dtiming[opt_index]

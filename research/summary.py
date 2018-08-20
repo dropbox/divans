@@ -139,7 +139,8 @@ for line in sys.stdin:
     #    candidate = row['d15'] # slow to encode fast to decode
     #    candidate = row['d1'] # slowest to encode fat to decoed
     #row['dX'] = candidate
-    
+    if ('b91' not in row):
+        row['b91'] = row['b9']
     for (key, value) in row.iteritems():
         if key not in total:
             total[key] = [0,0,0,0,0]
