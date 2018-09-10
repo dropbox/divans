@@ -1,63 +1,87 @@
 use ::brotli;
 use ::interface::{DivansResult, DivansOutputResult};
 use ::brotli::enc::interface::LiteralPredictionModeNibble;
+use ::brotli::enc::{BrotliAlloc, CombiningAllocator};
 use core;
+use ::alloc::Allocator;
 use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor};
 use ::probability::Speed;
 use super::alloc_util::SubclassableAllocator;
 use super::interface::*;
-type BrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator<u8>,
-                                                         SubclassableAllocator<u16>,
-                                                         SubclassableAllocator<u32>,
-                                                         SubclassableAllocator<i32>,
-                                                         SubclassableAllocator<u64>,
-                                                         SubclassableAllocator<brotli::enc::command::Command>,
-                                                         SubclassableAllocator<::DefaultCDF16>,
-                                                         SubclassableAllocator<brotli::enc::util::floatX>,
-                                                         SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
-                                                         SubclassableAllocator<brotli::enc::PDF>,
-                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
-                                                         SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
-                                                         SubclassableAllocator<brotli::enc::histogram::ContextType>,
-                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
-                                                         SubclassableAllocator<brotli::enc::ZopfliNode>>;
+
 type InternalCompressorFactory = ::DivansCompressorFactoryStruct<SubclassableAllocator<u8>,
                                                          SubclassableAllocator<::DefaultCDF16>>;
+
+type FFICombiningAlloc = brotli::enc::CombiningAllocator<
+        SubclassableAllocator<u8>,
+    SubclassableAllocator<u16>,
+    SubclassableAllocator<i32>,
+    SubclassableAllocator<u32>,
+    SubclassableAllocator<u64>,
+    SubclassableAllocator<brotli::enc::command::Command>,
+    SubclassableAllocator<brotli::enc::util::floatX>,
+    SubclassableAllocator<brotli::enc::v8>,
+    SubclassableAllocator<brotli::enc::s16>,
+    SubclassableAllocator<brotli::enc::PDF>,
+    SubclassableAllocator<brotli::enc::StaticCommand>,
+    SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
+    SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
+    SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
+    SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
+    SubclassableAllocator<brotli::enc::histogram::ContextType>,
+    SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
+    SubclassableAllocator<brotli::enc::ZopfliNode>>;
+type FFIHybridBrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator<u8>,
+//                                                                 SubclassableAllocator<u32>,
+                                                                 SubclassableAllocator<::DefaultCDF16>,
+                                                                 brotli::enc::CombiningAllocator<
+                                                                         SubclassableAllocator<u8>,
+                                                                     SubclassableAllocator<u16>,
+                                                                     SubclassableAllocator<i32>,
+                                                                     SubclassableAllocator<u32>,
+                                                                     SubclassableAllocator<u64>,
+                                                                     SubclassableAllocator<brotli::enc::command::Command>,
+                                                                     SubclassableAllocator<brotli::enc::util::floatX>,
+                                                                     SubclassableAllocator<brotli::enc::v8>,
+                                                                     SubclassableAllocator<brotli::enc::s16>,
+                                                                     SubclassableAllocator<brotli::enc::PDF>,
+                                                                     SubclassableAllocator<brotli::enc::StaticCommand>,
+                                                                     SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
+                                                                     SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
+                                                                     SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
+                                                                     SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
+                                                                     SubclassableAllocator<brotli::enc::histogram::ContextType>,
+                                                                     SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
+                                                                     SubclassableAllocator<brotli::enc::ZopfliNode>>>;
+type FFIBrotliDefaultEncoder = <FFIHybridBrotliFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
+                                                                           SubclassableAllocator<u32>,
+                                                                           SubclassableAllocator<::DefaultCDF16>>
+                                >::DefaultEncoder;
+
+type FFIHybridCompressor = ::BrotliDivansHybridCompressor<::DefaultCDF16,
+                                                    FFIBrotliDefaultEncoder,
+                                                    SubclassableAllocator<u8>,
+                                                    SubclassableAllocator<::DefaultCDF16>,
+                                                    FFICombiningAlloc>;
+type FFIDivansBrotliConstructedCompressor = <FFIHybridBrotliFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
+                                                                                                 SubclassableAllocator<u32>,
+                                                                                                 SubclassableAllocator<::DefaultCDF16>>>::ConstructedCompressor;
+
+type FFIInternalDefaultEncoder = <InternalCompressorFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
+                                                                                         SubclassableAllocator<u32>,
+                                                                                         SubclassableAllocator<::DefaultCDF16>>
+                                               >::DefaultEncoder;
+
+type FFIInternalCompressor = ::DivansCompressor<FFIInternalDefaultEncoder,
+                                                SubclassableAllocator<u8>,
+                                                SubclassableAllocator<u32>,
+                                                SubclassableAllocator<::DefaultCDF16>>;
+
+
 pub enum CompressorState {
     OptionStage(DivansCompressorOptions),
-    BrotliCompressor(::BrotliDivansHybridCompressor<::DefaultCDF16,
-                                                         <BrotliFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
-                                                                                                          SubclassableAllocator<u32>,
-                                                                                                          SubclassableAllocator<::DefaultCDF16>>
-                                                          >::DefaultEncoder,
-                                                         SubclassableAllocator<u8>,
-                                                         SubclassableAllocator<u16>,
-                                                         SubclassableAllocator<u32>,
-                                                         SubclassableAllocator<i32>,
-                                                         SubclassableAllocator<u64>,
-                                                         SubclassableAllocator<brotli::enc::command::Command>,
-                                                         SubclassableAllocator<::DefaultCDF16>,
-                                                         SubclassableAllocator<brotli::enc::util::floatX>,
-                                                         SubclassableAllocator<brotli::enc::vectorization::Mem256f>,
-                                                         SubclassableAllocator<brotli::enc::PDF>,
-                                                         SubclassableAllocator<brotli::enc::StaticCommand>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramLiteral>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramCommand>,
-                                                         SubclassableAllocator<brotli::enc::histogram::HistogramDistance>,
-                                                         SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
-                                                         SubclassableAllocator<brotli::enc::histogram::ContextType>,
-                                                         SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
-                                                         SubclassableAllocator<brotli::enc::ZopfliNode>>),
-    InternalCompressor(::DivansCompressor<<InternalCompressorFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
-                                                                                                             SubclassableAllocator<u32>,
-                                                                                                             SubclassableAllocator<::DefaultCDF16>>
-                                               >::DefaultEncoder,
-                       SubclassableAllocator<u8>,
-                       SubclassableAllocator<u32>,
-                       SubclassableAllocator<::DefaultCDF16>>),
+    BrotliCompressor(FFIDivansBrotliConstructedCompressor),
+    InternalCompressor(FFIInternalCompressor),
 }
 
 impl Default for CompressorState {
@@ -185,28 +209,30 @@ impl CompressorState {
             _ => {
                 core::mem::replace(self,
                                    CompressorState::BrotliCompressor(
-                                       BrotliFactory::new(
+                                       FFIHybridBrotliFactory::new(
                                            SubclassableAllocator::<u8>::new(allocators.clone()),
                                            SubclassableAllocator::<u32>::new(allocators.clone()),
                                            SubclassableAllocator::<::DefaultCDF16>::new(allocators.clone()),
                                            opts,
-                                           (
-                                               SubclassableAllocator::<u8>::new(allocators.clone()),
-                                               SubclassableAllocator::<u16>::new(allocators.clone()),
-                                               SubclassableAllocator::<i32>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::command::Command>::new(allocators.clone()),
-                                               SubclassableAllocator::<u64>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::util::floatX>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::vectorization::Mem256f>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::histogram::HistogramLiteral>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::histogram::HistogramCommand>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::histogram::HistogramDistance>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::ZopfliNode>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::PDF>::new(allocators.clone()),
-                                               SubclassableAllocator::<brotli::enc::StaticCommand>::new(allocators.clone()),
+                                               brotli::enc::CombiningAllocator::new(
+                                                   SubclassableAllocator::<u8>::new(allocators.clone()),
+                                                   SubclassableAllocator::<u16>::new(allocators.clone()),
+                                                   SubclassableAllocator::<i32>::new(allocators.clone()),
+                                                   SubclassableAllocator::<u32>::new(allocators.clone()),
+                                                   SubclassableAllocator::<u64>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::command::Command>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::util::floatX>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::v8>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::s16>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::PDF>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::StaticCommand>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::histogram::HistogramLiteral>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::histogram::HistogramCommand>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::histogram::HistogramDistance>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::cluster::HistogramPair>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::histogram::ContextType>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::entropy_encode::HuffmanTree>::new(allocators.clone()),
+                                                   SubclassableAllocator::<brotli::enc::ZopfliNode>::new(allocators.clone()),
                                            ))));
             
             }
@@ -284,3 +310,4 @@ impl Drop for DivansCompressorState {
         }
     }
 }
+
