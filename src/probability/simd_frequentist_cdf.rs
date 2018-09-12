@@ -1,9 +1,9 @@
 use core;
-use core::simd::FromBits;
+use packed_simd::FromBits;
 use super::interface::{Prob, BaseCDF, Speed, CDF16, BLEND_FIXED_POINT_PRECISION, SymStartFreq, LOG2_SCALE};
 use super::numeric;
-use core::simd;
-use core::simd::{i32x2, f64x2, i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
+
+use packed_simd::{i32x2, f64x2, i16x16, i64x4, i16x8, i8x32, i8x16, u32x8, u8x16, i64x2, i32x8};
 //use stdsimd::vendor::__m256i;
 
 #[derive(Clone,Copy)]
@@ -62,7 +62,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
     }
     fn valid(&self) -> bool {
         let mut slice = [0i16; 16];
-        self.cdf.store_unaligned(&mut slice);
+        self.cdf.write_to_slice_unaligned(&mut slice);
         for it in slice[0..15].iter().zip(slice[1..16].iter()) {
             let (prev, next) = it;
             if (*next <= *prev) {
@@ -86,7 +86,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
                                   self.cdf(sym) as i32);
         let scaled_prev_cur = f64x2::from(prev_cur << LOG2_SCALE);
         let prev_cur_over_max = scaled_prev_cur / (self.max() as f64);
-        let start_end = i32x2::from(prev_cur_over_max);
+        let start_end = i32x2::new(prev_cur_over_max.extract(0) as i32, prev_cur_over_max.extract(1) as i32);
         let start = start_end.extract(0) + 1; // the +1 is a major hax
         let freq = start_end.extract(1) - start; // don't want rounding errors to work out unfavorably
         SymStartFreq {
@@ -217,8 +217,8 @@ impl CDF16 for SIMDFrequentistCDF16 {
         let rescaled_other0 = (other0 * our_max_v) >> desired_shift;
         let rescaled_other1 = (other1 * our_max_v) >> desired_shift;
 
-        let ret0 = (rescaled_self0 * mix_rate_v + rescaled_other0 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as i8);
-        let ret1 = (rescaled_self1 * mix_rate_v + rescaled_other1 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as i8);
+        let ret0 = (rescaled_self0 * mix_rate_v + rescaled_other0 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as u32);
+        let ret1 = (rescaled_self1 * mix_rate_v + rescaled_other1 * inv_mix_rate_v + one) >> (BLEND_FIXED_POINT_PRECISION as u32);
         SIMDFrequentistCDF16::new(i32x8_tuple_to_i16x16(ret0, ret1))
     }
     #[inline(always)]
@@ -289,7 +289,7 @@ mod test {
                             (((300 + i * 4 + j) as i64) << 32) +
                             (((400 + i * 4 + j) as i64) << 48));
             }
-            input[i] = i64x4::load_unaligned(&array);
+            input[i] = i64x4::read_from_slice_unaligned(&array);
         }
         let output = i64x4_tuple_to_i16x16(input[0], input[1], input[2], input[3]);
         for i in 0..4 {
