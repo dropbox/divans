@@ -27,10 +27,6 @@ impl Default for SIMDFrequentistCDF16 {
     }
 }
 
-extern "platform-intrinsic" {
-    pub fn simd_shuffle4<T, U>(x: T, y: T, idx: [u32; 4]) -> U;
-    pub fn simd_shuffle16<T, U>(x: T, y: T, idx: [u32; 16]) -> U;
-}
 #[cfg(feature="avoid-divide")]
 #[inline(always)]
 pub fn lookup_divisor(cdfmax: i16) -> (i64, u8) {
@@ -105,8 +101,8 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let inv_max_and_bitlen = lookup_divisor(cdfmax);
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
         let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
-        let tmp_byte: i8x16 = unsafe { simd_shuffle16(i8x32::from_bits(symbol_less), i8x32::splat(0),
-                                                      [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30]) };
+        let tmp_byte: i8x16 = shuffle!(i8x32::from_bits(symbol_less), i8x32::splat(0),
+                                                      [0, 4, 8, 12, 16, 20, 24, 28, 2, 6, 10, 14, 18, 22, 26, 30]);
         let tmp_mask = i64x2::from_bits(tmp_byte & i8x16::new(0xf,0xf,0xf,0xf,0xf,0xf,0xf,0xf,
                                                               -0x10,-0x10,-0x10,-0x10,-0x10,-0x10,-0x10,-0x10));
         let bitmask = (tmp_mask.extract(0) | tmp_mask.extract(1)) as u64;
@@ -123,7 +119,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let inv_max_and_bitlen = lookup_divisor(cdfmax);
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
         let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
-        let bitmask = unsafe { core::arch::x86_64::_mm256_movemask_epi8(core::arch::x86_64::__m256i::from_bits(symbol_less)) };
+        let bitmask = core::arch::x86_64::_mm256_movemask_epi8(core::arch::x86_64::__m256i::from_bits(symbol_less));
         let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
         self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
     }
@@ -137,9 +133,9 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let inv_max_and_bitlen = lookup_divisor(cdfmax);
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
         let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
-        let tmp: i8x16 = unsafe { simd_shuffle16(i8x32::from_bits(symbol_less), i8x32::splat(0),
-                                                 [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]) };
-        let bitmask = unsafe { core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp)) };
+        let tmp: i8x16 = shuffle!(i8x32::from_bits(symbol_less), i8x32::splat(0),
+                                                 [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]);
+        let bitmask = core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp));
         let symbol_id = (32 - (bitmask as u32).leading_zeros()) as u8;
         self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
     }
@@ -148,49 +144,41 @@ impl BaseCDF for SIMDFrequentistCDF16 {
 #[inline(always)]
 fn i16x16_to_i64x4_tuple(input: i16x16) -> (i64x4, i64x4, i64x4, i64x4) {
     let zero = i16x16::splat(0);
-    unsafe {
-        let widened_q0: i16x16 = simd_shuffle16(
-            input, zero, [0, 16, 16, 16, 1, 16, 16, 16, 2, 16, 16, 16, 3, 16, 16, 16]);
-        let widened_q1: i16x16 = simd_shuffle16(
-            input, zero, [4, 16, 16, 16, 5, 16, 16, 16, 6, 16, 16, 16, 7, 16, 16, 16]);
-        let widened_q2: i16x16 = simd_shuffle16(
-            input, zero, [8, 16, 16, 16, 9, 16, 16, 16, 10, 16, 16, 16, 11, 16, 16, 16]);
-        let widened_q3: i16x16 = simd_shuffle16(
-            input, zero, [12, 16, 16, 16, 13, 16, 16, 16, 14, 16, 16, 16, 15, 16, 16, 16]);
-        (i64x4::from_bits(widened_q0), i64x4::from_bits(widened_q1), i64x4::from_bits(widened_q2), i64x4::from_bits(widened_q3))
-    }
+    let widened_q0: i16x16 = shuffle!(
+        input, zero, [0, 16, 16, 16, 1, 16, 16, 16, 2, 16, 16, 16, 3, 16, 16, 16]);
+    let widened_q1: i16x16 = shuffle!(
+        input, zero, [4, 16, 16, 16, 5, 16, 16, 16, 6, 16, 16, 16, 7, 16, 16, 16]);
+    let widened_q2: i16x16 = shuffle!(
+        input, zero, [8, 16, 16, 16, 9, 16, 16, 16, 10, 16, 16, 16, 11, 16, 16, 16]);
+    let widened_q3: i16x16 = shuffle! (
+        input, zero, [12, 16, 16, 16, 13, 16, 16, 16, 14, 16, 16, 16, 15, 16, 16, 16]);
+    (i64x4::from_bits(widened_q0), i64x4::from_bits(widened_q1), i64x4::from_bits(widened_q2), i64x4::from_bits(widened_q3))
 }
 
 #[inline(always)]
 fn i64x4_tuple_to_i16x16(input0: i64x4, input1: i64x4, input2: i64x4, input3: i64x4) -> i16x16 {
-    unsafe {
-        let input01: i16x16 = simd_shuffle16(i16x16::from_bits(input0), i16x16::from_bits(input1),
-                                             [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
-        let input23: i16x16 = simd_shuffle16(i16x16::from_bits(input2), i16x16::from_bits(input3),
-                                             [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
-        let output: i64x4 = simd_shuffle4(i64x4::from_bits(input01), i64x4::from_bits(input23), [0, 1, 4, 5]);
-        i16x16::from_bits(output)
-    }
+    let input01: i16x16 = shuffle!(i16x16::from_bits(input0), i16x16::from_bits(input1),
+                                       [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let input23: i16x16 = shuffle!(i16x16::from_bits(input2), i16x16::from_bits(input3),
+                                         [0, 4, 8, 12, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let output: i64x4 = shuffle!(i64x4::from_bits(input01), i64x4::from_bits(input23), [0, 1, 4, 5]);
+    i16x16::from_bits(output)
 }
 
 #[inline(always)]
 fn i16x16_to_i32x8_tuple(input: i16x16) -> (i32x8, i32x8) {
     let zero = i16x16::splat(0);
-    unsafe {
-        let widened_lo: i16x16 = simd_shuffle16(
-            input, zero, [0, 16, 1, 16, 2, 16, 3, 16, 4, 16, 5, 16, 6, 16, 7, 16]);
-        let widened_hi: i16x16 = simd_shuffle16(
-            input, zero, [8, 16, 9, 16, 10, 16, 11, 16, 12, 16, 13, 16, 14, 16, 15, 16]);
-        (i32x8::from_bits(widened_lo), i32x8::from_bits(widened_hi))
-    }
+    let widened_lo: i16x16 = shuffle!(
+        input, zero, [0, 16, 1, 16, 2, 16, 3, 16, 4, 16, 5, 16, 6, 16, 7, 16]);
+    let widened_hi: i16x16 = shuffle!(
+        input, zero, [8, 16, 9, 16, 10, 16, 11, 16, 12, 16, 13, 16, 14, 16, 15, 16]);
+    (i32x8::from_bits(widened_lo), i32x8::from_bits(widened_hi))
 }
 
 #[inline(always)]
 fn i32x8_tuple_to_i16x16(input0: i32x8, input1: i32x8) -> i16x16 {
-    unsafe {
-        simd_shuffle16(i16x16::from_bits(input0), i16x16::from_bits(input1),
-                       [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30])
-    }
+   shuffle!(i16x16::from_bits(input0), i16x16::from_bits(input1),
+                   [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30])
 }
 
 
@@ -289,7 +277,7 @@ mod test {
                             (((300 + i * 4 + j) as i64) << 32) +
                             (((400 + i * 4 + j) as i64) << 48));
             }
-            input[i] = i64x4::read_from_slice_unaligned(&array);
+            input[i] = i64x4::from_slice_unaligned(&array);
         }
         let output = i64x4_tuple_to_i16x16(input[0], input[1], input[2], input[3]);
         for i in 0..4 {
