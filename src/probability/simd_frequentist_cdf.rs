@@ -119,7 +119,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let inv_max_and_bitlen = lookup_divisor(cdfmax);
         let rescaled_cdf_offset = ((i32::from(cdf_offset_p) * i32::from(cdfmax)) >> LOG2_SCALE) as i16;
         let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
-        let bitmask = core::arch::x86_64::_mm256_movemask_epi8(core::arch::x86_64::__m256i::from_bits(symbol_less));
+        let bitmask = unsafe{core::arch::x86_64::_mm256_movemask_epi8(core::arch::x86_64::__m256i::from_bits(symbol_less))};
         let symbol_id = ((32 - (bitmask as u32).leading_zeros()) >> 1) as u8;
         self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
     }
@@ -135,7 +135,7 @@ impl BaseCDF for SIMDFrequentistCDF16 {
         let symbol_less = i16x16::splat(rescaled_cdf_offset).ge(self.cdf);
         let tmp: i8x16 = shuffle!(i8x32::from_bits(symbol_less), i8x32::splat(0),
                                                  [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]);
-        let bitmask = core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp));
+        let bitmask = unsafe{core::arch::x86_64::_mm_movemask_epi8(core::arch::x86_64::__m128i::from_bits(tmp))};
         let symbol_id = (32 - (bitmask as u32).leading_zeros()) as u8;
         self.sym_to_start_and_freq_with_div_hint(symbol_id, inv_max_and_bitlen)
     }
