@@ -341,7 +341,7 @@ impl<AllocU8:Allocator<u8>,
                                                                AllocCDF16,
                                                                AllocBrotli>;
       type AdditionalArgs = AllocBrotli;
-        fn new(mut m8: AllocU8, m32: AllocU32, mcdf16:AllocCDF16,
+        fn new(mut m8: AllocU8, _m32: AllocU32, mcdf16:AllocCDF16,
                opt: super::interface::DivansCompressorOptions,
                additional_args: Self::AdditionalArgs) -> Self::ConstructedCompressor {
         let window_size = min(24, max(10, opt.window_size.unwrap_or(22)));
