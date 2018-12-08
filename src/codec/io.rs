@@ -128,7 +128,8 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
             &mut tmp_output_offset_bytes_backing);
         let ret = recoder.as_mut().unwrap().encode_cmd(cmd,
                                                        specialization.get_recoder_output(output),
-                                                       tmp_output_offset_bytes);
+                                                       tmp_output_offset_bytes,
+                                                       &mut |_x|());
         match ret {
             DivansOutputResult::Success => {
                 free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<

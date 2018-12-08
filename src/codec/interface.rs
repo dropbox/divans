@@ -122,10 +122,19 @@ pub enum ContextMapType {
 
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 
+pub trait StructureSeeker {
+    fn update(&mut self, data: &[u8]);
+    fn update_literal(&mut self, data: u8);
+    fn prior(&self) -> (u8, u8);
+}
+pub trait StructureSeekerU8<AllocU8:Allocator<u8>> : StructureSeeker + NewWithAllocator<AllocU8> {
+}
 pub struct LiteralBookKeeping<Cdf16:CDF16,
-                                   AllocU8:Allocator<u8>,
-                                   AllocCDF16:Allocator<Cdf16>> {
+                              AllocU8:Allocator<u8>,
+                              AllocCDF16:Allocator<Cdf16>,
+                              Parser: StructureSeekerU8<AllocU8>> {
     pub last_8_literals: u64,
+    parser: Parser,
     pub literal_context_map: AllocU8::AllocatedMemory,
     pub btype_last: u8,
     pub stride: u8,
@@ -238,14 +247,18 @@ fn get_lut1(lpn: LiteralPredictionModeNibble) -> [u8; 256] {
 }
 
 impl<                                   
-     Cdf16:CDF16,
-     AllocCDF16:Allocator<Cdf16>,
-     AllocU8:Allocator<u8>> LiteralBookKeeping<Cdf16,
-                                               AllocU8,
-                                               AllocCDF16> {
-    fn new(literal_context_map:AllocU8::AllocatedMemory) -> Self {
+    Cdf16:CDF16,
+    AllocCDF16:Allocator<Cdf16>,
+    AllocU8:Allocator<u8>,
+    Parser:StructureSeekerU8<AllocU8>> LiteralBookKeeping<Cdf16,
+                                                        AllocU8,
+                                                        AllocCDF16,
+                                                        Parser> {
+    fn new(alloc_u8: &mut AllocU8 ,literal_context_map:AllocU8::AllocatedMemory) -> Self {
+        let parser = Parser::new_with_alloc(alloc_u8);
         LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
             combine_literal_predictions: false,
+            parser: parser,
             last_8_literals: 0,
             stride: 0,
             literal_adaptation: [default_literal_speed(); 4],
@@ -541,27 +554,31 @@ impl<
     }
 }
 
-pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
+pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser: StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
     pub m8: RepurposingAlloc<u8, AllocU8>,
     pub mcdf16: AllocCDF16,
-    pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+    pub lbk: LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>,
     pub lit_high_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_low_priors: LiteralNibblePriors<Cdf16, AllocCDF16>,
     pub lit_coder: ArithmeticCoder,
 }
 
-pub enum ThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
-    MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>),
+pub enum ThreadContext<Cdf16:CDF16,
+                       AllocU8:Allocator<u8>,
+                       AllocCDF16:Allocator<Cdf16>,
+                       Parser:StructureSeekerU8<AllocU8>,
+                       ArithmeticCoder:ArithmeticEncoderOrDecoder> {
+    MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>),
     Worker,
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
     pub fn dismantle(self) -> (
         RepurposingAlloc<u8, AllocU8>,
         AllocCDF16,
         (
             DivansRecodeState<AllocU8::AllocatedMemory>,
-            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>,
             LiteralNibblePriors<Cdf16, AllocCDF16>,
             LiteralNibblePriors<Cdf16, AllocCDF16>,
             ArithmeticCoder,
@@ -574,7 +591,7 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Arithmeti
         AllocCDF16,
         (
             DivansRecodeState<AllocU8::AllocatedMemory>,
-            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>,
+            LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>,
             LiteralNibblePriors<Cdf16, AllocCDF16>,
             LiteralNibblePriors<Cdf16, AllocCDF16>,
             ArithmeticCoder,
@@ -593,12 +610,13 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Arithmeti
     pub fn free(&mut self) {
         self.m8.free_cell(core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(core::mem::replace(&mut self.lbk.literal_context_map, AllocU8::AllocatedMemory::default()));
+        self.parser.free(&mut self.m8);
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()));
     }
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, ArithmeticCoder:ArithmeticEncoderOrDecoder> ThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> ThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
     pub fn free(&mut self) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => ctx.free(),
@@ -611,7 +629,7 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Arithmeti
             ThreadContext::Worker => None,
         }        
     }
-    pub fn main_thread_mut(&mut self) -> Option<&mut MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>> {
+    pub fn main_thread_mut(&mut self) -> Option<&mut MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(ctx),
             ThreadContext::Worker => None,
@@ -635,13 +653,13 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Arithmeti
             ThreadContext::Worker => None,
         }
     }
-    pub fn m8lbk(&mut self) ->(Option<&mut RepurposingAlloc<u8, AllocU8>>, Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>>) {
+    pub fn m8lbk(&mut self) ->(Option<&mut RepurposingAlloc<u8, AllocU8>>, Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>>) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => (Some(&mut ctx.m8), Some(&mut ctx.lbk)),
             ThreadContext::Worker => (None, None),
         }
     }
-    pub fn lbk(&mut self) -> Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16>> {
+    pub fn lbk(&mut self) -> Option<&mut LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>> {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => Some(&mut ctx.lbk),
             ThreadContext::Worker => None,
@@ -654,12 +672,13 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
-                             AllocCDF16:Allocator<Cdf16>> {
+                             AllocCDF16:Allocator<Cdf16>,
+                             Parser:StructureSeekerU8<AllocU8>> {
     //pub cmd_coder: ArithmeticCoder,
     //pub lit_coder: ArithmeticCoder,
     pub coder: ArithmeticCoder,
     pub specialization: Specialization,
-    pub thread_ctx: ThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
+    pub thread_ctx: ThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>,
     pub bk: CrossCommandBookKeeping<Cdf16, AllocU8, AllocCDF16>,
     pub demuxer: LinearInputBytes,
     pub muxer: LinearOutputBytes,
@@ -671,13 +690,15 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
-     AllocCDF16:Allocator<Cdf16>> CrossCommandState<ArithmeticCoder,
-                                                    Specialization,
-                                                    LinearInputBytes,
-                                                    LinearOutputBytes,
-                                                    Cdf16,
-                                                    AllocU8,
-                                                    AllocCDF16>{
+     AllocCDF16:Allocator<Cdf16>,
+     Parser:StructureSeekerU8<AllocU8>> CrossCommandState<ArithmeticCoder,
+                                                          Specialization,
+                                                          LinearInputBytes,
+                                                          LinearOutputBytes,
+                                                          Cdf16,
+                                                          AllocU8,
+                                                          AllocCDF16,
+                                                          Parser>{
     
     #[inline(always)]
     pub fn drain_or_fill_internal_buffer_lit(&mut self, output:&mut[u8], output_offset:&mut usize) -> DivansResult {
@@ -701,6 +722,7 @@ impl <AllocU8:Allocator<u8>,
       LinearOutputBytes:StreamMuxer<AllocU8>+Default,                                   
       Cdf16:CDF16,
       AllocCDF16:Allocator<Cdf16>,
+      Parser: StructureSeekerU8<AllocU8>,
       ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
       Specialization:EncoderOrDecoderSpecialization,
       > CrossCommandState<ArithmeticCoder,
@@ -709,7 +731,8 @@ impl <AllocU8:Allocator<u8>,
                           LinearOutputBytes,
                           Cdf16,
                           AllocU8,
-                          AllocCDF16> {
+                          AllocCDF16,
+                          Parser> {
     pub fn new(mut m8: AllocU8,
                mut mcdf16:AllocCDF16,
                //cmd_coder: ArithmeticCoder,
@@ -735,6 +758,16 @@ impl <AllocU8:Allocator<u8>,
         let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let literal_context_map = m8.alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
+        let bk = CrossCommandBookKeeping::new(m8,
+                                              lit_len_priors, cc_priors, copy_priors,
+                                              dict_priors, pred_priors, btype_priors,
+                                              distance_context_map,
+                                              dynamic_context_mixing,
+                                              prior_depth,
+                                              literal_adaptation_rate,
+                                              do_context_map,
+                                              force_stride,
+        );
         CrossCommandState::<ArithmeticCoder,
                             Specialization,
                             LinearInputBytes,
@@ -762,15 +795,7 @@ impl <AllocU8:Allocator<u8>,
             }),
             demuxer:linear_input_bytes,
             muxer:LinearOutputBytes::default(),
-            bk:CrossCommandBookKeeping::new(lit_len_priors, cc_priors, copy_priors,
-                                            dict_priors, pred_priors, btype_priors,
-                                            distance_context_map,
-                                            dynamic_context_mixing,
-                                            prior_depth,
-                                            literal_adaptation_rate,
-                                            do_context_map,
-                                            force_stride,
-            ),
+            bk:bk,
         }
     }
     pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot {

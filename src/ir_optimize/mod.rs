@@ -11,23 +11,27 @@ use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
 mod statistics_tracking_codec;
 mod cache;
+use codec::StructureSeekerU8;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, TwoCommandThawingArray, ToggleProbabilityBlend,
                                       take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
 pub fn should_merge<SelectedCDF:CDF16,
                     AllocU8:Allocator<u8>,
-                    AllocCDF16:Allocator<SelectedCDF>>(lit: &LiteralCommand<brotli::SliceOffset>,
-                                                       copy: &CopyCommand,
-                                                       copy_index: usize,
-                                                       mb: brotli::InputPair,
-                                                       actuary:&mut codec::DivansCodec<TallyingArithmeticEncoder,
-                                                                                       ToggleProbabilityBlend,
-                                                                                       DemuxerAndRingBuffer<AllocU8,
-                                                                                                            DevNull<AllocU8>>,
-                                                                                       DevNull<AllocU8>,
-                                                                                       SelectedCDF,
-                                                                                       AllocU8,
-                                                                                       AllocCDF16>,
-                                                       cache: &mut cache::Cache<AllocU8>) -> Result<bool, ErrMsg> {
+                    AllocCDF16:Allocator<SelectedCDF>,
+                    Parser:StructureSeekerU8<AllocU8>,
+                    >(lit: &LiteralCommand<brotli::SliceOffset>,
+                      copy: &CopyCommand,
+                      copy_index: usize,
+                      mb: brotli::InputPair,
+                      actuary:&mut codec::DivansCodec<TallyingArithmeticEncoder,
+                                                      ToggleProbabilityBlend,
+                                                      DemuxerAndRingBuffer<AllocU8,
+                                                                           DevNull<AllocU8>>,
+                                                      DevNull<AllocU8>,
+                                                      SelectedCDF,
+                                                      AllocU8,
+                                                      AllocCDF16,
+                                                      Parser>,
+                      cache: &mut cache::Cache<AllocU8>) -> Result<bool, ErrMsg> {
     if lit.data.0 + lit.data.1 as usize + copy.num_bytes as usize > mb.0.orig_offset + mb.0.len() as usize && lit.data.0 < mb.0.orig_offset + mb.0.len() as usize {
         return Ok(false); // can't merge: would wrap the metablock
     }
@@ -113,7 +117,8 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
                    ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                    AllocU8:Allocator<u8>,
                    AllocCDF16:Allocator<SelectedCDF>,
-                   AllocCommand: Allocator<StaticCommand>
+                   AllocCommand: Allocator<StaticCommand>,
+                   Parser:StructureSeekerU8<AllocU8>,
                    >(pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                      orig_buf:&'a mut [brotli::interface::Command<brotli::SliceOffset>],
                      mb:brotli::InputPair,
@@ -124,7 +129,8 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
                                                    Mux<AllocU8>,
                                                    SelectedCDF,
                                                    AllocU8,
-                                                   AllocCDF16>,
+                                                   AllocCDF16,
+                                                   Parser>,
                      window_size: u8,
                      opt: super::interface::DivansCompressorOptions,
                      _mc: &'a mut AllocCommand,

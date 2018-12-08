@@ -12,6 +12,7 @@ use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use super::crc32::{crc32c_init,crc32c_update};
 use super::interface::{
     MainThreadContext,
+    StructureSeekerU8,
     CMD_CODER,
     LIT_CODER,
 };
@@ -35,12 +36,13 @@ use ::interface::{
 use threading::{MainToThread, PullAllocatedCommand, CommandResult, NUM_SERIAL_COMMANDS_BUFFERED, StaticCommand};
 
 pub struct DivansDecoderCodec<Cdf16:CDF16,
-                          AllocU8:Allocator<u8>,
+                              AllocU8:Allocator<u8>,
                               AllocCDF16:Allocator<Cdf16>,
                               AllocCommand:Allocator<StaticCommand>,
-                          ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
-                          LinearInputBytes: StreamDemuxer<AllocU8>> {
-    pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
+                              ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
+                              Parser:StructureSeekerU8<AllocU8>,
+                              LinearInputBytes: StreamDemuxer<AllocU8>> {
+    pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>,
     pub demuxer: LinearInputBytes,
     pub devnull: DevNull<AllocU8>,
     pub eof: bool,
@@ -66,9 +68,11 @@ impl<Cdf16:CDF16,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<Cdf16>,
      AllocCommand:Allocator<StaticCommand>,
+     Parser: StructureSeekerU8<AllocU8>,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
-     LinearInputBytes: Default+StreamDemuxer<AllocU8>> DivansDecoderCodec<Cdf16, AllocU8, AllocCDF16, AllocCommand, ArithmeticCoder, LinearInputBytes> {
-    pub fn new(main_thread_context: MainThreadContext<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>,
+     LinearInputBytes: Default+StreamDemuxer<AllocU8>,
+     > DivansDecoderCodec<Cdf16, AllocU8, AllocCDF16, AllocCommand, ArithmeticCoder, Parser, LinearInputBytes> {
+    pub fn new(main_thread_context: MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>,
                mcommand: &mut AllocCommand,
                crc: SubDigest,
                skip_checksum: bool) -> Self {
@@ -168,7 +172,9 @@ impl<Cdf16:CDF16,
         if !self.is_populating_ring_buffer {
             return DivansOutputResult::Success;
         }
-        match self.ctx.recoder.encode_cmd(&mut self.state_populate_ring_buffer, output, output_offset) {
+        let zed = 0;
+        let lbk = &mut self.ctx.lbk;
+        match self.ctx.recoder.encode_cmd(&mut self.state_populate_ring_buffer, output, output_offset, &mut |x|{lbk.last_8_literals |= zed;print!("{:?}, {:?}\n", x, lbk.last_8_literals)}) {
             DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
                                                     &mut self.ctx.m8.use_cached_allocation::<
                                                             UninitializedOnAlloc>()),

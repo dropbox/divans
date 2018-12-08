@@ -9,6 +9,7 @@ use ::probability::{CDF16, Speed};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    StructureSeekerU8,
     round_up_mod_4,
 };
 use ::interface::{
@@ -52,14 +53,16 @@ impl DictState {
                         LinearInputBytes:StreamDemuxer<AllocU8>,
                         LinearOutputBytes:StreamMuxer<AllocU8>+Default,                             
                         AllocU8:Allocator<u8>,
-                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                            AllocCDF16:Allocator<Cdf16>,
+                            Parser:StructureSeekerU8<AllocU8>>(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   LinearInputBytes,
                                                                                   LinearOutputBytes,
                                                                                   Cdf16,
                                                                                   AllocU8,
-                                                                                  AllocCDF16>,
+                                                                                  AllocCDF16,
+                                                                                  Parser>,
                                                in_cmd: &DictCommand,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> DivansResult {

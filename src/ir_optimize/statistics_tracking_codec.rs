@@ -5,7 +5,7 @@ use brotli;
 use codec::CommandArray;
 use codec;
 use slice_util::AllocatedMemoryPrefix;
-use codec::{EncoderOrDecoderSpecialization};
+use codec::{EncoderOrDecoderSpecialization, StructureSeekerU8};
 use mux::DevNull;
 use codec::io::DemuxerAndRingBuffer;
 use cmd_to_divans::EncoderSpecialization;
@@ -97,14 +97,16 @@ impl ArithmeticEncoderOrDecoder for TallyingArithmeticEncoder {
 pub fn reset_billing_snapshot<SelectedCDF:CDF16,
                               AllocU8:Allocator<u8>,
                               AllocCDF16:Allocator<SelectedCDF>,
-                              Spc: EncoderOrDecoderSpecialization
+                              Spc: EncoderOrDecoderSpecialization,
+                              Parser:StructureSeekerU8<AllocU8>,
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
                                                           Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
                                                           AllocU8,
-                                                          AllocCDF16>) {
+                                                          AllocCDF16,
+                                                          Parser>) {
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => {},
         codec::ThreadContext::MainThread(ref mut ctx) => ctx.lit_coder.reset_cost_to_snapshot(),
@@ -115,6 +117,7 @@ pub fn reset_billing_snapshot<SelectedCDF:CDF16,
 pub fn take_billing_snapshot<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                              AllocCDF16:Allocator<SelectedCDF>,
+                             Parser:StructureSeekerU8<AllocU8>,
                              Spc: EncoderOrDecoderSpecialization
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
                                                           Spc,
@@ -122,7 +125,8 @@ pub fn take_billing_snapshot<SelectedCDF:CDF16,
                                                           DevNull<AllocU8>,
                                                           SelectedCDF,
                                                           AllocU8,
-                                                          AllocCDF16>) {
+                                                          AllocCDF16,
+                                                          Parser>) {
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => {},
         codec::ThreadContext::MainThread(ref mut ctx) => ctx.lit_coder.take_snapshot(),
@@ -132,15 +136,17 @@ pub fn take_billing_snapshot<SelectedCDF:CDF16,
 
 pub fn billing_snapshot_delta<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
-                         AllocCDF16:Allocator<SelectedCDF>,
+                              AllocCDF16:Allocator<SelectedCDF>,
+                              Parser:StructureSeekerU8<AllocU8>,
                           Spc: EncoderOrDecoderSpecialization
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          Spc,
-                                                          DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
-                                                          DevNull<AllocU8>,
-                                                          SelectedCDF,
-                                                          AllocU8,
-                                                          AllocCDF16>) -> floatY {
+                                                      Spc,
+                                                      DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
+                                                      DevNull<AllocU8>,
+                                                      SelectedCDF,
+                                                      AllocU8,
+                                                      AllocCDF16,
+                                                      Parser>) -> floatY {
     let ret = codec.cross_command_state.coder.snapshot_delta();
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => ret,
@@ -152,14 +158,16 @@ pub fn billing_snapshot_delta<SelectedCDF:CDF16,
 pub fn total_billing_cost<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<SelectedCDF>,
+                          Parser:StructureSeekerU8<AllocU8>,
                           Spc: EncoderOrDecoderSpecialization,
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
-                                                          Spc,
-                                                          DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
-                                                          DevNull<AllocU8>,
-                                                          SelectedCDF,
-                                                          AllocU8,
-                                                          AllocCDF16>) -> floatY {
+                                                      Spc,
+                                                      DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
+                                                      DevNull<AllocU8>,
+                                                      SelectedCDF,
+                                                      AllocU8,
+                                                      AllocCDF16,
+                                                      Parser>) -> floatY {
     let ret = codec.cross_command_state.coder.total_cost();
     match codec.cross_command_state.thread_ctx {
         codec::ThreadContext::Worker => ret,

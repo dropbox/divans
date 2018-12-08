@@ -4,6 +4,7 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     BLOCK_TYPE_LITERAL_SWITCH,
+    StructureSeekerU8,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -29,6 +30,7 @@ impl BlockTypeState {
         BlockTypeState::Begin
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                            Parser:StructureSeekerU8<AllocU8>,
                         Specialization:EncoderOrDecoderSpecialization,
                             LinearInputBytes:StreamDemuxer<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
@@ -42,7 +44,8 @@ impl BlockTypeState {
                                            LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
-                                           AllocCDF16>,
+                                           AllocCDF16,
+                                           Parser>,
         input_bs: BlockSwitch,
         block_type_switch_index:usize,
         output_bytes: &mut [u8],
@@ -128,7 +131,9 @@ impl LiteralBlockTypeState {
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,
-                        AllocCDF16:Allocator<Cdf16>>(
+                            AllocCDF16:Allocator<Cdf16>,
+                            Parser:StructureSeekerU8<AllocU8>,
+                            >(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,
                                            Specialization,
@@ -136,7 +141,9 @@ impl LiteralBlockTypeState {
                                            LinearOutputBytes,
                                            Cdf16,
                                            AllocU8,
-                                           AllocCDF16>,
+                                           AllocCDF16,
+                                           Parser,
+                                           >,
         input_bs: LiteralBlockSwitch,
         output_bytes: &mut [u8],
         output_offset: &mut usize) -> DivansResult {

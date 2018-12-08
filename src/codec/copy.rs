@@ -4,6 +4,7 @@ use interface::{DivansResult, ErrMsg, StreamMuxer, StreamDemuxer};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    StructureSeekerU8,
     round_up_mod_4,
     get_distance_from_mnemonic_code,
 };
@@ -54,14 +55,16 @@ impl CopyState {
                              
                         Cdf16:CDF16,
                         AllocU8:Allocator<u8>,
-                        AllocCDF16:Allocator<Cdf16>>(&mut self,
+                            AllocCDF16:Allocator<Cdf16>,
+                            Parser:StructureSeekerU8<AllocU8>>(&mut self,
                                                      superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                         Specialization,
                                                                                         LinearInputBytes,
                                                                                         LinearOutputBytes,
                                                                                         Cdf16,
                                                                                         AllocU8,
-                                                                                        AllocCDF16>,
+                                                                                        AllocCDF16,
+                                                                                        Parser>,
                                                      in_cmd: &CopyCommand,
                                                      output_bytes:&mut [u8],
                                                      output_offset: &mut usize) -> DivansResult {

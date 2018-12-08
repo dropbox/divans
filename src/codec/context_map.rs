@@ -7,6 +7,7 @@ use alloc_util::{RepurposingAlloc, AllocatedMemoryPrefix, UninitializedOnAlloc};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
+    StructureSeekerU8,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -103,19 +104,22 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
+                            Parser:StructureSeekerU8<AllocU8>,
                             Specialization:EncoderOrDecoderSpecialization,
                             LinearInputBytes:StreamDemuxer<AllocU8>,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                              Cdf16:CDF16,
                         AllocCDF16:Allocator<Cdf16>,
-                        SliceType:SliceWrapper<u8>+Default>(&mut self,
+                            SliceType:SliceWrapper<u8>+Default,
+                            >(&mut self,
                                                superstate: &mut CrossCommandState<ArithmeticCoder,
                                                                                   Specialization,
                                                                                   LinearInputBytes,
                                                                                   LinearOutputBytes,
                                                                                   Cdf16,
                                                                                   AllocU8,
-                                                                                  AllocCDF16>,
+                                                                                  AllocCDF16,
+                                                                                  Parser>,
                                                in_cmd: &PredictionModeContextMap<SliceType>,
                                                output_bytes:&mut [u8],
                                                output_offset: &mut usize) -> DivansResult {

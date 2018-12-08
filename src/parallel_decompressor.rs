@@ -21,14 +21,17 @@ use super::divans_decompressor::StaticCommand;
 pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                                  AllocU8:Allocator<u8>,
                                  AllocCDF16:Allocator<interface::DefaultCDF16>,
-                                 AllocCommand:Allocator<StaticCommand>> {
+                                 AllocCommand:Allocator<StaticCommand>,
+                                 Parser:codec::StructureSeekerU8<AllocU8>,
+                                 > {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
                                          ThreadToMainDemuxer<AllocU8, BufferedMultiWorker<AllocU8, AllocCommand>>,
                                          DevNull<AllocU8>,
-                                         interface::DefaultCDF16,
-                                         AllocU8,
-                                         AllocCDF16>>>,
+                                               interface::DefaultCDF16,
+                                               AllocU8,
+                                               AllocCDF16,
+                                               Parser>>>,
                >,
     worker: MultiWorker<AllocU8, AllocCommand>,
     literal_decoder: Option<DivansDecoderCodec<interface::DefaultCDF16,
@@ -36,7 +39,8 @@ pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + Ne
                                                AllocCDF16,
                                                AllocCommand,
                                                DefaultDecoder,
-                                               Mux<AllocU8>>>,
+                                               Mux<AllocU8>,
+                                               Parser>>,
     bytes_encoded: usize,
     mcommand: AllocCommand,
 }
@@ -45,14 +49,16 @@ pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + Ne
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability + Send + 'static,
      AllocU8:Allocator<u8> + Send + 'static,
      AllocCDF16:Allocator<interface::DefaultCDF16> + Send + 'static,
-     AllocCommand:Allocator<StaticCommand> + Send + 'static>
-    ParallelDivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand>
+     AllocCommand:Allocator<StaticCommand> + Send + 'static,
+     Parser:codec::StructureSeekerU8<AllocU8>+Send+'static,
+     >
+    ParallelDivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand, Parser>
     where <AllocU8 as Allocator<u8>>::AllocatedMemory: core::marker::Send,
           <AllocCDF16 as Allocator<interface::DefaultCDF16>>::AllocatedMemory: core::marker::Send,
           <AllocCommand as Allocator<StaticCommand>>::AllocatedMemory: core::marker::Send,
 {
 
-    pub fn new(header: &mut HeaderParser<AllocU8, AllocCDF16, AllocCommand>, mut window_size: usize) -> Self {
+    pub fn new(header: &mut HeaderParser<AllocU8, AllocCDF16, AllocCommand, >, mut window_size: usize) -> Self {
         if window_size < 10 {
             window_size = 10;
         }

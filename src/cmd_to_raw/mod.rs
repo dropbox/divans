@@ -151,7 +151,12 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
 
     //precondition: that there is sufficient room for amount_to_copy in buffer
     #[inline(always)]
-    fn copy_some_decoded_from_ring_buffer_to_decoded(&mut self, distance: u32, mut desired_amount_to_copy: u32) -> Result<u32,()> {
+    fn copy_some_decoded_from_ring_buffer_to_decoded<CopyCallback:FnMut(&[u8])>(
+        &mut self,
+        distance: u32,
+        mut desired_amount_to_copy: u32,
+        cb: &mut CopyCallback,
+    ) -> Result<u32,()> {
         desired_amount_to_copy = core::cmp::min(self.decode_space_left_in_ring_buffer() as u32,
                                                 desired_amount_to_copy);
         let left_dst_before_wrap = self.ring_buffer.slice().len() as u32 - self.state.ring_buffer_decode_index;
@@ -181,6 +186,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                                                                                        src.len()) as u32);
             dst.split_at_mut(trunc_amount_to_copy as usize).0.clone_from_slice(src.split_at_mut(trunc_amount_to_copy as usize).0);            
         }
+        cb(self.ring_buffer.slice().split_at(self.state.ring_buffer_decode_index as usize).1.split_at(trunc_amount_to_copy as usize).0);
         self.state.ring_buffer_decode_index += trunc_amount_to_copy;
         if self.state.ring_buffer_decode_index == self.ring_buffer.slice().len() as u32 {
             self.state.ring_buffer_decode_index =0;
@@ -242,7 +248,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         DivansOutputResult::Success
     }
     #[inline(always)]
-    fn parse_copy(&mut self, copy:&CopyCommand) -> DivansOutputResult {
+    fn parse_copy<CopyCallback:FnMut(&[u8])>(
+        &mut self,
+        copy:&CopyCommand,
+        cb: &mut CopyCallback
+    ) -> DivansOutputResult {
         let num_bytes_left_in_cmd = copy.num_bytes - self.state.input_sub_offset as u32;
         if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
             let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,
@@ -254,12 +264,14 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
             let rem_bytes = num_bytes_to_copy - num_repeat_iter * copy.distance;
             for _i in 0..num_repeat_iter {
                 let ret = self.copy_to_ring_buffer(repeat_buffer);
+                cb(&repeat_buffer[..ret as usize]);
                 self.state.input_sub_offset += ret;
                 if ret != repeat_buffer.len() {
                     return DivansOutputResult::NeedsMoreOutput;
                 }
             }
             let ret = self.copy_to_ring_buffer(repeat_buffer.split_at(rem_bytes as usize).0) as u32;
+            cb(&repeat_buffer[..ret as usize]);
             self.state.input_sub_offset += ret as usize;
             if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
                 return DivansOutputResult::NeedsMoreOutput;
@@ -269,7 +281,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd, copy.distance);
         let copy_count = match self.copy_some_decoded_from_ring_buffer_to_decoded(
             copy.distance,
-            num_bytes_to_copy) {
+            num_bytes_to_copy,
+            cb,
+        ) {
             Ok(copy_count) => copy_count,
             Err(_) => return DivansOutputResult::Failure(ErrMsg::DistanceGreaterRingBuffer),
         };
@@ -281,7 +295,11 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
         DivansOutputResult::Success
     }
-    fn parse_dictionary(&mut self, dict_cmd:&DictCommand) -> DivansOutputResult {
+    fn parse_dictionary<CopyCallback: FnMut(&[u8])>(
+        &mut self,
+        dict_cmd:&DictCommand,
+        cb: &mut CopyCallback,
+    ) -> DivansOutputResult {
         // dictionary words are bounded in size: make sure there's enough room for the whole word
         let copy_len = u32::from(dict_cmd.word_size);
         let word_len_category_index = kBrotliDictionaryOffsetsByLength[copy_len as usize] as u32;
@@ -293,6 +311,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                                                 &word[..],
                                                 copy_len as i32,
                                                 i32::from(dict_cmd.transform));
+        let to_copy = transformed_word.split_at(final_len as usize).0;
         if self.decode_space_left_in_ring_buffer() < final_len as u32 {
             return DivansOutputResult::NeedsMoreOutput;
         }
@@ -301,23 +320,28 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
         if self.state.input_sub_offset != 0 {
             assert_eq!(self.state.input_sub_offset as i32, final_len);
-        } else if self.copy_to_ring_buffer(transformed_word.split_at(final_len as usize).0) as i32 != final_len {
+        } else if self.copy_to_ring_buffer(to_copy) as i32 != final_len {
             panic!("We already assured sufficient space in buffer for word: internal error");
         }
+        cb(to_copy);
         self.state.input_sub_offset = final_len as usize;
         DivansOutputResult::Success
     }
     #[inline(always)]
-    fn parse_command<SliceType:SliceWrapper<u8>>(&mut self, cmd: &Command<SliceType>) -> DivansOutputResult {
+    fn parse_command<SliceType:SliceWrapper<u8>, CopyCallback: FnMut(&[u8])>(
+        &mut self,
+        cmd: &Command<SliceType>,
+        copy_cb : &mut CopyCallback,
+    ) -> DivansOutputResult {
         if let &Command::Literal(ref literal) = cmd {
             return self.parse_literal(literal.slice());
         }
         if let &Command::Copy(ref copy) = cmd {
-            return self.parse_copy(copy);
+            return self.parse_copy(copy, copy_cb);
         }
         match cmd {
               &Command::Copy(_) | &Command::Literal(_) => panic!("Already processed: here to track full set of states"),
-              &Command::Dict(ref dict) => self.parse_dictionary(dict),
+              &Command::Dict(ref dict) => self.parse_dictionary(dict, copy_cb),
               &Command::PredictionMode(_)
               | &Command::BlockSwitchCommand(_)
               | &Command::BlockSwitchDistance(_)
@@ -325,12 +349,15 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         }
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
-    pub fn encode_cmd<SliceType:SliceWrapper<u8>>(&mut self,
-                  cmd:&Command<SliceType>,
-                  output :&mut[u8],
-                  output_offset: &mut usize) -> DivansOutputResult {
+    pub fn encode_cmd<SliceType:SliceWrapper<u8>, CopyCallback:FnMut(&[u8])>(
+        &mut self,
+        cmd:&Command<SliceType>,
+        output :&mut[u8],
+        output_offset: &mut usize,
+        copy_cb : &mut CopyCallback,
+    ) -> DivansOutputResult {
         loop {
-            let res = self.parse_command(cmd);
+            let res = self.parse_command(cmd, copy_cb);
             match res {
                 DivansOutputResult::Success => {
                     break;
@@ -390,7 +417,7 @@ impl<RingBuffer:SliceWrapperMut<u8> + SliceWrapper<u8> + Default> Compressor for
                     DivansOutputResult::Success => {},
                     _ => {return res}
                  }
-                 res = self.parse_command(cmd);
+                 res = self.parse_command(cmd, &mut |_x: &[u8]|());
                  match res {
                     DivansOutputResult::Success => {
                         self.state.input_sub_offset = 0; // done w/this command, no partial work
