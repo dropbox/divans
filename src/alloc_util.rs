@@ -161,10 +161,10 @@ impl<T, AllocT: Allocator<T>> Allocator<T> for RepurposingAlloc<T, AllocT> {
 }
 
 #[cfg(test)]
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 mod test {
     use core;
-    use alloc::HeapAlloc;
+    use alloc_stdlib::HeapAlloc;
     use super::{Allocator, AllocatedMemoryPrefix, RepurposingAlloc, UninitializedOnAlloc};
     struct LoggedAllocator<T, AllocT: Allocator<T>> {
         alloc: AllocT,

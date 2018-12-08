@@ -1,8 +1,8 @@
-#![cfg(not(feature="no-stdlib"))]
+#![cfg(feature="std")]
 #![cfg(test)]
 use core;
 use std::vec::Vec;
-use alloc::HeapAlloc;
+use alloc_stdlib::HeapAlloc;
 use alloc::Allocator;
 use alloc::SliceWrapperMut;
 use alloc::SliceWrapper;

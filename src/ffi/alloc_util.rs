@@ -1,47 +1,47 @@
 use core;
 use ::alloc;
 use super::interface::{c_void, CAllocator};
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 use std::vec::Vec;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use std::boxed::Box;
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 #[derive(Debug)]
 pub struct MemoryBlock<Ty:Sized+Default>(Box<[Ty]>);
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
     fn default() -> Self {
         MemoryBlock(Vec::<Ty>::new().into_boxed_slice())
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
     fn slice(&self) -> &[Ty] {
         &self.0[..]
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
     fn slice_mut(&mut self) -> &mut [Ty] {
         &mut self.0[..]
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
     type Output = Ty;
     fn index(&self, index:usize) -> &Ty {
         &self.0[index]
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
 
     fn index_mut(&mut self, index:usize) -> &mut Ty {
         &mut self.0[index]
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default> Drop for MemoryBlock<Ty> {
     fn drop (&mut self) {
         if self.0.len() != 0 {
@@ -66,7 +66,7 @@ impl<Ty:Sized+Default+Clone> SubclassableAllocator<Ty> {
         }
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
     type AllocatedMemory = MemoryBlock<Ty>;
     fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
@@ -106,18 +106,18 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
 
 
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 static mut G_SLICE:&mut[u8] = &mut[];
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 #[derive(Debug)]
 pub struct MemoryBlock<Ty:Sized+Default>(*mut[Ty]);
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default> Default for MemoryBlock<Ty> {
     fn default() -> Self {
         MemoryBlock(unsafe{core::mem::transmute::<*mut [u8], *mut[Ty]>(G_SLICE.as_mut())})
     }
 }
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
     fn slice(&self) -> &[Ty] {
         if unsafe{(*self.0).len()} == 0 {
@@ -127,7 +127,7 @@ impl<Ty:Sized+Default> alloc::SliceWrapper<Ty> for MemoryBlock<Ty> {
         }
     }
 }
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
     fn slice_mut(&mut self) -> &mut [Ty] {
         if unsafe{(*self.0).len()} == 0 {
@@ -138,26 +138,26 @@ impl<Ty:Sized+Default> alloc::SliceWrapperMut<Ty> for MemoryBlock<Ty> {
     }
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 #[cfg(not(feature="no-stdlib-rust-binding"))]
-#[lang="panic_fmt"]
+//#[lang="panic_fmt"]
 extern fn panic_fmt(_: ::core::fmt::Arguments, _: &'static str, _: u32) -> ! {
     loop {}
 }
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 #[cfg(not(feature="no-stdlib-rust-binding"))]
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default> core::ops::Index<usize> for MemoryBlock<Ty> {
     type Output = Ty;
     fn index(&self, index:usize) -> &Ty {
         unsafe{&(*self.0)[index]}
     }
 }
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
 
     fn index_mut(&mut self, index:usize) -> &mut Ty {
@@ -165,7 +165,7 @@ impl<Ty:Sized+Default> core::ops::IndexMut<usize> for MemoryBlock<Ty> {
     }
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> {
     type AllocatedMemory = MemoryBlock<Ty>;
     fn alloc_cell(&mut self, size:usize) ->MemoryBlock<Ty>{
@@ -198,21 +198,21 @@ impl<Ty:Sized+Default+Clone> alloc::Allocator<Ty> for SubclassableAllocator<Ty> 
 }
 
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 pub fn free_stdlib<T>(_data: *mut T, _size: usize) {
     panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
 }
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 pub fn alloc_stdlib<T:Sized+Default+Copy+Clone>(_size: usize) -> *mut T {
     panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
 }
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub unsafe fn free_stdlib<T>(ptr: *mut T, size: usize) {
     let slice_ref = core::slice::from_raw_parts_mut(ptr, size);
     Box::from_raw(slice_ref); // free on drop
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub fn alloc_stdlib<T:Sized+Default+Copy+Clone>(size: usize) -> *mut T {
     let mut newly_allocated = vec![T::default();size].into_boxed_slice();
     let slice_ptr = newly_allocated.as_mut_ptr();

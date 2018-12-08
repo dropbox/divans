@@ -16,21 +16,17 @@
 
 #![cfg_attr(feature="benchmark", feature(test))]
 //#![cfg_attr(feature="simd", feature(platform_intrinsics))]
-#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(lang_items)))]
-#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", feature(compiler_builtins_lib)))]
-#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(feature="no-stdlib", crate_type="cdylib"))]
+#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(not(feature="std"), feature(lang_items)))]
+#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(not(feature="std"), feature(compiler_builtins_lib)))]
+#![cfg_attr(not(feature="no-stdlib-rust-binding"),cfg_attr(not(feature="std"), crate_type="cdylib"))]
 #![no_std]
-
-#[cfg(not(feature="no-stdlib-rust-binding"))]
-#[cfg(feature="no-stdlib")]
-extern crate compiler_builtins;
 
 #[cfg(not(test))]
 #[cfg(any(feature="findspeed", feature="billing"))]
 #[macro_use]
 extern crate std;
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 #[cfg(not(test))]
 #[cfg(not(any(feature="billing", feature="findspeed")))]
 #[macro_use]
@@ -42,6 +38,8 @@ extern crate std;
 #[cfg(feature="simd")]
 #[macro_use(shuffle)]
 extern crate packed_simd;
+#[cfg(feature="std")]
+extern crate alloc_stdlib;
 
 extern crate alloc_no_stdlib as alloc;
 extern crate brotli;
@@ -95,18 +93,18 @@ mod ffi;
 pub use ffi::*;
 mod reader;
 mod writer;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use reader::DivansBrotliHybridCompressorReader;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use reader::DivansExperimentalCompressorReader;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use reader::DivansDecompressorReader;
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use writer::DivansBrotliHybridCompressorWriter;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use writer::DivansExperimentalCompressorWriter;
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 pub use writer::DivansDecompressorWriter;
 
 

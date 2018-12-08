@@ -15,9 +15,9 @@ use ::ArithmeticEncoderOrDecoder;
 use ::alloc::{Allocator};
 pub use threading::StaticCommand;
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 use parallel_decompressor::{ParallelDivansProcess};
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 use stub_parallel_decompressor::{ParallelDivansProcess};
 
 pub struct HeaderParser<AllocU8:Allocator<u8>,
@@ -323,7 +323,7 @@ macro_rules! free_body {
     }
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
@@ -341,7 +341,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
     free_body!();
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
@@ -399,7 +399,7 @@ macro_rules! decode_body {
     }
 }
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
@@ -419,7 +419,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
     decode_body!();
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + interface::BillingCapability,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,

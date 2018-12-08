@@ -27,11 +27,11 @@ pub extern fn divans_new_compressor() -> *mut compressor::DivansCompressorState{
 
 
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 fn divans_new_compressor_without_custom_alloc(_to_box: DivansCompressorState) -> *mut DivansCompressorState{
-    panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
+    panic!("Must supply allocators if calling divans when compiled without features=std");
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 fn divans_new_compressor_without_custom_alloc(to_box: DivansCompressorState) -> *mut DivansCompressorState{
     alloc_util::Box::<DivansCompressorState>::into_raw(alloc_util::Box::<DivansCompressorState>::new(to_box))
 }
@@ -145,12 +145,12 @@ pub unsafe extern fn divans_compressor_free_usize(state_ptr: *mut DivansCompress
 }
 
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 unsafe fn free_compressor_no_custom_alloc(state_ptr: *mut DivansCompressorState) {
     let _state = alloc_util::Box::from_raw(state_ptr);
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 unsafe fn free_compressor_no_custom_alloc(_state_ptr: *mut DivansCompressorState) {
     unreachable!();
 }
@@ -198,12 +198,12 @@ pub extern fn divans_new_serial_decompressor() -> *mut DivansDecompressorState{
 }
 
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 fn divans_new_decompressor_without_custom_alloc(_to_box: DivansDecompressorState) -> *mut DivansDecompressorState{
-    panic!("Must supply allocators if calling divans when compiled with features=no-stdlib");
+    panic!("Must supply allocators if calling divans when compiled without features=std");
 }
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 fn divans_new_decompressor_without_custom_alloc(to_box: DivansDecompressorState) -> *mut DivansDecompressorState{
     alloc_util::Box::<DivansDecompressorState>::into_raw(alloc_util::Box::<DivansDecompressorState>::new(to_box))
 }
@@ -261,12 +261,12 @@ pub unsafe extern fn divans_decode(state_ptr: *mut DivansDecompressorState,
     }
 }
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 unsafe fn free_decompressor_no_custom_alloc(state_ptr: *mut DivansDecompressorState) {
     let _state = alloc_util::Box::from_raw(state_ptr);
 }
 
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 unsafe fn free_decompressor_no_custom_alloc(_state_ptr: *mut DivansDecompressorState) {
     unreachable!();
 }

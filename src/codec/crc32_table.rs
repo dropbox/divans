@@ -577,7 +577,7 @@ pub static TABLE16: [[u32; 256];16] = [
 ],
 ];
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 #[allow(dead_code)]
 fn table_main() {
     print!("pub static TABLE: [u32; 256] = [\n  ");

@@ -1,6 +1,6 @@
-#![cfg(not(feature="no-stdlib"))]
+#![cfg(feature="std")]
 pub use alloc::{AllocatedStackMemory, Allocator, SliceWrapper, SliceWrapperMut, StackAllocator};
-pub use alloc::HeapAlloc;
+pub use alloc_stdlib::HeapAlloc;
 use core;
 use std::error;
 use std::io;

@@ -25,10 +25,14 @@ name = "divans"
 vergen = "0.1"
 
 [dependencies]
-"alloc-no-stdlib" = "~1.3"
-"brotli" = {version = "~2.5", path="../rust-brotli"}
-"packed_simd" = {"optional"=true, version="0.2"}
+"alloc-no-stdlib" = "~2.0"
+
+"brotli" = {version = "~3.1"}
+"packed_simd" = {"optional"=true, version="0.3"}
+"alloc-stdlib" = {"optional"=true, version="~0.2"}
+
 [features]
+default = ["std"]
 
 # allow use of SIMD to update probability and compute crc32c
 simd = ["brotli/simd", "packed_simd/into_bits"]
@@ -60,9 +64,8 @@ debug_entropy = []
 # only use portable SIMD instructions for probability updates
 portable-simd = []
 
-no-stdlib = ["alloc-no-stdlib/no-stdlib", "brotli/no-stdlib"]
+std = ["alloc-stdlib", "brotli/std"]
 
-# bind to rust with nostdlib
 no-stdlib-rust-binding = []
 
 # turn on benchmark tests and --bench commands (requires nigtly)

@@ -306,15 +306,15 @@ pub fn summarize_prior_billing<T: BaseCDF + Default,
     }
 }
 
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 mod test {
     use core;
     use probability::{BaseCDF, CDF16, FrequentistCDF16, Speed};
     use super::{PriorCollection, PriorMultiIndex};
     #[cfg(all(feature="billing", feature="debug_entropy"))]
     use super::summarize_prior_billing;
-    use alloc::{Allocator, HeapAlloc, SliceWrapper, SliceWrapperMut};
-
+    use alloc::{Allocator, SliceWrapper, SliceWrapperMut};
+    use alloc_stdlib::HeapAlloc;
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
     enum PriorType { Foo, Bar, Cat }
     define_prior_struct!(TestPriorSet, PriorType,

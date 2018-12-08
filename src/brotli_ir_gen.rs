@@ -65,11 +65,11 @@ impl<SelectedCDF:CDF16,
     pub fn get_m8(&mut self) -> &mut AllocU8 {
        self.codec.get_m8().unwrap().get_base_alloc()
     }
-    #[cfg(feature="no-stdlib")]
+    #[cfg(not(feature="std"))]
     fn do_panic(_m:ErrMsg) {
         panic!("Internal Error With Compression Stage")
     }
-    #[cfg(not(feature="no-stdlib"))]
+    #[cfg(feature="std")]
     fn do_panic(m:ErrMsg) {
         panic!(m)
     }

@@ -1190,9 +1190,9 @@ fn recode<Reader:std::io::BufRead,
         _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Window size must be <=24 >= 10")),
     }
 }
-#[cfg(not(feature="no-stdlib"))]
+#[cfg(feature="std")]
 const PARALLEL_AVAILABLE: bool = true;
-#[cfg(feature="no-stdlib")]
+#[cfg(not(feature="std"))]
 const PARALLEL_AVAILABLE: bool = false;
 
 fn main() {
