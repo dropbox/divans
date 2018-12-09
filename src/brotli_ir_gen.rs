@@ -27,7 +27,7 @@ pub use super::interface::{BlockSwitch, LiteralBlockSwitch, Command, Compressor,
 };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, StructureSeekerU8};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, StructureSeeker};
 use super::resizable_buffer::ResizableByteBuffer;
 use super::interface;
 use super::interface::{DivansOutputResult, DivansResult, ErrMsg};
@@ -35,7 +35,7 @@ use super::brotli::enc::encode::{BrotliEncoderStateStruct, BrotliEncoderCompress
 use super::brotli::enc::backward_references::BrotliEncoderMode;
 use super::divans_compressor::write_header;
 pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
-                                        Parser:StructureSeekerU8<AllocU8>,
+                                        Parser:StructureSeeker,
                                         ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
                             AllocU8:Allocator<u8>,
                             AllocCDF16:Allocator<SelectedCDF>,
@@ -54,7 +54,7 @@ pub struct BrotliDivansHybridCompressor<SelectedCDF:CDF16,
 
 
 impl<SelectedCDF:CDF16,
-     Parser:StructureSeekerU8<AllocU8>,
+     Parser:StructureSeeker,
      ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<SelectedCDF>,
@@ -241,7 +241,7 @@ impl<SelectedCDF:CDF16,
 }
 
 impl<SelectedCDF:CDF16,
-          Parser:StructureSeekerU8<AllocU8>,
+          Parser:StructureSeeker,
      ChosenEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<SelectedCDF>,
@@ -328,20 +328,21 @@ impl<SelectedCDF:CDF16,
 
 pub struct BrotliDivansHybridCompressorFactory<AllocU8:Allocator<u8>,
                                                AllocCDF16: Allocator<interface::DefaultCDF16>,
-                                               AllocBrotli: brotli::enc::BrotliAlloc> {
+                                               AllocBrotli: brotli::enc::BrotliAlloc, Parser: StructureSeeker> {
     p1: PhantomData<AllocU8>,
     p3: PhantomData<AllocCDF16>,
     ph: PhantomData<AllocBrotli>,
+    pp: PhantomData<Parser>,
 }
 
 impl<AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
      AllocBrotli: brotli::enc::BrotliAlloc,
-     Parser:StructureSeekerU8<AllocU8>,
+     Parser:StructureSeeker,
      > interface::DivansCompressorFactory<AllocU8, AllocU32, AllocCDF16>
     for BrotliDivansHybridCompressorFactory<AllocU8, AllocCDF16,
-                                            AllocBrotli> {
+                                            AllocBrotli, Parser> {
     type DefaultEncoder = DefaultEncoderType!();
        type ConstructedCompressor = BrotliDivansHybridCompressor<interface::DefaultCDF16,
                                                                Parser,
@@ -361,7 +362,7 @@ impl<AllocU8:Allocator<u8>,
              divans_data: ResizableByteBuffer::<u8, AllocU8>::new(),
              encoded_byte_offset:0, 
              brotli_encoder: brotli::enc::encode::BrotliEncoderCreateInstance(additional_args),
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16, Parser>::new(
                 m8,
                 mcdf16,
                 cmd_enc,

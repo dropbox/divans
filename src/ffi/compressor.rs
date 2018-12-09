@@ -3,13 +3,15 @@ use ::interface::{DivansResult, DivansOutputResult};
 use ::brotli::enc::interface::LiteralPredictionModeNibble;
 
 use core;
-use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor};
+use ::interface::{DivansCompressorOptions, BrotliCompressionSetting, StrideSelection, DivansCompressorFactory, Compressor, DefaultStructureSeeker};
 use ::probability::Speed;
 use super::alloc_util::SubclassableAllocator;
 use super::interface::*;
 
 type InternalCompressorFactory = ::DivansCompressorFactoryStruct<SubclassableAllocator<u8>,
-                                                         SubclassableAllocator<::DefaultCDF16>>;
+                                                                 SubclassableAllocator<::DefaultCDF16>,
+                                                                 DefaultStructureSeeker
+                                                                 >;
 
 type FFIHybridBrotliFactory = ::BrotliDivansHybridCompressorFactory<SubclassableAllocator<u8>,
 //                                                                 SubclassableAllocator<u32>,
@@ -32,7 +34,8 @@ type FFIHybridBrotliFactory = ::BrotliDivansHybridCompressorFactory<Subclassable
                                                                      SubclassableAllocator<brotli::enc::cluster::HistogramPair>,
                                                                      SubclassableAllocator<brotli::enc::histogram::ContextType>,
                                                                      SubclassableAllocator<brotli::enc::entropy_encode::HuffmanTree>,
-                                                                     SubclassableAllocator<brotli::enc::ZopfliNode>>>;
+                                                                     SubclassableAllocator<brotli::enc::ZopfliNode>>,
+                                                                    DefaultStructureSeeker>;
 type FFIDivansBrotliConstructedCompressor = <FFIHybridBrotliFactory as ::DivansCompressorFactory<SubclassableAllocator<u8>,
                                                                                                  SubclassableAllocator<u32>,
                                                                                                  SubclassableAllocator<::DefaultCDF16>>>::ConstructedCompressor;
@@ -43,6 +46,7 @@ type FFIInternalDefaultEncoder = <InternalCompressorFactory as ::DivansCompresso
                                                >::DefaultEncoder;
 
 type FFIInternalCompressor = ::DivansCompressor<FFIInternalDefaultEncoder,
+                                                DefaultStructureSeeker,
                                                 SubclassableAllocator<u8>,
                                                 SubclassableAllocator<u32>,
                                                 SubclassableAllocator<::DefaultCDF16>>;

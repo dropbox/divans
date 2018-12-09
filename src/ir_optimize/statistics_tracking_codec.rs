@@ -5,7 +5,7 @@ use brotli;
 use codec::CommandArray;
 use codec;
 use slice_util::AllocatedMemoryPrefix;
-use codec::{EncoderOrDecoderSpecialization, StructureSeekerU8};
+use codec::{EncoderOrDecoderSpecialization, StructureSeeker};
 use mux::DevNull;
 use codec::io::DemuxerAndRingBuffer;
 use cmd_to_divans::EncoderSpecialization;
@@ -98,7 +98,7 @@ pub fn reset_billing_snapshot<SelectedCDF:CDF16,
                               AllocU8:Allocator<u8>,
                               AllocCDF16:Allocator<SelectedCDF>,
                               Spc: EncoderOrDecoderSpecialization,
-                              Parser:StructureSeekerU8<AllocU8>,
+                              Parser:StructureSeeker,
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
                                                           Spc,
                                                           DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>,
@@ -117,7 +117,7 @@ pub fn reset_billing_snapshot<SelectedCDF:CDF16,
 pub fn take_billing_snapshot<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                              AllocCDF16:Allocator<SelectedCDF>,
-                             Parser:StructureSeekerU8<AllocU8>,
+                             Parser:StructureSeeker,
                              Spc: EncoderOrDecoderSpecialization
                           >(codec:&mut codec::DivansCodec<TallyingArithmeticEncoder,
                                                           Spc,
@@ -137,7 +137,7 @@ pub fn take_billing_snapshot<SelectedCDF:CDF16,
 pub fn billing_snapshot_delta<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                               AllocCDF16:Allocator<SelectedCDF>,
-                              Parser:StructureSeekerU8<AllocU8>,
+                              Parser:StructureSeeker,
                           Spc: EncoderOrDecoderSpecialization
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
                                                       Spc,
@@ -158,7 +158,7 @@ pub fn billing_snapshot_delta<SelectedCDF:CDF16,
 pub fn total_billing_cost<SelectedCDF:CDF16,
                           AllocU8:Allocator<u8>,
                           AllocCDF16:Allocator<SelectedCDF>,
-                          Parser:StructureSeekerU8<AllocU8>,
+                          Parser:StructureSeeker,
                           Spc: EncoderOrDecoderSpecialization,
                           >(codec:&codec::DivansCodec<TallyingArithmeticEncoder,
                                                       Spc,

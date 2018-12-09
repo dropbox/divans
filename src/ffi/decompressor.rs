@@ -1,15 +1,17 @@
 use super::alloc_util::SubclassableAllocator;
 use divans_decompressor::StaticCommand;
 use super::interface::CAllocator;
-//use ::interface::DivansDecompressorFactory;
+use ::interface::DefaultStructureSeeker;
 pub type DecompressorFactory = ::DivansDecompressorFactoryStruct<SubclassableAllocator<u8>,
                                                                  SubclassableAllocator<::DefaultCDF16>,
-                                                                 SubclassableAllocator<StaticCommand>>;
+                                                                 SubclassableAllocator<StaticCommand>,
+                                                                 DefaultStructureSeeker>;
 #[repr(C)]
 #[no_mangle]
 pub struct DivansDecompressorState {
     pub custom_allocator: CAllocator,
-    pub decompressor: ::DivansDecompressor<<DecompressorFactory as ::DivansDecompressorFactory<SubclassableAllocator<u8>,  SubclassableAllocator<::DefaultCDF16>, SubclassableAllocator<StaticCommand>>>::DefaultDecoder,
+    pub decompressor: ::DivansDecompressor<<DecompressorFactory as ::DivansDecompressorFactory<SubclassableAllocator<u8>,  SubclassableAllocator<::DefaultCDF16>, SubclassableAllocator<StaticCommand>, DefaultStructureSeeker>>::DefaultDecoder,
+                                           DefaultStructureSeeker,
                                            SubclassableAllocator<u8>,
                                            SubclassableAllocator<::DefaultCDF16>,
                                            SubclassableAllocator<StaticCommand>>,

@@ -53,7 +53,7 @@ pub use self::interface::{
     EmptyCommandArray,
     CommandSliceArray,
     MainThreadContext,
-    StructureSeekerU8,
+    StructureSeeker,
     get_distance_from_mnemonic_code,
 };
 use super::interface::{
@@ -72,6 +72,8 @@ pub mod context_map;
 pub mod block_type;
 pub mod priors;
 pub mod decoder;
+pub mod last8;
+pub use self::last8::Last8Parser;
 pub use self::decoder::{
     DivansDecoderCodec,
     SubDigest,
@@ -165,7 +167,7 @@ pub struct DivansCodec<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                        Cdf16:CDF16,
                        AllocU8: Allocator<u8>,
                        AllocCDF16:Allocator<Cdf16>,
-                       Parser:StructureSeekerU8<AllocU8>,
+                       Parser:StructureSeeker,
                        > {
     pub cross_command_state: CrossCommandState<ArithmeticCoder, // needs to be public so we can use items on that struct to free items
                                                Specialization,
@@ -207,7 +209,7 @@ impl<AllocU8: Allocator<u8>,
      LinearOutputBytes:StreamMuxer<AllocU8>+Default,
      Cdf16:CDF16,
      AllocCDF16:Allocator<Cdf16>,
-     Parser: StructureSeekerU8<AllocU8>,
+     Parser: StructureSeeker,
      > DivansCodec<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16, Parser> {
     pub fn new(m8:AllocU8,
                mcdf16:AllocCDF16,
@@ -246,7 +248,7 @@ impl<AllocU8: Allocator<u8>,
 
         let pm = context_map::PredictionModeState::begin(cross_command_state.thread_ctx.m8().unwrap());
 
-        let mut ret = DivansCodec::<ArithmeticCoder,  Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16> {
+        let mut ret = DivansCodec::<ArithmeticCoder, Specialization, LinearInputBytes, LinearOutputBytes, Cdf16, AllocU8, AllocCDF16, Parser> {
             cross_command_state:cross_command_state,
             state:EncodeOrDecodeState::Begin,
             codec_traits: CodecTraitSelector::DefaultTrait(&specializations::DEFAULT_TRAIT),
@@ -321,6 +323,7 @@ impl<AllocU8: Allocator<u8>,
                              AllocCDF16,
                              AllocCommand,
                              ArithmeticCoder,
+                             Parser,
                              Mux<AllocU8>>::new(main_thread_context, mcommand, self.crc.clone(), skip_checksum)
     }
     pub fn demuxer(&mut self) -> &mut LinearInputBytes{

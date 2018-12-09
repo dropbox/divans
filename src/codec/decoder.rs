@@ -12,7 +12,7 @@ use alloc::{SliceWrapper, Allocator, SliceWrapperMut};
 use super::crc32::{crc32c_init,crc32c_update};
 use super::interface::{
     MainThreadContext,
-    StructureSeekerU8,
+    StructureSeeker,
     CMD_CODER,
     LIT_CODER,
 };
@@ -40,7 +40,7 @@ pub struct DivansDecoderCodec<Cdf16:CDF16,
                               AllocCDF16:Allocator<Cdf16>,
                               AllocCommand:Allocator<StaticCommand>,
                               ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
-                              Parser:StructureSeekerU8<AllocU8>,
+                              Parser:StructureSeeker,
                               LinearInputBytes: StreamDemuxer<AllocU8>> {
     pub ctx: MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>,
     pub demuxer: LinearInputBytes,
@@ -68,7 +68,7 @@ impl<Cdf16:CDF16,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<Cdf16>,
      AllocCommand:Allocator<StaticCommand>,
-     Parser: StructureSeekerU8<AllocU8>,
+     Parser: StructureSeeker,
      ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
      LinearInputBytes: Default+StreamDemuxer<AllocU8>,
      > DivansDecoderCodec<Cdf16, AllocU8, AllocCDF16, AllocCommand, ArithmeticCoder, Parser, LinearInputBytes> {
@@ -77,7 +77,7 @@ impl<Cdf16:CDF16,
                crc: SubDigest,
                skip_checksum: bool) -> Self {
         let codec_trait = construct_codec_trait_from_bookkeeping(&main_thread_context.lbk);
-        DivansDecoderCodec::<Cdf16, AllocU8, AllocCDF16, AllocCommand, ArithmeticCoder, LinearInputBytes> {
+        DivansDecoderCodec::<Cdf16, AllocU8, AllocCDF16, AllocCommand, ArithmeticCoder, Parser, LinearInputBytes> {
             ctx: main_thread_context,
             demuxer: LinearInputBytes::default(),
             codec_traits:codec_trait,
@@ -172,9 +172,8 @@ impl<Cdf16:CDF16,
         if !self.is_populating_ring_buffer {
             return DivansOutputResult::Success;
         }
-        let zed = 0;
         let lbk = &mut self.ctx.lbk;
-        match self.ctx.recoder.encode_cmd(&mut self.state_populate_ring_buffer, output, output_offset, &mut |x|{lbk.last_8_literals |= zed;print!("{:?}, {:?}\n", x, lbk.last_8_literals)}) {
+        match self.ctx.recoder.encode_cmd(&mut self.state_populate_ring_buffer, output, output_offset, &mut |data|lbk.parser_update(data)) {
             DivansOutputResult::Success => free_cmd(&mut self.state_populate_ring_buffer,
                                                     &mut self.ctx.m8.use_cached_allocation::<
                                                             UninitializedOnAlloc>()),

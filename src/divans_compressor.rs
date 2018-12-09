@@ -47,12 +47,12 @@ pub use super::interface::{
     };
 
 pub use super::cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc, CommandArray, CommandSliceArray,StructureSeekerU8};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, default_crc, CommandArray, CommandSliceArray,StructureSeeker};
 use super::interface;
 use super::interface::{DivansOutputResult, DivansResult, ErrMsg};
 const COMPRESSOR_CMD_BUFFER_SIZE : usize = 16;
 pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
-                            Parser:StructureSeekerU8<AllocU8>,
+                            Parser:StructureSeeker,
                             AllocU8:Allocator<u8>,
                             AllocU32:Allocator<u32>,
                             AllocCDF16:Allocator<interface::DefaultCDF16>> {
@@ -71,19 +71,21 @@ pub struct DivansCompressor<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWith
 
 pub struct DivansCompressorFactoryStruct
     <AllocU8:Allocator<u8>, 
-     AllocCDF16:Allocator<interface::DefaultCDF16>> {
+     AllocCDF16:Allocator<interface::DefaultCDF16>,
+     Parser:StructureSeeker> {
     p1: PhantomData<AllocU8>,
-    p2: PhantomData<AllocCDF16>,
+        p2: PhantomData<AllocCDF16>,
+        p3: PhantomData<Parser>
 }
 
 impl<AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
      AllocCDF16:Allocator<interface::DefaultCDF16>,
-     Parser:StructureSeekerU8<AllocU8>,
+     Parser:StructureSeeker,
      > interface::DivansCompressorFactory<AllocU8,
                                           AllocU32,
                                           AllocCDF16>
-    for DivansCompressorFactoryStruct<AllocU8, AllocCDF16> {
+    for DivansCompressorFactoryStruct<AllocU8, AllocCDF16, Parser> {
      type DefaultEncoder = DefaultEncoderType!();
      type ConstructedCompressor = DivansCompressor<Self::DefaultEncoder, Parser, AllocU8, AllocU32, AllocCDF16>;
      type AdditionalArgs = ();
@@ -97,9 +99,9 @@ impl<AllocU8:Allocator<u8>,
          let cmd_enc = Self::DefaultEncoder::new(&mut m8);
          let lit_enc = Self::DefaultEncoder::new(&mut m8);
          let assembler = raw_to_cmd::RawToCmdState::new(&mut m32, ring_buffer);
-         DivansCompressor::<Self::DefaultEncoder, AllocU8, AllocU32, AllocCDF16> {
+         DivansCompressor::<Self::DefaultEncoder, Parser, AllocU8, AllocU32, AllocCDF16> {
             m32 :m32,
-            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16>::new(
+            codec:DivansCodec::<Self::DefaultEncoder, EncoderSpecialization, DemuxerAndRingBuffer<AllocU8, DevNull<AllocU8>>, Mux<AllocU8>, interface::DefaultCDF16, AllocU8, AllocCDF16, Parser>::new(
                 m8,
                 mcdf16,
                 cmd_enc,
@@ -187,7 +189,7 @@ impl<'a> CommandArray for InputReferenceCommandArray<'a> {
     }
 }
 
-impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, Parser:StructureSeekerU8<AllocU8>, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
+impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, Parser:StructureSeeker, AllocU8:Allocator<u8>, AllocU32:Allocator<u32>, AllocCDF16:Allocator<interface::DefaultCDF16>> 
     DivansCompressor<DefaultEncoder, Parser, AllocU8, AllocU32, AllocCDF16> {
     fn flush_freeze_dried_cmds(&mut self, output: &mut [u8], output_offset: &mut usize) -> interface::DivansOutputResult {
         if self.freeze_dried_cmd_start != self.freeze_dried_cmd_end { // we have some freeze dried items
@@ -270,7 +272,7 @@ impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>, Par
 
 
 impl<DefaultEncoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
-     Parser:StructureSeekerU8<AllocU8>,
+     Parser:StructureSeeker,
      AllocU8:Allocator<u8>,
      AllocU32:Allocator<u32>,
      AllocCDF16:Allocator<interface::DefaultCDF16>> Compressor for DivansCompressor<DefaultEncoder,

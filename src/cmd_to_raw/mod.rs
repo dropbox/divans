@@ -253,6 +253,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         copy:&CopyCommand,
         cb: &mut CopyCallback
     ) -> DivansOutputResult {
+        eprintln!("Copying {} bytes", copy.num_bytes);
         let num_bytes_left_in_cmd = copy.num_bytes - self.state.input_sub_offset as u32;
         if copy.distance <= REPEAT_BUFFER_MAX_SIZE && num_bytes_left_in_cmd > copy.distance {
             let num_bytes_to_copy = core::cmp::min(num_bytes_left_in_cmd,

@@ -4,7 +4,7 @@ use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
     BLOCK_TYPE_LITERAL_SWITCH,
-    StructureSeekerU8,
+    StructureSeeker,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -30,7 +30,7 @@ impl BlockTypeState {
         BlockTypeState::Begin
     }
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                            Parser:StructureSeekerU8<AllocU8>,
+                            Parser:StructureSeeker,
                         Specialization:EncoderOrDecoderSpecialization,
                             LinearInputBytes:StreamDemuxer<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
@@ -132,7 +132,7 @@ impl LiteralBlockTypeState {
                             Cdf16:CDF16,
                             AllocU8:Allocator<u8>,
                             AllocCDF16:Allocator<Cdf16>,
-                            Parser:StructureSeekerU8<AllocU8>,
+                            Parser:StructureSeeker,
                             >(
         &mut self,
         superstate: &mut CrossCommandState<ArithmeticCoder,

@@ -1,6 +1,6 @@
 use ::probability::CDF16;
 use alloc::Allocator;
-pub use super::interface::{CrossCommandBookKeeping,LiteralBookKeeping, StructureSeekerU8};
+pub use super::interface::{CrossCommandBookKeeping,LiteralBookKeeping, StructureSeeker};
 
 pub trait CodecTraits {
     const MIXING_PRIORS: bool;
@@ -27,7 +27,7 @@ pub enum CodecTraitSelector {
 pub fn construct_codec_trait_from_bookkeeping<Cdf16:CDF16,
                                               AllocU8:Allocator<u8>,
                                               AllocCDF16:Allocator<Cdf16>,
-                                              Parser:StructureSeekerU8<AllocU8>>(
+                                              Parser:StructureSeeker>(
     lbk:&LiteralBookKeeping<Cdf16, AllocU8, AllocCDF16, Parser>,
 ) -> CodecTraitSelector {
     if lbk.model_weights[0].should_mix() || lbk.model_weights[1].should_mix() {

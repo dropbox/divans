@@ -54,7 +54,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             final_size:23,
             empty:0,
             word_id:index
-        });
+        }, &mut |_x|());
         match ret {
             DivansOutputResult::Success => {
                 assert!(index < 5);
@@ -105,7 +105,7 @@ fn help_ring_buffer_dict(mut state: super::DivansRecodeState<ExRingBuffer>) -> s
             final_size:23,
             empty:0,
             word_id:index
-        });
+        }, &mut |_x|());
         match ret {
             DivansOutputResult::Success => {
                 assert!(index < 5);
@@ -161,7 +161,8 @@ fn help_copy_far(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..4 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:112,
-                                                  num_bytes:29}) {
+                                                   num_bytes:29},
+                               &mut |_x|()) {
             DivansOutputResult::NeedsMoreOutput=>{},
             DivansOutputResult::Success=>break,
             res => panic!("UH OH"),
@@ -206,7 +207,7 @@ fn help_copy_near_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..4 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:15,
-                                                   num_bytes:64}) {
+                                                   num_bytes:64}, &mut |_x|()) {
             DivansOutputResult::NeedsMoreOutput=>{},
             DivansOutputResult::Success=>break,
             res => panic!("UH OH"),
@@ -237,7 +238,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..256 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258}, &mut |_x|()) {
             DivansOutputResult::NeedsMoreOutput=>{},
             DivansOutputResult::Success=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
@@ -253,7 +254,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..64 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258}, &mut |_x|()) {
             DivansOutputResult::NeedsMoreOutput=>{},
             DivansOutputResult::Success=>panic!("Not enough buffer room"),
             res => panic!("uh oh"),
@@ -277,7 +278,7 @@ fn help_copy_big_overlap(mut state: super::DivansRecodeState<ExRingBuffer>,
     for _i in 0..16 {
         count += 1;
         match state.parse_copy(&super::CopyCommand{distance:125,
-                                                   num_bytes:258}) {
+                                                   num_bytes:258}, &mut |_x|()) {
             DivansOutputResult::NeedsMoreOutput=>{},
             DivansOutputResult::Success=>break,
             res => panic!("uh oh"),

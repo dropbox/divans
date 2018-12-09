@@ -7,7 +7,7 @@ use alloc_util::{RepurposingAlloc, AllocatedMemoryPrefix, UninitializedOnAlloc};
 use super::interface::{
     EncoderOrDecoderSpecialization,
     CrossCommandState,
-    StructureSeekerU8,
+    StructureSeeker,
 };
 use ::interface::{
     ArithmeticEncoderOrDecoder,
@@ -104,7 +104,7 @@ impl <AllocU8:Allocator<u8>> PredictionModeState<AllocU8> {
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                            Parser:StructureSeekerU8<AllocU8>,
+                            Parser:StructureSeeker,
                             Specialization:EncoderOrDecoderSpecialization,
                             LinearInputBytes:StreamDemuxer<AllocU8>,
                              LinearOutputBytes:StreamMuxer<AllocU8>+Default,

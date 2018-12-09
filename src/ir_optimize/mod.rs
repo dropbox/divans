@@ -11,13 +11,13 @@ use alloc::{SliceWrapper, Allocator};
 pub use super::interface::{ArithmeticEncoderOrDecoder, NewWithAllocator, DivansResult, ErrMsg};
 mod statistics_tracking_codec;
 mod cache;
-use codec::StructureSeekerU8;
+use codec::StructureSeeker;
 use self::statistics_tracking_codec::{TallyingArithmeticEncoder, OneCommandThawingArray, TwoCommandThawingArray, ToggleProbabilityBlend,
                                       take_billing_snapshot, billing_snapshot_delta,reset_billing_snapshot};
 pub fn should_merge<SelectedCDF:CDF16,
                     AllocU8:Allocator<u8>,
                     AllocCDF16:Allocator<SelectedCDF>,
-                    Parser:StructureSeekerU8<AllocU8>,
+                    Parser:StructureSeeker,
                     >(lit: &LiteralCommand<brotli::SliceOffset>,
                       copy: &CopyCommand,
                       copy_index: usize,
@@ -118,7 +118,7 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
                    AllocU8:Allocator<u8>,
                    AllocCDF16:Allocator<SelectedCDF>,
                    AllocCommand: Allocator<StaticCommand>,
-                   Parser:StructureSeekerU8<AllocU8>,
+                   Parser:StructureSeeker,
                    >(pm:&mut brotli::interface::PredictionModeContextMap<brotli::InputReferenceMut>,
                      orig_buf:&'a mut [brotli::interface::Command<brotli::SliceOffset>],
                      mb:brotli::InputPair,
@@ -153,7 +153,8 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
                                            DevNull<AllocU8>,
                                            SelectedCDF,
                                            AllocU8,
-                                           AllocCDF16>::new(m8,
+                                           AllocCDF16,
+                                           Parser>::new(m8,
                                                             mcdf16,
                                                             TallyingArithmeticEncoder::default(),
                                                             TallyingArithmeticEncoder::default(),
@@ -285,7 +286,9 @@ pub fn ir_optimize<'a, SelectedCDF:CDF16,
         codec::MainThreadContext::<SelectedCDF,
                                    AllocU8,
                                    AllocCDF16,
-                                   ChosenEncoder>::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, reallocation_item)),
+                                   Parser,
+                                   ChosenEncoder,
+                                   >::reassemble((alloc_util::RepurposingAlloc::reassemble((retrieved_m8, reallocation_item)),
                                                                retrieved_mcdf16,
                                                                remainder)));
     Ok(&orig_buf[..eligible_index])

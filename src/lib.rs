@@ -84,9 +84,9 @@ pub use cmd_to_raw::DivansRecodeState;
 pub use codec::CMD_BUFFER_SIZE;
 pub use divans_to_raw::DecoderSpecialization;
 pub use cmd_to_divans::EncoderSpecialization;
-pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection};
+pub use codec::{EncoderOrDecoderSpecialization, DivansCodec, StrideSelection, StructureSeeker};
 pub use divans_compressor::{DivansCompressor, DivansCompressorFactoryStruct};
-
+pub use interface::{DefaultStructureSeeker};
 #[cfg(not(feature="safe"))]
 mod ffi;
 #[cfg(not(feature="safe"))]

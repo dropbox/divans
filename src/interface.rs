@@ -17,6 +17,7 @@ use super::slice_util;
 use super::probability::interface::{CDF16, ProbRange};
 use super::probability;
 use super::codec::copy::CopySubstate;
+use super::codec::Last8Parser;
 use super::codec::dict::DictSubstate;
 use super::codec::literal::LiteralSubstate;
 use super::codec::context_map::PredictionModeSubstate;
@@ -159,7 +160,7 @@ pub type DefaultCDF16 = probability::DebugWrapperCDF16<DefaultInternalCDF16>;
 pub type DefaultCDF16 = DefaultInternalCDF16;
 #[cfg(feature="findspeed")]
 pub type DefaultCDF16 = probability::VariantSpeedCDF<DefaultInternalCDF16>;
-
+pub type DefaultStructureSeeker = Last8Parser;
 pub const HEADER_LENGTH: usize = 16;
 pub const MAGIC_NUMBER:[u8;4] = [0xff, 0xe5,0x8c, 0x9f];
 

@@ -6,6 +6,7 @@ pub use super::divans_decompressor::StaticCommand;
 pub use core::marker::PhantomData;
 
 pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                                 Parser,
                                  AllocU8:Allocator<u8>,
                                  AllocCDF16:Allocator<DefaultCDF16>,
                                  AllocCommand:Allocator<StaticCommand>> {
@@ -13,13 +14,15 @@ pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + Ne
     p1: PhantomData<AllocU8>,
     p2: PhantomData<AllocCDF16>,
     p3: PhantomData<AllocCommand>,
+    p4: PhantomData<Parser>,
 }
 
 impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+     Parser,
      AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<DefaultCDF16>,
      AllocCommand:Allocator<StaticCommand>>
-    ParallelDivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand> {
+    ParallelDivansProcess<DefaultDecoder, Parser, AllocU8, AllocCDF16, AllocCommand> {
 
     pub fn new<T>(_header: &mut T, mut _window_size: usize) -> Self {
         unimplemented!();

@@ -6,7 +6,7 @@ use std::error;
 use std::io;
 use std::io::{Read};
 use super::interface::{DivansResult, DivansOutputResult, ErrMsg};
-use ::interface::{Compressor, DivansCompressorFactory, Decompressor};
+use ::interface::{Compressor, DivansCompressorFactory, Decompressor, DefaultStructureSeeker};
 use ::DivansDecompressorFactory;
 use ::brotli;
 use ::interface;
@@ -154,7 +154,8 @@ type DivansBrotliFactory = ::BrotliDivansHybridCompressorFactory<HeapAlloc<u8>,
                                                                      HeapAlloc<brotli::enc::cluster::HistogramPair>,
                                                                      HeapAlloc<brotli::enc::histogram::ContextType>,
                                                                      HeapAlloc<brotli::enc::entropy_encode::HuffmanTree>,
-                                                                     HeapAlloc<brotli::enc::ZopfliNode>>>;
+                                                                     HeapAlloc<brotli::enc::ZopfliNode>>,
+                                                                 DefaultStructureSeeker>;
 type DivansBrotliConstructedCompressor = <DivansBrotliFactory as ::DivansCompressorFactory<HeapAlloc<u8>,
                                                                                            HeapAlloc<u32>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
@@ -221,7 +222,8 @@ impl<R:Read> DivansBrotliHybridCompressorReader<R> {
 
 
 type DivansCustomFactory = ::DivansCompressorFactoryStruct<HeapAlloc<u8>,
-                                                         HeapAlloc<::DefaultCDF16>>;
+                                                           HeapAlloc<::DefaultCDF16>,
+                                                           DefaultStructureSeeker>;
 type DivansCustomConstructedCompressor = <DivansCustomFactory as ::DivansCompressorFactory<HeapAlloc<u8>,
                                                                                            HeapAlloc<u32>,
                                                                                            HeapAlloc<::DefaultCDF16>>>::ConstructedCompressor;
@@ -261,11 +263,15 @@ impl<R:Read> DivansExperimentalCompressorReader<R> {
 
 type StandardDivansDecompressorFactory = ::DivansDecompressorFactoryStruct<HeapAlloc<u8>,
                                                                            HeapAlloc<::DefaultCDF16>,
-                                                                           HeapAlloc<StaticCommand>>;
+                                                                           HeapAlloc<StaticCommand>,
+                                                                           DefaultStructureSeeker,
+                                                                           >;
 type DivansConstructedDecompressor = ::DivansDecompressor<<StandardDivansDecompressorFactory as ::DivansDecompressorFactory<HeapAlloc<u8>,
                                                                                                                             HeapAlloc<::DefaultCDF16>,
-                                                                                                                            HeapAlloc<StaticCommand>>
-                                                           >::DefaultDecoder,
+                                                                                                                            HeapAlloc<StaticCommand>,
+                                                                                                                            DefaultStructureSeeker,
+                                                                                                                            >>::DefaultDecoder,
+                                                          DefaultStructureSeeker,
                                                           HeapAlloc<u8>,
                                                           HeapAlloc<::DefaultCDF16>,
                                                           HeapAlloc<StaticCommand>>;

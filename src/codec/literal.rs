@@ -16,7 +16,6 @@ use super::interface::{
     drain_or_fill_static_buffer,
     ThreadContext,
     StructureSeeker,
-    StructureSeekerU8,
 };
 use threading::ThreadToMain;
 use super::specializations::{CodecTraits};
@@ -89,7 +88,7 @@ impl HighTrait for LowNibble {
 pub fn get_prev_word_context<Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
                              AllocCDF16:Allocator<Cdf16>,
-                             Parser:StructureSeekerU8<AllocU8>,
+                             Parser:StructureSeeker,
                              CTraits:CodecTraits>(lbk: &LiteralBookKeeping<Cdf16,
                                                                            AllocU8,
                                                                            AllocCDF16,
@@ -156,7 +155,7 @@ impl<AllocU8:Allocator<u8>,
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     fn code_nibble<'a,
-                   Parser:StructureSeekerU8<AllocU8>,
+                   Parser:StructureSeeker,
                    ArithmeticCoder:ArithmeticEncoderOrDecoder,
                    Specialization:EncoderOrDecoderSpecialization,
                    Cdf16:CDF16,
@@ -265,7 +264,7 @@ impl<AllocU8:Allocator<u8>,
         (cur_nibble, blendable_prob)
     }
     //(do not do inline here; doing so causes a sizable perf regression on 1.27.0 nightly 2018-04-18)
-    fn code_nibble_array<Parser:StructureSeekerU8<AllocU8>,
+    fn code_nibble_array<Parser:StructureSeeker,
                          ArithmeticCoder:ArithmeticEncoderOrDecoder,
                          Specialization:EncoderOrDecoderSpecialization,
                          LinearInputBytes:StreamDemuxer<AllocU8>,
@@ -411,7 +410,7 @@ impl<AllocU8:Allocator<u8>,
     }
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode_content_bytes<ISlice: SliceWrapper<u8>,
-                                          Parser:StructureSeekerU8<AllocU8>,
+                                          Parser:StructureSeeker,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
                             LinearInputBytes:StreamDemuxer<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
@@ -505,7 +504,7 @@ impl<AllocU8:Allocator<u8>,
     #[cfg_attr(not(feature="no-inline"), inline(always))]
     pub fn encode_or_decode<ISlice: SliceWrapper<u8>,
                             ArithmeticCoder:ArithmeticEncoderOrDecoder,
-                            Parser:StructureSeekerU8<AllocU8>,
+                            Parser:StructureSeeker,
                             LinearInputBytes:StreamDemuxer<AllocU8>+ThreadToMain<AllocU8>,
                             LinearOutputBytes:StreamMuxer<AllocU8>+Default,
                             Cdf16:CDF16,

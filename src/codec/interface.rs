@@ -122,17 +122,15 @@ pub enum ContextMapType {
 
 const CONTEXT_MAP_CACHE_SIZE: usize = 13;
 
-pub trait StructureSeeker {
+pub trait StructureSeeker : Clone + Default {
     fn update(&mut self, data: &[u8]);
     fn update_literal(&mut self, data: u8);
     fn prior(&self) -> (u8, u8);
 }
-pub trait StructureSeekerU8<AllocU8:Allocator<u8>> : StructureSeeker + NewWithAllocator<AllocU8> {
-}
 pub struct LiteralBookKeeping<Cdf16:CDF16,
                               AllocU8:Allocator<u8>,
                               AllocCDF16:Allocator<Cdf16>,
-                              Parser: StructureSeekerU8<AllocU8>> {
+                              Parser: StructureSeeker> {
     pub last_8_literals: u64,
     parser: Parser,
     pub literal_context_map: AllocU8::AllocatedMemory,
@@ -250,15 +248,14 @@ impl<
     Cdf16:CDF16,
     AllocCDF16:Allocator<Cdf16>,
     AllocU8:Allocator<u8>,
-    Parser:StructureSeekerU8<AllocU8>> LiteralBookKeeping<Cdf16,
+    Parser:StructureSeeker> LiteralBookKeeping<Cdf16,
                                                         AllocU8,
                                                         AllocCDF16,
                                                         Parser> {
-    fn new(alloc_u8: &mut AllocU8 ,literal_context_map:AllocU8::AllocatedMemory) -> Self {
-        let parser = Parser::new_with_alloc(alloc_u8);
-        LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16> {
+    fn new(literal_context_map:AllocU8::AllocatedMemory) -> Self {
+        LiteralBookKeeping::<Cdf16, AllocU8, AllocCDF16, Parser> {
             combine_literal_predictions: false,
-            parser: parser,
+            parser: Parser::default(),
             last_8_literals: 0,
             stride: 0,
             literal_adaptation: [default_literal_speed(); 4],
@@ -290,14 +287,19 @@ impl<
        self.literal_lut1 = get_lut1(new_mode);
        DivansOpResult::Success
     }
+    #[inline(always)]
+    pub fn parser_update(&mut self, data: &[u8]) {
+        eprintln!("Pushing bytes {:?}", data);
+        self.parser.update(data);
+    }
     pub fn push_literal_byte(&mut self, b: u8) {
+        eprintln!("Pushing byte {:?}", b);
         //self.num_literals_coded += 1;
+        assert_eq!(self.last_8_literals >> 0x38, u64::from(self.parser.prior().0));
+        assert_eq!((self.last_8_literals >> 0x30) & 0xff, u64::from(self.parser.prior().1));
         self.last_8_literals >>= 0x8;
         self.last_8_literals |= u64::from(b) << 0x38;
-    }
-    pub fn push_literal_nibble(&mut self, nibble: u8) {
-        self.last_8_literals >>= 0x4;
-        self.last_8_literals |= u64::from(nibble) << 0x3c;
+        self.parser.update_literal(b);
     }
     pub fn obs_literal_block_switch(&mut self, btype:LiteralBlockSwitch) {
         self.btype_last = btype.block_type();
@@ -554,7 +556,7 @@ impl<
     }
 }
 
-pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser: StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
+pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser: StructureSeeker, ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     pub recoder: DivansRecodeState<AllocU8::AllocatedMemory>,
     pub m8: RepurposingAlloc<u8, AllocU8>,
     pub mcdf16: AllocCDF16,
@@ -567,12 +569,12 @@ pub struct MainThreadContext<Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allo
 pub enum ThreadContext<Cdf16:CDF16,
                        AllocU8:Allocator<u8>,
                        AllocCDF16:Allocator<Cdf16>,
-                       Parser:StructureSeekerU8<AllocU8>,
+                       Parser:StructureSeeker,
                        ArithmeticCoder:ArithmeticEncoderOrDecoder> {
     MainThread(MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>),
     Worker,
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeeker, ArithmeticCoder:ArithmeticEncoderOrDecoder> MainThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
     pub fn dismantle(self) -> (
         RepurposingAlloc<u8, AllocU8>,
         AllocCDF16,
@@ -596,7 +598,7 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:St
             LiteralNibblePriors<Cdf16, AllocCDF16>,
             ArithmeticCoder,
         ))) -> Self {
-        MainThreadContext::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder> {
+        MainThreadContext::<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
             m8:input.0,
             mcdf16:input.1,
             recoder:(input.2).0,
@@ -610,13 +612,12 @@ impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:St
     pub fn free(&mut self) {
         self.m8.free_cell(core::mem::replace(&mut self.recoder.ring_buffer, AllocU8::AllocatedMemory::default()));
         self.m8.free_cell(core::mem::replace(&mut self.lbk.literal_context_map, AllocU8::AllocatedMemory::default()));
-        self.parser.free(&mut self.m8);
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_high_priors.priors, AllocCDF16::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lit_low_priors.priors, AllocCDF16::AllocatedMemory::default()));
         self.mcdf16.free_cell(core::mem::replace(&mut self.lbk.lit_cm_priors.priors, AllocCDF16::AllocatedMemory::default()));
     }
 }
-impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeekerU8<AllocU8>, ArithmeticCoder:ArithmeticEncoderOrDecoder> ThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
+impl <Cdf16:CDF16, AllocU8:Allocator<u8>, AllocCDF16:Allocator<Cdf16>, Parser:StructureSeeker, ArithmeticCoder:ArithmeticEncoderOrDecoder> ThreadContext<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder> {
     pub fn free(&mut self) {
         match *self {
             ThreadContext::MainThread(ref mut ctx) => ctx.free(),
@@ -673,7 +674,7 @@ pub struct CrossCommandState<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
                              AllocCDF16:Allocator<Cdf16>,
-                             Parser:StructureSeekerU8<AllocU8>> {
+                             Parser:StructureSeeker> {
     //pub cmd_coder: ArithmeticCoder,
     //pub lit_coder: ArithmeticCoder,
     pub coder: ArithmeticCoder,
@@ -691,7 +692,7 @@ impl<ArithmeticCoder:ArithmeticEncoderOrDecoder,
                              Cdf16:CDF16,
                              AllocU8:Allocator<u8>,
      AllocCDF16:Allocator<Cdf16>,
-     Parser:StructureSeekerU8<AllocU8>> CrossCommandState<ArithmeticCoder,
+     Parser:StructureSeeker> CrossCommandState<ArithmeticCoder,
                                                           Specialization,
                                                           LinearInputBytes,
                                                           LinearOutputBytes,
@@ -722,7 +723,7 @@ impl <AllocU8:Allocator<u8>,
       LinearOutputBytes:StreamMuxer<AllocU8>+Default,                                   
       Cdf16:CDF16,
       AllocCDF16:Allocator<Cdf16>,
-      Parser: StructureSeekerU8<AllocU8>,
+      Parser: StructureSeeker,
       ArithmeticCoder:ArithmeticEncoderOrDecoder+NewWithAllocator<AllocU8>,
       Specialization:EncoderOrDecoderSpecialization,
       > CrossCommandState<ArithmeticCoder,
@@ -758,8 +759,7 @@ impl <AllocU8:Allocator<u8>,
         let btype_priors = mcdf16.alloc_cell(BlockTypePriors::<Cdf16, AllocCDF16>::NUM_ALL_PRIORS);
         let literal_context_map = m8.alloc_cell(MAX_LITERAL_CONTEXT_MAP_SIZE);
         let distance_context_map = m8.alloc_cell(4 * NUM_BLOCK_TYPES);
-        let bk = CrossCommandBookKeeping::new(m8,
-                                              lit_len_priors, cc_priors, copy_priors,
+        let bk = CrossCommandBookKeeping::new(lit_len_priors, cc_priors, copy_priors,
                                               dict_priors, pred_priors, btype_priors,
                                               distance_context_map,
                                               dynamic_context_mixing,
@@ -774,12 +774,14 @@ impl <AllocU8:Allocator<u8>,
                             LinearOutputBytes,
                             Cdf16,
                             AllocU8,
-                            AllocCDF16> {
+                            AllocCDF16,
+                            Parser,
+                            > {
             //cmd_coder: cmd_coder,
             coder: cmd_coder,
             //lit_coder: lit_coder,
             specialization: spc,
-            thread_ctx: ThreadContext::MainThread(MainThreadContext::<Cdf16, AllocU8, AllocCDF16, ArithmeticCoder>{
+            thread_ctx: ThreadContext::MainThread(MainThreadContext::<Cdf16, AllocU8, AllocCDF16, Parser, ArithmeticCoder>{
                 recoder: DivansRecodeState::<AllocU8::AllocatedMemory>::new(
                 ring_buffer),
                 m8: RepurposingAlloc::<u8, AllocU8>::new(m8),
@@ -798,20 +800,24 @@ impl <AllocU8:Allocator<u8>,
             bk:bk,
         }
     }
-    pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot {
+    pub fn snapshot_literal_or_copy_state(&self) -> CodecSnapshot<Parser> {
         let ring_buffer;
         let last_8;
+        let parser;
         match self.thread_ctx {
             ThreadContext::MainThread(ref ctx)=> {
                 ring_buffer = Some(ctx.recoder.snapshot_ringbuffer());
                 last_8 = ctx.lbk.last_8_literals;
+                parser = ctx.lbk.parser.clone();
             },
             ThreadContext::Worker => {
                 ring_buffer = None;
                 last_8 = 0u64;
+                parser = Parser::default();
             },
         }
         CodecSnapshot{
+            parser:parser,
             last_4_states:self.bk.last_4_states,
             distance_lru:self.bk.distance_lru,
             last_llen:self.bk.last_llen,
@@ -821,7 +827,7 @@ impl <AllocU8:Allocator<u8>,
             last_8_literals:last_8,
         }
     }
-    pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot) {
+    pub fn restore_literal_or_copy_snapshot(&mut self, cs:CodecSnapshot<Parser>) {
         self.bk.last_4_states = cs.last_4_states;
         self.bk.distance_lru = cs.distance_lru;
         self.bk.last_llen = cs.last_llen;
@@ -832,6 +838,7 @@ impl <AllocU8:Allocator<u8>,
                 ThreadContext::MainThread(ref mut ctx)=> {
                     ctx.recoder.restore_ringbuffer_to_snapshot(rb);
                     ctx.lbk.last_8_literals = cs.last_8_literals;
+                    ctx.lbk.parser = cs.parser;
                 },
                 ThreadContext::Worker => {},
             }
@@ -1034,7 +1041,8 @@ pub fn get_distance_from_mnemonic_code(distance_lru:&[u32;4], code:u8, _num_byte
 }
 
 #[derive(Clone)]
-pub struct CodecSnapshot {
+pub struct CodecSnapshot<Parser:Clone> {
+    parser:Parser,
     last_dlen: u8,
     last_clen: u8,
     last_4_states: u8,

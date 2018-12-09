@@ -19,10 +19,10 @@ use std::thread;
 use super::divans_decompressor::StaticCommand;
 
 pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8>,
+                                 Parser:codec::StructureSeeker,
                                  AllocU8:Allocator<u8>,
                                  AllocCDF16:Allocator<interface::DefaultCDF16>,
                                  AllocCommand:Allocator<StaticCommand>,
-                                 Parser:codec::StructureSeekerU8<AllocU8>,
                                  > {
     codec: Arc<Mutex<Option<codec::DivansCodec<DefaultDecoder,
                                          DecoderSpecialization,
@@ -39,8 +39,9 @@ pub struct ParallelDivansProcess<DefaultDecoder: ArithmeticEncoderOrDecoder + Ne
                                                AllocCDF16,
                                                AllocCommand,
                                                DefaultDecoder,
+                                               Parser,
                                                Mux<AllocU8>,
-                                               Parser>>,
+                                               >>,
     bytes_encoded: usize,
     mcommand: AllocCommand,
 }
@@ -50,9 +51,9 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
      AllocU8:Allocator<u8> + Send + 'static,
      AllocCDF16:Allocator<interface::DefaultCDF16> + Send + 'static,
      AllocCommand:Allocator<StaticCommand> + Send + 'static,
-     Parser:codec::StructureSeekerU8<AllocU8>+Send+'static,
+     Parser:codec::StructureSeeker+Send+'static,
      >
-    ParallelDivansProcess<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand, Parser>
+    ParallelDivansProcess<DefaultDecoder, Parser, AllocU8, AllocCDF16, AllocCommand>
     where <AllocU8 as Allocator<u8>>::AllocatedMemory: core::marker::Send,
           <AllocCDF16 as Allocator<interface::DefaultCDF16>>::AllocatedMemory: core::marker::Send,
           <AllocCommand as Allocator<StaticCommand>>::AllocatedMemory: core::marker::Send,
@@ -86,19 +87,20 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                                              DevNull<AllocU8>,
                                              interface::DefaultCDF16,
                                              AllocU8,
-                                             AllocCDF16>::new(m8,
-                                                              mcdf16,
-                                                              cmd_decoder,
-                                                              lit_decoder,
-                                                              DecoderSpecialization::new(),
-                                                              linear_input_bytes,
-                                                              window_size,
-                                                              0,
-                                                              None,
-                                                              None,
+                                             AllocCDF16,
+                                             Parser>::new(m8,
+                                                          mcdf16,
+                                                          cmd_decoder,
+                                                          lit_decoder,
+                                                          DecoderSpecialization::new(),
+                                                          linear_input_bytes,
+                                                          window_size,
+                                                          0,
+                                                          None,
+                                                          None,
                                                           true,
-                                                              codec::StrideSelection::UseBrotliRec,
-                                                              skip_crc);
+                                                          codec::StrideSelection::UseBrotliRec,
+                                                          skip_crc);
         if !skip_crc {
             codec.get_crc().write(&raw_header[..]);
         }
@@ -137,7 +139,7 @@ impl<DefaultDecoder: ArithmeticEncoderOrDecoder + NewWithAllocator<AllocU8> + in
                 panic!("Thread started with None-process_codec")
             }
         });
-        ParallelDivansProcess::<DefaultDecoder, AllocU8, AllocCDF16, AllocCommand> {
+        ParallelDivansProcess::<DefaultDecoder, Parser, AllocU8, AllocCDF16, AllocCommand> {
             mcommand:mc,
             codec:worker_codec,
             literal_decoder:Some(main_thread_codec),

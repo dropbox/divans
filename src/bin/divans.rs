@@ -54,6 +54,7 @@ use divans::Decompressor;
 use divans::Speed;
 use divans::CMD_BUFFER_SIZE;
 use divans::free_cmd;
+use divans::DefaultStructureSeeker;
 
 use divans::DivansCompressor;
 use divans::DivansCompressorFactoryStruct;
@@ -618,6 +619,7 @@ fn compress_inner<Reader:std::io::BufRead,
                   AllocU32:alloc::Allocator<u32>,
                   AllocCDF16:alloc::Allocator<divans::DefaultCDF16>>(
     mut state: DivansCompressor<Encoder,
+                                DefaultStructureSeeker,
                                 AllocU8,
                                 AllocU32,
                                 AllocCDF16>,
@@ -847,7 +849,8 @@ type BrotliFactory = divans::BrotliDivansHybridCompressorFactory<ItemVecAllocato
                                                                      ItemVecAllocator<brotli::enc::cluster::HistogramPair>,
                                                                      ItemVecAllocator<brotli::enc::histogram::ContextType>,
                                                                      ItemVecAllocator<brotli::enc::entropy_encode::HuffmanTree>,
-                                                                     ItemVecAllocator<brotli::enc::ZopfliNode>>>;
+                                                                     ItemVecAllocator<brotli::enc::ZopfliNode>>,
+                                                                 DefaultStructureSeeker>;
 
 fn compress_raw<Reader:std::io::Read,
                 Writer:std::io::Write>(r:&mut Reader,
@@ -927,7 +930,8 @@ fn compress_raw<Reader:std::io::Read,
     } else {
         type Factory = DivansCompressorFactoryStruct<
                 ItemVecAllocator<u8>,
-                ItemVecAllocator<divans::DefaultCDF16>>;
+            ItemVecAllocator<divans::DefaultCDF16>,
+            DefaultStructureSeeker>;
         let state =Factory::new(
             m8,
             ItemVecAllocator::<u32>::default(),
@@ -967,7 +971,8 @@ fn compress_ir<Reader:std::io::BufRead,
     }
     opts.window_size = Some(window_size);
     let state =DivansCompressorFactoryStruct::<ItemVecAllocator<u8>,
-                                  ItemVecAllocator<divans::DefaultCDF16>>::new(
+                                               ItemVecAllocator<divans::DefaultCDF16>,
+                                               DefaultStructureSeeker>::new(
         ItemVecAllocator::<u8>::default(),
         ItemVecAllocator::<u32>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
@@ -985,7 +990,7 @@ fn decompress<Reader:std::io::Read, Writer:std::io::Write>(r:&mut Reader,
                                                            multithread:bool,) -> io::Result<()>
 {
     let ret;
-    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>, ItemVecAllocator<StaticCommand>>::new(
+    let mut state = DivansDecompressorFactoryStruct::<ItemVecAllocator<u8>, ItemVecAllocator<divans::DefaultCDF16>, ItemVecAllocator<StaticCommand>, DefaultStructureSeeker>::new(
         ItemVecAllocator::<u8>::default(),
         ItemVecAllocator::<divans::DefaultCDF16>::default(),
         ItemVecAllocator::<StaticCommand>::default(),
