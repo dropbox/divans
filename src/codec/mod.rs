@@ -749,7 +749,8 @@ impl<AllocU8: Allocator<u8>,
                                                                          None,
                                                                          &mut self.cross_command_state.specialization,
                                                                          &mut [],
-                                                                         output_bytes_offset) {
+                                                                         output_bytes_offset,
+                                                                         &mut |_x:&[u8]|()) {
                              DivansOutputResult::Success => {
                                  self.state = EncodeOrDecodeState::Begin;
                                  return CodecTraitResult::Res(OneCommandReturn::Advance);
@@ -760,9 +761,9 @@ impl<AllocU8: Allocator<u8>,
                          }
                     } else {
                         match {
-                            let (m8, recoder) = match self.cross_command_state.thread_ctx {
-                                ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder)),
-                                ThreadContext::Worker => (None, None),
+                            let (m8, recoder, mut lbk) = match self.cross_command_state.thread_ctx {
+                                ThreadContext::MainThread(ref mut main_thread_ctx) => (Some(&mut main_thread_ctx.m8), Some(&mut main_thread_ctx.recoder), Some(&mut main_thread_ctx.lbk)),
+                                ThreadContext::Worker => (None, None, None),
                             };
                             self.cross_command_state.demuxer.push_cmd(&mut self.state_populate_ring_buffer,
                                                                       m8,
@@ -770,6 +771,7 @@ impl<AllocU8: Allocator<u8>,
                                                                       &mut self.cross_command_state.specialization,
                                                                       output_bytes,
                                                                       output_bytes_offset,
+                                                                      &mut |data:&[u8]|if let Some(ref mut slbk) = lbk { slbk.parser_update(data)},
                             )
                         } {
                             DivansOutputResult::NeedsMoreOutput => {

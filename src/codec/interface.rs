@@ -1,4 +1,5 @@
 use core;
+use core::fmt;
 use brotli;
 use brotli::interface::Nop;
 use interface::{DivansOpResult, ErrMsg, StreamMuxer, StreamDemuxer, DivansResult, WritableBytes};
@@ -41,6 +42,16 @@ use super::priors::{
 use ::priors::PriorCollection;
 const LOG_NUM_COPY_TYPE_PRIORS: usize = 4;
 
+struct HexSlice<'a>(&'a [u8]);
+
+impl<'a> fmt::Display for HexSlice<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for byte in self.0 {
+            try!(write!(f, "{:02X}", byte));
+        }
+        Ok(())
+    }
+}
 
 pub const BLOCK_TYPE_LITERAL_SWITCH:usize=0;
 pub const BLOCK_TYPE_COMMAND_SWITCH:usize=1;
@@ -289,11 +300,11 @@ impl<
     }
     #[inline(always)]
     pub fn parser_update(&mut self, data: &[u8]) {
-        eprintln!("Pushing bytes {:?}", data);
+        eprintln!("Pushing bytes {}", HexSlice(data));
         self.parser.update(data);
     }
     pub fn push_literal_byte(&mut self, b: u8) {
-        eprintln!("Pushing byte {:?}", b);
+        eprintln!("Pushing byte {:X}", b);
         //self.num_literals_coded += 1;
         assert_eq!(self.last_8_literals >> 0x38, u64::from(self.parser.prior().0));
         assert_eq!((self.last_8_literals >> 0x30) & 0xff, u64::from(self.parser.prior().1));

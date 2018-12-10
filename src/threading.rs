@@ -64,14 +64,16 @@ pub trait ThreadToMain<AllocU8:Allocator<u8>> {
     fn pull_context_map(&mut self, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> Result<PredictionModeContextMap<AllocatedMemoryPrefix<u8, AllocU8>>, ()>;
     //fn alloc_literal(&mut self, len: usize, m8: Option<&mut RepurposingAlloc<u8, AllocU8>>) -> LiteralCommand<AllocatedMemoryPrefix<u8, AllocU8>>;
     #[inline(always)]
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
-        &mut self,
-        cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
-        m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
-        recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
-        specialization: &mut Specialization,
-        output:&mut [u8],
-        output_offset: &mut usize,
+  fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization,
+              CopyCallback:FnMut(&[u8])>(
+      &mut self,
+      cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
+      m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
+      recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
+      specialization: &mut Specialization,
+      output:&mut [u8],
+      output_offset: &mut usize,
+      copy_callback: &mut CopyCallback,
     ) -> DivansOutputResult;
     #[inline(always)]
     fn push_consumed_data(
@@ -385,15 +387,17 @@ impl <AllocU8:Allocator<u8>, WorkerInterface:ThreadToMain<AllocU8>> ThreadToMain
         self.worker.pull_context_map(m8)
     }
     #[inline(always)]
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization,
+                CopyCallback:FnMut(&[u8])>(
         &mut self, cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
         recoder: Option<&mut DivansRecodeState<AllocU8::AllocatedMemory>>,
         specialization:&mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
+        copy_callback: &mut CopyCallback,
     ) -> DivansOutputResult {
-        self.worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset)
+        self.worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset, copy_callback)
     }
     #[inline(always)]
     fn push_consumed_data(
@@ -491,7 +495,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         Ok(ret)
     }
     #[inline(always)]
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization,
+                CopyCallback:FnMut(&[u8])>(
         &mut self,
         cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
@@ -499,6 +504,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _specialization: &mut Specialization,
         _output:&mut [u8],
         _output_offset: &mut usize,
+        _copy_callback: &mut CopyCallback,
     ) -> DivansOutputResult {
         if self.err.is_some() {
             return self.get_failure();

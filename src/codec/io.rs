@@ -113,7 +113,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
     fn broadcast_err(&mut self, err:ErrMsg) {
         self.err = DivansOutputResult::Failure(err);
     }
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization, CopyCallback:FnMut(&[u8])>(
         &mut self,
         cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         mut m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
@@ -121,6 +121,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
         specialization:&mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
+        copy_cb:&mut CopyCallback,
     ) -> DivansOutputResult {
         let mut tmp_output_offset_bytes_backing: usize = 0;
         let tmp_output_offset_bytes = specialization.get_recoder_output_offset(
@@ -129,7 +130,7 @@ impl<AllocU8:Allocator<u8>, LinearInputBytes:StreamDemuxer<AllocU8>> ThreadToMai
         let ret = recoder.as_mut().unwrap().encode_cmd(cmd,
                                                        specialization.get_recoder_output(output),
                                                        tmp_output_offset_bytes,
-                                                       &mut |_x|());
+                                                       copy_cb);
         match ret {
             DivansOutputResult::Success => {
                 free_cmd(cmd, &mut m8.as_mut().unwrap().use_cached_allocation::<

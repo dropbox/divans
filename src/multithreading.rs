@@ -277,7 +277,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         }
     }
     #[inline(always)]
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization,
+                CopyCallback:FnMut(&[u8])>(
         &mut self,
         cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
@@ -285,6 +286,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         specialization: &mut Specialization,
         output:&mut [u8],
         output_offset: &mut usize,
+        copy_cb: &mut CopyCallback,
     ) -> DivansOutputResult {
         loop {
             let _elapsed = unguarded_debug_time!(self);
@@ -295,7 +297,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
                 if worker.waiters != 0 {
                     cvar.notify_one();
                 }
-                return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset);
+                return worker.push_cmd(cmd, m8, recoder, specialization, output, output_offset, copy_cb);
             } else {
                 thread_debug!(ThreadEventType::W_WAIT_PUSH_CMD, 0, self, _elapsed);
                 worker.waiters += 1;
@@ -452,7 +454,8 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         self.worker.pull_context_map(m8)
     }
     #[inline(always)]
-    fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization>(
+  fn push_cmd<Specialization:EncoderOrDecoderRecoderSpecialization,
+              CopyCallback:FnMut(&[u8])>(
         &mut self,
         cmd:&mut Command<AllocatedMemoryPrefix<u8, AllocU8>>,
         _m8: Option<&mut RepurposingAlloc<u8, AllocU8>>,
@@ -460,6 +463,7 @@ impl<AllocU8:Allocator<u8>, AllocCommand:Allocator<StaticCommand>> ThreadToMain<
         _specialization: &mut Specialization,
         _output:&mut [u8],
         _output_offset: &mut usize,
+        _copy_cb: &mut CopyCallback,
     ) -> DivansOutputResult {
         let (static_command, pm) = downcast_command(cmd);
         self.buffer.0.slice_mut()[self.buffer.1 as usize] = static_command;
