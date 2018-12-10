@@ -70,7 +70,7 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
         let len = self.ring_buffer.slice().len();
         let mut ret = [0u8; 8];
         for i in 0..8 {
-            ret[i] = self.ring_buffer.slice()[(self.state.ring_buffer_decode_index as usize + len - i - 1) & (len - 1)];
+            ret[7 - i] = self.ring_buffer.slice()[(self.state.ring_buffer_decode_index as usize + len - i - 1) & (len - 1)];
         }
         ret
     }

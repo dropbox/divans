@@ -9,7 +9,7 @@ impl StructureSeeker for Last8Parser {
     fn update(&mut self, data: &[u8]) {
         if data.len() >= 8 {
             let data_start = data.len() - 8;
-            self.last8 = u64::from(data[data_start])
+            self.last8 = u64::from(data[data_start + 0])
                 | (u64::from(data[data_start + 1]) << 0x8)
                 | (u64::from(data[data_start + 2]) << 0x10)
                 | (u64::from(data[data_start + 3]) << 0x18)
