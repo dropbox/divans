@@ -298,13 +298,16 @@ impl<
        self.literal_lut1 = get_lut1(new_mode);
        DivansOpResult::Success
     }
+    pub fn parser_prior(&self) -> (u8, u8) {
+      self.parser.prior()
+    }
     #[inline(always)]
     pub fn parser_update(&mut self, data: &[u8]) {
-        eprintln!("Pushing bytes {}", HexSlice(data));
+        eprintln!("Pushing bytes [{:}]", HexSlice(data));
         self.parser.update(data);
     }
     pub fn push_literal_byte(&mut self, b: u8) {
-        eprintln!("Pushing byte {:X}", b);
+        eprintln!("Pushing byte {:02X}", b);
         //self.num_literals_coded += 1;
         assert_eq!(self.last_8_literals >> 0x38, u64::from(self.parser.prior().0));
         assert_eq!((self.last_8_literals >> 0x30) & 0xff, u64::from(self.parser.prior().1));

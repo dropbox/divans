@@ -272,7 +272,9 @@ impl<RingBuffer: SliceWrapperMut<u8> + SliceWrapper<u8>> DivansRecodeState<RingB
                 }
             }
             let ret = self.copy_to_ring_buffer(repeat_buffer.split_at(rem_bytes as usize).0) as u32;
-            cb(&repeat_buffer[..ret as usize]);
+            if ret != 0 {
+                cb(&repeat_buffer[..ret as usize]);
+            }
             self.state.input_sub_offset += ret as usize;
             if ret != rem_bytes || num_bytes_to_copy != num_bytes_left_in_cmd {
                 return DivansOutputResult::NeedsMoreOutput;

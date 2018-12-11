@@ -366,16 +366,10 @@ impl<Cdf16:CDF16,
             } else if let &mut Command::Literal(ref lit) = cur_cmd {
                 let num_bytes = lit.data.len();
                 self.state_lit.lc.data = self.ctx.m8.use_cached_allocation::<UninitializedOnAlloc>().alloc_cell(num_bytes);
-                let last_8 = self.ctx.recoder.last_8_literals();
-                self.ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                    u64::from(last_8[0])
-                    | (u64::from(last_8[1])<<0x8)
-                    | (u64::from(last_8[2])<<0x10)
-                    | (u64::from(last_8[3])<<0x18)
-                    | (u64::from(last_8[4])<<0x20)
-                    | (u64::from(last_8[5])<<0x28)
-                    | (u64::from(last_8[6])<<0x30)
-                    | (u64::from(last_8[7])<<0x38);
+                let (p0, p1) = self.ctx.lbk.parser_prior();
+                self.ctx.lbk.last_8_literals =
+                    (u64::from(p1)<<0x30) |
+                    (u64::from(p0)<<0x38);
                 let new_state = self.state_lit.get_nibble_code_state(0, &self.state_lit.lc, self.demuxer.read_buffer()[LIT_CODER].bytes_avail());
                 self.state_lit.state = new_state;
                 if Worker::COOPERATIVE_MAIN {

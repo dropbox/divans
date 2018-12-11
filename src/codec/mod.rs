@@ -786,16 +786,8 @@ impl<AllocU8: Allocator<u8>,
                                 // clobber bk.last_8_literals with the last 8 literals
                                 match self.cross_command_state.thread_ctx {
                                     ThreadContext::MainThread(ref mut ctx) => {
-                                        let last_8 = ctx.recoder.last_8_literals();
-                                        ctx.lbk.last_8_literals = //FIXME(threading) only should be run in the main thread
-                                            u64::from(last_8[0])
-                                            | (u64::from(last_8[1])<<0x8)
-                                            | (u64::from(last_8[2])<<0x10)
-                                            | (u64::from(last_8[3])<<0x18)
-                                            | (u64::from(last_8[4])<<0x20)
-                                            | (u64::from(last_8[5])<<0x28)
-                                            | (u64::from(last_8[6])<<0x30)
-                                            | (u64::from(last_8[7])<<0x38);
+                                        let (p0, p1) = ctx.lbk.parser_prior();
+                                        ctx.lbk.last_8_literals = (u64::from(p0) << 0x38) | (u64::from(p1) << 0x30);
                                     }
                                     ThreadContext::Worker => {}, // Main thread tracks literals
                              }
